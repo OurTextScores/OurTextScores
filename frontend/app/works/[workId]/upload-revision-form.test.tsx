@@ -1,0 +1,127 @@
+"use client";
+
+import React from "react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import UploadRevisionForm from "./upload-revision-form";
+import { useRouter } from "next/navigation";
+
+// Mock dependencies
+global.fetch = jest.fn();
+const mockEventSource = {
+  addEventListener: jest.fn(),
+  close: jest.fn(),
+};
+global.EventSource = jest.fn(() => mockEventSource) as any;
+global.crypto.randomUUID = jest.fn(() => "test-uuid");
+
+describe("UploadRevisionForm", () => {
+  const workId = "test-work";
+  const sourceId = "test-source";
+  const mockRouter = {
+    refresh: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useRouter as jest.Mock).mockReturnValue(mockRouter);
+  });
+
+  it("renders the form", () => {
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    expect(screen.getByRole("button", { name: /Upload new revision/i })).toBeInTheDocument();
+  });
+
+  it("disables the upload button if no file is selected", () => {
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+    expect(uploadButton).toBeDisabled();
+  });
+
+  it("enables the upload button when a file is selected", async () => {
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const fileInput = screen.getByTestId("file-input");
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    });
+
+    expect(uploadButton).toBeEnabled();
+  });
+
+  it("uploads a file to trunk successfully", async () => {
+    (fetch as jest.Mock).mockResolvedValue({ ok: true });
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const fileInput = screen.getByTestId("file-input");
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    });
+    fireEvent.click(uploadButton);
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        `/api/proxy/works/${workId}/sources/${sourceId}/revisions`,
+        expect.objectContaining({
+          method: "POST",
+          headers: { "X-Progress-Id": "test-uuid" },
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Revision uploaded.")).toBeInTheDocument();
+    });
+    expect(mockRouter.refresh).toHaveBeenCalled();
+  });
+
+  it("uploads a file to a new branch", async () => {
+    (fetch as jest.Mock).mockResolvedValue({ ok: true });
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const fileInput = screen.getByTestId("file-input");
+    const newBranchRadio = screen.getByLabelText(/new/i);
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    });
+    fireEvent.click(newBranchRadio);
+    const branchNameInput = screen.getByPlaceholderText("branch name");
+    fireEvent.change(branchNameInput, { target: { value: "new-branch" } });
+    fireEvent.click(uploadButton);
+
+    await waitFor(() => {
+      const formData = (fetch as jest.Mock).mock.calls[0][1].body as FormData;
+      expect(formData.get("createBranch")).toBe("true");
+      expect(formData.get("branchName")).toBe("new-branch");
+    });
+  });
+
+  it("shows an error message on upload failure", async () => {
+    const errorMessage = "Upload failed";
+    (fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      text: () => Promise.resolve(errorMessage),
+    });
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const fileInput = screen.getByTestId("file-input");
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    });
+    fireEvent.click(uploadButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(errorMessage)).toBeInTheDocument();
+    });
+  });
+});

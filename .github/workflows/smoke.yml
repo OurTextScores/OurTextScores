@@ -1,0 +1,102 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ "**" ]
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dev dependencies
+        run: npm ci
+
+      - name: Build Docker images (backend + frontend)
+        run: docker compose build backend frontend
+
+      - name: Start stack
+        run: docker compose up -d
+
+      - name: Wait for health
+        run: node smoke/utils/wait.cjs
+
+      - name: Install Playwright (Chromium + deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run fast smoke tests (Chromium)
+        run: >-
+          npx playwright test -c smoke/playwright.config.cjs --project=chromium
+          smoke/e2e/public-links.spec.cjs
+          smoke/e2e/auth-email.spec.cjs
+          smoke/e2e/sse-progress.spec.cjs
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-fast
+          path: playwright-report
+
+      - name: Teardown
+        if: always()
+        run: docker compose down
+
+  smoke-slow:
+    runs-on: ubuntu-latest
+    needs: smoke-fast
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dev dependencies
+        run: npm ci
+
+      - name: Build Docker images (backend + frontend)
+        run: docker compose build backend frontend
+
+      - name: Start stack
+        run: docker compose up -d
+
+      - name: Wait for health
+        run: node smoke/utils/wait.cjs
+
+      - name: Install Playwright (Chromium + deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run slow smoke tests (Chromium)
+        run: >-
+          npx playwright test -c smoke/playwright.config.cjs --project=chromium
+          smoke/e2e/branch-approvals.spec.cjs
+          smoke/e2e/viewers-diff-watch.spec.cjs
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-slow
+          path: playwright-report
+
+      - name: Teardown
+        if: always()
+        run: docker compose down

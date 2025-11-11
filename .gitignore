@@ -1,0 +1,9 @@
+.venv/
+DEVELOPMENT_PLAN.md
+notes.md
+.env
+.vscode/
+frontend/node_modules/
+frontend/coverage/
+backend/node_modules/
+backend/coverage/

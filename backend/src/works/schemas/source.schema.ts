@@ -1,0 +1,84 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { HydratedDocument } from 'mongoose';
+import { StorageLocator, StorageLocatorSchema } from './storage-locator.schema';
+import { ValidationState, ValidationStateSchema } from './validation.schema';
+import { Provenance, ProvenanceSchema } from './provenance.schema';
+import { DerivativeArtifacts, DerivativeArtifactsSchema } from './derivatives.schema';
+
+@Schema({
+  collection: 'sources',
+  timestamps: true
+})
+export class Source {
+  @Prop({ required: true, index: true, trim: true })
+  workId!: string;
+
+  @Prop({ required: true, unique: true, index: true, trim: true })
+  sourceId!: string;
+
+  @Prop({ required: true, trim: true })
+  label!: string;
+
+  @Prop({
+    required: true,
+    enum: ['score', 'parts', 'audio', 'metadata', 'other']
+  })
+  sourceType!: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
+
+  @Prop({ required: true, trim: true })
+  format!: string;
+
+  @Prop({ trim: true })
+  description?: string;
+
+  @Prop({
+    trim: true,
+    enum: [
+      'CC0',
+      'CC-BY-4.0',
+      'CC-BY-SA-4.0',
+      'CC-BY-NC-4.0',
+      'CC-BY-NC-SA-4.0',
+      'CC-BY-ND-4.0',
+      'Public Domain',
+      'All Rights Reserved',
+      'Other'
+    ]
+  })
+  license?: string;
+
+  @Prop({ trim: true })
+  licenseUrl?: string;
+
+  @Prop({ trim: true })
+  licenseAttribution?: string;
+
+  @Prop({ required: true, trim: true })
+  originalFilename!: string;
+
+  @Prop({ required: true, default: false })
+  isPrimary!: boolean;
+
+  @Prop({ type: StorageLocatorSchema, required: true })
+  storage!: StorageLocator;
+
+  @Prop({ type: ValidationStateSchema, required: true })
+  validation!: ValidationState;
+
+  @Prop({ type: ProvenanceSchema, required: true })
+  provenance!: Provenance;
+
+  @Prop({ type: DerivativeArtifactsSchema })
+  derivatives?: DerivativeArtifacts;
+
+  @Prop({ trim: true })
+  latestRevisionId?: string;
+
+  @Prop({ type: Date })
+  latestRevisionAt?: Date;
+}
+
+export type SourceDocument = HydratedDocument<Source>;
+export const SourceSchema = SchemaFactory.createForClass(Source);
+// Common query pattern: list sources by work and recent activity
+SourceSchema.index({ workId: 1, latestRevisionAt: -1 });

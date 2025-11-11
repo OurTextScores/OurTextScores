@@ -1,0 +1,18 @@
+
+> ourtextscores-root-tools@0.0.0 smoke:run
+> npx playwright test -c smoke/playwright.config.cjs --project=chromium
+
+
+Running 6 tests using 1 worker
+
+  ✓  1 [chromium] › auth-email.spec.cjs:47:3 › Email auth (magic link) › sign in via email and see session UI (1.6s)
+  ✓  2 [chromium] › branch-approvals.spec.cjs:47:3 › Owned branch + approvals flow › create owned branch, upload to it, approve, and see filter option (20.1s)
+  ✓  3 [chromium] › public-links.spec.cjs:7:3 › Public links + health › health endpoints are OK (364ms)
+  ✓  4 [chromium] › public-links.spec.cjs:14:3 › Public links + health › work detail anchors use public API base and resolve (1.8s)
+  ✓  5 [chromium] › sse-progress.spec.cjs:8:3 › SSE progress sanity › receives progress events during upload and completes (1.4s)
+  ✓  6 [chromium] › viewers-diff-watch.spec.cjs:47:3 › Viewers + Diff + Watch › renders OSMD/PDF and diff, and toggles watch (31.8s)
+
+  Slow test file: [chromium] › viewers-diff-watch.spec.cjs (31.8s)
+  Slow test file: [chromium] › branch-approvals.spec.cjs (20.1s)
+  Consider splitting slow test files to speed up parallel execution
+  6 passed (58.1s)

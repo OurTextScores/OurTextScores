@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  background-color: #f8fafc;
+}
+
+html.dark {
+  color-scheme: dark;
+  background-color: #0b1220; /* near slate-950 */
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}

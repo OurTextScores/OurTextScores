@@ -1,0 +1,36 @@
+import { getApiBase } from "../lib/api";
+import { getApiAuthHeaders } from "../lib/authToken";
+import { ProfileForm } from "./profile-form";
+import { NotificationsForm } from "./notifications-form";
+
+export default async function SettingsPage() {
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(`${API_BASE}/users/me`, { headers, cache: 'no-store' });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to load user');
+  }
+  const data = await res.json();
+  const user = data?.user;
+  const pref = (user?.notify?.watchPreference as 'immediate' | 'daily' | 'weekly' | undefined) || 'immediate';
+
+  return (
+    <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <div className="mx-auto w-full max-w-3xl px-6">
+        <h1 className="mb-6 text-2xl font-semibold">Settings</h1>
+
+        <section className="mb-6 rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <h2 className="mb-3 text-lg font-semibold">Profile</h2>
+          <ProfileForm email={user?.email || ''} username={user?.username} />
+        </section>
+
+        <section className="rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <h2 className="mb-3 text-lg font-semibold">Notifications</h2>
+          <NotificationsForm preference={pref} />
+        </section>
+      </div>
+    </main>
+  );
+}
+

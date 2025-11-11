@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+npm-debug.log
+yarn-error.log
+.env
+.env.*
+.vscode
+DEVELOPMENT_PLAN.md
+notes.md

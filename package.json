@@ -1,0 +1,25 @@
+{
+  "name": "ourtextscores-root-tools",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test:viewer": "node scripts/test_viewer.cjs",
+    "test:unit": "npm run docker:clean && npm run test:unit:backend && npm run test:unit:frontend",
+    "test:unit:backend": "npm test --prefix backend",
+    "test:unit:frontend": "npm test --prefix frontend",
+    "smoke:install": "npx playwright install chromium",
+    "smoke:up": "docker compose build backend frontend && docker compose up -d && node smoke/utils/wait.cjs",
+    "smoke:run": "npx playwright test -c smoke/playwright.config.cjs --project=chromium",
+    "docker:clean": "docker compose down -v --remove-orphans",
+    "smoke:status": "docker compose ps && docker stats --no-stream",
+    "smoke": "npm run docker:clean && npm run smoke:up && npm run smoke:install && npm run smoke:run && npm run docker:clean",
+    "prepare": "node scripts/setup-git-hooks.cjs"
+  },
+  "dependencies": {
+    "puppeteer": "22.13.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2"
+  }
+}
