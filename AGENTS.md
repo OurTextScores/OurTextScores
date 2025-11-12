@@ -182,7 +182,7 @@ This file orients future agents quickly: what the project does, how it’s wired
   - `npm run smoke:install` (first time: installs browsers)
   - `npm run smoke:run` (runs the suite)
   - `npm run smoke:down` (teardown)
-  - `npm run smoke:clean` (thorough cleanup: removes volumes and orphaned containers)
+  - `npm run docker:clean` (thorough cleanup: removes volumes and orphaned containers)
   - `npm run smoke:status` (check Docker container status and resource usage)
   - `npm run smoke` (cleanup, build, install, run, cleanup — full cycle with memory management)
   
@@ -378,6 +378,6 @@ Each revision includes `manifest.json` with tool versions, checksums, timestamps
 - **Check Build Guards**: `cd frontend && npm run prebuild && npm run build && npm run postbuild`
 - **View Logs**: `docker compose logs -f backend` or `docker compose logs -f frontend`
 - **Check Docker Resources**: `npm run smoke:status` (shows running containers and memory/CPU usage)
-- **Clean Docker Artifacts**: `npm run smoke:clean` (removes containers, volumes, and orphaned resources; use before smoke tests if experiencing memory issues)
+- **Clean Docker Artifacts**: `npm run docker:clean` (removes containers, volumes, and orphaned resources; use before smoke tests if experiencing memory issues)
 - **Reset State**: `docker compose down && rm -rf ../mongo_data ../minio_data ../fossil_data ../meilisearch_data` (destructive, check with user before executing)
 
