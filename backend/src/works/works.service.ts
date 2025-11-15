@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { InjectModel } from '@nestjs/mongoose';
@@ -568,9 +568,21 @@ except Exception:
     return { removed };
   }
 
-  async deleteSource(workId: string, sourceId: string): Promise<{ removed: boolean }> {
+  async deleteSource(
+    workId: string,
+    sourceId: string,
+    actor: { userId: string; roles?: string[] }
+  ): Promise<{ removed: boolean }> {
     const src = await this.sourceModel.findOne({ workId, sourceId }).lean().exec();
     if (!src) return { removed: false };
+
+    const ownerUserId = (src as any).provenance?.uploadedByUserId as string | undefined;
+    const isOwner = !!ownerUserId && actor.userId === ownerUserId;
+    const isAdmin = (actor.roles ?? []).includes('admin');
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException('Only source owner or admin can delete source');
+    }
+
     const revisions = await this.sourceRevisionModel
       .find({ workId, sourceId })
       .lean()

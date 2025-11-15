@@ -386,7 +386,12 @@ describe('WorksService (unit, mocked models)', () => {
     it('should delete a source and its revisions', async () => {
       const workId = 'work-1';
       const sourceId = 'source-1';
-      const source = { workId, sourceId, storage: { bucket: 'b', objectKey: 'k' } };
+      const source = {
+        workId,
+        sourceId,
+        storage: { bucket: 'b', objectKey: 'k' },
+        provenance: { uploadedByUserId: 'owner-1' },
+      };
       const revisions = [{ revisionId: 'rev-1', rawStorage: { bucket: 'b', objectKey: 'k' } }];
       sourceModel.findOne.mockReturnValue(chain(source));
       sourceRevisionModel.find.mockReturnValue(chain(revisions));
@@ -396,7 +401,7 @@ describe('WorksService (unit, mocked models)', () => {
       sourceModel.deleteOne.mockReturnValue(chain(undefined));
       jest.spyOn(service as any, 'recomputeWorkStats').mockResolvedValue(undefined);
 
-      const result = await service.deleteSource(workId, sourceId);
+      const result = await service.deleteSource(workId, sourceId, { userId: 'owner-1', roles: ['user'] });
 
       expect(result).toEqual({ removed: true });
       expect(storageService.deleteObject).toHaveBeenCalled();
@@ -411,9 +416,48 @@ describe('WorksService (unit, mocked models)', () => {
       const sourceId = 'source-1';
       sourceModel.findOne.mockReturnValue(chain(null));
 
-      const result = await service.deleteSource(workId, sourceId);
+      const result = await service.deleteSource(workId, sourceId, { userId: 'someone', roles: ['admin'] });
 
       expect(result).toEqual({ removed: false });
+    });
+
+    it('should allow admin to delete a source they do not own', async () => {
+      const workId = 'work-1';
+      const sourceId = 'source-1';
+      const source = {
+        workId,
+        sourceId,
+        storage: { bucket: 'b', objectKey: 'k' },
+        provenance: { uploadedByUserId: 'owner-1' },
+      };
+      const revisions = [{ revisionId: 'rev-1', rawStorage: { bucket: 'b', objectKey: 'k' } }];
+      sourceModel.findOne.mockReturnValue(chain(source));
+      sourceRevisionModel.find.mockReturnValue(chain(revisions));
+      storageService.deleteObject = jest.fn().mockResolvedValue(undefined);
+      fossilService.removeRepository = jest.fn().mockResolvedValue(undefined);
+      sourceRevisionModel.deleteMany.mockReturnValue(chain(undefined));
+      sourceModel.deleteOne.mockReturnValue(chain(undefined));
+      jest.spyOn(service as any, 'recomputeWorkStats').mockResolvedValue(undefined);
+
+      const result = await service.deleteSource(workId, sourceId, { userId: 'admin-1', roles: ['admin'] });
+
+      expect(result).toEqual({ removed: true });
+    });
+
+    it('should throw when actor is neither owner nor admin', async () => {
+      const workId = 'work-1';
+      const sourceId = 'source-1';
+      const source = {
+        workId,
+        sourceId,
+        storage: { bucket: 'b', objectKey: 'k' },
+        provenance: { uploadedByUserId: 'owner-1' },
+      };
+      sourceModel.findOne.mockReturnValue(chain(source));
+
+      await expect(
+        service.deleteSource(workId, sourceId, { userId: 'other-user', roles: ['user'] })
+      ).rejects.toThrow('Only source owner or admin can delete source');
     });
   });
 

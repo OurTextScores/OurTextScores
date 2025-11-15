@@ -26,6 +26,7 @@ import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/types/auth-user';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
+import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
 import { UploadSourceService, UploadSourceRequest } from './upload-source.service';
 import { ProgressService } from '../progress/progress.service';
 import type { Observable } from 'rxjs';
@@ -193,22 +194,51 @@ export class WorksController {
   }
 
   @Post(":workId/sources/prune-pending")
+  @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
+  @ApiOperation({
+    summary: 'Prune pending sources',
+    description: 'Delete sources for a work that have not completed the derivative pipeline. Requires admin role.'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiResponse({ status: 200, description: 'Pending sources pruned successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - authentication required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
   prunePending(@Param('workId') workId: string) {
     return this.worksService.prunePendingSources(workId);
   }
 
   @Post(":workId/sources/delete-all")
+  @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
+  @ApiOperation({
+    summary: 'Delete all sources for a work',
+    description: 'Permanently delete all sources and revisions for a work. Requires admin role.'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiResponse({ status: 200, description: 'All sources deleted successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - authentication required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
   deleteAll(@Param('workId') workId: string) {
     return this.worksService.deleteAllSources(workId);
   }
 
   @Delete(":workId/sources/:sourceId")
   @UseGuards(AuthRequiredGuard)
+  @ApiOperation({
+    summary: 'Delete a source',
+    description: 'Delete a single source and its revisions. Requires source owner or admin.'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiResponse({ status: 200, description: 'Source deleted successfully', schema: { type: 'object', properties: { removed: { type: 'boolean', example: true } } } })
+  @ApiResponse({ status: 401, description: 'Unauthorized - authentication required' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only source owner or admin can delete source' })
+  @ApiResponse({ status: 404, description: 'Source not found' })
   deleteSource(
     @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string
+    @Param('sourceId') sourceId: string,
+    @CurrentUser() user: RequestUser
   ) {
-    return this.worksService.deleteSource(workId, sourceId);
+    return this.worksService.deleteSource(workId, sourceId, { userId: user.userId, roles: user.roles });
   }
 
   @Patch(":workId/sources/:sourceId")

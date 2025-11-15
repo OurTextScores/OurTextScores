@@ -124,9 +124,10 @@ describe('WorksController (unit)', () => {
       const sourceId = 's1';
       worksService.deleteSource.mockResolvedValue({ removed: true });
 
-      const result = await controller.deleteSource(workId, sourceId);
+      const user = { userId: 'user-1', roles: ['admin'] };
+      const result = await controller.deleteSource(workId, sourceId, user as any);
 
-      expect(worksService.deleteSource).toHaveBeenCalledWith(workId, sourceId);
+      expect(worksService.deleteSource).toHaveBeenCalledWith(workId, sourceId, { userId: user.userId, roles: user.roles });
       expect(result).toEqual({ removed: true });
     });
   });
