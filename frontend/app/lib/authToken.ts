@@ -18,7 +18,7 @@ export async function getApiAuthHeaders(): Promise<Record<string, string>> {
   }
   const email = session.user.email;
   const name = session.user.name;
-  const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "dev-secret";
+  const secret = process.env.NEXTAUTH_SECRET || "dev-secret";
   const now = Math.floor(Date.now() / 1000);
   const exp = now + 60 * 60; // 1 hour
 
@@ -30,4 +30,3 @@ export async function getApiAuthHeaders(): Promise<Record<string, string>> {
   const token = `${encodedHeader}.${encodedPayload}.${signature}`;
   return { Authorization: `Bearer ${token}` };
 }
-

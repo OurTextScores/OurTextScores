@@ -21,7 +21,8 @@ function base64UrlDecode(input: string): Buffer {
 export class AuthService {
   private readonly secret: string;
   constructor(private readonly config: ConfigService) {
-    this.secret = this.config.get<string>('AUTH_SECRET', 'dev-secret');
+    const nextAuthSecret = this.config.get<string>('NEXTAUTH_SECRET');
+    this.secret = nextAuthSecret || 'dev-secret';
   }
 
   extractToken(authHeader?: string): string | null {
@@ -75,4 +76,3 @@ export class AuthService {
     return { userId: String(claims.sub), email: claims.email, name: claims.name };
   }
 }
-

@@ -34,7 +34,7 @@ describe('AuthService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string, defaultValue?: string) => {
-              if (key === 'AUTH_SECRET') return testSecret;
+              if (key === 'NEXTAUTH_SECRET') return testSecret;
               return defaultValue;
             }),
           },
@@ -52,7 +52,7 @@ describe('AuthService', () => {
     });
 
     it('should load secret from config', () => {
-      expect(configService.get).toHaveBeenCalledWith('AUTH_SECRET', 'dev-secret');
+      expect(configService.get).toHaveBeenCalledWith('NEXTAUTH_SECRET');
     });
   });
 

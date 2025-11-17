@@ -84,7 +84,7 @@ test.describe('Owned branch + approvals flow', () => {
     const sourceId = workDetail.sources[0].sourceId;
     const branchName = `smoke-${Date.now()}`;
     const { createHmac } = require('crypto');
-    const secret = process.env.AUTH_SECRET || 'dev-secret';
+    const secret = process.env.NEXTAUTH_SECRET || 'dev-secret';
     const b64url = (buf) => buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
     const makeJwt = (sub, email, sec) => {
       const header = b64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));

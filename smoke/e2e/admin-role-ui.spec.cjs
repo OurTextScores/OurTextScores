@@ -72,7 +72,7 @@ test.describe('Admin-related UI affordances', () => {
 
     // Create JWT for the same email so backend resolves the same user document
     const { createHmac } = require('crypto');
-    const secret = process.env.AUTH_SECRET || 'dev-secret';
+    const secret = process.env.NEXTAUTH_SECRET || 'dev-secret';
     const b64url = (buf) => buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
     const makeJwt = (sub, mail, sec) => {
       const header = b64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
@@ -129,4 +129,3 @@ test.describe('Admin-related UI affordances', () => {
     expect(stillThere).toBeFalsy();
   });
 });
-
