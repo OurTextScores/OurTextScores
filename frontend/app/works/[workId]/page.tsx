@@ -282,57 +282,6 @@ function ImslpMetadataCard({
         </div>
       </dl>
 
-      {/* Basic info */}
-      {meta.basic_info && (
-        <section className="mt-4 rounded border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900/50">
-          <h3 className="mb-2 text-slate-800 dark:text-slate-200">Basic Info</h3>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <div className="text-slate-600 dark:text-slate-400">Page ID</div>
-              <div className="font-mono text-slate-800 dark:text-slate-200">{String(meta.basic_info.page_id ?? "—")}</div>
-            </div>
-            <div>
-              <div className="text-slate-600 dark:text-slate-400">Namespace</div>
-              <div className="text-slate-800 dark:text-slate-200">{String(meta.basic_info.namespace ?? "—")}</div>
-            </div>
-            <div>
-              <div className="text-slate-600 dark:text-slate-400">Last Revision</div>
-              <div className="text-slate-800 dark:text-slate-200">{String(meta.basic_info.last_revision ?? "—")}</div>
-            </div>
-            <div>
-              <div className="text-slate-600 dark:text-slate-400">Text Length</div>
-              <div className="text-slate-800 dark:text-slate-200">{String(meta.basic_info.text_length ?? "—")}</div>
-            </div>
-          </div>
-          {meta.basic_info.text_preview && (
-            <details className="group mt-3">
-              <summary className="cursor-pointer text-slate-700 underline-offset-2 hover:underline dark:text-slate-300">
-                Show page text preview
-              </summary>
-              <pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-50 p-3 text-xs text-slate-800 whitespace-pre-wrap dark:bg-slate-950 dark:text-slate-200">
-                {meta.basic_info.text_preview}
-              </pre>
-            </details>
-          )}
-        </section>
-      )}
-
-      {/* Categories */}
-      {Array.isArray(meta.categories) && meta.categories.length > 0 && (
-        <details className="group mt-4 rounded border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900/50">
-          <summary className="cursor-pointer text-slate-700 transition hover:text-slate-900 dark:text-slate-200 dark:hover:text-slate-100">
-            Categories ({meta.categories.length})
-          </summary>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {meta.categories.map((c: string) => (
-              <span key={c} className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
-                {c}
-              </span>
-            ))}
-          </div>
-        </details>
-      )}
-
       {/* Files */}
       {Array.isArray(meta.files) && meta.files.length > 0 && (
         <details className="group mt-4 rounded border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900/50">
@@ -372,37 +321,6 @@ function ImslpMetadataCard({
                         "—"
                       )}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      )}
-
-      {/* IMSLP Revision history */}
-      {Array.isArray(meta.revision_history) && meta.revision_history.length > 0 && (
-        <details className="group mt-4 rounded border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900/50">
-          <summary className="cursor-pointer text-slate-700 transition hover:text-slate-900 dark:text-slate-200 dark:hover:text-slate-100">
-            IMSLP Revision History
-          </summary>
-          <div className="mt-2 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
-              <thead className="bg-slate-100 text-left uppercase tracking-wider text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
-                <tr>
-                  <th className="px-3 py-2">revid</th>
-                  <th className="px-3 py-2">user</th>
-                  <th className="px-3 py-2">timestamp</th>
-                  <th className="px-3 py-2">comment</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {meta.revision_history.map((r: any, idx: number) => (
-                  <tr key={idx}>
-                    <td className="px-3 py-2 font-mono">{String(r.revid)}</td>
-                    <td className="px-3 py-2">{r.user}</td>
-                    <td className="px-3 py-2">{Array.isArray(r.timestamp) ? r.timestamp.join(", ") : String(r.timestamp)}</td>
-                    <td className="px-3 py-2">{r.comment ?? ""}</td>
                   </tr>
                 ))}
               </tbody>
