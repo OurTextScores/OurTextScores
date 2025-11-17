@@ -95,10 +95,22 @@ test.describe('Source Labeling', () => {
     const descriptionInput = page.locator('input[placeholder*="description"]').first();
     await descriptionInput.fill(sourceDescription);
 
-    // Select a test file (need to have a test .mscz file)
-    // For now, we'll verify the upload input exists but skip actual upload in this basic test
     const fileInput = page.locator('section:has-text("Upload a new source") input[type="file"]').first();
     await expect(fileInput).toBeVisible();
+
+    // Upload a real MuseScore test file
+    const testFilePath = path.resolve(__dirname, '..', '..', 'test_scores', 'bach_orig.mscz');
+    await fileInput.setInputFiles(testFilePath);
+
+    const uploadButton = page.locator('button:has-text("Upload new source")').first();
+    await uploadButton.click();
+
+    // Wait for upload and processing to complete
+    await expect(page.locator('text=Source uploaded.')).toBeVisible({ timeout: 120000 });
+
+    // Verify the new source appears with the given label
+    const newSourceHeading = page.locator('h2', { hasText: sourceLabel });
+    await expect(newSourceHeading).toBeVisible({ timeout: 60000 });
 
     // Note: In a full e2e environment, we would:
     // 1. Upload a file using fileInput.setInputFiles('path/to/test.mscz')
@@ -108,8 +120,7 @@ test.describe('Source Labeling', () => {
     // 5. Update label and description
     // 6. Verify the updates appear
 
-    // For this test, let's verify the edit functionality exists on existing sources
-    // if any are present
+    // Verify the edit functionality exists on existing sources
     const editButtons = page.locator('button:has-text("Edit title/description")');
     const editCount = await editButtons.count();
 

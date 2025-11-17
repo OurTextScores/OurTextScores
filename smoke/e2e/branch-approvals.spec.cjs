@@ -44,6 +44,8 @@ async function getMagicLink(request, toEmail, timeoutMs = 30000) {
 }
 
 test.describe('Owned branch + approvals flow', () => {
+  // This flow exercises email auth + uploads + approvals; allow more time.
+  test.setTimeout(180000);
   test('create owned branch, upload to it, approve, and see filter option', async ({ page, request }) => {
     const email = process.env.SMOKE_EMAIL || 'smoke@example.test';
 

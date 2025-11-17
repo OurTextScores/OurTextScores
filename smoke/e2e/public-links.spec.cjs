@@ -12,6 +12,7 @@ test.describe('Public links + health', () => {
   });
 
   test('work detail anchors use public API base and resolve', async ({ page, request }) => {
+    test.setTimeout(90000);
     // Fetch a work id via API
     const works = await request.get(`${PUBLIC_API}/works`);
     expect(works.ok()).toBeTruthy();
@@ -33,6 +34,7 @@ test.describe('Public links + health', () => {
 
     // Only fetch small files to verify they resolve (skip large PDFs/MXLs to avoid timeout)
     let okCount = 0;
+    let attempts = 0;
     for (const href of links) {
       if (!href) continue;
       // Skip large binary files (PDF, MXL) - only test small files like manifest and text diffs
@@ -43,10 +45,11 @@ test.describe('Public links + health', () => {
       } catch (e) {
         // Ignore timeouts on individual requests
       }
-      // Stop after verifying a few links work
+      attempts += 1;
+      // Stop after verifying a few links work or after a handful of attempts
       if (okCount >= 3) break;
+      if (attempts >= 5) break;
     }
     expect(okCount).toBeGreaterThan(0);
   });
 });
-

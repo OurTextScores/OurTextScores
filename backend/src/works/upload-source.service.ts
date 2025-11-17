@@ -26,6 +26,8 @@ import { BranchesService } from '../branches/branches.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { RequestUser } from '../auth/types/auth-user';
 
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100MB
+
 export interface UploadSourceRequest {
   label?: string;
   sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
@@ -80,6 +82,9 @@ export class UploadSourceService {
   ): Promise<UploadSourceResult> {
     if (!file || !file.buffer) {
       throw new BadRequestException('File is required');
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new BadRequestException('File is too large (max 100MB).');
     }
 
     const trimmedWorkId = workId.trim();
@@ -139,6 +144,7 @@ export class UploadSourceService {
       previousCanonicalXml: previousRevision?.derivatives?.canonicalXml,
       progressId
     });
+    this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -322,6 +328,9 @@ export class UploadSourceService {
     if (!file || !file.buffer) {
       throw new BadRequestException('File is required');
     }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new BadRequestException('File is too large (max 100MB).');
+    }
 
     const trimmedWorkId = workId.trim();
     const work = await this.worksService.ensureWork(trimmedWorkId);
@@ -379,6 +388,7 @@ export class UploadSourceService {
       previousCanonicalXml: previousRevision?.derivatives?.canonicalXml,
       progressId
     });
+    this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -734,6 +744,37 @@ export class UploadSourceService {
     await addFile('manifest.json', outcome.manifest);
 
     return files;
+  }
+
+  private handleMuseScoreFailure(
+    format: string,
+    outcome: DerivativePipelineResult,
+    progressId?: string
+  ): void {
+    if (format !== 'application/vnd.musescore.mscz') {
+      return;
+    }
+
+    const missingCore =
+      !outcome.derivatives?.canonicalXml || !outcome.derivatives?.linearizedXml;
+    if (!outcome.pending && !missingCore) {
+      return;
+    }
+
+    const lastNote = outcome.notes[outcome.notes.length - 1];
+    const message = lastNote
+      ? `Could not process MuseScore file: ${lastNote}`
+      : 'Could not process MuseScore file.';
+
+    this.progress.publish(
+      progressId,
+      'Derivative pipeline failed for MuseScore file',
+      'pipeline.error'
+    );
+    this.progress.publish(progressId, 'Done', 'done');
+    this.progress.complete(progressId);
+
+    throw new BadRequestException(message);
   }
 
   private readableError(error: unknown): string {

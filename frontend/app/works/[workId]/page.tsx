@@ -482,7 +482,7 @@ async function SourceCard({
       </div>
 
       {latest && (
-        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
+      <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
           <div>
             <p>
               Latest revision: <span className="font-mono text-cyan-700 dark:text-cyan-300">{latest.revisionId}</span>
@@ -490,14 +490,81 @@ async function SourceCard({
             <p className="text-slate-600 dark:text-slate-400">Sequence #{latest.sequenceNumber} • {formatDate(latest.createdAt as unknown as string)}</p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
-            <StorageBadge label="Linearized" kind="linearizedXml" locator={latest.derivatives?.linearizedXml} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} />
-            <StorageBadge label="Canonical XML" kind="canonicalXml" locator={latest.derivatives?.canonicalXml} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} />
-            <StorageBadge label="MXL" kind="normalizedMxl" locator={latest.derivatives?.normalizedMxl} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} />
-            <StorageBadge label="PDF" kind="pdf" locator={latest.derivatives?.pdf} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} />
-            <StorageBadge label="Manifest" kind="manifest" locator={latest.manifest} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} />
-            <StorageBadge label="Diff" kind="musicDiffReport" locator={latest.derivatives?.musicDiffReport} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'} />
-            <StorageBadge label="Diff (visual)" kind="musicDiffHtml" locator={(latest.derivatives as any)?.musicDiffHtml} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'} />
-            <StorageBadge label="Diff (visual PDF)" kind="musicDiffPdf" locator={(latest.derivatives as any)?.musicDiffPdf} workId={workId} sourceId={source.sourceId} revisionId={latest.revisionId} missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'} />
+            <StorageBadge
+              label="Linearized"
+              kind="linearizedXml"
+              locator={latest.derivatives?.linearizedXml}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="Canonical XML"
+              kind="canonicalXml"
+              locator={latest.derivatives?.canonicalXml}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="MXL"
+              kind="normalizedMxl"
+              locator={latest.derivatives?.normalizedMxl}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="PDF"
+              kind="pdf"
+              locator={latest.derivatives?.pdf}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="Manifest"
+              kind="manifest"
+              locator={latest.manifest}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="Diff"
+              kind="musicDiffReport"
+              locator={latest.derivatives?.musicDiffReport}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="Diff (visual)"
+              kind="musicDiffHtml"
+              locator={(latest.derivatives as any)?.musicDiffHtml}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={latest.validation.status}
+            />
+            <StorageBadge
+              label="Diff (visual PDF)"
+              kind="musicDiffPdf"
+              locator={(latest.derivatives as any)?.musicDiffPdf}
+              workId={workId}
+              sourceId={source.sourceId}
+              revisionId={latest.revisionId}
+              missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={latest.validation.status}
+            />
           </div>
         </div>
       )}
@@ -560,7 +627,8 @@ function StorageBadge({
   workId,
   sourceId,
   revisionId,
-  missingText
+  missingText,
+  validationStatus
 }: {
   label: string;
   kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'manifest' | 'musicDiffReport' | 'musicDiffHtml' | 'musicDiffPdf';
@@ -569,11 +637,16 @@ function StorageBadge({
   sourceId: string;
   revisionId?: string;
   missingText?: string;
+  validationStatus?: string;
 }) {
   if (!locator) {
+    let text = missingText;
+    if (!text) {
+      text = validationStatus === 'pending' ? 'pending' : 'unavailable';
+    }
     return (
       <span className="rounded bg-slate-100 px-3 py-1 text-xs text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-        {label}: {missingText ?? 'pending'}
+        {label}: {text}
       </span>
     );
   }
@@ -667,11 +740,51 @@ function RevisionRow({ revision, workId, sourceId }: { revision: SourceRevisionV
       <td className="px-3 py-2">
         {artifactsAvailable ? (
           <div className="flex flex-wrap gap-1">
-            <StorageBadge label="LMX" kind="linearizedXml" locator={revision.derivatives?.linearizedXml} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} />
-            <StorageBadge label="XML" kind="canonicalXml" locator={revision.derivatives?.canonicalXml} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} />
-            <StorageBadge label="MXL" kind="normalizedMxl" locator={revision.derivatives?.normalizedMxl} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} />
-            <StorageBadge label="PDF" kind="pdf" locator={revision.derivatives?.pdf} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} />
-            <StorageBadge label="Manifest" kind="manifest" locator={revision.manifest} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} />
+            <StorageBadge
+              label="LMX"
+              kind="linearizedXml"
+              locator={revision.derivatives?.linearizedXml}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="XML"
+              kind="canonicalXml"
+              locator={revision.derivatives?.canonicalXml}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="MXL"
+              kind="normalizedMxl"
+              locator={revision.derivatives?.normalizedMxl}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="PDF"
+              kind="pdf"
+              locator={revision.derivatives?.pdf}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="Manifest"
+              kind="manifest"
+              locator={revision.manifest}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              validationStatus={revision.validation.status}
+            />
             <StorageBadge
               label="Diff"
               kind="musicDiffReport"
@@ -680,6 +793,7 @@ function RevisionRow({ revision, workId, sourceId }: { revision: SourceRevisionV
               sourceId={sourceId}
               revisionId={revision.revisionId}
               missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={revision.validation.status}
             />
             <StorageBadge
               label="Diff (visual)"
@@ -689,6 +803,7 @@ function RevisionRow({ revision, workId, sourceId }: { revision: SourceRevisionV
               sourceId={sourceId}
               revisionId={revision.revisionId}
               missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={revision.validation.status}
             />
             <StorageBadge
               label="Diff (visual PDF)"
@@ -698,6 +813,7 @@ function RevisionRow({ revision, workId, sourceId }: { revision: SourceRevisionV
               sourceId={sourceId}
               revisionId={revision.revisionId}
               missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={revision.validation.status}
             />
           </div>
       ) : (

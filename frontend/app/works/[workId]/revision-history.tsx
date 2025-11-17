@@ -118,7 +118,8 @@ function StorageBadge({
   sourceId,
   revisionId,
   publicApiBase,
-  missingText
+  missingText,
+  validationStatus
 }: {
   label: string;
   kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'manifest' | 'musicDiffReport';
@@ -128,11 +129,16 @@ function StorageBadge({
   revisionId?: string;
   publicApiBase: string;
   missingText?: string;
+  validationStatus?: string;
 }) {
   if (!locator) {
+    let text = missingText;
+    if (!text) {
+      text = validationStatus === 'pending' ? 'pending' : 'unavailable';
+    }
     return (
       <span className="rounded bg-slate-100 px-3 py-1 text-xs text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-        {label}: {missingText ?? 'pending'}
+        {label}: {text}
       </span>
     );
   }
@@ -237,12 +243,67 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
       <td className="px-3 py-2">
         {artifactsAvailable ? (
           <div className="flex flex-wrap gap-1">
-            <StorageBadge label="LMX" kind="linearizedXml" locator={revision.derivatives?.linearizedXml} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} publicApiBase={publicApiBase} />
-            <StorageBadge label="XML" kind="canonicalXml" locator={revision.derivatives?.canonicalXml} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} publicApiBase={publicApiBase} />
-            <StorageBadge label="MXL" kind="normalizedMxl" locator={revision.derivatives?.normalizedMxl} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} publicApiBase={publicApiBase} />
-            <StorageBadge label="PDF" kind="pdf" locator={revision.derivatives?.pdf} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} publicApiBase={publicApiBase} />
-            <StorageBadge label="Manifest" kind="manifest" locator={revision.manifest} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} publicApiBase={publicApiBase} />
-            <StorageBadge label="Diff" kind="musicDiffReport" locator={revision.derivatives?.musicDiffReport} workId={workId} sourceId={sourceId} revisionId={revision.revisionId} publicApiBase={publicApiBase} missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'} />
+            <StorageBadge
+              label="LMX"
+              kind="linearizedXml"
+              locator={revision.derivatives?.linearizedXml}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="XML"
+              kind="canonicalXml"
+              locator={revision.derivatives?.canonicalXml}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="MXL"
+              kind="normalizedMxl"
+              locator={revision.derivatives?.normalizedMxl}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="PDF"
+              kind="pdf"
+              locator={revision.derivatives?.pdf}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="Manifest"
+              kind="manifest"
+              locator={revision.manifest}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="Diff"
+              kind="musicDiffReport"
+              locator={revision.derivatives?.musicDiffReport}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'}
+              validationStatus={revision.validation.status}
+            />
           </div>
         ) : (
           <span className="text-slate-500">No artifacts yet</span>

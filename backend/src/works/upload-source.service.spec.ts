@@ -1,4 +1,5 @@
 jest.mock('uuid', () => ({ v4: () => '00000000-0000-0000-0000-000000000000' }));
+import { BadRequestException } from '@nestjs/common';
 import { UploadSourceService } from './upload-source.service';
 import { WorksService } from './works.service';
 import { DerivativePipelineService } from './derivative-pipeline.service';
@@ -114,5 +115,97 @@ describe('UploadSourceService (unit)', () => {
     expect(sourceRevisionModel.create).toHaveBeenCalled();
     expect(sourceModel.updateOne).toHaveBeenCalled();
     expect(worksService.recordSourceRevision).toHaveBeenCalled();
+  });
+
+  it('upload() rejects files larger than 100MB', async () => {
+    const bigSize = 100 * 1024 * 1024 + 1;
+    const file = {
+      originalname: 'big.mscz',
+      mimetype: 'application/vnd.musescore.mscz',
+      size: bigSize,
+      buffer: Buffer.alloc(1)
+    } as any;
+
+    await expect(
+      service.upload('10', { label: 'Large file' }, file, 'pid')
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storageService.putRawObject).not.toHaveBeenCalled();
+    expect(derivativePipeline.process).not.toHaveBeenCalled();
+  });
+
+  it('uploadRevision() rejects files larger than 100MB', async () => {
+    const bigSize = 100 * 1024 * 1024 + 1;
+    const file = {
+      originalname: 'big.mscz',
+      mimetype: 'application/vnd.musescore.mscz',
+      size: bigSize,
+      buffer: Buffer.alloc(1)
+    } as any;
+    sourceModel.findOne.mockReturnValue({ lean: () => ({ label: 'Existing', sourceType: 'score' }) });
+
+    await expect(
+      service.uploadRevision('10', 'source-1', {}, file, 'pid')
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storageService.putRawObject).not.toHaveBeenCalled();
+    expect(derivativePipeline.process).not.toHaveBeenCalled();
+  });
+
+  it('upload() fails for MuseScore files when pipeline cannot produce core derivatives', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mscz', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: true,
+      notes: ['Canonical MusicXML could not be produced.'],
+      derivatives: {},
+      manifest: undefined,
+      manifestData: undefined
+    });
+
+    const file = {
+      originalname: 'score.mscz',
+      mimetype: 'application/vnd.musescore.mscz',
+      size: 1234,
+      buffer: Buffer.from('data')
+    } as any;
+
+    await expect(
+      service.upload('10', { label: 'Uploaded MuseScore' }, file, 'pid')
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(sourceModel.create).not.toHaveBeenCalled();
+    expect(sourceRevisionModel.create).not.toHaveBeenCalled();
+  });
+
+  it('uploadRevision() fails for MuseScore files when pipeline cannot produce core derivatives', async () => {
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({
+        label: 'Existing source',
+        sourceType: 'score',
+        description: undefined,
+        derivatives: undefined
+      })
+    });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mscz', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: true,
+      notes: ['Canonical MusicXML could not be produced.'],
+      derivatives: {},
+      manifest: undefined,
+      manifestData: undefined
+    });
+
+    const file = {
+      originalname: 'score.mscz',
+      mimetype: 'application/vnd.musescore.mscz',
+      size: 1234,
+      buffer: Buffer.from('data')
+    } as any;
+
+    await expect(
+      service.uploadRevision('10', 'source-1', {}, file, 'pid')
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(sourceRevisionModel.create).not.toHaveBeenCalled();
+    expect(sourceModel.updateOne).not.toHaveBeenCalled();
   });
 });
