@@ -206,13 +206,15 @@ export class UploadSourceService {
       validationState.status = 'passed';
     }
 
+    const existingProvenance = (existing as any).provenance as Provenance | undefined;
     const provenance: Provenance = {
-      ingestType: 'manual',
+      ingestType: existingProvenance?.ingestType ?? 'manual',
       uploadedAt: receivedAt,
-      sourceSystem: request.formatHint ? `hint:${request.formatHint}` : undefined,
-      uploadedByUserId: user?.userId,
-      uploadedByName: user?.name,
-      notes
+      sourceSystem: existingProvenance?.sourceSystem ?? (request.formatHint ? `hint:${request.formatHint}` : undefined),
+      sourceIdentifier: existingProvenance?.sourceIdentifier,
+      uploadedByUserId: existingProvenance?.uploadedByUserId ?? user?.userId,
+      uploadedByName: existingProvenance?.uploadedByName ?? user?.name,
+      notes: Array.isArray(existingProvenance?.notes) ? [...existingProvenance.notes, ...notes] : notes
     };
 
     // Determine branch policy gating

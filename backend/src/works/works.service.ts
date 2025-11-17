@@ -576,17 +576,36 @@ except Exception:
     const src = await this.sourceModel.findOne({ workId, sourceId }).lean().exec();
     if (!src) return { removed: false };
 
-    const ownerUserId = (src as any).provenance?.uploadedByUserId as string | undefined;
-    const isOwner = !!ownerUserId && actor.userId === ownerUserId;
     const isAdmin = (actor.roles ?? []).includes('admin');
-    if (!isOwner && !isAdmin) {
-      throw new ForbiddenException('Only source owner or admin can delete source');
-    }
-
     const revisions = await this.sourceRevisionModel
       .find({ workId, sourceId })
       .lean()
       .exec();
+
+    if (!isAdmin) {
+      const distinctCreators = Array.from(
+        new Set(
+          revisions
+            .map((rev) => rev.createdBy)
+            .filter((id): id is string => !!id && id !== 'system')
+        )
+      );
+
+      if (distinctCreators.length === 0) {
+        // Fallback to original provenance owner
+        const ownerUserId = (src as any).provenance?.uploadedByUserId as string | undefined;
+        if (!ownerUserId || actor.userId !== ownerUserId) {
+          throw new ForbiddenException('Only source owner or admin can delete source');
+        }
+      } else if (distinctCreators.length === 1) {
+        const soleOwnerId = distinctCreators[0];
+        if (actor.userId !== soleOwnerId) {
+          throw new ForbiddenException('Only source owner or admin can delete source');
+        }
+      } else {
+        throw new ForbiddenException('Only admin can delete a source with revisions from multiple users');
+      }
+    }
 
     const toDelete: { bucket: string; objectKey: string }[] = [];
     const add = (loc?: StorageLocator) => { if (loc) toDelete.push({ bucket: loc.bucket, objectKey: loc.objectKey }); };

@@ -453,7 +453,11 @@ describe('WorksService (unit, mocked models)', () => {
         storage: { bucket: 'b', objectKey: 'k' },
         provenance: { uploadedByUserId: 'owner-1' },
       };
+      const revisions = [
+        { workId, sourceId, createdBy: 'owner-1', rawStorage: { bucket: 'b', objectKey: 'k' } }
+      ];
       sourceModel.findOne.mockReturnValue(chain(source));
+      sourceRevisionModel.find.mockReturnValue(chain(revisions));
 
       await expect(
         service.deleteSource(workId, sourceId, { userId: 'other-user', roles: ['user'] })
