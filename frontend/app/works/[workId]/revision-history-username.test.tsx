@@ -38,8 +38,10 @@ describe("RevisionHistory UserBadge", () => {
       />
     );
 
-    // Should show username for first revision
-    expect(screen.getByText("johndoe")).toBeInTheDocument();
+    // Should show username for first revision, linked to the user profile
+    const usernameLink = screen.getByText("johndoe");
+    expect(usernameLink).toBeInTheDocument();
+    expect(usernameLink.closest("a")).toHaveAttribute("href", "/users/johndoe");
   });
 
   it("displays userId when username is not available", () => {

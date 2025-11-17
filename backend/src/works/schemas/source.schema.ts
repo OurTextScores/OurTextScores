@@ -82,3 +82,5 @@ export type SourceDocument = HydratedDocument<Source>;
 export const SourceSchema = SchemaFactory.createForClass(Source);
 // Common query pattern: list sources by work and recent activity
 SourceSchema.index({ workId: 1, latestRevisionAt: -1 });
+// Lookup sources uploaded by a specific user
+SourceSchema.index({ 'provenance.uploadedByUserId': 1, workId: 1 });

@@ -347,3 +347,94 @@ export async function fetchImslpRawDoc(workId: string): Promise<ImslpRawDoc | un
     return undefined;
   }
 }
+
+export interface PublicUserProfile {
+  id: string;
+  username?: string;
+  displayName?: string;
+}
+
+export interface UserUploadSourceSummary {
+  workId: string;
+  workTitle?: string;
+  workComposer?: string;
+  workCatalogNumber?: string;
+  sourceId: string;
+  label: string;
+  format: string;
+  isPrimary: boolean;
+  latestRevisionId?: string;
+  latestRevisionAt?: string;
+}
+
+export interface UserRecentRevisionSummary {
+  workId: string;
+  workTitle?: string;
+  sourceId: string;
+  revisionId: string;
+  sequenceNumber: number;
+  createdAt: string;
+  changeSummary?: string;
+}
+
+export interface UserUploadsResponse {
+  user: PublicUserProfile;
+  stats: {
+    sourceCount: number;
+    revisionCount: number;
+    workCount: number;
+  };
+  sources: UserUploadSourceSummary[];
+  recentRevisions: UserRecentRevisionSummary[];
+}
+
+export interface UserSearchResult {
+  id: string;
+  username: string;
+  displayName?: string;
+}
+
+export interface UserSearchResponse {
+  users: UserSearchResult[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function fetchUserByUsername(username: string): Promise<PublicUserProfile> {
+  const data = await fetchJson<{ user: PublicUserProfile }>(
+    `${getApiBase()}/users/by-username/${encodeURIComponent(username)}`
+  );
+  return data.user;
+}
+
+export async function fetchUserUploads(
+  userId: string,
+  options?: { limit?: number; offset?: number }
+): Promise<UserUploadsResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit !== undefined) params.set('limit', String(options.limit));
+  if (options?.offset !== undefined) params.set('offset', String(options.offset));
+  const qs = params.toString();
+  return await fetchJson<UserUploadsResponse>(
+    `${getApiBase()}/users/${encodeURIComponent(userId)}/uploads${qs ? `?${qs}` : ''}`
+  );
+}
+
+export async function searchUsers(
+  query: string,
+  options?: { limit?: number; offset?: number }
+): Promise<UserSearchResponse> {
+  const trimmed = query.trim();
+  const limit = options?.limit ?? 20;
+  const offset = options?.offset ?? 0;
+  if (!trimmed) {
+    return { users: [], total: 0, limit, offset };
+  }
+  const params = new URLSearchParams({
+    q: trimmed,
+    limit: String(limit),
+    offset: String(offset)
+  });
+  return await fetchJson<UserSearchResponse>(`${getApiBase()}/search/users?${params.toString()}`);
+}

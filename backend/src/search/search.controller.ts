@@ -18,11 +18,15 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { SearchService } from './search.service';
+import { UsersService } from '../users/users.service';
 
 @ApiTags('search')
 @Controller('search')
 export class SearchController {
-  constructor(private readonly searchService: SearchService) {}
+  constructor(
+    private readonly searchService: SearchService,
+    private readonly usersService: UsersService
+  ) {}
 
   @Get('works')
   @ApiOperation({
@@ -99,6 +103,76 @@ export class SearchController {
       offset: parsedOffset,
       sort: sortArray
     });
+  }
+
+  @Get('users')
+  @ApiOperation({
+    summary: 'Search for users',
+    description: 'Search for users by username. Matches usernames starting with the query string (case-insensitive).'
+  })
+  @ApiQuery({
+    name: 'q',
+    required: true,
+    description: 'Username query string',
+    example: 'alice'
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Maximum number of results (default: 20, max: 100)',
+    example: 20
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    description: 'Number of results to skip for pagination (default: 0)',
+    example: 0
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User search results returned successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        users: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+              username: { type: 'string', example: 'alice' },
+              displayName: { type: 'string', example: 'Alice Example' }
+            }
+          }
+        },
+        total: { type: 'number', example: 1 },
+        limit: { type: 'number', example: 20 },
+        offset: { type: 'number', example: 0 }
+      }
+    }
+  })
+  async searchUsers(
+    @Query('q') query: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string
+  ) {
+    const normalized = (query || '').trim();
+    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : 20;
+    const parsedOffset = offset ? Math.max(parseInt(offset, 10), 0) : 0;
+    if (!normalized) {
+      return { users: [], total: 0, limit: parsedLimit, offset: parsedOffset };
+    }
+
+    const result = await this.usersService.searchUsersByUsername(normalized, {
+      limit: parsedLimit,
+      offset: parsedOffset
+    });
+    return {
+      users: result.users,
+      total: result.total,
+      limit: parsedLimit,
+      offset: parsedOffset
+    };
   }
 
   @Get('health')

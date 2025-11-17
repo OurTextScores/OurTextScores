@@ -185,6 +185,17 @@ function UserBadge({ userId, username }: { userId?: string; username?: string })
 
   const displayName = username || userId;
 
+  if (username) {
+    return (
+      <Link
+        href={`/users/${encodeURIComponent(username)}`}
+        className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-300 transition hover:bg-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:ring-indigo-400/40 dark:hover:bg-indigo-500/30"
+      >
+        {displayName}
+      </Link>
+    );
+  }
+
   return (
     <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:ring-indigo-400/40">
       {displayName}
@@ -256,4 +267,3 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
     </tr>
   );
 }
-

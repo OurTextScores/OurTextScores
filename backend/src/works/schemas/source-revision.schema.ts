@@ -90,3 +90,4 @@ export const SourceRevisionSchema = SchemaFactory.createForClass(SourceRevision)
 SourceRevisionSchema.index({ workId: 1, sourceId: 1, sequenceNumber: -1 });
 SourceRevisionSchema.index({ workId: 1, sourceId: 1, status: 1, createdAt: -1 });
 SourceRevisionSchema.index({ 'approval.ownerUserId': 1, status: 1, createdAt: -1 });
+SourceRevisionSchema.index({ createdBy: 1, createdAt: -1 });

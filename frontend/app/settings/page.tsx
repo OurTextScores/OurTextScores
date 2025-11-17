@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getApiBase } from "../lib/api";
 import { getApiAuthHeaders } from "../lib/authToken";
 import { ProfileForm } from "./profile-form";
@@ -28,6 +29,17 @@ export default async function SettingsPage() {
           <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
             Account roles: {roleLabel}
           </p>
+          {user?.username && (
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Public profile:{" "}
+              <Link
+                href={`/users/${encodeURIComponent(user.username as string)}`}
+                className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
+              >
+                @{user.username}
+              </Link>
+            </p>
+          )}
         </section>
 
         <section className="rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
