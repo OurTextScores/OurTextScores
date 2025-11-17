@@ -760,11 +760,15 @@ export class UploadSourceService {
     if (!outcome.pending && !missingCore) {
       return;
     }
+    const lastNote = outcome.notes[outcome.notes.length - 1] ?? '';
+    let message =
+      'Could not process MuseScore file. Please export the score as MusicXML (.mxl or .xml) in MuseScore and upload that file instead.';
 
-    const lastNote = outcome.notes[outcome.notes.length - 1];
-    const message = lastNote
-      ? `Could not process MuseScore file: ${lastNote}`
-      : 'Could not process MuseScore file.';
+    const lower = lastNote.toLowerCase();
+    if (lower.includes('newer version of musescore')) {
+      message =
+        'Could not process MuseScore file: this score was saved with a newer version of MuseScore than the server supports. Please export it as MusicXML (.mxl or .xml) and upload that file instead.';
+    }
 
     this.progress.publish(
       progressId,

@@ -171,7 +171,10 @@ describe('UploadSourceService (unit)', () => {
 
     await expect(
       service.upload('10', { label: 'Uploaded MuseScore' }, file, 'pid')
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toMatchObject({
+      constructor: BadRequestException,
+      message: expect.stringContaining('Could not process MuseScore file')
+    });
     expect(sourceModel.create).not.toHaveBeenCalled();
     expect(sourceRevisionModel.create).not.toHaveBeenCalled();
   });
@@ -204,7 +207,10 @@ describe('UploadSourceService (unit)', () => {
 
     await expect(
       service.uploadRevision('10', 'source-1', {}, file, 'pid')
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toMatchObject({
+      constructor: BadRequestException,
+      message: expect.stringContaining('Could not process MuseScore file')
+    });
     expect(sourceRevisionModel.create).not.toHaveBeenCalled();
     expect(sourceModel.updateOne).not.toHaveBeenCalled();
   });
