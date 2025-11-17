@@ -42,6 +42,7 @@ The command builds the frontend and backend images locally and starts the suppor
 - **Approval Workflows**: Branch policies (public/owner-approval) for quality control
 - **Notifications**: Email notifications for watched sources (immediate or digest)
 - **Authentication**: NextAuth with Email + optional OAuth (Google/GitHub)
+- **Admin Maintenance Tools**: Admin-only operations for pruning pending uploads and deleting work sources
 
 ## Documentation
 

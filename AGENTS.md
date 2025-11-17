@@ -54,7 +54,7 @@ This file orients future agents quickly: what the project does, how it’s wired
 - `Work`: `{ workId, latestRevisionAt?, sourceCount, availableFormats[], title?, composer?, catalogNumber? }`.
 - `Source`: `{ workId, sourceId, label, sourceType, format, description?, originalFilename, isPrimary, storage, validation, provenance, derivatives?, latestRevisionId?, latestRevisionAt? }`.
 - `SourceRevision`: `{ workId, sourceId, revisionId, sequenceNumber, fossilArtifactId?, fossilParentArtifactIds[], fossilBranch?, rawStorage, checksum, createdBy, createdAt, validationSnapshot, derivatives?, manifest?, changeSummary? }`.
-- `User`: `{ email, username?, displayName?, emailVerifiedAt?, roles[], notify{watchPreference} }`. Username is unique, sparse index, lowercase, 3-20 chars (alphanumeric + underscores).
+- `User`: `{ email, username?, displayName?, emailVerifiedAt?, roles[], notify{watchPreference} }`. Username is unique, sparse index, lowercase, 3-20 chars (alphanumeric + underscores). Users with `roles` containing `"admin"` are treated as admins for destructive Works operations.
 - `StorageLocator`: `{ bucket, objectKey, sizeBytes, checksum{algorithm,hexDigest}, contentType, lastModifiedAt }`.
 - `DerivativeArtifacts`: optional locators for normalizedMxl, canonicalXml, linearizedXml, pdf, manifest, musicDiffReport.
 
@@ -232,7 +232,7 @@ This file orients future agents quickly: what the project does, how it’s wired
 
 ### ⚠️ Partially Implemented
 - **Validation Pipeline**: Schema and structure exist in `validation.schema.ts` but actual validation is stub; all revisions pass by default
-- **User Roles**: Schema has `roles[]` field and basic admin checks exist, but enforcement is not comprehensive across all endpoints
+- **User Roles**: Schema has `roles[]` field and admin checks now gate destructive Works operations (`prune-pending`, `delete-all`, source deletion for non-owners), but enforcement is not yet comprehensive across all endpoints
 - **Error Handling**: Basic `HttpErrorFilter`; lacks retry logic, circuit breakers, graceful degradation for external services
 - **Monitoring & Logging**: Uses NestJS Logger; no structured logging (JSON), no metrics collection (Prometheus), no alerting
 
@@ -380,4 +380,3 @@ Each revision includes `manifest.json` with tool versions, checksums, timestamps
 - **Check Docker Resources**: `npm run smoke:status` (shows running containers and memory/CPU usage)
 - **Clean Docker Artifacts**: `npm run docker:clean` (removes containers, volumes, and orphaned resources; use before smoke tests if experiencing memory issues)
 - **Reset State**: `docker compose down && rm -rf ../mongo_data ../minio_data ../fossil_data ../meilisearch_data` (destructive, check with user before executing)
-

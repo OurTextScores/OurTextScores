@@ -14,6 +14,8 @@ export default async function SettingsPage() {
   const data = await res.json();
   const user = data?.user;
   const pref = (user?.notify?.watchPreference as 'immediate' | 'daily' | 'weekly' | undefined) || 'immediate';
+  const roles: string[] = Array.isArray(user?.roles) ? user.roles as string[] : [];
+  const roleLabel = roles.length ? roles.join(", ") : "user";
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -23,6 +25,9 @@ export default async function SettingsPage() {
         <section className="mb-6 rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
           <h2 className="mb-3 text-lg font-semibold">Profile</h2>
           <ProfileForm email={user?.email || ''} username={user?.username} />
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Account roles: {roleLabel}
+          </p>
         </section>
 
         <section className="rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
@@ -33,4 +38,3 @@ export default async function SettingsPage() {
     </main>
   );
 }
-

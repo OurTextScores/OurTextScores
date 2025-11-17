@@ -210,6 +210,8 @@ export class UploadSourceService {
       ingestType: 'manual',
       uploadedAt: receivedAt,
       sourceSystem: request.formatHint ? `hint:${request.formatHint}` : undefined,
+      uploadedByUserId: user?.userId,
+      uploadedByName: user?.name,
       notes
     };
 
@@ -445,6 +447,8 @@ export class UploadSourceService {
       ingestType: 'manual',
       uploadedAt: receivedAt,
       sourceSystem: request.formatHint ? `hint:${request.formatHint}` : undefined,
+      uploadedByUserId: user?.userId,
+      uploadedByName: user?.name,
       notes
     };
 

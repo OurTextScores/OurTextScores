@@ -164,9 +164,12 @@ test.describe('Username & Profile Settings', () => {
     const saveButton = page.locator('form[data-testid="profile-form"] button:has-text("Save")');
     await saveButton.click();
 
-    // Should either succeed (if backend lowercases it) or show validation error
-    // Wait for either success or error message
-    const successOrError = page.locator('text=Profile updated successfully!, text=Username must be');
-    await expect(successOrError.first()).toBeVisible({ timeout: 10000 });
+    // With the HTML pattern attribute, the browser should treat this as invalid input
+    // and prevent form submission, marking the field as :invalid.
+    const invalidInput = page.locator('input[name="username"]:invalid');
+    await expect(invalidInput).toHaveCount(1);
+
+    // And no success toast should appear
+    await expect(page.locator('text=Profile updated successfully!')).toHaveCount(0);
   });
 });

@@ -46,6 +46,18 @@ test.describe('SSE progress sanity', () => {
     }, sseUrl);
 
     // Kick off upload with the same progress id
+    const { createHmac } = require('crypto');
+    const secret = process.env.AUTH_SECRET || 'dev-secret';
+    const b64url = (buf) => buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const makeJwt = (sub, email, sec) => {
+      const header = b64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
+      const now = Math.floor(Date.now() / 1000);
+      const payload = b64url(Buffer.from(JSON.stringify({ sub, email, iat: now, exp: now + 3600 })));
+      const data = `${header}.${payload}`;
+      const sig = b64url(createHmac('sha256', sec).update(data).digest());
+      return `${data}.${sig}`;
+    };
+    const token = makeJwt('smoke@local', 'smoke@local', secret);
     const fs = require('fs');
     const path = require('path');
     const mxlPath = path.join(process.cwd(), 'test_scores', 'bach_orig.mxl');
@@ -57,7 +69,10 @@ test.describe('SSE progress sanity', () => {
     };
     const up = await request.post(`${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources`, {
       multipart,
-      headers: { 'X-Progress-Id': progressId }
+      headers: {
+        'X-Progress-Id': progressId,
+        'Authorization': `Bearer ${token}`
+      }
     });
     expect(up.ok()).toBeTruthy();
     const upJson = await up.json();
@@ -71,18 +86,6 @@ test.describe('SSE progress sanity', () => {
     expect(stages.length).toBeGreaterThan(0);
 
     // Cleanup: delete the created source (requires auth header, but backend will upsert user)
-    const { createHmac } = require('crypto');
-    const secret = process.env.AUTH_SECRET || 'dev-secret';
-    const b64url = (buf) => buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    const makeJwt = (sub, email, sec) => {
-      const header = b64url(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
-      const now = Math.floor(Date.now() / 1000);
-      const payload = b64url(Buffer.from(JSON.stringify({ sub, email, iat: now, exp: now + 3600 })));
-      const data = `${header}.${payload}`;
-      const sig = b64url(createHmac('sha256', sec).update(data).digest());
-      return `${data}.${sig}`;
-    };
-    const token = makeJwt('smoke@local', 'smoke@local', secret);
     await request.delete(`${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(createdSourceId)}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });

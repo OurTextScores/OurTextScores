@@ -25,6 +25,8 @@ import CopyDownload from "../../components/copy-download";
 import WatchControls from "./watch-controls";
 import { getApiBase, getPublicApiBase } from "../../lib/api";
 import { getApiAuthHeaders } from "../../lib/authToken";
+import { fetchBackendSession, BackendSessionUser } from "../../lib/server-session";
+import { prunePendingSourcesAction, deleteAllSourcesAction, deleteSourceAction } from "./admin-actions";
 // (no client branch section components)
 
 const MINIO_PUBLIC_BASE = process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL;
@@ -73,11 +75,15 @@ export default async function WorkDetailPage({
   params: { workId: string };
 }) {
   const { workId } = params;
-  const [work, imslp, raw] = await Promise.all([
+  const [work, imslp, raw, session] = await Promise.all([
     fetchWorkDetail(workId).catch(() => notFound()),
     fetchImslpMetadataByWorkId(workId).catch(() => undefined),
-    fetchImslpRawDoc(workId)
+    fetchImslpRawDoc(workId),
+    fetchBackendSession()
   ]);
+  const currentUser = session.user;
+  const currentRoles = Array.isArray(currentUser?.roles) ? currentUser.roles as string[] : [];
+  const isAdmin = currentRoles.includes("admin");
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -130,6 +136,43 @@ export default async function WorkDetailPage({
           </div>
         </header>
 
+        {isAdmin && (
+          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/60 dark:bg-amber-500/10 dark:text-amber-100">
+            <h2 className="mb-1 text-base font-semibold">Admin tools</h2>
+            <p className="mb-3 text-xs text-amber-800 dark:text-amber-200">
+              These actions are destructive and cannot be undone. Are you sure before running them?
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <form
+                action={async () => {
+                  "use server";
+                  await prunePendingSourcesAction(workId);
+                }}
+              >
+                <button
+                  type="submit"
+                  className="rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 dark:border-amber-500 dark:bg-amber-500/30 dark:text-amber-50 dark:hover:bg-amber-500/50"
+                >
+                  Prune pending sources
+                </button>
+              </form>
+              <form
+                action={async () => {
+                  "use server";
+                  await deleteAllSourcesAction(workId);
+                }}
+              >
+                <button
+                  type="submit"
+                  className="rounded border border-rose-500 bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700"
+                >
+                  Delete all sources for this work
+                </button>
+              </form>
+            </div>
+          </section>
+        )}
+
         <EditMetadataForm
           workId={workId}
           initial={{
@@ -160,7 +203,7 @@ export default async function WorkDetailPage({
             </div>
           ) : (
             work.sources.map((source) => (
-              <SourceCard key={source.sourceId} source={source} workId={workId} />
+              <SourceCard key={source.sourceId} source={source} workId={workId} currentUser={currentUser} />
             ))
           )}
         </section>
@@ -386,7 +429,15 @@ function ImslpMetadataCard({
   );
 }
 
-async function SourceCard({ source, workId }: { source: SourceView; workId: string }) {
+async function SourceCard({
+  source,
+  workId,
+  currentUser
+}: {
+  source: SourceView;
+  workId: string;
+  currentUser: BackendSessionUser | null;
+}) {
   const latest = source.revisions[0];
   // Fetch declared branches (includes ones without fossil commits yet)
   let declaredBranches: string[] = [];
@@ -397,6 +448,13 @@ async function SourceCard({ source, workId }: { source: SourceView; workId: stri
     declaredBranches = Array.isArray(data?.branches) ? (data.branches as any[]).map((b) => b.name as string) : [];
   } catch {}
   const initialBranches = Array.from(new Set(["trunk", ...declaredBranches, ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
+  const isOwner =
+    !!currentUser &&
+    !!(source as any).provenance?.uploadedByUserId &&
+    currentUser.userId === (source as any).provenance.uploadedByUserId;
+  const isAdmin = Array.isArray(currentUser?.roles) && (currentUser.roles as string[]).includes("admin");
+  const canDeleteSource = isOwner || isAdmin;
+
   return (
     <article className="rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
@@ -452,7 +510,7 @@ async function SourceCard({ source, workId }: { source: SourceView; workId: stri
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ${statusColor(
               source.validation.status
@@ -487,6 +545,21 @@ async function SourceCard({ source, workId }: { source: SourceView; workId: stri
           )}
           {/* Watch toggle */}
           <WatchControls workId={workId} sourceId={source.sourceId} />
+          {canDeleteSource && (
+            <form
+              action={async () => {
+                "use server";
+                await deleteSourceAction(workId, source.sourceId);
+              }}
+            >
+              <button
+                type="submit"
+                className="rounded border border-rose-500 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-100 dark:border-rose-500 dark:bg-rose-500/20 dark:text-rose-200 dark:hover:bg-rose-500/40"
+              >
+                Delete source
+              </button>
+            </form>
+          )}
         </div>
       </div>
 
