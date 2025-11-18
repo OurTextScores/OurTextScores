@@ -224,7 +224,7 @@ export class UploadSourceService {
     };
 
     // Determine branch policy gating
-    const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'main';
+    const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
     const policy = await this.branchesService.getBranchPolicy(trimmedWorkId, trimmedSourceId, sanitizedBranch);
     let status: 'approved' | 'pending_approval' = 'approved';
     let approval: any = undefined;
@@ -464,9 +464,9 @@ export class UploadSourceService {
       notes
     };
 
-    // Determine branch policy gating for new source (default to main)
-    const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'main';
-    await this.branchesService.ensureDefaultMain(work.workId, sourceId);
+    // Determine branch policy gating for new source (default to trunk)
+    const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
+    await this.branchesService.ensureDefaultTrunk(work.workId, sourceId);
     const policy = await this.branchesService.getBranchPolicy(work.workId, sourceId, sanitizedBranch);
     let status: 'approved' | 'pending_approval' = 'approved';
     let approval: any = undefined;

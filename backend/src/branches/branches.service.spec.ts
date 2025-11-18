@@ -90,23 +90,23 @@ describe('BranchesService', () => {
     });
   });
 
-  describe('ensureDefaultMain', () => {
-    it('creates main branch when it does not exist', async () => {
+  describe('ensureDefaultTrunk', () => {
+    it('creates trunk branch when it does not exist', async () => {
       branchModel.findOne.mockReturnValue(chain(null));
       branchModel.create.mockResolvedValue({});
 
-      await svc.ensureDefaultMain('w', 's');
+      await svc.ensureDefaultTrunk('w', 's');
 
-      expect(branchModel.findOne).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'main' });
-      expect(branchModel.create).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'main', policy: 'public' });
+      expect(branchModel.findOne).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'trunk' });
+      expect(branchModel.create).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'trunk', policy: 'public' });
     });
 
-    it('does not create main branch when it already exists', async () => {
-      branchModel.findOne.mockReturnValue(chain({ name: 'main', policy: 'public' }));
+    it('does not create trunk branch when it already exists', async () => {
+      branchModel.findOne.mockReturnValue(chain({ name: 'trunk', policy: 'public' }));
 
-      await svc.ensureDefaultMain('w', 's');
+      await svc.ensureDefaultTrunk('w', 's');
 
-      expect(branchModel.findOne).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'main' });
+      expect(branchModel.findOne).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'trunk' });
       expect(branchModel.create).not.toHaveBeenCalled();
     });
   });
@@ -285,12 +285,12 @@ describe('BranchesService', () => {
         .rejects.toThrow(ForbiddenException);
     });
 
-    it('prevents deleting main branch', async () => {
-      const doc = { _id: 'branch123', name: 'main', policy: 'public', ownerUserId: 'owner1' } as any;
+    it('prevents deleting trunk branch', async () => {
+      const doc = { _id: 'branch123', name: 'trunk', policy: 'public', ownerUserId: 'owner1' } as any;
       branchModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(doc) });
 
       const actor = { userId: 'owner1', roles: [] };
-      const result = await svc.deleteBranch('w', 's', 'main', actor);
+      const result = await svc.deleteBranch('w', 's', 'trunk', actor);
 
       expect(result).toEqual({ deleted: false });
       expect(branchModel.deleteOne).not.toHaveBeenCalled();

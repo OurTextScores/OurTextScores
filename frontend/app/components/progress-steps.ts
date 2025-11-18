@@ -60,7 +60,12 @@ export function applyEventToSteps(prev: StepState[], stage: string | undefined, 
     mark(idx, stage === 'fossil.failed' ? 'failed' : stage === 'fossil.skipped' ? 'skipped' : 'done');
   } else {
     if (idx !== -1) {
-      mark(idx, 'done');
+      // Treat pipeline error as a failed step so the UI can highlight it
+      if (stage === 'pipeline.error') {
+        mark(idx, 'failed');
+      } else {
+        mark(idx, 'done');
+      }
     }
   }
 
@@ -76,4 +81,3 @@ export function applyEventToSteps(prev: StepState[], stage: string | undefined, 
 
   return changed ? out : prev;
 }
-

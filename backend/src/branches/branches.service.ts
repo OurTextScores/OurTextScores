@@ -31,10 +31,10 @@ export class BranchesService {
     return docs.map((d) => ({ name: d.name, policy: d.policy, ownerUserId: d.ownerUserId ?? undefined, baseRevisionId: d.baseRevisionId ?? undefined }));
   }
 
-  async ensureDefaultMain(workId: string, sourceId: string): Promise<void> {
-    const existing = await this.branchModel.findOne({ workId, sourceId, name: 'main' }).lean().exec();
+  async ensureDefaultTrunk(workId: string, sourceId: string): Promise<void> {
+    const existing = await this.branchModel.findOne({ workId, sourceId, name: 'trunk' }).lean().exec();
     if (!existing) {
-      await this.branchModel.create({ workId, sourceId, name: 'main', policy: 'public' });
+      await this.branchModel.create({ workId, sourceId, name: 'trunk', policy: 'public' });
     }
   }
 
@@ -92,8 +92,8 @@ export class BranchesService {
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException('Only owner or admin can delete branch');
     }
-    // Do not allow deleting default main branch
-    if (branch.name === 'main') return { deleted: false };
+    // Do not allow deleting default trunk branch
+    if (branch.name === 'trunk') return { deleted: false };
     await this.branchModel.deleteOne({ _id: branch._id }).exec();
     return { deleted: true };
   }

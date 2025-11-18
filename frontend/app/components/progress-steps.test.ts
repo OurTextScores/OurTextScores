@@ -58,5 +58,13 @@ describe("progress-steps", () => {
       const mscz2mxlStep = updatedSteps.find(s => s.id === "deriv.mscz2mxl");
       expect(mscz2mxlStep?.status).toBe("done");
     });
+
+    it("should mark pipeline.error as failed", () => {
+      const initialSteps = initSteps();
+      const now = Date.now();
+      const updatedSteps = applyEventToSteps(initialSteps, "pipeline.error", now);
+      const errorStep = updatedSteps.find(s => s.id === "pipeline.error");
+      expect(errorStep?.status).toBe("failed");
+    });
   });
 });

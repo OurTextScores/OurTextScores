@@ -46,7 +46,7 @@ describe('UploadSourceService (unit)', () => {
 
   const branchesService = {
     getBranchPolicy: jest.fn().mockResolvedValue('public'),
-    ensureDefaultMain: jest.fn().mockResolvedValue(undefined)
+    ensureDefaultTrunk: jest.fn().mockResolvedValue(undefined)
   } as unknown as jest.Mocked<BranchesService>;
 
   const notifications = {

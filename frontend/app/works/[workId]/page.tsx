@@ -26,7 +26,8 @@ import WatchControls from "./watch-controls";
 import { getApiBase, getPublicApiBase } from "../../lib/api";
 import { getApiAuthHeaders } from "../../lib/authToken";
 import { fetchBackendSession, BackendSessionUser } from "../../lib/server-session";
-import { prunePendingSourcesAction, deleteAllSourcesAction, deleteSourceAction } from "./admin-actions";
+import { prunePendingSourcesAction, deleteAllSourcesAction } from "./admin-actions";
+import DeleteSourceButton from "./delete-source-button";
 // (no client branch section components)
 
 const MINIO_PUBLIC_BASE = process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL;
@@ -371,7 +372,21 @@ async function SourceCard({
     !!(source as any).provenance?.uploadedByUserId &&
     currentUser.userId === (source as any).provenance.uploadedByUserId;
   const isAdmin = Array.isArray(currentUser?.roles) && (currentUser.roles as string[]).includes("admin");
-  const canDeleteSource = isOwner || isAdmin;
+
+  // Check if source has revisions from multiple users
+  const distinctCreators = Array.from(
+    new Set(
+      source.revisions
+        .map((r: any) => r.createdBy)
+        .filter((id: any) => id && id !== 'system')
+    )
+  );
+  const hasMultipleCreators = distinctCreators.length > 1;
+
+  // Can only delete if:
+  // 1. Admin (always allowed), OR
+  // 2. Owner/sole creator AND no revisions from other users
+  const canDeleteSource = isAdmin || (isOwner && !hasMultipleCreators);
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
@@ -474,19 +489,7 @@ async function SourceCard({
           {/* Watch toggle */}
           <WatchControls workId={workId} sourceId={source.sourceId} />
           {canDeleteSource && (
-            <form
-              action={async () => {
-                "use server";
-                await deleteSourceAction(workId, source.sourceId);
-              }}
-            >
-              <button
-                type="submit"
-                className="rounded border border-rose-500 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm transition hover:bg-rose-100 dark:border-rose-500 dark:bg-rose-500/20 dark:text-rose-200 dark:hover:bg-rose-500/40"
-              >
-                Delete source
-              </button>
-            </form>
+            <DeleteSourceButton workId={workId} sourceId={source.sourceId} />
           )}
         </div>
       </div>

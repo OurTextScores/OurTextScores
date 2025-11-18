@@ -49,6 +49,33 @@ export class FossilService {
     try {
       await this.runFossil(['open', repositoryPath, '--workdir', checkoutDir]);
 
+      // Normalize requested branch name (if any)
+      const branch = request.branchName?.trim();
+      let branchExists = false;
+      if (branch && branch.length > 0) {
+        if (branch.toLowerCase() === 'trunk') {
+          // For the default trunk branch, never use --branch.
+          // Just make sure we're on trunk before committing.
+          try {
+            await this.runFossil(['update', 'trunk'], { cwd: checkoutDir });
+            branchExists = true;
+          } catch {
+            // If update fails (e.g., no check-ins yet), fall back to committing
+            // to the current checkout without forcing a branch.
+            branchExists = false;
+          }
+        } else {
+          // For non-trunk branches, check if the target branch already exists.
+          const existingBranches = await this.listBranches(request.workId, request.sourceId);
+          branchExists = existingBranches.includes(branch);
+
+          if (branchExists) {
+            // Branch exists - update to it before committing
+            await this.runFossil(['update', branch], { cwd: checkoutDir });
+          }
+        }
+      }
+
       for (const file of request.files) {
         const targetPath = join(checkoutDir, file.relativePath);
         await fs.mkdir(dirname(targetPath), { recursive: true });
@@ -60,10 +87,14 @@ export class FossilService {
 
       const commitMessage = `${request.message} (revision ${request.sequenceNumber}, ${request.revisionId})`;
       const commitArgs = ['commit', '--user', this.fossilUser, '-m', commitMessage];
-      const branch = request.branchName?.trim();
-      if (branch && branch.length > 0) {
+
+      if (branch && branch.length > 0 && !branchExists && branch.toLowerCase() !== 'trunk') {
+        // Non-trunk branch doesn't exist - use --branch to create it
         commitArgs.push('--branch', branch);
       }
+      // If the branch exists (including trunk), we already updated to it,
+      // so just commit without --branch.
+
       await this.runFossil(commitArgs, { cwd: checkoutDir });
 
       const info = await this.runFossil(['info', 'current'], { cwd: checkoutDir });

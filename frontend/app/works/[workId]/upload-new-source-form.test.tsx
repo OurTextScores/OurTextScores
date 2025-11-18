@@ -15,17 +15,24 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { screen, waitFor } from '@testing-library/react';
-import { renderWithProviders, userEvent, createMockFile, mockFetch, mockFetchError } from '../../test-utils';
-import UploadNewSourceForm from './upload-new-source-form';
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithProviders, userEvent, createMockFile, mockFetch, mockFetchError } from "../../test-utils";
+import UploadNewSourceForm from "./upload-new-source-form";
 
 // Mock next/navigation
 const mockRefresh = jest.fn();
-jest.mock('next/navigation', () => ({
+jest.mock("next/navigation", () => ({
   useRouter: () => ({
-    refresh: mockRefresh,
-  }),
+    refresh: mockRefresh
+  })
 }));
+
+// Mock EventSource for progress streaming
+const mockEventSource = {
+  addEventListener: jest.fn(),
+  close: jest.fn()
+};
+(global as any).EventSource = jest.fn(() => mockEventSource);
 
 describe('UploadNewSourceForm', () => {
   beforeEach(() => {

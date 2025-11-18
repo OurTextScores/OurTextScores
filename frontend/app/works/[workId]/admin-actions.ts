@@ -21,7 +21,18 @@ export async function prunePendingSourcesAction(workId: string) {
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Failed to prune pending sources");
+    let errorMessage = "Failed to prune pending sources";
+
+    try {
+      const json = JSON.parse(text);
+      errorMessage = json.message || json.error || errorMessage;
+    } catch {
+      if (text && text.length > 0 && text.length < 200) {
+        errorMessage = text;
+      }
+    }
+
+    throw new Error(errorMessage);
   }
 
   revalidatePath(`/works/${encodeURIComponent(workId)}`);
@@ -43,7 +54,18 @@ export async function deleteAllSourcesAction(workId: string) {
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Failed to delete all sources");
+    let errorMessage = "Failed to delete all sources";
+
+    try {
+      const json = JSON.parse(text);
+      errorMessage = json.message || json.error || errorMessage;
+    } catch {
+      if (text && text.length > 0 && text.length < 200) {
+        errorMessage = text;
+      }
+    }
+
+    throw new Error(errorMessage);
   }
 
   revalidatePath(`/works/${encodeURIComponent(workId)}`);
@@ -67,7 +89,19 @@ export async function deleteSourceAction(workId: string, sourceId: string) {
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Failed to delete source");
+    let errorMessage = "Failed to delete source";
+
+    try {
+      const json = JSON.parse(text);
+      errorMessage = json.message || json.error || errorMessage;
+    } catch {
+      // If not JSON, use the text directly if it's not empty
+      if (text && text.length > 0 && text.length < 200) {
+        errorMessage = text;
+      }
+    }
+
+    throw new Error(errorMessage);
   }
 
   revalidatePath(`/works/${encodeURIComponent(workId)}`);

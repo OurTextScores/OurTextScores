@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-// no API base import; uploads go through /api/proxy which attaches auth
+import { getPublicApiBase } from "../../lib/api";
+import { StepState, initSteps, applyEventToSteps } from "../../components/progress-steps";
+import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
+
+// uploads go through /api/proxy which attaches auth
+const API_BASE = getPublicApiBase();
 
 const LICENSE_OPTIONS = [
   { value: '', label: '(No license specified)' },
@@ -28,6 +33,17 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
   const [licenseAttribution, setLicenseAttribution] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [status, setStatus] = useState<UploadProgressStatus>("idle");
+  const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
+  const [steps, setSteps] = useState<StepState[]>(() => initSteps());
+  const esRef = useRef<EventSource | null>(null);
+  const progressId = useMemo(
+    () =>
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? (crypto as any).randomUUID() as string
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+    []
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,8 +52,36 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
       return;
     }
     setBusy(true);
+    setStatus("running");
     setMsg(null);
+    setEvents([]);
+    setSteps(initSteps());
+    const startedAt = Date.now();
     try {
+      const streamUrl = `${API_BASE}/works/progress/${encodeURIComponent(progressId)}/stream`;
+      const es = new EventSource(streamUrl);
+      esRef.current = es;
+      es.addEventListener("progress", (ev: MessageEvent) => {
+        try {
+          const data = typeof ev.data === "string" ? JSON.parse(ev.data) : (ev as any).data;
+          const stage = (data?.stage as string | undefined) ?? undefined;
+          setEvents((prev) => [
+            ...prev,
+            { message: data?.message ?? String(data), stage, timestamp: data?.timestamp }
+          ]);
+          setSteps((prev) => applyEventToSteps(prev, stage, startedAt));
+        } catch {
+          setEvents((prev) => [
+            ...prev,
+            { message: String((ev as any).data ?? "progress") }
+          ]);
+        }
+      });
+      es.addEventListener("done", () => {
+        es.close();
+        esRef.current = null;
+      });
+
       const form = new FormData();
       form.append("file", file);
       if (label.trim()) form.append("label", label.trim());
@@ -48,13 +92,15 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
       if (licenseAttribution.trim()) form.append("licenseAttribution", licenseAttribution.trim());
       const res = await fetch(`/api/proxy/works/${encodeURIComponent(workId)}/sources`, {
         method: "POST",
-        body: form
+        body: form,
+        headers: { "X-Progress-Id": progressId }
       });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Upload failed (${res.status})`);
       }
       setMsg("Source uploaded.");
+      setStatus("success");
       setFile(null);
       setLabel("");
       setCommitMessage("");
@@ -65,8 +111,13 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
       router.refresh();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
+      setStatus("error");
     } finally {
       setBusy(false);
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
     }
   };
 
@@ -141,6 +192,13 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
           {busy ? "Uploading…" : "Upload new source"}
         </button>
       </div>
+      {events.length > 0 && (
+        <UploadProgressStepper
+          steps={steps}
+          events={events}
+          status={status}
+        />
+      )}
       {msg && <div className="text-slate-400">{msg}</div>}
     </form>
   );

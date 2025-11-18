@@ -7,7 +7,7 @@ export default async function BranchesPanel({ workId, sourceId, latestRevisionId
   const headers = await getApiAuthHeaders();
   const authed = !!(headers && (headers as any).Authorization);
   const res = await fetch(`${API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches`, { headers, cache: 'no-store' });
-  const data = res.ok ? await res.json() : { branches: [{ name: 'main', policy: 'public' }] };
+  const data = res.ok ? await res.json() : { branches: [{ name: 'trunk', policy: 'public' }] };
   const branches: Array<{ name: string; policy: 'public' | 'owner_approval'; ownerUserId?: string }> = data.branches || [];
 
   return (

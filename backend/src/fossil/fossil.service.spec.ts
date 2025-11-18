@@ -200,6 +200,30 @@ describe('FossilService', () => {
       expect(result.branchName).toBe('feature-branch');
     });
 
+    it('does not use --branch when committing to trunk', async () => {
+      const requestOnTrunk = { ...mockRequest, branchName: 'trunk' };
+
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.mkdtemp.mockResolvedValue('/tmp/checkout');
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.rm.mockResolvedValue(undefined);
+
+      mockSpawn.mockImplementation((command, args) => {
+        if (args && args[0] === 'update') {
+          // Should update trunk before committing
+          expect(args).toContain('trunk');
+        }
+        if (args && args[0] === 'commit') {
+          // For trunk we must never use --branch
+          expect(args).not.toContain('--branch');
+        }
+        return createMockChildProcess('uuid: xyz\ntags: trunk', '', 0);
+      });
+
+      const result = await service.commitRevision(requestOnTrunk);
+      expect(result.branchName).toBe('trunk');
+    });
+
     it('does not add branch flag when branchName is empty', async () => {
       const requestWithEmptyBranch = { ...mockRequest, branchName: '  ' };
 
