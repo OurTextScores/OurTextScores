@@ -70,11 +70,22 @@ export default function DiffPreview({
       setHtml("");
       setRawText("");
       try {
+        if (kind === "musicdiff_visual") {
+          if (!pdfUrl) {
+            setState("error");
+            setError("PDF URL unavailable");
+            return;
+          }
+          const wrapper = `<object data="${pdfUrl}" type="application/pdf" style="width:100%;min-height:24rem;height:100%"><p>Open PDF: <a href="${pdfUrl}">PDF</a></p></object>`;
+          setHtml(wrapper);
+          setRawText(`Visual PDF diff: ${pdfUrl}\n`);
+          setState("ready");
+          return;
+        }
+
         const url =
           kind === "musicdiff"
             ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}`
-            : kind === "musicdiff_visual"
-            ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&format=html`
             : `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/textdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&file=${encodeURIComponent(
                 kind === "lmx" ? "linearized" : kind === "xml" ? "canonical" : "manifest"
               )}`;
@@ -82,11 +93,6 @@ export default function DiffPreview({
         if (!res.ok) throw new Error(`Diff fetch failed (${res.status})`);
         const text = await res.text();
         if (aborted) return;
-        if (kind === 'musicdiff_visual') {
-          setHtml(text);
-          setState("ready");
-          return;
-        }
         if (canVisualize) {
           const content = diff2html(text, {
             drawFileList: false,
@@ -106,7 +112,7 @@ export default function DiffPreview({
     return () => {
       aborted = true;
     };
-  }, [revA, revB, kind, view, workId, sourceId, canVisualize]);
+  }, [revA, revB, kind, view, workId, sourceId, canVisualize, pdfUrl]);
 
   return (
     <div className="mt-3 flex flex-col gap-2">

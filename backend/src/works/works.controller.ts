@@ -615,6 +615,9 @@ export class WorksController {
       : (source.revisions.length >= 2 ? source.revisions[0] : undefined);
     if (!currentRev) throw new NotFoundException('Revision not found for PDF diff');
     let locator = (currentRev as any).derivatives?.musicDiffPdf as any;
+    if (locator && (!locator.sizeBytes || locator.sizeBytes <= 0)) {
+      locator = undefined;
+    }
     if (!locator) {
       // Fallback compute for adjacent pair
       const prev = source.revisions.find(r => r.sequenceNumber === currentRev.sequenceNumber - 1);
@@ -625,7 +628,9 @@ export class WorksController {
         this.storageService.getObjectBuffer(a.bucket, a.objectKey),
         this.storageService.getObjectBuffer(b.bucket, b.objectKey)
       ]);
-      const { spawn } = await import('node:child_process');
+      const { exec } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execAsync = promisify(exec);
       const tmp = await import('node:os');
       const fsPromises = await import('node:fs/promises');
       const path = await import('node:path');
@@ -636,13 +641,15 @@ export class WorksController {
         const pB = path.join(dir, 'b.xml');
         await fsPromises.writeFile(pA, bufA);
         await fsPromises.writeFile(pB, bufB);
-        const proc = spawn('python3', ['-m', 'musicdiff', '-o=visual', '--', pA, pB]);
-        const chunks: Buffer[] = [];
-        let err = '';
-        proc.stdout.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
-        proc.stderr.on('data', (c) => (err += c.toString()));
-        await new Promise((resolve, reject) => proc.on('close', (code) => (code === 0 ? resolve(null) : reject(new Error(err || `musicdiff pdf exited ${code}`)))));
-        const pdf = Buffer.concat(chunks);
+        const pdfOut = path.join(dir, 'musicdiff.pdf');
+        const scriptPath = '/app/python/musicdiff_pdf.py';
+        const { stdout: scriptOutput, stderr: scriptErr } = await execAsync(
+          `python3 ${scriptPath} ${pA} ${pB} ${pdfOut}`
+        );
+        if (!await fsPromises.stat(pdfOut).catch(() => null)) {
+          throw new Error(`musicdiff PDF generation failed: ${scriptErr || scriptOutput}`);
+        }
+        const pdf = await fsPromises.readFile(pdfOut);
         const base = `${workId}/${sourceId}/rev-${currentRev.sequenceNumber.toString().padStart(4, '0')}`;
         const put = await this.storageService.putAuxiliaryObject(
           `${base}/musicdiff.pdf`,

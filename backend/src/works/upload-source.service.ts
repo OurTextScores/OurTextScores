@@ -599,15 +599,20 @@ export class UploadSourceService {
       let pdfSize = 0;
       let pdfDigest = '';
       try {
-        const pdfBuffer = await this.execBuffer(['python3', '-m', 'musicdiff', '-o=visual', '--', previousPath, currentPath]);
-        pdfSize = pdfBuffer.length;
-        pdfDigest = createHash('sha256').update(pdfBuffer).digest('hex');
-        pdfLocator = await this.storageService.putAuxiliaryObject(
-          `${base}/musicdiff.pdf`,
-          pdfBuffer,
-          pdfBuffer.length,
-          'application/pdf'
-        );
+        const pdfOut = join(dir, 'musicdiff.pdf');
+        const scriptPath = '/app/python/musicdiff_pdf.py';
+        await this.exec(['python3', scriptPath, previousPath, currentPath, pdfOut]);
+        const pdfBuffer = await fs.readFile(pdfOut);
+        if (pdfBuffer.length > 0) {
+          pdfSize = pdfBuffer.length;
+          pdfDigest = createHash('sha256').update(pdfBuffer).digest('hex');
+          pdfLocator = await this.storageService.putAuxiliaryObject(
+            `${base}/musicdiff.pdf`,
+            pdfBuffer,
+            pdfBuffer.length,
+            'application/pdf'
+          );
+        }
       } catch {
         // ignore pdf generation failures
       }
