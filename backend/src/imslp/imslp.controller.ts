@@ -1,7 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ImslpService } from './imslp.service';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody, ApiParam } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('imslp')
 @Controller('imslp')
@@ -9,7 +8,6 @@ export class ImslpController {
   constructor(private readonly imslpService: ImslpService) {}
 
   @Get('search')
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 searches per minute (anon), 30 for auth, 100 for admin
   @ApiTags('search', 'imslp')
   @ApiOperation({
     summary: 'Search IMSLP',

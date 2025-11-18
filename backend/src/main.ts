@@ -18,7 +18,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HttpErrorFilter } from './common/http-error.filter';
-import { ThrottlerExceptionFilter } from './common/throttler/throttler-exception.filter';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
@@ -27,7 +26,7 @@ async function bootstrap() {
   });
   app.enableCors({ origin: true });
   app.setGlobalPrefix('api');
-  app.useGlobalFilters(new HttpErrorFilter(), new ThrottlerExceptionFilter());
+  app.useGlobalFilters(new HttpErrorFilter());
 
   // Swagger API Documentation
   const config = new DocumentBuilder()

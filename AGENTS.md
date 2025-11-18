@@ -60,12 +60,11 @@ This file orients future agents quickly: what the project does, how it’s wired
 
 ## Environments & Config
 - `.env` (checked in for dev):
-  - Backend: `MONGO_URI`, `INTERNAL_API_URL`, `MINIO_URL` or `MINIO_{ENDPOINT,PORT,USE_SSL}`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `FOSSIL_PATH`, `MEILI_HOST`, `MEILI_MASTER_KEY`, `RATE_LIMIT_TTL`, `RATE_LIMIT_MAX`.
+  - Backend: `MONGO_URI`, `INTERNAL_API_URL`, `MINIO_URL` or `MINIO_{ENDPOINT,PORT,USE_SSL}`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `FOSSIL_PATH`, `MEILI_HOST`, `MEILI_MASTER_KEY`.
   - Frontend: `NEXT_PUBLIC_API_URL` (browser) and `INTERNAL_API_URL` (server) used by `app/lib/api.ts`.
 - Docker volumes (host‑relative): `../mongo_data`, `../minio_data`, `../meilisearch_data`, `../fossil_data`.
 - Tooling required in backend container: `musescore4` (default, v4.6.3 via AppImage), `musescore3` (fallback), `python3` packages `linearized-musicxml`, `musicdiff`, `imslp`, `PyPDF2`, and `fossil`.
 - MuseScore CLI selection: Set via `MUSESCORE_CLI` env var (default: `musescore4`). Both v3 and v4 are installed for compatibility.
-- Rate limiting: `RATE_LIMIT_TTL` (ms, default: 60000) and `RATE_LIMIT_MAX` (requests, default: 100) control global throttling; user-aware guard applies multipliers (3x for authenticated, 10x for admins)
 
 ## Run / Dev Quickstart
 - Docker: `docker compose up -d` then open `http://localhost:3000` (UI) and `http://localhost:4000/api` (API).
@@ -198,7 +197,6 @@ This file orients future agents quickly: what the project does, how it’s wired
   - `viewers-diff-watch.spec.cjs` — OSMD/PDF viewers render; diff UI or direct textdiff API returns content; Watch toggle works.
   - `username-profile.spec.cjs` — user sets username in settings, sees success feedback, username appears in revision badges; validates uniqueness and format.
   - `mscz-artifact.spec.cjs` — uploads `.mscz` file and verifies MSCZ artifact is stored and downloadable with binary integrity; verifies `.mxl` uploads do NOT create MSCZ artifacts (negative test).
-  - `rate-limiting.spec.cjs` — verifies rate limits are enforced (429 responses after exceeding limits); validates error response format with retry-after information; confirms requests within limits succeed.
 
 ### CI (Docker + Playwright)
 - Workflow: `.github/workflows/smoke.yml`.
@@ -237,7 +235,6 @@ This file orients future agents quickly: what the project does, how it’s wired
 - **Health & Diagnostics**: Health check endpoints, email connectivity diagnostics (`/api/diagnostics/email`)
 - **API Documentation**: Comprehensive Swagger/OpenAPI documentation via `@nestjs/swagger` decorators; 54 endpoints documented across 12 tags (uploads, derivatives, diffs, search, approvals, auth, branches, health, imslp, users, watches, works); interactive API explorer at `/api-docs`
 - **Pagination**: List endpoints (`GET /api/works`) support `limit` and `offset` for pagination.
-- **Rate Limiting**: Comprehensive rate limiting via `@nestjs/throttler` with user-aware throttling (anonymous: 100 req/min, authenticated: 300 req/min, admin: 1000 req/min); per-route limits for uploads (5/hour anon, 15/hour auth), IMSLP search (10/min anon, 30/min auth), health checks (200/min); clear 429 error responses with retry-after information
 
 ### ⚠️ Partially Implemented
 - **Validation Pipeline**: Schema and structure exist in `validation.schema.ts` but actual validation is stub; all revisions pass by default
@@ -247,12 +244,17 @@ This file orients future agents quickly: what the project does, how it’s wired
 
 ### 🔴 Next Steps
 
-3. **Caching Layer**
+3. **Rate Limiting**
+   - No rate limiting on any endpoints
+   - No throttling on auth, upload, or expensive operations
+   - **Impact**: Vulnerable to abuse/DoS
+
+4. **Caching Layer**
    - No caching for IMSLP metadata, work summaries, or derivative artifacts
    - Every request hits MongoDB or external APIs
    - **Impact**: Higher latency, more load on external services
 
-4. **Advanced Fossil Features**
+5. **Advanced Fossil Features**
    - Fossil diff/log/timeline not exposed via API (only branches endpoint exists)
    - No merge/conflict resolution
    - No UI for branch visualization
@@ -269,10 +271,10 @@ This file orients future agents quickly: what the project does, how it’s wired
   - Branches: 59.6% (394/661)
   - Functions: 73.12% (166/227)
   - Lines: 76.09% (729/958)
-- **E2E Smoke Tests**: 8 test suites (auth-email, public-links, sse-progress, branch-approvals, viewers-diff-watch, username-profile, mscz-artifact, rate-limiting)
+- **E2E Smoke Tests**: 7 test suites (auth-email, public-links, sse-progress, branch-approvals, viewers-diff-watch, username-profile, mscz-artifact)
 - **CI/CD**: GitHub Actions with smoke-fast (45min timeout) + smoke-slow (60min timeout) jobs
 - **Build Guards**: Prebuild (`check_client_api_usage.cjs`) + postbuild (`verify_public_links.cjs`) prevent API URL leaks
-- **Overall Test Health**: 568 unit tests passing (14 new for rate limiting), 8 smoke test suites, ~70-76% code coverage across backend/frontend
+- **Overall Test Health**: 554 unit tests passing, 7 smoke test suites, ~70-76% code coverage across backend/frontend
 
 ### Known Technical Debt
 1. **Large Service Files**: `DerivativePipelineService` (250+ lines), `WorksService` (614 lines) - could decompose

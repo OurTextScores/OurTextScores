@@ -32,7 +32,6 @@ import { ProgressService } from '../progress/progress.service';
 import type { Observable } from 'rxjs';
 import type { MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiConsumes, ApiQuery } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('works')
 @Controller('works')
@@ -886,7 +885,6 @@ export class WorksController {
   }
 
   @Post(':workId/sources')
-  @Throttle({ default: { limit: 5, ttl: 3600000 } }) // 5 uploads per hour (anon), 15 for auth, 50 for admin
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -934,7 +932,6 @@ export class WorksController {
   }
 
   @Post(':workId/sources/:sourceId/revisions')
-  @Throttle({ default: { limit: 5, ttl: 3600000 } }) // 5 uploads per hour (anon), 15 for auth, 50 for admin
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
