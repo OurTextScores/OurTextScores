@@ -71,6 +71,10 @@ export class DerivativePipelineService {
     private readonly progress: ProgressService
   ) {}
 
+  private getMuseScoreCommand(): string {
+    return process.env.MUSESCORE_CLI || 'musescore3';
+  }
+
   async process(input: DerivativePipelineInput): Promise<DerivativePipelineResult> {
     const publish = (message: string, stage?: string) => this.progress.publish(input.progressId, message, stage);
     const extension = extname((input.originalFilename ?? '').toLowerCase());
@@ -97,9 +101,11 @@ export class DerivativePipelineService {
       let normalizedMxlBuffer: Buffer | undefined;
       let pdfBuffer: Buffer | undefined;
 
+      const museCmd = this.getMuseScoreCommand();
+
       if (this.isMuseScorePackage(extension, format)) {
         normalizedMxlPath = join(workspace, 'export.mxl');
-        await this.runCommand('musescore3', ['--export-to', normalizedMxlPath, inputPath], {
+        await this.runCommand(museCmd, ['--export-to', normalizedMxlPath, inputPath], {
           env: {
             ...process.env,
             QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen'
@@ -125,7 +131,7 @@ export class DerivativePipelineService {
         canonicalBuffer = input.buffer;
         normalizedMxlPath = join(workspace, 'converted.mxl');
         try {
-          await this.runCommand('musescore3', ['--export-to', normalizedMxlPath, inputPath], {
+          await this.runCommand(museCmd, ['--export-to', normalizedMxlPath, inputPath], {
             env: {
               ...process.env,
               QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen'
@@ -151,7 +157,7 @@ export class DerivativePipelineService {
         const pdfSourcePath = normalizedMxlPath ?? canonicalPath;
         if (pdfSourcePath) {
           const outPdf = join(workspace, 'score.pdf');
-          await this.runCommand('musescore3', ['--export-to', outPdf, pdfSourcePath], {
+          await this.runCommand(museCmd, ['--export-to', outPdf, pdfSourcePath], {
             env: { ...process.env, QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen' },
             timeoutMs: 60_000
           });
@@ -489,8 +495,9 @@ export class DerivativePipelineService {
   }
 
   private async fetchToolVersions(): Promise<ToolVersions> {
+    const museCmd = this.getMuseScoreCommand();
     const [musescore, linearized, musicdiff] = await Promise.all([
-      this.getCommandVersion('musescore3', ['--version']),
+      this.getCommandVersion(museCmd, ['--version']),
       this.getPythonPackageVersion('linearized-musicxml'),
       this.getPythonPackageVersion('musicdiff')
     ]);

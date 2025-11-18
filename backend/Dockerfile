@@ -2,8 +2,11 @@
 
 FROM ubuntu:22.04 AS base
 
+ARG MUSESCORE4_APPIMAGE_URL="https://github.com/musescore/MuseScore/releases/download/v4.6.3/MuseScore-Studio-4.6.3.252940956-x86_64.AppImage"
+ARG MUSESCORE_CLI=musescore4
 ENV DEBIAN_FRONTEND=noninteractive \
-    QT_QPA_PLATFORM=offscreen
+    QT_QPA_PLATFORM=offscreen \
+    MUSESCORE_CLI=${MUSESCORE_CLI}
 WORKDIR /app
 
 # Install Node.js 20, MuseScore CLI, Python tooling, and helper utilities
@@ -17,6 +20,10 @@ RUN apt-get update && \
         unzip \
         git \
         musescore3 \
+        xvfb \
+        libopengl0 \
+        ca-certificates \
+        libpipewire-0.3-0 \
         fossil && \
     pip3 install --no-cache-dir \
         linearized-musicxml \
@@ -24,6 +31,20 @@ RUN apt-get update && \
         imslp \
         PyPDF2 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install MuseScore 4 CLI via AppImage at build time.
+# Solution from: https://markandruth.co.uk/2024/09/08/running-musescore-from-within-a-docker-container
+# Key insight: Must extract AppImage and run the binary directly (not via AppRun wrapper)
+RUN if [ -n "$MUSESCORE4_APPIMAGE_URL" ]; then \
+      echo "Downloading MuseScore 4 AppImage from ${MUSESCORE4_APPIMAGE_URL}" && \
+      curl -fsSL "${MUSESCORE4_APPIMAGE_URL}" -o /tmp/MuseScore-4.AppImage && \
+      chmod +x /tmp/MuseScore-4.AppImage && \
+      /tmp/MuseScore-4.AppImage --appimage-extract && \
+      mv squashfs-root /opt/musescore4 && \
+      printf '#!/bin/sh\n# Wrapper for MuseScore 4 with timeout and proper xvfb settings\n# The binary must be called directly (not via AppRun) for CLI to work properly\nexec timeout 60 xvfb-run -s "-screen 0 640x480x24 -ac +extension GLX +render -noreset" /opt/musescore4/bin/mscore4portable "$@"\n' > /usr/local/bin/musescore4 && \
+      chmod +x /usr/local/bin/musescore4 && \
+      rm -f /tmp/MuseScore-4.AppImage; \
+    fi
 
 FROM base AS deps
 COPY package*.json ./

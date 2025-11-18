@@ -60,12 +60,12 @@ test.describe('SSE progress sanity', () => {
     const token = makeJwt('smoke@local', 'smoke@local', secret);
     const fs = require('fs');
     const path = require('path');
-    const mxlPath = path.join(process.cwd(), 'test_scores', 'bach_orig.mxl');
-    const buffer = fs.readFileSync(mxlPath);
+    const msczPath = path.join(process.cwd(), 'test_scores', 'bach_orig.mscz');
+    const buffer = fs.readFileSync(msczPath);
 
     const multipart = {
-      commitMessage: 'sse sanity',
-      file: { name: 'bach_orig.mxl', mimeType: 'application/vnd.recordare.musicxml', buffer }
+      commitMessage: 'sse sanity - MuseScore 4 test',
+      file: { name: 'bach_orig.mscz', mimeType: 'application/vnd.musescore.mscz', buffer }
     };
     const up = await request.post(`${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources`, {
       multipart,

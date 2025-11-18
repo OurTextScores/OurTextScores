@@ -62,4 +62,48 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(out.pending).toBe(false);
     expect(out.derivatives.pdf).toBeFalsy();
   });
+
+  it('uses MUSESCORE_CLI when provided for MuseScore operations', async () => {
+    process.env.MUSESCORE_CLI = 'musescore4';
+    const local = new DerivativePipelineService(storage, progress);
+    (local as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).extractCanonicalXml = jest.fn(async () => ({
+      path: '/tmp/canonical.xml',
+      buffer: Buffer.from('<xml/>')
+    }));
+    const runSpy = jest.fn(async (cmd: string, args: string[]) => {
+      if (cmd === 'python3') return { stdout: 'LMX_CONTENT', stderr: '' };
+      if (cmd === 'musescore4') return { stdout: '', stderr: '' };
+      return { stdout: '', stderr: '' };
+    });
+    (local as any).runCommand = runSpy;
+
+    const input = {
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/vnd.musescore.mscz',
+      originalFilename: 'score.mscz',
+      buffer: Buffer.from('msczdata'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
+    };
+
+    await local.process(input);
+    expect(runSpy).toHaveBeenCalledWith('musescore4', expect.any(Array), expect.any(Object));
+    delete process.env.MUSESCORE_CLI;
+  });
 });
