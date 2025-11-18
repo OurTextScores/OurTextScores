@@ -75,6 +75,7 @@ export interface DerivativeArtifacts {
   canonicalXml?: StorageLocator;
   linearizedXml?: StorageLocator;
   pdf?: StorageLocator;
+  mscz?: StorageLocator;
   manifest?: StorageLocator;
   musicDiffReport?: StorageLocator;
   musicDiffHtml?: StorageLocator;

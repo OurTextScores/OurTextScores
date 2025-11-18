@@ -85,6 +85,16 @@ test.describe('SSE progress sanity', () => {
     const stages = events.map((e) => e?.data?.stage).filter(Boolean);
     expect(stages.length).toBeGreaterThan(0);
 
+    // Verify mscz artifact is available for download
+    const msczDownloadUrl = `${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(createdSourceId)}/score.mscz`;
+    const msczResp = await request.get(msczDownloadUrl);
+    expect(msczResp.ok()).toBeTruthy();
+    expect(msczResp.headers()['content-type']).toContain('application/vnd.musescore.mscz');
+    const msczContent = await msczResp.body();
+    expect(msczContent.length).toBeGreaterThan(0);
+    // Verify it's the same size as the uploaded file
+    expect(msczContent.length).toBe(buffer.length);
+
     // Cleanup: delete the created source (requires auth header, but backend will upsert user)
     await request.delete(`${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(createdSourceId)}`, {
       headers: { 'Authorization': `Bearer ${token}` }

@@ -640,6 +640,81 @@ describe('WorksController (unit)', () => {
     });
   });
 
+  describe('downloadMscz', () => {
+    it('should download MSCZ file and set attachment disposition', async () => {
+      worksService.getWorkDetail.mockResolvedValue({
+        workId: '1',
+        sources: [{
+          sourceId: 's',
+          originalFilename: 'my-composition.mscz',
+          derivatives: {
+            mscz: {
+              bucket: 'b',
+              objectKey: 'k',
+              sizeBytes: 5000,
+              checksum: { algorithm: 'sha256', hexDigest: 'x' },
+              contentType: 'application/vnd.musescore.mscz',
+              lastModifiedAt: new Date()
+            }
+          }
+        }]
+      } as any);
+      storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-data'));
+      const { res, headers } = createMockResponse();
+
+      await controller.downloadMscz('1', 's', undefined, res as any, undefined);
+
+      expect(headers['Content-Type']).toContain('application/vnd.musescore.mscz');
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['Content-Disposition']).toContain('my-composition.mscz');
+      expect(headers['Cache-Control']).toBe('no-cache');
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should throw not found when MSCZ is missing', async () => {
+      worksService.getWorkDetail.mockResolvedValue({
+        workId: '1',
+        sources: [{ sourceId: 's', derivatives: {} }]
+      } as any);
+      const { res } = createMockResponse();
+
+      await expect(controller.downloadMscz('1', 's', undefined, res as any, undefined))
+        .rejects.toThrow('MuseScore file not found for this source');
+    });
+
+    it('should download MSCZ for a specific revision when revisionId is provided', async () => {
+      worksService.getWorkDetail.mockResolvedValue({
+        workId: '1',
+        sources: [{
+          sourceId: 's',
+          originalFilename: 'score.mscz',
+          revisions: [{
+            revisionId: 'rev-123',
+            derivatives: {
+              mscz: {
+                bucket: 'b',
+                objectKey: 'k-rev',
+                sizeBytes: 4500,
+                checksum: { algorithm: 'sha256', hexDigest: 'y' },
+                contentType: 'application/vnd.musescore.mscz',
+                lastModifiedAt: new Date()
+              }
+            }
+          }]
+        }]
+      } as any);
+      storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-rev-data'));
+      const { res, headers } = createMockResponse();
+
+      await controller.downloadMscz('1', 's', 'rev-123', res as any, undefined);
+
+      expect(storageService.getObjectBuffer).toHaveBeenCalledWith('b', 'k-rev');
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+      expect(res.send).toHaveBeenCalled();
+    });
+  });
+
   describe('downloadManifest', () => {
     it('should download manifest JSON', async () => {
       worksService.getWorkDetail.mockResolvedValue({

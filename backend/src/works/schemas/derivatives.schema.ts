@@ -16,6 +16,9 @@ export class DerivativeArtifacts {
   pdf?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })
+  mscz?: StorageLocator;
+
+  @Prop({ type: StorageLocatorSchema })
   manifest?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })

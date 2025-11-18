@@ -441,6 +441,16 @@ async function SourceCard({
               Primary
             </span>
           )}
+          {source.derivatives?.mscz && (
+            <Link
+              href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.mscz`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              Download MSCZ
+            </Link>
+          )}
           {source.derivatives?.normalizedMxl && (
             <Link
               href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/normalized.mxl`}

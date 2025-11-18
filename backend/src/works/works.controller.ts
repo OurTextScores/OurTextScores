@@ -372,6 +372,40 @@ export class WorksController {
     this.sendBuffer(res, buffer, baseName, 'application/pdf', !!revisionId, 'inline');
   }
 
+  @Get(":workId/sources/:sourceId/score.mscz")
+  @UseGuards(AuthOptionalGuard)
+  @ApiTags('derivatives')
+  @ApiOperation({
+    summary: 'Download MuseScore file',
+    description: 'Get the original MuseScore (.mscz) file for a source or specific revision'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiResponse({ status: 200, description: 'MuseScore file returned', content: { 'application/vnd.musescore.mscz': {} } })
+  @ApiResponse({ status: 404, description: 'MuseScore file not found for this source' })
+  async downloadMscz(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Query('r') revisionId: string | undefined,
+    @Res() res: Response,
+    @CurrentUser() user?: RequestUser
+  ) {
+    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
+    const detail = await this.worksService.getWorkDetail(workId, viewer);
+    const source = detail.sources.find((s) => s.sourceId === sourceId);
+    const locator = revisionId
+      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.mscz)
+      : source?.derivatives?.mscz;
+    if (!source || !locator) {
+      throw new NotFoundException('MuseScore file not found for this source');
+    }
+    const loc = locator;
+    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
+    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.mscz';
+    this.sendBuffer(res, buffer, baseName, 'application/vnd.musescore.mscz', !!revisionId, 'attachment');
+  }
+
   @Get(":workId/sources/:sourceId/linearized.lmx")
   @UseGuards(AuthOptionalGuard)
   @ApiTags('derivatives')

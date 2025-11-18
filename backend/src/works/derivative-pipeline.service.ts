@@ -118,6 +118,15 @@ export class DerivativePipelineService {
         canonicalBuffer = canonical.buffer;
         notes.push('MuseScore conversion to MusicXML completed.');
         publish('MuseScore conversion completed', 'deriv.mscz2mxl');
+
+        // Store the original .mscz file as a derivative artifact
+        derivatives.mscz = await this.storeDerivative(
+          `${derivativesBaseKey}/score.mscz`,
+          input.buffer,
+          'application/vnd.musescore.mscz'
+        );
+        notes.push('Original MuseScore file stored.');
+        publish('Stored MuseScore file', 'store.mscz');
       } else if (this.isCompressedMusicXml(extension, format)) {
         normalizedMxlPath = inputPath;
         normalizedMxlBuffer = input.buffer;

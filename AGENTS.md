@@ -37,7 +37,7 @@ This file orients future agents quickly: what the project does, how it’s wired
      - New revision: `POST /api/works/:workId/sources/:sourceId/revisions`
    - Backend stores raw file to MinIO, runs derivative pipeline, records Source + SourceRevision, optionally commits linearized/canonical/manifest to a per‑source Fossil repo, updates Work aggregate summary.
 3. Derivative Pipeline (DerivativePipelineService)
-   - Converts `.mscz` to `.mxl` (MuseScore CLI), extracts canonical XML from `.mxl`, generates linearized text (Python linearized-musicxml), attempts PDF, stores derivatives to MinIO, emits manifest with tool versions and checksums.
+   - Converts `.mscz` to `.mxl` (MuseScore 4 CLI), stores original `.mscz` file as artifact, extracts canonical XML from `.mxl`, generates linearized text (Python linearized-musicxml), attempts PDF, stores derivatives to MinIO, emits manifest with tool versions and checksums.
    - Asynchronously computes `musicdiff` for canonical XML changes between adjacent revisions and stores the report.
 4. Viewing & Diff
    - Frontend lists works, shows source artifacts, renders canonical XML or normalized MXL with OSMD, previews PDF, and offers diffs (musicdiff semantic text or textual diffs for LMX/XML/manifest, including non‑adjacent revision pairs).
@@ -56,14 +56,15 @@ This file orients future agents quickly: what the project does, how it’s wired
 - `SourceRevision`: `{ workId, sourceId, revisionId, sequenceNumber, fossilArtifactId?, fossilParentArtifactIds[], fossilBranch?, rawStorage, checksum, createdBy, createdAt, validationSnapshot, derivatives?, manifest?, changeSummary? }`.
 - `User`: `{ email, username?, displayName?, emailVerifiedAt?, roles[], notify{watchPreference} }`. Username is unique, sparse index, lowercase, 3-20 chars (alphanumeric + underscores). Users with `roles` containing `"admin"` are treated as admins for destructive Works operations.
 - `StorageLocator`: `{ bucket, objectKey, sizeBytes, checksum{algorithm,hexDigest}, contentType, lastModifiedAt }`.
-- `DerivativeArtifacts`: optional locators for normalizedMxl, canonicalXml, linearizedXml, pdf, manifest, musicDiffReport.
+- `DerivativeArtifacts`: optional locators for normalizedMxl, canonicalXml, linearizedXml, pdf, mscz, manifest, musicDiffReport.
 
 ## Environments & Config
 - `.env` (checked in for dev):
   - Backend: `MONGO_URI`, `INTERNAL_API_URL`, `MINIO_URL` or `MINIO_{ENDPOINT,PORT,USE_SSL}`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `FOSSIL_PATH`, `MEILI_HOST`, `MEILI_MASTER_KEY`.
   - Frontend: `NEXT_PUBLIC_API_URL` (browser) and `INTERNAL_API_URL` (server) used by `app/lib/api.ts`.
 - Docker volumes (host‑relative): `../mongo_data`, `../minio_data`, `../meilisearch_data`, `../fossil_data`.
-- Tooling required in backend container: `musescore3`, `python3` packages `linearized-musicxml`, `musicdiff`, `imslp`, `PyPDF2`, and `fossil`.
+- Tooling required in backend container: `musescore4` (default, v4.6.3 via AppImage), `musescore3` (fallback), `python3` packages `linearized-musicxml`, `musicdiff`, `imslp`, `PyPDF2`, and `fossil`.
+- MuseScore CLI selection: Set via `MUSESCORE_CLI` env var (default: `musescore4`). Both v3 and v4 are installed for compatibility.
 
 ## Run / Dev Quickstart
 - Docker: `docker compose up -d` then open `http://localhost:3000` (UI) and `http://localhost:4000/api` (API).
@@ -86,7 +87,7 @@ This file orients future agents quickly: what the project does, how it’s wired
   - `POST /api/works/:workId/sources/:sourceId/revisions` new revision (multipart; optional branch controls)
   - SSE progress: `GET /api/works/progress/:progressId/stream`
 - Derivatives (tag: `derivatives`)
-  - `GET /api/works/:workId/sources/:sourceId/{normalized.mxl|canonical.xml|score.pdf|linearized.lmx|manifest.json}` (optionally `?r=revisionId`)
+  - `GET /api/works/:workId/sources/:sourceId/{normalized.mxl|canonical.xml|score.pdf|score.mscz|linearized.lmx|manifest.json}` (optionally `?r=revisionId`)
 - Diffs (tag: `diffs`)
   - `GET /api/works/:workId/sources/:sourceId/musicdiff.{txt|html|pdf}` (optionally `?r=revisionId`)
   - `GET /api/works/:workId/sources/:sourceId/musicdiff` on-demand diff (`revA`, `revB`, `format=semantic|visual`)
@@ -155,11 +156,13 @@ This file orients future agents quickly: what the project does, how it’s wired
 ## Known Gotchas
 - Ensure `NEXT_PUBLIC_API_URL` includes `/api` path; several components default to `http://localhost:4000/api` but a few fallback constants omit `/api` if env is absent. Prefer setting env.
 - MuseScore CLI requires headless Qt (`QT_QPA_PLATFORM=offscreen` set in Dockerfile).
+- MuseScore 4 requires specific xvfb configuration with GLX extension (`-s "-screen 0 640x480x24 -ac +extension GLX +render -noreset"`), 60-second timeout wrapper, and `libpipewire-0.3-0` dependency. See `MUSESCORE4_DOCKER_NOTES.md` for implementation details.
+- MuseScore 4 AppImage must be extracted and binary (`/opt/musescore4/bin/mscore4portable`) called directly, not via AppRun wrapper.
 - Large files: upload limit set to 100MB. MinIO must be reachable from backend.
-- `.next/` (frontend) and `node_modules/` should not be committed; they’re ignored but may exist locally.
+- `.next/` (frontend) and `node_modules/` should not be committed; they're ignored but may exist locally.
 - Client code must not leak internal hosts (e.g. `http://backend:4000`). Use `getPublicApiBase()` for browser URLs; the build guards will fail otherwise.
 - When forwarding streaming bodies with Node fetch (proxying multipart), set `duplex: 'half'`.
-- If declared branches don’t appear in client dropdowns immediately, ensure the page is refreshed or the server side passes `initialBranches` derived from the branches API.
+- If declared branches don't appear in client dropdowns immediately, ensure the page is refreshed or the server side passes `initialBranches` derived from the branches API.
 - Make sure to rebuild the docker containers before testing: `docker compose up -d --build`
 
 ## Testing & CI
@@ -189,10 +192,11 @@ This file orients future agents quickly: what the project does, how it’s wired
 - Current coverage:
   - `auth-email.spec.cjs` — NextAuth Email sign‑in via Mailpit; can access Approvals.
   - `public-links.spec.cjs` — health endpoints; all browser hrefs use the public API base and at least one artifact resolves 200.
-  - `sse-progress.spec.cjs` — opens SSE stream and asserts progress events during an upload.
+  - `sse-progress.spec.cjs` — opens SSE stream and asserts progress events during a `.mscz` upload; verifies MSCZ artifact is downloadable.
   - `branch-approvals.spec.cjs` — creates an Owned branch (API), uploads a revision (API), Approvals grows, approves, revision history filter includes the branch.
   - `viewers-diff-watch.spec.cjs` — OSMD/PDF viewers render; diff UI or direct textdiff API returns content; Watch toggle works.
   - `username-profile.spec.cjs` — user sets username in settings, sees success feedback, username appears in revision badges; validates uniqueness and format.
+  - `mscz-artifact.spec.cjs` — uploads `.mscz` file and verifies MSCZ artifact is stored and downloadable with binary integrity; verifies `.mxl` uploads do NOT create MSCZ artifacts (negative test).
 
 ### CI (Docker + Playwright)
 - Workflow: `.github/workflows/smoke.yml`.
@@ -222,7 +226,9 @@ This file orients future agents quickly: what the project does, how it’s wired
 - **Watches**: Users can follow sources; notifications sent to watchers on new revisions
 - **Fossil VCS Integration**: Per-source repositories with commit, branch support, artifact tracking, parent chain
 - **IMSLP Integration**: Metadata fetching, MongoDB caching, enrichment via MediaWiki API + Python `imslp_enrich.py`
-- **Derivative Pipeline**: MuseScore conversion (.mscz → .mxl), canonical XML extraction, linearization (Python), musicdiff, PDF generation
+- **MuseScore 4 Support**: MuseScore 4.6.3 working headlessly in Docker via AppImage extraction and direct binary invocation; supports `.mscz` files created with MuseScore 4 (previously unsupported)
+- **MSCZ Artifact Storage**: When users upload `.mscz` files, the original MuseScore file is stored as a derivative artifact and available for download via `score.mscz` endpoint; includes UI badge for downloading original MuseScore files
+- **Derivative Pipeline**: MuseScore 4 conversion (.mscz → .mxl), MSCZ artifact storage, canonical XML extraction, linearization (Python), musicdiff, PDF generation
 - **Diff Viewers**: Text diffs (linearized/canonical/manifest via diff2html) and musicdiff semantic comparisons; supports non-adjacent revision pairs
 - **Progress Tracking**: SSE streams (RxJS Subjects) for real-time upload progress with stable stage names
 - **Storage (MinIO)**: Three bucket patterns (raw, derivatives, auxiliary) with auto-creation, checksums, content-type handling
@@ -265,10 +271,10 @@ This file orients future agents quickly: what the project does, how it’s wired
   - Branches: 59.6% (394/661)
   - Functions: 73.12% (166/227)
   - Lines: 76.09% (729/958)
-- **E2E Smoke Tests**: 6 test suites (auth-email, public-links, sse-progress, branch-approvals, viewers-diff-watch, username-profile)
+- **E2E Smoke Tests**: 7 test suites (auth-email, public-links, sse-progress, branch-approvals, viewers-diff-watch, username-profile, mscz-artifact)
 - **CI/CD**: GitHub Actions with smoke-fast (45min timeout) + smoke-slow (60min timeout) jobs
 - **Build Guards**: Prebuild (`check_client_api_usage.cjs`) + postbuild (`verify_public_links.cjs`) prevent API URL leaks
-- **Overall Test Health**: 554 unit tests passing, 6 smoke test suites, ~70-76% code coverage across backend/frontend
+- **Overall Test Health**: 554 unit tests passing, 7 smoke test suites, ~70-76% code coverage across backend/frontend
 
 ### Known Technical Debt
 1. **Large Service Files**: `DerivativePipelineService` (250+ lines), `WorksService` (614 lines) - could decompose
@@ -345,6 +351,21 @@ Each revision includes `manifest.json` with tool versions, checksums, timestamps
 - **Example**: `{"musescoreVersion": "3.6.2", "linearizedMusicxmlVersion": "0.10.5", "sha256": "...", "generatedAt": "..."}`
 - **Implementation**: `derivative-pipeline.service.ts:200-230`
 
+### MuseScore 4 Headless Execution
+MuseScore 4.6.3 runs in Docker via AppImage extraction and direct binary invocation, not via AppRun wrapper.
+- **Rationale**: AppImage's AppRun wrapper expects full multimedia stack (Qt/xcb, PipeWire, audio); direct binary with xvfb works headlessly
+- **Key requirements**: Extract AppImage, call `/opt/musescore4/bin/mscore4portable` directly, use xvfb with GLX extension, 60-second timeout, `libpipewire-0.3-0` dependency
+- **Trade-off**: More complex setup than simple AppImage execution, but enables headless batch processing
+- **Implementation**: `backend/Dockerfile` (lines 70-85), `docs/private/MUSESCORE4_DOCKER_NOTES.md`
+- **Credit**: Solution from https://markandruth.co.uk/2024/09/08/running-musescore-from-within-a-docker-container
+
+### MSCZ Artifact Storage
+Original `.mscz` files are stored as derivative artifacts when uploaded, allowing users to download the MuseScore file.
+- **Rationale**: Users may want to re-edit scores in MuseScore app; preserves original source for archival purposes
+- **Storage**: Same path pattern as other derivatives (`{workId}/{sourceId}/rev-{seq}/score.mscz`)
+- **Trade-off**: Increases storage footprint but provides better user experience and archival value
+- **Implementation**: `derivative-pipeline.service.ts:122-129`, `works.controller.ts:375-407`, `frontend/app/works/[workId]/page.tsx:444-453`
+
 ## Operational Considerations
 
 ### Resource Requirements (Docker Deployment)
@@ -368,7 +389,8 @@ Each revision includes `manifest.json` with tool versions, checksums, timestamps
 3. **Missing Progress ID**: Not setting `X-Progress-Id` header breaks SSE correlation
 4. **Branch Assumption**: Assuming Fossil branch exists before first commit (branches API is source of truth)
 5. **Qt Requirement**: MuseScore requires `QT_QPA_PLATFORM=offscreen` in headless environments (set in `backend/Dockerfile`)
-6. **Multipart Streaming**: Forgetting `duplex: 'half'` when proxying uploads causes errors
+6. **MuseScore 4 AppImage**: Attempting to run AppImage directly via AppRun fails with Qt/xcb errors; must extract and call `mscore4portable` binary directly with proper xvfb configuration
+7. **Multipart Streaming**: Forgetting `duplex: 'half'` when proxying uploads causes errors
 
 ### Development Workflow Tips
 - **Local Full Stack**: `docker compose up -d` → http://localhost:3000 (UI), http://localhost:4000/api (API)
