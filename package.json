@@ -17,6 +17,8 @@
     "prepare": "node scripts/setup-git-hooks.cjs"
   },
   "dependencies": {
+    "csv-parse": "^6.1.0",
+    "mongodb": "^7.0.0",
     "puppeteer": "22.13.1"
   },
   "devDependencies": {

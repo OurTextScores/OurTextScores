@@ -13,3 +13,6 @@ test-results/
 test_scores/
 smoke-test.log
 smoke-retest.log
+data/
+node_modules/
+package-lock.json
