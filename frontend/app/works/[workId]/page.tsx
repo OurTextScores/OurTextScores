@@ -90,51 +90,47 @@ export default async function WorkDetailPage({
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 px-6">
-        <header className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                <Link href="/" className="underline-offset-2 hover:underline">
-                  ← Back to works
-                </Link>
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-                Work {work.workId}
-              </h1>
-              <div className="mt-2 grid gap-1 text-sm text-slate-300 md:grid-cols-3">
-                <div>
-                  <span className="text-slate-400">Title: </span>
-                  <span className="text-slate-100">{work.title ?? "—"}</span>
+        <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-slate-100 p-8 shadow-sm ring-1 ring-slate-900/5 dark:from-midnight-900 dark:to-midnight-950 dark:ring-white/10">
+          <div className="relative z-10 flex flex-col gap-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+                  <Link href="/" className="transition hover:text-slate-800 dark:hover:text-slate-200">
+                    ← Back to works
+                  </Link>
+                  <span className="opacity-50">•</span>
+                  <span className="font-mono opacity-75">ID: {work.workId}</span>
                 </div>
-                <div>
-                  <span className="text-slate-400">Composer: </span>
-                  <span className="text-slate-100">{work.composer ?? "—"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400">Catalog: </span>
-                  <span className="text-slate-100">{(work as any).catalogNumber ?? "—"}</span>
-                </div>
+                <h1 className="font-heading text-4xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
+                  {work.title ?? "Untitled Work"}
+                </h1>
+                <p className="text-xl text-slate-600 dark:text-slate-300">
+                  {work.composer ?? "Unknown Composer"}
+                  {(work as any).catalogNumber && (
+                    <span className="ml-2 text-slate-400 dark:text-slate-500">• {(work as any).catalogNumber}</span>
+                  )}
+                </p>
+              </div>
+              <div className="text-right text-sm text-slate-500 dark:text-slate-400">
+                <p>Sources: <span className="font-medium text-slate-900 dark:text-slate-200">{work.sourceCount}</span></p>
+                <p>Latest revision: <span className="font-medium text-slate-900 dark:text-slate-200">{formatDate(work.latestRevisionAt)}</span></p>
               </div>
             </div>
-            <div className="text-right text-sm text-slate-400">
-              <p>Sources: {work.sourceCount}</p>
-              <p>Latest revision: {formatDate(work.latestRevisionAt)}</p>
+            <div className="flex flex-wrap gap-2 text-sm">
+              {work.availableFormats.map((format) => (
+                <span
+                  key={format}
+                  className="rounded-full bg-white/50 px-3 py-1 font-medium text-slate-700 ring-1 ring-slate-900/5 backdrop-blur-sm dark:bg-white/5 dark:text-slate-300 dark:ring-white/10"
+                >
+                  {format}
+                </span>
+              ))}
+              {work.availableFormats.length === 0 && (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700">
+                  No derivatives yet
+                </span>
+              )}
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2 text-sm">
-            {work.availableFormats.map((format) => (
-              <span
-                key={format}
-                className="rounded-full bg-slate-100 px-3 py-1 text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
-              >
-                {format}
-              </span>
-            ))}
-            {work.availableFormats.length === 0 && (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700">
-                No derivatives yet
-              </span>
-            )}
           </div>
         </header>
 
@@ -390,7 +386,7 @@ async function SourceCard({
   const canDeleteSource = isAdmin || (isOwner && !hasMultipleCreators);
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
+    <article className="group rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">

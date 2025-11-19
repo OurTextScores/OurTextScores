@@ -17,7 +17,20 @@
 
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+
+const fontSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const fontHeading = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-heading",
+  display: "swap",
+});
 import Header from "./components/header";
 import Providers from "./providers";
 
@@ -32,7 +45,7 @@ export default function RootLayout({
   children: ReactNode;
 }) {
   return (
-    <html lang="en" className="min-h-full">
+    <html lang="en" className={`min-h-full ${fontSans.variable} ${fontHeading.variable}`}>
       <head>
         <script
           dangerouslySetInnerHTML={{

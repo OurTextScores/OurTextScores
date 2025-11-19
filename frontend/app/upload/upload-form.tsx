@@ -57,18 +57,19 @@ export default function UploadForm({ works }: UploadFormProps) {
 
 function StepIndicator({ active }: { active: "select" | "upload" }) {
   return (
-    <ol className="flex gap-4 text-sm font-medium">
-      <li className={active === "select" ? "text-cyan-700 dark:text-cyan-300" : "text-slate-600 dark:text-slate-500"}>
-        <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-current">
+    <ol className="flex w-full items-center gap-4 text-sm font-medium">
+      <li className={`flex items-center gap-2 ${active === "select" ? "text-primary-600 dark:text-primary-400" : "text-slate-500 dark:text-slate-400"}`}>
+        <span className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${active === "select" ? "border-primary-600 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-300" : "border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"}`}>
           1
         </span>
-        Select work
+        <span>Select work</span>
       </li>
-      <li className={active === "upload" ? "text-cyan-700 dark:text-cyan-300" : "text-slate-600 dark:text-slate-500"}>
-        <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-current">
+      <li className="h-px flex-1 bg-slate-200 dark:bg-slate-800"></li>
+      <li className={`flex items-center gap-2 ${active === "upload" ? "text-primary-600 dark:text-primary-400" : "text-slate-500 dark:text-slate-400"}`}>
+        <span className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${active === "upload" ? "border-primary-600 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/20 dark:text-primary-300" : "border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"}`}>
           2
         </span>
-        Upload source
+        <span>Upload source</span>
       </li>
     </ol>
   );
@@ -151,7 +152,7 @@ function WorkSelector({
   }, [existingWorks, results]);
 
   return (
-    <section className="grid gap-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/70">
+    <section className="grid gap-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-slate-900/5 dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Step 1 — Select IMSLP work</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">
@@ -166,11 +167,11 @@ function WorkSelector({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search IMSLP catalogue..."
-          className="flex-1 rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
+          className="flex-1 rounded-lg border-0 bg-slate-100 px-4 py-3 text-slate-900 placeholder-slate-500 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-primary-500 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500 dark:ring-white/10 dark:focus:ring-primary-500"
         />
         <button
           type="submit"
-          className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+          className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
         >
           {loading ? "Searching…" : "Search"}
         </button>
@@ -182,11 +183,11 @@ function WorkSelector({
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://imslp.org/wiki/..."
-          className="flex-1 rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
+          className="flex-1 rounded-lg border-0 bg-slate-100 px-4 py-3 text-slate-900 placeholder-slate-500 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-primary-500 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500 dark:ring-white/10 dark:focus:ring-primary-500"
         />
         <button
           type="submit"
-          className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          className="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-transparent dark:hover:bg-white/20"
         >
           Resolve URL
         </button>
@@ -200,13 +201,13 @@ function WorkSelector({
             key={`${work.workId}-${work.permalink}`}
             type="button"
             onClick={() => handleExistingSelect(work.workId)}
-            className="flex flex-col gap-1 rounded border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-cyan-200 hover:bg-cyan-50 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-cyan-500/40 dark:hover:bg-slate-900"
+            className="flex flex-col gap-1 rounded-lg bg-slate-50 px-4 py-3 text-left ring-1 ring-inset ring-slate-200 transition hover:bg-primary-50 hover:ring-primary-200 dark:bg-white/5 dark:ring-white/10 dark:hover:bg-primary-900/20 dark:hover:ring-primary-800"
           >
             <span className="font-semibold text-slate-800 dark:text-slate-100">{work.title || work.workId}</span>
             {work.composer && (
               <span className="text-xs text-slate-600 dark:text-slate-400">Composer: {work.composer}</span>
             )}
-            <span className="text-xs text-cyan-700 dark:text-cyan-300">ID: {work.workId}</span>
+            <span className="text-xs text-primary-600 dark:text-primary-400">ID: {work.workId}</span>
           </button>
         ))}
         {combinedWorks.length === 0 && (
@@ -370,7 +371,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
   };
 
   return (
-    <section className="grid gap-6 rounded-xl border border-slate-200 bg-white p-6 shadow dark:border-slate-800 dark:bg-slate-900/70">
+    <section className="grid gap-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-slate-900/5 dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -394,7 +395,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
         <button
           type="button"
           onClick={onReset}
-          className="rounded bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-700"
+          className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20"
         >
           Choose different work
         </button>
@@ -410,7 +411,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
             rows={3}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-          className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="mt-2 block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
           />
         </div>
 
@@ -424,7 +425,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
             value={commitMessage}
             onChange={(event) => setCommitMessage(event.target.value)}
             placeholder="Describe your change"
-          className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="mt-2 block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
           />
         </div>
 
@@ -468,7 +469,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
             id="targetSource"
             value={targetSourceId}
             onChange={(e) => setTargetSourceId(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className="mt-2 block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
           >
             <option value="new">New source</option>
             {sources.map((s) => (
@@ -483,22 +484,42 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
           <label className="text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="file">
             Score file (.mscz, .mxl, .xml)
           </label>
-          <input
-            id="file"
-            name="file"
-            type="file"
-            accept=".mscz,.mxl,.xml"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            className="mt-1 block w-full text-sm text-slate-700 file:mr-4 file:cursor-pointer file:rounded file:border-0 file:bg-cyan-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-cyan-700 dark:text-slate-300"
-            required
-          />
+          <div className="mt-2 flex justify-center rounded-lg border border-dashed border-slate-900/25 px-6 py-10 dark:border-white/25">
+            <div className="text-center">
+              <div className="mt-4 flex text-sm leading-6 text-slate-600 dark:text-slate-400">
+                <label
+                  htmlFor="file"
+                  className="relative cursor-pointer rounded-md font-semibold text-primary-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-primary-600 focus-within:ring-offset-2 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+                >
+                  <span>Upload a file</span>
+                  <input
+                    id="file"
+                    name="file"
+                    type="file"
+                    accept=".mscz,.mxl,.xml"
+                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                    className="sr-only"
+                    required
+                  />
+                </label>
+                <p className="pl-1">or drag and drop</p>
+              </div>
+              <p className="text-xs leading-5 text-slate-600 dark:text-slate-400">
+                {file ? (
+                  <span className="font-semibold text-primary-600 dark:text-primary-400">{file.name}</span>
+                ) : (
+                  "MusicXML (*.mxl, *.xml) or MuseScore (*.mscz)"
+                )}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <button
             type="submit"
             disabled={status.state === "submitting"}
-          className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {status.state === "submitting" ? "Uploading…" : "Upload source"}
           </button>
