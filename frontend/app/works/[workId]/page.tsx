@@ -28,6 +28,7 @@ import { getApiAuthHeaders } from "../../lib/authToken";
 import { fetchBackendSession, BackendSessionUser } from "../../lib/server-session";
 import { prunePendingSourcesAction, deleteAllSourcesAction } from "./admin-actions";
 import DeleteSourceButton from "./delete-source-button";
+import LazyDetails from "../../components/lazy-details";
 // (no client branch section components)
 
 const MINIO_PUBLIC_BASE = process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL;
@@ -365,7 +366,7 @@ async function SourceCard({
     const res = await fetch(`${INTERNAL_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/branches`, { headers, cache: 'no-store' });
     const data = res.ok ? await res.json() : {};
     declaredBranches = Array.isArray(data?.branches) ? (data.branches as any[]).map((b) => b.name as string) : [];
-  } catch {}
+  } catch { }
   const initialBranches = Array.from(new Set(["trunk", ...declaredBranches, ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
   const isOwner =
     !!currentUser &&
@@ -495,7 +496,7 @@ async function SourceCard({
       </div>
 
       {latest && (
-      <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
           <div>
             <p>
               Latest revision: <span className="font-mono text-cyan-700 dark:text-cyan-300">{latest.revisionId}</span>
@@ -595,8 +596,14 @@ async function SourceCard({
       </details>
 
       {source.derivatives?.normalizedMxl && (
-        <details className="group border-t border-slate-200 dark:border-slate-800">
-          <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">Score preview (MXL)</summary>
+        <LazyDetails
+          className="group border-t border-slate-200 dark:border-slate-800"
+          summary={
+            <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
+              Score preview (MXL)
+            </summary>
+          }
+        >
           <div className="px-5 pb-5">
             <MxlViewer
               key={source.latestRevisionId || source.sourceId}
@@ -605,12 +612,18 @@ async function SourceCard({
               revisionId={source.latestRevisionId}
             />
           </div>
-        </details>
+        </LazyDetails>
       )}
 
       {source.derivatives?.pdf && (
-        <details className="group border-t border-slate-200 dark:border-slate-800">
-          <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">Score preview (PDF)</summary>
+        <LazyDetails
+          className="group border-t border-slate-200 dark:border-slate-800"
+          summary={
+            <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
+              Score preview (PDF)
+            </summary>
+          }
+        >
           <div className="px-5 pb-5">
             <PdfViewer
               key={(source.latestRevisionId || source.sourceId) + '-pdf'}
@@ -619,7 +632,7 @@ async function SourceCard({
               revisionId={source.latestRevisionId}
             />
           </div>
-        </details>
+        </LazyDetails>
       )}
 
       <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
@@ -697,7 +710,7 @@ function StorageBadge({
   }
   const content = (
     <>
-    <span className="font-semibold text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="font-semibold text-slate-700 dark:text-slate-200">{label}</span>
       <span className="text-slate-500 dark:text-slate-400">• {formatBytes(locator.sizeBytes)}</span>
     </>
   );
@@ -829,7 +842,7 @@ function RevisionRow({ revision, workId, sourceId }: { revision: SourceRevisionV
               validationStatus={revision.validation.status}
             />
           </div>
-      ) : (
+        ) : (
           <span className="text-slate-500">No artifacts yet</span>
         )}
       </td>
