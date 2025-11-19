@@ -23,7 +23,8 @@ describe("LazyDetails", () => {
         );
 
         const details = screen.getByText("Summary").closest("details")!;
-        fireEvent.toggle(details);
+        details.open = true;
+        fireEvent(details, new Event("toggle"));
 
         expect(screen.getByTestId("content")).toBeInTheDocument();
     });
@@ -38,12 +39,13 @@ describe("LazyDetails", () => {
         const details = screen.getByText("Summary").closest("details")!;
 
         // Open
-        fireEvent.toggle(details);
+        details.open = true;
+        fireEvent(details, new Event("toggle"));
         expect(screen.getByTestId("content")).toBeInTheDocument();
 
         // Close (manually set open to false and fire toggle, mimicking browser behavior)
         details.open = false;
-        fireEvent.toggle(details);
+        fireEvent(details, new Event("toggle"));
 
         // Content should still be in the DOM (just hidden by details behavior, but rendered by React)
         expect(screen.getByTestId("content")).toBeInTheDocument();

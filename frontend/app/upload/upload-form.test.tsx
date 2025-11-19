@@ -89,7 +89,7 @@ describe("UploadForm", () => {
     Object.defineProperty(fileList, '0', { value: file });
     Object.defineProperty(fileList, 'length', { value: 1 });
     Object.defineProperty(fileList, 'item', {
-      value: function(index: number) { return index === 0 ? file : null; }
+      value: function (index: number) { return index === 0 ? file : null; }
     });
 
     Object.defineProperty(input, 'files', {
@@ -567,8 +567,8 @@ describe("UploadForm", () => {
 
     // Check step 1 is active initially
     const indicators = container.querySelectorAll("ol.flex li");
-    expect(indicators[0]).toHaveClass("text-cyan-700");
-    expect(indicators[1]).toHaveClass("text-slate-600");
+    expect(indicators[0]).toHaveClass("text-primary-600");
+    expect(indicators[2]).toHaveClass("text-slate-500");
 
     // Select a work
     const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
@@ -580,7 +580,7 @@ describe("UploadForm", () => {
 
     // Check step 2 is now active
     const updatedIndicators = container.querySelectorAll("ol.flex li");
-    expect(updatedIndicators[1]).toHaveClass("text-cyan-700");
+    expect(updatedIndicators[2]).toHaveClass("text-primary-600");
   });
 
   it("clears errors when query changes in search", async () => {
