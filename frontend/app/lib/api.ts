@@ -176,9 +176,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
       : (init?.cache === "no-store"
         ? undefined
         : {
-            revalidate: 30,
-            ...(init?.next ?? {})
-          })
+          revalidate: 30,
+          ...(init?.next ?? {})
+        })
   });
 
   if (response.status === 404) {
@@ -228,7 +228,7 @@ export async function fetchWorksPaginated(options?: { limit?: number; offset?: n
 
 export async function fetchWorkDetail(workId: string): Promise<WorkDetail> {
   // Always fetch fresh data so revision history reflects immediately after uploads
-  return fetchJson<WorkDetail>(`${getApiBase()}/works/${encodeURIComponent(workId)}` , {
+  return fetchJson<WorkDetail>(`${getApiBase()}/works/${encodeURIComponent(workId)}`, {
     cache: "no-store",
     next: { revalidate: 0 }
   });
@@ -443,4 +443,62 @@ export async function searchUsers(
     offset: String(offset)
   });
   return await fetchJson<UserSearchResponse>(`${getApiBase()}/search/users?${params.toString()}`);
+}
+
+export interface SearchWorksResponse {
+  works: WorkSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  query: string;
+}
+
+// Backend search response structure
+interface MeiliSearchResponse {
+  hits: WorkSummary[];
+  estimatedTotalHits: number;
+  processingTimeMs: number;
+  query: string;
+}
+
+export async function searchWorks(
+  query: string,
+  options?: { limit?: number; offset?: number; sort?: string }
+): Promise<SearchWorksResponse> {
+  const trimmed = query.trim();
+  const limit = options?.limit ?? 20;
+  const offset = options?.offset ?? 0;
+
+  if (!trimmed) {
+    // Return empty results if no query
+    return { works: [], total: 0, limit, offset, query: '' };
+  }
+
+  try {
+    const params = new URLSearchParams({
+      q: trimmed,
+      limit: String(limit),
+      offset: String(offset)
+    });
+    if (options?.sort) {
+      params.set('sort', options.sort);
+    }
+
+    const url = `${getApiBase()}/search/works?${params.toString()}`;
+    const response = await fetchJson<MeiliSearchResponse>(url);
+
+    // Map backend response to frontend format
+    return {
+      works: response.hits,
+      total: response.estimatedTotalHits,
+      limit,
+      offset,
+      query: response.query
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      return { works: [], total: 0, limit, offset, query: trimmed };
+    }
+    throw error;
+  }
 }

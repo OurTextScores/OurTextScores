@@ -17,3 +17,4 @@ smoke-retest.log
 data/
 node_modules/
 package-lock.json
+import-logs.txt
