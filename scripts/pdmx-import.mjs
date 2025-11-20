@@ -208,29 +208,105 @@ async function processCandidate(candidate, csvLookup) {
       return;
     }
 
-    const uploadResult = await uploadSource({
-      workId: targetWorkId,
-      mxlPath,
-      label,
-      description,
-      license,
-      licenseUrl
-    });
+    // Check if source already exists to avoid duplicates
+    const workDetail = await fetchJson(`${CONFIG.apiBase}/works/${encodeURIComponent(targetWorkId)}`);
+    const existingSources = workDetail.data?.sources || [];
+    const alreadyExists = existingSources.some(s => s.label === label);
 
-    state.successes.push({
-      id: idLabel,
-      workId: targetWorkId,
-      sourceId: uploadResult?.sourceId,
-      revisionId: uploadResult?.revisionId,
-      message: uploadResult?.message,
-      scoreId
-    });
+    if (alreadyExists) {
+      console.log(`SKIP upload ${idLabel}: source with label "${label}" already exists.`);
+      state.skipped.push({ id: idLabel, reason: 'Source already exists', workId: targetWorkId });
+    } else {
+      const uploadResult = await uploadSource({
+        workId: targetWorkId,
+        mxlPath,
+        label,
+        description,
+        license,
+        licenseUrl
+      });
 
-    console.log(`OK ${idLabel}: work ${targetWorkId}, source ${uploadResult?.sourceId}, ${mxlPath}`);
+      state.successes.push({
+        id: idLabel,
+        workId: targetWorkId,
+        sourceId: uploadResult?.sourceId,
+        revisionId: uploadResult?.revisionId,
+        message: uploadResult?.message,
+        scoreId
+      });
+
+      console.log(`OK ${idLabel}: work ${targetWorkId}, source ${uploadResult?.sourceId}, ${mxlPath}`);
+    }
+
+    // 3. Update metadata if we parsed it successfully
+    const parsed = parseTitle(workTitle);
+    if (parsed && !CONFIG.dryRun) {
+      try {
+        await updateMetadata(targetWorkId, parsed);
+        console.log(`   -> Metadata updated: ${JSON.stringify(parsed)}`);
+      } catch (err) {
+        console.error(`   -> Metadata update failed: ${err.message}`);
+        state.errors.push({ id: idLabel, reason: 'Metadata update failed', detail: err.message });
+      }
+    } else if (parsed && CONFIG.dryRun) {
+      console.log(`   -> Would update metadata: ${JSON.stringify(parsed)}`);
+    }
+
   } catch (error) {
     state.errors.push({ id: idLabel, reason: error.message || 'Unknown error' });
     console.error(`ERROR ${idLabel}: ${error.message || error}`);
   }
+}
+
+async function updateMetadata(workId, updates) {
+  const res = await fetchJson(`${CONFIG.apiBase}/works/${encodeURIComponent(workId)}/metadata`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  });
+  if (!res.ok) {
+    throw new Error(`Metadata update failed: ${res.error || res.statusText}`);
+  }
+  return res.data;
+}
+
+function parseTitle(rawTitle) {
+  // Expected format: "Title, Catalog (Composer)"
+  // Examples:
+  // "Hungarian Rhapsody No.4, S.244/4 (Liszt, Franz)"
+  // "Symphony No.8, D.759 (Schubert, Franz)"
+
+  if (!rawTitle) return null;
+
+  // Regex breakdown:
+  // ^(.*)       -> Capture title (greedy, so it takes everything up to the last comma-space-catalog sequence)
+  // ,           -> Separator
+  // \s+         -> Space
+  // (.*?)       -> Capture catalog (non-greedy, any character)
+  // \s+         -> Space
+  // \((.*)\)$   -> Capture composer in parens
+  const regex = /^(.*),\s+(.*?)\s+\((.*)\)$/;
+  const match = rawTitle.match(regex);
+
+  if (match) {
+    return {
+      title: match[1].trim(),
+      catalogNumber: match[2].trim(),
+      composer: match[3].trim()
+    };
+  }
+
+  // Fallback: try to just extract composer if present at the end
+  // "Some Title (Composer)"
+  const composerMatch = rawTitle.match(/^(.*)\s+\((.*)\)$/);
+  if (composerMatch) {
+    return {
+      title: composerMatch[1].trim(),
+      composer: composerMatch[2].trim()
+    };
+  }
+
+  return { title: rawTitle };
 }
 
 async function ensureWork({ workId, imslpUrl }) {
