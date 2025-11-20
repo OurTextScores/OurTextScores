@@ -59,6 +59,28 @@ export class SourceRevision {
   @Prop({ trim: true })
   changeSummary?: string;
 
+  @Prop({
+    trim: true,
+    enum: [
+      'CC0',
+      'CC-BY-4.0',
+      'CC-BY-SA-4.0',
+      'CC-BY-NC-4.0',
+      'CC-BY-NC-SA-4.0',
+      'CC-BY-ND-4.0',
+      'Public Domain',
+      'All Rights Reserved',
+      'Other'
+    ]
+  })
+  license?: string;
+
+  @Prop({ trim: true })
+  licenseUrl?: string;
+
+  @Prop({ trim: true })
+  licenseAttribution?: string;
+
   // Review/approval lifecycle
   @Prop({ trim: true, default: 'approved', index: true })
   status!: 'approved' | 'pending_approval' | 'rejected' | 'withdrawn';

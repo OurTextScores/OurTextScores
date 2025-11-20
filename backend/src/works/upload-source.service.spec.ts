@@ -107,7 +107,7 @@ describe('UploadSourceService (unit)', () => {
     derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: { canonicalXml: { bucket: 'der', objectKey: 'c', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'aa' }, contentType: 'application/xml', lastModifiedAt: new Date() }, linearizedXml: { bucket: 'der', objectKey: 'l', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'bb' }, contentType: 'text/plain', lastModifiedAt: new Date() } }, manifest: { bucket: 'der', objectKey: 'm', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'cc' }, contentType: 'application/json', lastModifiedAt: new Date() } });
     fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
-    ;(service as any).generateMusicDiffAsync = jest.fn().mockResolvedValue(undefined);
+    ; (service as any).generateMusicDiffAsync = jest.fn().mockResolvedValue(undefined);
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
     const res = await service.uploadRevision('10', 'x', {}, file, 'pid');
@@ -213,5 +213,64 @@ describe('UploadSourceService (unit)', () => {
     });
     expect(sourceRevisionModel.create).not.toHaveBeenCalled();
     expect(sourceModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('upload() saves license to revision', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.xml', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('content'));
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+
+    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const res = await service.upload('10', { label: 'Source with license', license: 'CC0', licenseUrl: 'http://cc0' }, file, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      license: 'CC0',
+      licenseUrl: 'http://cc0'
+    }));
+  });
+
+  it('uploadRevision() saves license to revision', async () => {
+    sourceModel.findOne.mockReturnValue({ lean: () => ({}) });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
+    ; (service as any).generateMusicDiffAsync = jest.fn().mockResolvedValue(undefined);
+
+    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const res = await service.uploadRevision('10', 'x', { license: 'CC-BY-4.0' }, file, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      license: 'CC-BY-4.0'
+    }));
+  });
+
+  it('uploadRevision() inherits license from previous revision (via Source) if not provided', async () => {
+    // Mock Source with a license (representing the state from previous revision)
+    sourceModel.findOne.mockReturnValue({ lean: () => ({ license: 'CC0', licenseUrl: 'http://cc0' }) });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
+    ; (service as any).generateMusicDiffAsync = jest.fn().mockResolvedValue(undefined);
+
+    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    // No license provided in request
+    const res = await service.uploadRevision('10', 'x', {}, file, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      license: 'CC0',
+      licenseUrl: 'http://cc0'
+    }));
   });
 });

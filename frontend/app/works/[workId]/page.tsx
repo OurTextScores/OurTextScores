@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import {
   fetchWorkDetail,
@@ -23,8 +24,7 @@ import RevisionHistory from "./revision-history";
 import DiffPreview from "./diff-preview";
 import CopyDownload from "../../components/copy-download";
 import WatchControls from "./watch-controls";
-import { getApiBase, getPublicApiBase } from "../../lib/api";
-import { getApiAuthHeaders } from "../../lib/authToken";
+import { getPublicApiBase } from "../../lib/api";
 import { fetchBackendSession, BackendSessionUser } from "../../lib/server-session";
 import { prunePendingSourcesAction, deleteAllSourcesAction } from "./admin-actions";
 import DeleteSourceButton from "./delete-source-button";
@@ -34,7 +34,6 @@ import StopPropagation from "../../components/stop-propagation";
 
 const MINIO_PUBLIC_BASE = process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL;
 const PUBLIC_API_BASE = getPublicApiBase();
-const INTERNAL_API_BASE = getApiBase();
 
 function buildObjectUrl(locator: StorageLocator): string | undefined {
   if (!MINIO_PUBLIC_BASE) return undefined;
@@ -313,7 +312,7 @@ function ImslpMetadataCard({
   );
 }
 
-async function SourceCard({
+function SourceCard({
   source,
   workId,
   currentUser
@@ -323,15 +322,7 @@ async function SourceCard({
   currentUser: BackendSessionUser | null;
 }) {
   const latest = source.revisions[0];
-  // Fetch declared branches (includes ones without fossil commits yet)
-  let declaredBranches: string[] = [];
-  try {
-    const headers = await getApiAuthHeaders();
-    const res = await fetch(`${INTERNAL_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/branches`, { headers, cache: 'no-store' });
-    const data = res.ok ? await res.json() : {};
-    declaredBranches = Array.isArray(data?.branches) ? (data.branches as any[]).map((b) => b.name as string) : [];
-  } catch { }
-  const initialBranches = Array.from(new Set(["trunk", ...declaredBranches, ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
+  const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
   const isOwner =
     !!currentUser &&
     !!(source as any).provenance?.uploadedByUserId &&
@@ -354,11 +345,11 @@ async function SourceCard({
   const canDeleteSource = isAdmin || (isOwner && !hasMultipleCreators);
 
   return (
-    <details className="group rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
-      <summary className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between cursor-pointer list-none">
+    <article className="rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold flex items-center gap-2">
-            <span className="transition-transform group-open:rotate-90 text-slate-400">▶</span>
+            <span className="text-slate-400">▶</span>
             {source.label}{" "}
             <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
               ({source.sourceType}, {source.format})
@@ -453,12 +444,14 @@ async function SourceCard({
             </Link>
           )}
           {/* Watch toggle */}
-          <WatchControls workId={workId} sourceId={source.sourceId} />
+          <Suspense fallback={<span className="rounded px-3 py-1 text-xs text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">Loading…</span>}>
+            <WatchControls workId={workId} sourceId={source.sourceId} />
+          </Suspense>
           {canDeleteSource && (
             <DeleteSourceButton workId={workId} sourceId={source.sourceId} />
           )}
         </StopPropagation>
-      </summary>
+      </div>
 
       {latest && (
         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
@@ -605,9 +598,11 @@ async function SourceCard({
         <UploadRevisionForm workId={workId} sourceId={source.sourceId} defaultBranch={(source.revisions[0]?.fossilBranch as any) ?? 'trunk'} initialBranches={initialBranches} />
       </div>
       <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
-        <BranchesPanel workId={workId} sourceId={source.sourceId} latestRevisionId={latest?.revisionId} />
+        <Suspense fallback={<div className="text-xs text-slate-500 dark:text-slate-400">Loading branches…</div>}>
+          <BranchesPanel workId={workId} sourceId={source.sourceId} latestRevisionId={latest?.revisionId} />
+        </Suspense>
       </div>
-    </details>
+    </article>
   );
 }
 

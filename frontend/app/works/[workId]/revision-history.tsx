@@ -22,6 +22,9 @@ type SourceRevisionView = {
   manifest?: StorageLocator;
   fossilArtifactId?: string;
   fossilBranch?: string;
+  license?: string;
+  licenseUrl?: string;
+  licenseAttribution?: string;
 };
 
 function formatDate(value?: string) {
@@ -93,6 +96,7 @@ export default function RevisionHistory({
               <th className="px-3 py-2">Seq</th>
               <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2">Message</th>
+              <th className="px-3 py-2">License</th>
               <th className="px-3 py-2">Artifacts</th>
               <th className="px-3 py-2">Fossil</th>
             </tr>
@@ -233,6 +237,20 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
         </div>
       </td>
       <td className="px-3 py-2">
+        {revision.license ? (
+          <div className="flex flex-col">
+            <span className="text-slate-700 dark:text-slate-300">{revision.license}</span>
+            {revision.licenseUrl && (
+              <a href={revision.licenseUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary-600 hover:underline dark:text-primary-400">
+                View License
+              </a>
+            )}
+          </div>
+        ) : (
+          <span className="text-slate-400">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2">
         {artifactsAvailable ? (
           <div className="flex flex-wrap gap-1">
             <StorageBadge
@@ -310,6 +328,6 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
           <span className="text-slate-500">—</span>
         )}
       </td>
-    </tr>
+    </tr >
   );
 }

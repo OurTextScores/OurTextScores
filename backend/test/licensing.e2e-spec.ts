@@ -271,6 +271,19 @@ describe('User Content Licensing (e2e)', () => {
       const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-4.0');
       expect(source.licenseAttribution).toBe('New Author');
+
+      // Verify revision history preserves licenses
+      const revisions = source.revisions;
+      expect(revisions).toHaveLength(2);
+
+      // Latest revision (seq 2)
+      const rev2 = revisions.find(r => r.sequenceNumber === 2);
+      expect(rev2.license).toBe('CC-BY-4.0');
+      expect(rev2.licenseAttribution).toBe('New Author');
+
+      // Previous revision (seq 1)
+      const rev1 = revisions.find(r => r.sequenceNumber === 1);
+      expect(rev1.license).toBe('CC0');
     });
   });
 

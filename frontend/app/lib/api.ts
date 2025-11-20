@@ -164,16 +164,21 @@ interface ImslpEnsureResult {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const explicitNext = init?.next;
   const response = await fetch(url, {
     ...init,
     headers: {
       "Accept": "application/json",
       ...(init?.headers ?? {})
     },
-    next: {
-      revalidate: 30,
-      ...(init?.next ?? {})
-    }
+    next: explicitNext !== undefined
+      ? explicitNext
+      : (init?.cache === "no-store"
+        ? undefined
+        : {
+            revalidate: 30,
+            ...(init?.next ?? {})
+          })
   });
 
   if (response.status === 404) {

@@ -70,7 +70,7 @@ export class UploadSourceService {
     private readonly sourceModel: Model<SourceDocument>,
     @InjectModel(SourceRevision.name)
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>
-  ) {}
+  ) { }
 
   async uploadRevision(
     workId: string,
@@ -256,6 +256,9 @@ export class UploadSourceService {
       derivatives: derivativeOutcome.derivatives,
       manifest,
       changeSummary: request.commitMessage?.trim() || 'New revision',
+      license: request.license ?? existing.license,
+      licenseUrl: request.licenseUrl ?? existing.licenseUrl,
+      licenseAttribution: request.licenseAttribution ?? existing.licenseAttribution,
       status,
       approval
     });
@@ -273,7 +276,13 @@ export class UploadSourceService {
           validation: validationState,
           provenance,
           derivatives: setLatest ? derivativeOutcome.derivatives : (existing.derivatives ?? undefined),
-          ...(setLatest ? { latestRevisionId: revisionId, latestRevisionAt: receivedAt } : {})
+          ...(setLatest ? {
+            latestRevisionId: revisionId,
+            latestRevisionAt: receivedAt,
+            license: request.license ?? existing.license,
+            licenseUrl: request.licenseUrl ?? existing.licenseUrl,
+            licenseAttribution: request.licenseAttribution ?? existing.licenseAttribution
+          } : {})
         }
       }
     );
@@ -299,7 +308,7 @@ export class UploadSourceService {
         sequenceNumber,
         currentCanonical,
         previousCanonical
-      ).catch(() => {});
+      ).catch(() => { });
     }
     this.progress.publish(progressId, 'Done', 'done');
     this.progress.complete(progressId);
@@ -500,6 +509,9 @@ export class UploadSourceService {
       derivatives: derivativeOutcome.derivatives,
       manifest,
       changeSummary: request.commitMessage?.trim() || (sequenceNumber === 1 ? 'Initial upload' : 'New revision'),
+      license: request.license,
+      licenseUrl: request.licenseUrl,
+      licenseAttribution: request.licenseAttribution,
       status,
       approval
     });
@@ -639,59 +651,75 @@ export class UploadSourceService {
       // Update revision derivatives
       await this.sourceRevisionModel.updateOne(
         { workId, sourceId, revisionId },
-        { $set: { 'derivatives.musicDiffReport': {
-          bucket: locator.bucket,
-          objectKey: locator.objectKey,
-          sizeBytes: diffBuffer.length,
-          checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(diffBuffer).digest('hex') },
-          contentType: 'text/plain',
-          lastModifiedAt: new Date()
-        }, ...(htmlLocator ? { 'derivatives.musicDiffHtml': {
-          bucket: htmlLocator.bucket,
-          objectKey: htmlLocator.objectKey,
-          sizeBytes: htmlSize,
-          checksum: { algorithm: 'sha256', hexDigest: htmlDigest },
-          contentType: 'text/html',
-          lastModifiedAt: new Date()
-        } } : {}), ...(pdfLocator ? { 'derivatives.musicDiffPdf': {
-          bucket: pdfLocator.bucket,
-          objectKey: pdfLocator.objectKey,
-          sizeBytes: pdfSize,
-          checksum: { algorithm: 'sha256', hexDigest: pdfDigest },
-          contentType: 'application/pdf',
-          lastModifiedAt: new Date()
-        } } : {}) } }
+        {
+          $set: {
+            'derivatives.musicDiffReport': {
+              bucket: locator.bucket,
+              objectKey: locator.objectKey,
+              sizeBytes: diffBuffer.length,
+              checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(diffBuffer).digest('hex') },
+              contentType: 'text/plain',
+              lastModifiedAt: new Date()
+            }, ...(htmlLocator ? {
+              'derivatives.musicDiffHtml': {
+                bucket: htmlLocator.bucket,
+                objectKey: htmlLocator.objectKey,
+                sizeBytes: htmlSize,
+                checksum: { algorithm: 'sha256', hexDigest: htmlDigest },
+                contentType: 'text/html',
+                lastModifiedAt: new Date()
+              }
+            } : {}), ...(pdfLocator ? {
+              'derivatives.musicDiffPdf': {
+                bucket: pdfLocator.bucket,
+                objectKey: pdfLocator.objectKey,
+                sizeBytes: pdfSize,
+                checksum: { algorithm: 'sha256', hexDigest: pdfDigest },
+                contentType: 'application/pdf',
+                lastModifiedAt: new Date()
+              }
+            } : {})
+          }
+        }
       ).exec();
       // Also update source.latest derivatives if this is latest
       await this.sourceModel.updateOne(
         { workId, sourceId, latestRevisionId: revisionId },
-        { $set: { 'derivatives.musicDiffReport': {
-          bucket: locator.bucket,
-          objectKey: locator.objectKey,
-          sizeBytes: diffBuffer.length,
-          checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(diffBuffer).digest('hex') },
-          contentType: 'text/plain',
-          lastModifiedAt: new Date()
-        }, ...(htmlLocator ? { 'derivatives.musicDiffHtml': {
-          bucket: htmlLocator.bucket,
-          objectKey: htmlLocator.objectKey,
-          sizeBytes: htmlSize,
-          checksum: { algorithm: 'sha256', hexDigest: htmlDigest },
-          contentType: 'text/html',
-          lastModifiedAt: new Date()
-        } } : {}), ...(pdfLocator ? { 'derivatives.musicDiffPdf': {
-          bucket: pdfLocator.bucket,
-          objectKey: pdfLocator.objectKey,
-          sizeBytes: pdfSize,
-          checksum: { algorithm: 'sha256', hexDigest: pdfDigest },
-          contentType: 'application/pdf',
-          lastModifiedAt: new Date()
-        } } : {}) } }
+        {
+          $set: {
+            'derivatives.musicDiffReport': {
+              bucket: locator.bucket,
+              objectKey: locator.objectKey,
+              sizeBytes: diffBuffer.length,
+              checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(diffBuffer).digest('hex') },
+              contentType: 'text/plain',
+              lastModifiedAt: new Date()
+            }, ...(htmlLocator ? {
+              'derivatives.musicDiffHtml': {
+                bucket: htmlLocator.bucket,
+                objectKey: htmlLocator.objectKey,
+                sizeBytes: htmlSize,
+                checksum: { algorithm: 'sha256', hexDigest: htmlDigest },
+                contentType: 'text/html',
+                lastModifiedAt: new Date()
+              }
+            } : {}), ...(pdfLocator ? {
+              'derivatives.musicDiffPdf': {
+                bucket: pdfLocator.bucket,
+                objectKey: pdfLocator.objectKey,
+                sizeBytes: pdfSize,
+                checksum: { algorithm: 'sha256', hexDigest: pdfDigest },
+                contentType: 'application/pdf',
+                lastModifiedAt: new Date()
+              }
+            } : {})
+          }
+        }
       ).exec();
     } catch (err) {
       // Best effort; swallow errors
     } finally {
-      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => { });
     }
   }
 

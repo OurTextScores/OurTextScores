@@ -67,6 +67,9 @@ export interface SourceRevisionView {
   fossilArtifactId?: string;
   fossilParentArtifactIds: string[];
   fossilBranch?: string;
+  license?: string;
+  licenseUrl?: string;
+  licenseAttribution?: string;
 }
 
 export interface SourceView {
@@ -117,7 +120,7 @@ export class WorksService {
     private readonly notifications: NotificationsService,
     private readonly searchService: SearchService,
     private readonly usersService: UsersService
-  ) {}
+  ) { }
 
   async findAll(options?: { limit?: number; offset?: number }): Promise<PaginatedWorksResponse> {
     const limit = options?.limit ?? 20;
@@ -407,7 +410,10 @@ except Exception:
         validation: validationForView,
         fossilArtifactId: revision.fossilArtifactId,
         fossilParentArtifactIds: revision.fossilParentArtifactIds ?? [],
-        fossilBranch: (revision as any).fossilBranch ?? undefined
+        fossilBranch: (revision as any).fossilBranch ?? undefined,
+        license: (revision as any).license,
+        licenseUrl: (revision as any).licenseUrl,
+        licenseAttribution: (revision as any).licenseAttribution
       });
       revisionsBySource.set(revision.sourceId, list);
     }
@@ -440,10 +446,12 @@ except Exception:
   async prunePendingSources(workId: string): Promise<{ removed: number }> {
     // Define "pending" sources as those lacking a linearized derivative
     const pendingSources = await this.sourceModel
-      .find({ workId, $or: [
-        { derivatives: { $exists: false } },
-        { 'derivatives.linearizedXml': { $exists: false } }
-      ] })
+      .find({
+        workId, $or: [
+          { derivatives: { $exists: false } },
+          { 'derivatives.linearizedXml': { $exists: false } }
+        ]
+      })
       .lean()
       .exec();
 
@@ -475,11 +483,11 @@ except Exception:
 
       // Delete objects (best-effort)
       for (const obj of toDelete) {
-        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => {});
+        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => { });
       }
 
       // Remove fossil repository if created
-      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => {});
+      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => { });
 
       // Remove DB docs
       await this.sourceRevisionModel.deleteMany({ workId, sourceId: src.sourceId }).exec();
@@ -547,10 +555,10 @@ except Exception:
       }
 
       for (const obj of toDelete) {
-        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => {});
+        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => { });
       }
 
-      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => {});
+      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => { });
 
       await this.sourceRevisionModel.deleteMany({ workId, sourceId: src.sourceId }).exec();
       await this.sourceModel.deleteOne({ workId, sourceId: src.sourceId }).exec();
@@ -625,9 +633,9 @@ except Exception:
       add(rev.manifest);
     }
     for (const obj of toDelete) {
-      await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => {});
+      await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => { });
     }
-    await this.fossilService.removeRepository(workId, sourceId).catch(() => {});
+    await this.fossilService.removeRepository(workId, sourceId).catch(() => { });
     await this.sourceRevisionModel.deleteMany({ workId, sourceId }).exec();
     await this.sourceModel.deleteOne({ workId, sourceId }).exec();
     await this.recomputeWorkStats(workId);

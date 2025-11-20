@@ -8,6 +8,19 @@ import { UploadProgressStepper, type UploadProgressStatus } from "../../componen
 
 const API_BASE = getPublicApiBase();
 
+const LICENSE_OPTIONS = [
+  { value: '', label: '(No license specified)' },
+  { value: 'CC0', label: 'CC0 - Public Domain Dedication' },
+  { value: 'CC-BY-4.0', label: 'CC-BY 4.0 - Attribution' },
+  { value: 'CC-BY-SA-4.0', label: 'CC-BY-SA 4.0 - Attribution-ShareAlike' },
+  { value: 'CC-BY-NC-4.0', label: 'CC-BY-NC 4.0 - Attribution-NonCommercial' },
+  { value: 'CC-BY-NC-SA-4.0', label: 'CC-BY-NC-SA 4.0 - Attribution-NonCommercial-ShareAlike' },
+  { value: 'CC-BY-ND-4.0', label: 'CC-BY-ND 4.0 - Attribution-NoDerivatives' },
+  { value: 'Public Domain', label: 'Public Domain' },
+  { value: 'All Rights Reserved', label: 'All Rights Reserved (Copyright)' },
+  { value: 'Other', label: 'Other (specify URL)' }
+];
+
 export default function UploadRevisionForm({
   workId,
   sourceId,
@@ -30,6 +43,9 @@ export default function UploadRevisionForm({
   );
   const [branches, setBranches] = useState<string[]>(() => initialBranches || []);
   const [busy, setBusy] = useState(false);
+  const [license, setLicense] = useState("");
+  const [licenseUrl, setLicenseUrl] = useState("");
+  const [licenseAttribution, setLicenseAttribution] = useState("");
   const [status, setStatus] = useState<UploadProgressStatus>("idle");
   const [msg, setMsg] = useState<string | null>(null);
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
@@ -94,6 +110,9 @@ export default function UploadRevisionForm({
         form.append("createBranch", "true");
         form.append("branchName", branchName.trim());
       }
+      if (license) form.append("license", license);
+      if (licenseUrl.trim()) form.append("licenseUrl", licenseUrl.trim());
+      if (licenseAttribution.trim()) form.append("licenseAttribution", licenseAttribution.trim());
       const res = await fetch(
         `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/revisions`,
         { method: "POST", body: form, headers: { 'X-Progress-Id': progressId } }
@@ -108,6 +127,9 @@ export default function UploadRevisionForm({
       setCommitMessage("");
       setBranchMode('existing');
       setBranchName("trunk");
+      setLicense("");
+      setLicenseUrl("");
+      setLicenseAttribution("");
       router.refresh();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : String(err));
@@ -159,7 +181,6 @@ export default function UploadRevisionForm({
         {branchMode==='new' && (
           <input type="text" placeholder="branch name" value={branchName} onChange={(e) => setBranchName(e.target.value)} className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500" />
         )}
-
         <button
           type="submit"
           disabled={busy || !file}
@@ -167,6 +188,35 @@ export default function UploadRevisionForm({
         >
           {busy ? "Uploading…" : "Upload new revision"}
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={license}
+          onChange={(e) => setLicense(e.target.value)}
+          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+        >
+          {LICENSE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        {license === 'Other' && (
+          <input
+            type="url"
+            placeholder="License URL (required for Other)"
+            value={licenseUrl}
+            onChange={(e) => setLicenseUrl(e.target.value)}
+            className="flex-1 min-w-[16rem] rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
+          />
+        )}
+        {(license.startsWith('CC-BY') || license === 'Public Domain') && license !== '' && (
+          <input
+            type="text"
+            placeholder="Attribution (optional)"
+            value={licenseAttribution}
+            onChange={(e) => setLicenseAttribution(e.target.value)}
+            className="flex-1 min-w-[14rem] rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
+          />
+        )}
       </div>
       {events.length > 0 && (
         <UploadProgressStepper

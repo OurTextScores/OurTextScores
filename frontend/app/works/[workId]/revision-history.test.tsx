@@ -262,4 +262,35 @@ describe('RevisionHistory', () => {
     // Should render empty state or at least table headers
     expect(screen.getByText(/Filter by branch/i)).toBeInTheDocument();
   });
+
+  it('displays license information', () => {
+    const revisionsWithLicense = [
+      {
+        ...mockRevisions[0],
+        license: 'CC0',
+        licenseUrl: 'https://creativecommons.org/publicdomain/zero/1.0/'
+      },
+      {
+        ...mockRevisions[1],
+        license: 'All Rights Reserved'
+      }
+    ];
+
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        revisions={revisionsWithLicense}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    expect(screen.getByText('CC0')).toBeInTheDocument();
+    expect(screen.getByText('All Rights Reserved')).toBeInTheDocument();
+
+    const licenseLink = screen.getByText('View License');
+    expect(licenseLink).toBeInTheDocument();
+    expect(licenseLink.closest('a')).toHaveAttribute('href', 'https://creativecommons.org/publicdomain/zero/1.0/');
+  });
 });
