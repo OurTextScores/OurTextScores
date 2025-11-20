@@ -29,6 +29,7 @@ import { fetchBackendSession, BackendSessionUser } from "../../lib/server-sessio
 import { prunePendingSourcesAction, deleteAllSourcesAction } from "./admin-actions";
 import DeleteSourceButton from "./delete-source-button";
 import LazyDetails from "../../components/lazy-details";
+import StopPropagation from "../../components/stop-propagation";
 // (no client branch section components)
 
 const MINIO_PUBLIC_BASE = process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL;
@@ -117,19 +118,7 @@ export default async function WorkDetailPage({
               </div>
             </div>
             <div className="flex flex-wrap gap-2 text-sm">
-              {work.availableFormats.map((format) => (
-                <span
-                  key={format}
-                  className="rounded-full bg-white/50 px-3 py-1 font-medium text-slate-700 ring-1 ring-slate-900/5 backdrop-blur-sm dark:bg-white/5 dark:text-slate-300 dark:ring-white/10"
-                >
-                  {format}
-                </span>
-              ))}
-              {work.availableFormats.length === 0 && (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-500 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700">
-                  No derivatives yet
-                </span>
-              )}
+              {/* Badges removed as per request */}
             </div>
           </div>
         </header>
@@ -253,32 +242,11 @@ function ImslpMetadataCard({
         </p>
       )}
 
-      {raw?._id && (
-        <div className="mb-2 text-xs text-slate-600 dark:text-slate-400">Record ID: <span className="font-mono text-slate-700 dark:text-slate-300">{raw._id}</span></div>
+      {refreshedAt && (
+        <p className="-mt-2 mb-3 text-xs text-slate-600 dark:text-slate-400">
+          Refreshed at: {new Date(refreshedAt).toLocaleString()}
+        </p>
       )}
-
-      <dl className="grid gap-4 text-sm md:grid-cols-3">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">Title</dt>
-          <dd className="text-slate-800 dark:text-slate-100">{displayTitle}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">Composer</dt>
-          <dd className="text-slate-800 dark:text-slate-100">{displayComposer || "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">Permalink</dt>
-          <dd className="truncate text-cyan-700 dark:text-cyan-300">
-            {permalink ? (
-              <Link href={permalink} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
-                {permalink}
-              </Link>
-            ) : (
-              "—"
-            )}
-          </dd>
-        </div>
-      </dl>
 
       {/* Files */}
       {Array.isArray(meta.files) && meta.files.length > 0 && (
@@ -386,30 +354,31 @@ async function SourceCard({
   const canDeleteSource = isAdmin || (isOwner && !hasMultipleCreators);
 
   return (
-    <article className="group rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between">
+    <details className="group rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
+      <summary className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between cursor-pointer list-none">
         <div>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <span className="transition-transform group-open:rotate-90 text-slate-400">▶</span>
             {source.label}{" "}
             <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
               ({source.sourceType}, {source.format})
             </span>
           </h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
             Original filename: {source.originalFilename || "—"}
           </p>
           {source.description && (
-            <p className="text-sm text-slate-700 dark:text-slate-300">{source.description}</p>
+            <p className="text-sm text-slate-700 dark:text-slate-300 pl-6">{source.description}</p>
           )}
-          <div className="mt-2">
+          <StopPropagation className="mt-2 pl-6">
             <EditSourceForm
               workId={workId}
               sourceId={source.sourceId}
               initial={{ label: source.label, description: source.description }}
             />
-          </div>
+          </StopPropagation>
           {source.license && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+            <StopPropagation className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 pl-6">
               <span className="font-semibold">License:</span>
               {source.license === 'Other' && source.licenseUrl ? (
                 <a
@@ -437,10 +406,10 @@ async function SourceCard({
                   · Attribution: {source.licenseAttribution}
                 </span>
               )}
-            </div>
+            </StopPropagation>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <StopPropagation className="flex flex-wrap items-center gap-2 pl-6 md:pl-0">
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ${statusColor(
               source.validation.status
@@ -488,16 +457,16 @@ async function SourceCard({
           {canDeleteSource && (
             <DeleteSourceButton workId={workId} sourceId={source.sourceId} />
           )}
-        </div>
-      </div>
+        </StopPropagation>
+      </summary>
 
       {latest && (
         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
           <div>
             <p>
-              Latest revision: <span className="font-mono text-cyan-700 dark:text-cyan-300">{latest.revisionId}</span>
+              Latest revision: <span className="font-mono text-cyan-700 dark:text-cyan-300">#{latest.sequenceNumber}</span>
             </p>
-            <p className="text-slate-600 dark:text-slate-400">Sequence #{latest.sequenceNumber} • {formatDate(latest.createdAt as unknown as string)}</p>
+            <p className="text-slate-600 dark:text-slate-400">{formatDate(latest.createdAt as unknown as string)}</p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <StorageBadge
@@ -638,7 +607,7 @@ async function SourceCard({
       <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
         <BranchesPanel workId={workId} sourceId={source.sourceId} latestRevisionId={latest?.revisionId} />
       </div>
-    </article>
+    </details>
   );
 }
 

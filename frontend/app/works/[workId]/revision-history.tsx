@@ -91,10 +91,8 @@ export default function RevisionHistory({
           <thead className="bg-slate-100 text-left uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
             <tr>
               <th className="px-3 py-2">Seq</th>
-              <th className="px-3 py-2">Revision</th>
               <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2">Message</th>
-              <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Artifacts</th>
               <th className="px-3 py-2">Fossil</th>
             </tr>
@@ -222,7 +220,6 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
       <td className="px-3 py-2 font-mono text-slate-800 dark:text-slate-200">{revision.sequenceNumber}</td>
-      <td className="px-3 py-2 font-mono text-xs text-cyan-700 dark:text-cyan-300">{revision.revisionId}</td>
       <td className="px-3 py-2">
         <div className="text-slate-800 dark:text-slate-200">{formatDate(revision.createdAt)}</div>
         <div className="flex items-center gap-1.5">
@@ -234,11 +231,6 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
         <div className="truncate text-slate-700 dark:text-slate-300" title={revision.changeSummary || ''}>
           {revision.changeSummary || '—'}
         </div>
-      </td>
-      <td className="px-3 py-2">
-        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ${statusColor(revision.validation.status)}`}>
-          {revision.validation.status}
-        </span>
       </td>
       <td className="px-3 py-2">
         {artifactsAvailable ? (
@@ -310,17 +302,10 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
         )}
       </td>
       <td className="px-3 py-2">
-        {revision.fossilArtifactId ? (
-          <div className="flex items-center gap-2">
-            <code className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              {revision.fossilArtifactId}
-            </code>
-            {revision.fossilBranch && (
-              <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
-                {revision.fossilBranch}
-              </span>
-            )}
-          </div>
+        {revision.fossilBranch ? (
+          <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+            {revision.fossilBranch}
+          </span>
         ) : (
           <span className="text-slate-500">—</span>
         )}

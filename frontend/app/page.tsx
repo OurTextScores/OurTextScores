@@ -40,10 +40,9 @@ export default async function WorksPage() {
           <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
             <thead className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
               <tr>
-                <th className="px-4 py-3">Work ID</th>
                 <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Composer</th>
-                <th className="px-4 py-3">Catalog</th>
+                <th className="px-4 py-3">Catalogue</th>
                 <th className="px-4 py-3">Latest Revision</th>
                 <th className="px-4 py-3">Sources</th>
                 <th className="px-4 py-3">Formats</th>
@@ -52,7 +51,7 @@ export default async function WorksPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {works.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
                     No works have been uploaded yet.
                   </td>
                 </tr>
@@ -71,12 +70,11 @@ export default async function WorksPage() {
 function WorkRow({ work }: { work: WorkSummary }) {
   return (
     <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
-      <td className="px-4 py-4 font-mono text-sm text-cyan-700 dark:text-cyan-300">
-        <Link href={`/works/${encodeURIComponent(work.workId)}`} className="underline-offset-2 hover:underline">
-          {work.workId}
+      <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">
+        <Link href={`/works/${encodeURIComponent(work.workId)}`} className="hover:text-primary-600 hover:underline dark:hover:text-primary-400">
+          {work.title ?? "—"}
         </Link>
       </td>
-      <td className="px-4 py-4">{work.title ?? "—"}</td>
       <td className="px-4 py-4">{work.composer ?? "—"}</td>
       <td className="px-4 py-4">{work.catalogNumber ?? "—"}</td>
       <td className="px-4 py-4">{formatDate(work.latestRevisionAt)}</td>
@@ -97,7 +95,7 @@ function WorkRow({ work }: { work: WorkSummary }) {
           )}
         </div>
       </td>
-      
+
     </tr>
   );
 }

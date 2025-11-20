@@ -82,46 +82,9 @@ function WorkSelector({
   existingWorks: WorkSummary[];
   onWorkSelected: (work: EnsureWorkResponse) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ImslpWorkSummary[]>([]);
   const [loading, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState("");
-
-  useEffect(() => {
-    setResults([]);
-    setError(null);
-  }, [query]);
-
-  const handleSearch = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-
-    startTransition(async () => {
-      try {
-        const data = await searchImslp(query, 12);
-        setResults(data);
-        setError(data.length === 0 ? "No IMSLP works found for that query." : null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    });
-  };
-
-  const handleExistingSelect = async (workId: string) => {
-    setError(null);
-    startTransition(async () => {
-      try {
-        const ensured = await ensureWork(workId);
-        onWorkSelected(ensured);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    });
-  };
 
   const handleUrlResolve = (event: React.FormEvent) => {
     event.preventDefault();
@@ -140,42 +103,14 @@ function WorkSelector({
     });
   };
 
-  const combinedWorks = useMemo(() => {
-    const mappedExisting: ImslpWorkSummary[] = existingWorks.slice(0, 8).map((work) => ({
-      workId: work.workId,
-      title: work.workId,
-      composer: undefined,
-      permalink: `https://imslp.org/wiki/${work.workId}`,
-      metadata: {}
-    }));
-    return results.length > 0 ? results : mappedExisting;
-  }, [existingWorks, results]);
-
   return (
     <section className="grid gap-6 rounded-xl bg-white p-8 shadow-sm ring-1 ring-slate-900/5 dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Step 1 — Select IMSLP work</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Search by title or composer, or paste an IMSLP work URL. Once selected, metadata will be
-          cached locally and the work will be ready for uploads.
+          Paste an IMSLP work URL to get started. Metadata will be cached locally and the work will be ready for uploads.
         </p>
       </div>
-
-      <form onSubmit={handleSearch} className="flex flex-col gap-2 md:flex-row">
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search IMSLP catalogue..."
-          className="flex-1 rounded-lg border-0 bg-slate-100 px-4 py-3 text-slate-900 placeholder-slate-500 ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-inset focus:ring-primary-500 dark:bg-white/5 dark:text-slate-100 dark:placeholder-slate-500 dark:ring-white/10 dark:focus:ring-primary-500"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
-        >
-          {loading ? "Searching…" : "Search"}
-        </button>
-      </form>
 
       <form onSubmit={handleUrlResolve} className="flex flex-col gap-2 md:flex-row">
         <input
@@ -187,35 +122,13 @@ function WorkSelector({
         />
         <button
           type="submit"
-          className="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:bg-white/10 dark:text-white dark:ring-transparent dark:hover:bg-white/20"
+          className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
         >
-          Resolve URL
+          {loading ? "Resolving…" : "Resolve URL"}
         </button>
       </form>
 
       {error && <p className="text-sm text-rose-300">{error}</p>}
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {combinedWorks.map((work) => (
-          <button
-            key={`${work.workId}-${work.permalink}`}
-            type="button"
-            onClick={() => handleExistingSelect(work.workId)}
-            className="flex flex-col gap-1 rounded-lg bg-slate-50 px-4 py-3 text-left ring-1 ring-inset ring-slate-200 transition hover:bg-primary-50 hover:ring-primary-200 dark:bg-white/5 dark:ring-white/10 dark:hover:bg-primary-900/20 dark:hover:ring-primary-800"
-          >
-            <span className="font-semibold text-slate-800 dark:text-slate-100">{work.title || work.workId}</span>
-            {work.composer && (
-              <span className="text-xs text-slate-600 dark:text-slate-400">Composer: {work.composer}</span>
-            )}
-            <span className="text-xs text-primary-600 dark:text-primary-400">ID: {work.workId}</span>
-          </button>
-        ))}
-        {combinedWorks.length === 0 && (
-          <p className="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
-            No suggestions available. Try searching above.
-          </p>
-        )}
-      </div>
     </section>
   );
 }
@@ -386,7 +299,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
               href={work.metadata.permalink}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
+              className="text-primary-600 underline-offset-2 hover:underline dark:text-primary-400"
             >
               {work.metadata.permalink}
             </a>

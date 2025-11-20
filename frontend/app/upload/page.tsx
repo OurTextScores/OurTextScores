@@ -26,34 +26,8 @@ export default async function UploadPage() {
           </div>
         </header>
 
-        <section className="grid gap-10 md:grid-cols-[2fr,1fr]">
+        <section className="mx-auto max-w-3xl">
           <UploadForm works={works} />
-
-          <aside className="h-fit rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-900/5 dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
-            <h2 className="font-heading text-lg font-semibold text-slate-900 dark:text-white">Work reference</h2>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              Existing works (most recent first). Uploading to an unknown work id will create a stub
-              record linked to the IMSLP metadata collection.
-            </p>
-            <div className="mt-4 flex max-h-80 flex-col gap-2 overflow-y-auto pr-2 text-xs">
-              {works.length === 0 ? (
-                <p className="text-slate-500">No works yet.</p>
-              ) : (
-                works.map((work) => (
-                  <div
-                    key={work.workId}
-                    className="rounded-lg bg-slate-50 px-3 py-2 font-mono text-[11px] text-primary-700 ring-1 ring-slate-900/5 dark:bg-white/5 dark:text-primary-300 dark:ring-white/10"
-                  >
-                    <div className="font-semibold">{work.workId}</div>
-                    <div className="mt-1 flex items-center justify-between text-slate-500 dark:text-slate-400">
-                      <span>Sources: {work.sourceCount}</span>
-                      <span>{new Date(work.latestRevisionAt ?? 0).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </aside>
         </section>
       </div>
     </main>

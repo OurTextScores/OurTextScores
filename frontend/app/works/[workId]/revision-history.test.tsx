@@ -92,23 +92,7 @@ describe('RevisionHistory', () => {
     expect(screen.getByText('Initial upload')).toBeInTheDocument();
   });
 
-  it('shows validation status badges', () => {
-    renderWithProviders(
-      <RevisionHistory
-        workId="12345"
-        sourceId="source-1"
-        revisions={mockRevisions}
-        branchNames={branchNames}
-        publicApiBase="http://localhost:4000/api"
-      />
-    );
 
-    const passedBadges = screen.getAllByText(/passed/i);
-    expect(passedBadges.length).toBeGreaterThanOrEqual(2);
-
-    const pendingBadges = screen.getAllByText(/pending/i);
-    expect(pendingBadges.length).toBeGreaterThanOrEqual(1);
-  });
 
   it('filters revisions by branch', async () => {
     const user = userEvent.setup();
@@ -171,19 +155,7 @@ describe('RevisionHistory', () => {
     expect(fileSizes.length).toBeGreaterThan(0);
   });
 
-  it('shows Fossil artifact ID when available', () => {
-    renderWithProviders(
-      <RevisionHistory
-        workId="12345"
-        sourceId="source-1"
-        revisions={mockRevisions}
-        branchNames={branchNames}
-        publicApiBase="http://localhost:4000/api"
-      />
-    );
 
-    expect(screen.getByText(/abc123/)).toBeInTheDocument();
-  });
 
   it('displays branch names for each revision', () => {
     renderWithProviders(
@@ -199,7 +171,8 @@ describe('RevisionHistory', () => {
     const mainBadges = screen.getAllByText('main');
     expect(mainBadges.length).toBeGreaterThanOrEqual(1);
 
-    expect(screen.getByText('trunk')).toBeInTheDocument();
+    const trunkBadges = screen.getAllByText('trunk');
+    expect(trunkBadges.length).toBeGreaterThanOrEqual(1);
   });
 
   it('provides download links for derivatives', () => {

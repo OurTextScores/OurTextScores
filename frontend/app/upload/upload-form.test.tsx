@@ -139,25 +139,6 @@ describe("UploadForm", () => {
     expect(screen.queryByText(/Step 2 — Upload source/i)).not.toBeInTheDocument();
   });
 
-  it("transitions to 'upload' step when a work is selected from existing works", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
-      work: { workId: "work1", sourceCount: 1, availableFormats: [] },
-      metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
-    });
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    // Select an existing work
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
-
-    await waitFor(() => {
-      expect(ensureWork).toHaveBeenCalledWith("work1");
-      expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
-      expect(screen.queryByText(/Step 1 — Select IMSLP work/i)).not.toBeInTheDocument();
-    });
-  });
-
   it("transitions to 'upload' step when a work is resolved via URL", async () => {
     (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work-url", sourceCount: 0, availableFormats: [] },
@@ -180,19 +161,21 @@ describe("UploadForm", () => {
   });
 
   it("transitions back to 'select' step when 'Choose different work' is clicked", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
-      work: { workId: "work1", sourceCount: 1, availableFormats: [] },
-      metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
+      work: { workId: "work-url", sourceCount: 0, availableFormats: [] },
+      metadata: { workId: "work-url", title: "Work from URL", composer: "Composer B", permalink: "http://imslp.org/work-url" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    // First, transition to upload step
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    // First, transition to upload step via URL
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/WorkFromURL" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
+      expect(screen.getByText(/Step 2 — Upload source for Work from URL/i)).toBeInTheDocument();
     });
 
     // Then, click "Choose different work"
@@ -223,19 +206,20 @@ describe("UploadForm", () => {
   });
 
   it("renders upload form with all required fields", async () => {
-    // Mock the work selection first
-    (ensureWork as jest.Mock).mockResolvedValue({
-      work: { workId: "work1", sourceCount: 1, availableFormats: [] },
-      metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
+      work: { workId: "work-url", sourceCount: 0, availableFormats: [] },
+      metadata: { workId: "work-url", title: "Work from URL", composer: "Composer B", permalink: "http://imslp.org/work-url" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/WorkFromURL" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
+      expect(screen.getByText(/Step 2 — Upload source for Work from URL/i)).toBeInTheDocument();
     });
 
     // Verify all form fields are present
@@ -247,19 +231,20 @@ describe("UploadForm", () => {
   });
 
   it("requires file input to have required attribute", async () => {
-    // Mock the work selection first
-    (ensureWork as jest.Mock).mockResolvedValue({
-      work: { workId: "work1", sourceCount: 1, availableFormats: [] },
-      metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
+      work: { workId: "work-url", sourceCount: 0, availableFormats: [] },
+      metadata: { workId: "work-url", title: "Work from URL", composer: "Composer B", permalink: "http://imslp.org/work-url" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/WorkFromURL" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
+      expect(screen.getByText(/Step 2 — Upload source for Work from URL/i)).toBeInTheDocument();
     });
 
     // Verify the file input has required attribute for HTML5 validation
@@ -269,15 +254,17 @@ describe("UploadForm", () => {
   });
 
   it("allows selecting an existing source for revision", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
@@ -300,15 +287,17 @@ describe("UploadForm", () => {
   });
 
   it("shows branch creation UI for existing source", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
@@ -335,95 +324,6 @@ describe("UploadForm", () => {
     expect(branchNameInput).toHaveValue("");
   });
 
-  it("handles IMSLP search successfully", async () => {
-    const mockSearchResults = [
-      {
-        workId: "test-work-1",
-        title: "Symphony No. 1",
-        composer: "Beethoven",
-        permalink: "https://imslp.org/wiki/Symphony_No._1",
-        metadata: {},
-      },
-      {
-        workId: "test-work-2",
-        title: "Piano Sonata",
-        composer: "Mozart",
-        permalink: "https://imslp.org/wiki/Piano_Sonata",
-        metadata: {},
-      },
-    ];
-
-    (searchImslp as jest.Mock).mockResolvedValue(mockSearchResults);
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const searchInput = screen.getByPlaceholderText(/Search IMSLP catalogue/i);
-    const searchButton = screen.getByRole("button", { name: /Search/i });
-
-    fireEvent.change(searchInput, { target: { value: "Beethoven" } });
-    fireEvent.click(searchButton);
-
-    await waitFor(() => {
-      expect(searchImslp).toHaveBeenCalledWith("Beethoven", 12);
-      expect(screen.getByText(/Symphony No. 1/i)).toBeInTheDocument();
-      expect(screen.getByText(/Composer: Beethoven/i)).toBeInTheDocument();
-      expect(screen.getByText(/Piano Sonata/i)).toBeInTheDocument();
-      expect(screen.getByText(/Composer: Mozart/i)).toBeInTheDocument();
-    });
-  });
-
-  it("shows 'No IMSLP works found' message when search returns empty results", async () => {
-    (searchImslp as jest.Mock).mockResolvedValue([]);
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const searchInput = screen.getByPlaceholderText(/Search IMSLP catalogue/i);
-    const searchButton = screen.getByRole("button", { name: /Search/i });
-
-    fireEvent.change(searchInput, { target: { value: "nonexistent work" } });
-    fireEvent.click(searchButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/No IMSLP works found for that query./i)).toBeInTheDocument();
-    });
-  });
-
-  it("handles search error gracefully", async () => {
-    const errorMessage = "Network error during search";
-    (searchImslp as jest.Mock).mockRejectedValue(new Error(errorMessage));
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const searchInput = screen.getByPlaceholderText(/Search IMSLP catalogue/i);
-    const searchButton = screen.getByRole("button", { name: /Search/i });
-
-    fireEvent.change(searchInput, { target: { value: "Beethoven" } });
-    fireEvent.click(searchButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(errorMessage)).toBeInTheDocument();
-    });
-  });
-
-  it("does not perform search when query is empty or whitespace only", async () => {
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const searchInput = screen.getByPlaceholderText(/Search IMSLP catalogue/i);
-    const searchButton = screen.getByRole("button", { name: /Search/i });
-
-    // Test empty query
-    fireEvent.change(searchInput, { target: { value: "" } });
-    fireEvent.click(searchButton);
-
-    expect(searchImslp).not.toHaveBeenCalled();
-
-    // Test whitespace query
-    fireEvent.change(searchInput, { target: { value: "   " } });
-    fireEvent.click(searchButton);
-
-    expect(searchImslp).not.toHaveBeenCalled();
-  });
-
   it("shows error when trying to resolve empty URL", async () => {
     render(<UploadForm works={mockExistingWorks} />);
 
@@ -435,42 +335,18 @@ describe("UploadForm", () => {
     });
   });
 
-  it("displays existing works when no search results are present", async () => {
-    render(<UploadForm works={mockExistingWorks} />);
-
-    // Existing work should be displayed as a suggestion - looking for ID
-    await waitFor(() => {
-      expect(screen.getByText(/ID: work1/i)).toBeInTheDocument();
-    });
-  });
-
-  it("shows loading state during search", async () => {
-    (searchImslp as jest.Mock).mockImplementation(() => {
-      return new Promise((resolve) => setTimeout(() => resolve([]), 100));
-    });
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const searchInput = screen.getByPlaceholderText(/Search IMSLP catalogue/i);
-    const searchButton = screen.getByRole("button", { name: /Search/i });
-
-    fireEvent.change(searchInput, { target: { value: "Beethoven" } });
-    fireEvent.click(searchButton);
-
-    // Check for loading state
-    expect(screen.getByText(/Searching…/i)).toBeInTheDocument();
-  });
-
   it("allows selecting between existing branches", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
@@ -501,30 +377,18 @@ describe("UploadForm", () => {
     });
   });
 
-  it("handles existing work selection error gracefully", async () => {
-    const errorMessage = "Failed to ensure work";
-    (ensureWork as jest.Mock).mockRejectedValue(new Error(errorMessage));
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(errorMessage)).toBeInTheDocument();
-    });
-  });
-
   it("displays the IMSLP permalink in upload step", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       const link = screen.getByRole("link", { name: /http:\/\/imslp.org\/work1/i });
@@ -536,29 +400,25 @@ describe("UploadForm", () => {
   });
 
   it("displays composer information when available", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Ludwig van Beethoven", permalink: "http://imslp.org/work1" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       expect(screen.getByText(/Composer: Ludwig van Beethoven/i)).toBeInTheDocument();
     });
   });
 
-  it("shows 'No suggestions available' when there are no works", async () => {
-    render(<UploadForm works={[]} />);
-
-    expect(screen.getByText(/No suggestions available. Try searching above./i)).toBeInTheDocument();
-  });
-
   it("updates step indicator when transitioning between steps", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
     });
@@ -570,9 +430,11 @@ describe("UploadForm", () => {
     expect(indicators[0]).toHaveClass("text-primary-600");
     expect(indicators[2]).toHaveClass("text-slate-500");
 
-    // Select a work
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    // Select a work via URL
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
@@ -583,41 +445,18 @@ describe("UploadForm", () => {
     expect(updatedIndicators[2]).toHaveClass("text-primary-600");
   });
 
-  it("clears errors when query changes in search", async () => {
-    const errorMessage = "Network error";
-    (searchImslp as jest.Mock).mockRejectedValue(new Error(errorMessage));
-
-    render(<UploadForm works={mockExistingWorks} />);
-
-    const searchInput = screen.getByPlaceholderText(/Search IMSLP catalogue/i);
-    const searchButton = screen.getByRole("button", { name: /Search/i });
-
-    // First search that fails
-    fireEvent.change(searchInput, { target: { value: "Beethoven" } });
-    fireEvent.click(searchButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(errorMessage)).toBeInTheDocument();
-    });
-
-    // Change query - error should clear
-    fireEvent.change(searchInput, { target: { value: "Mozart" } });
-
-    await waitFor(() => {
-      expect(screen.queryByText(errorMessage)).not.toBeInTheDocument();
-    });
-  });
-
   it("does not show upload button as disabled when not submitting", async () => {
-    (ensureWork as jest.Mock).mockResolvedValue({
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
     });
 
     render(<UploadForm works={mockExistingWorks} />);
 
-    const existingWorkButton = screen.getByRole("button", { name: /work1 ID: work1/i });
-    fireEvent.click(existingWorkButton);
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/Work1" } });
+    fireEvent.click(resolveButton);
 
     await waitFor(() => {
       expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
