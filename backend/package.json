@@ -15,7 +15,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.config.ts",
     "test:smoke": "jest --config ./test/jest-e2e.config.ts smoke-simple.e2e-spec.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "reindex:search": "ts-node -r tsconfig-paths/register src/reindex-search.ts"
+    "reindex:search": "node dist/reindex-search.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
