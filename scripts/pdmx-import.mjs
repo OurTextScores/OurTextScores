@@ -13,17 +13,42 @@ const env = (name, fallback) => {
   return val === undefined ? fallback : val;
 };
 
+function parseLimit(raw) {
+  const normalized = String(raw ?? '').trim().toLowerCase();
+  if (normalized === 'all' || normalized === 'unlimited') {
+    return { limit: undefined, unlimited: true };
+  }
+  const num = Number(normalized || raw);
+  if (!Number.isFinite(num) || num <= 0) {
+    throw new Error(`Invalid limit "${raw}". Use a positive number or "all".`);
+  }
+  return { limit: num, unlimited: false };
+}
+
+function parseBatchSize(raw) {
+  const num = Number(String(raw ?? '').trim() || raw);
+  if (!Number.isFinite(num) || num <= 0) {
+    throw new Error(`Invalid batch size "${raw}". Use a positive number.`);
+  }
+  return num;
+}
+
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
   printHelp();
   process.exit(0);
 }
 
+const limitParsed = parseLimit(args.limit ?? env('LIMIT', '10'));
+const batchSizeParsed = parseBatchSize(args.batchSize ?? env('BATCH_SIZE', '200'));
+
 const CONFIG = {
   mongoUri: args.mongoUri || env('MONGO_URI', 'mongodb://192.168.2.20:27017/'),
   mongoDb: args.mongoDb || env('MONGO_DB', 'scores'),
   confidence: args.confidence || env('CONFIDENCE', 'high'),
-  limit: Number(args.limit ?? env('LIMIT', '10')),
+  limit: limitParsed.limit,
+  unlimited: limitParsed.unlimited,
+  batchSize: batchSizeParsed,
   resumeAfter: args.resumeAfter || env('RESUME_AFTER', ''),
   dryRun: args.dryRun || env('DRY_RUN', '') === '1' || env('DRY_RUN', '')?.toLowerCase() === 'true',
   apiBase: args.apiBase || env('API_BASE', 'http://localhost:4000/api'),
@@ -42,7 +67,7 @@ async function main() {
     mongoDb: CONFIG.mongoDb,
     apiBase: CONFIG.apiBase,
     confidence: CONFIG.confidence,
-    limit: CONFIG.limit,
+    limit: CONFIG.unlimited ? 'all' : CONFIG.limit,
     resumeAfter: CONFIG.resumeAfter || null,
     dryRun: CONFIG.dryRun
   });
@@ -52,19 +77,31 @@ async function main() {
 
   try {
     const db = client.db(CONFIG.mongoDb);
-    const candidates = await fetchCandidates(db);
-    if (!candidates.length) {
-      console.log('No candidates found for the given filters.');
-      return;
-    }
+    const matchesCol = db.collection('PDMX_to_IMSLP_exact_matches');
+    const imslpCol = db.collection('imslp');
+    const pdmxCol = db.collection('PDMX');
+    const matchesCursor = buildMatchesCursor(matchesCol);
 
-    const scoreIdSet = new Set(
-      candidates.map((item) => item.scoreId).filter(Boolean).map((id) => String(id))
-    );
-    const csvLookup = await loadCsvLookup(scoreIdSet);
+    let processed = 0;
+    while (true) {
+      const remaining = CONFIG.unlimited ? CONFIG.batchSize : Math.min(CONFIG.batchSize, CONFIG.limit - processed);
+      if (!CONFIG.unlimited && remaining <= 0) break;
 
-    for (const candidate of candidates) {
-      await processCandidate(candidate, csvLookup);
+      const batch = await fetchBatch(matchesCursor, imslpCol, pdmxCol, remaining);
+      if (!batch.length) {
+        if (processed === 0) console.log('No candidates found for the given filters.');
+        break;
+      }
+
+      const scoreIdSet = new Set(batch.map((item) => item.scoreId).filter(Boolean).map((id) => String(id)));
+      const csvLookup = await loadCsvLookup(scoreIdSet);
+
+      for (const candidate of batch) {
+        await processCandidate(candidate, csvLookup);
+      }
+
+      processed += batch.length;
+      console.log(`Processed batch of ${batch.length}; total processed: ${processed}${CONFIG.unlimited ? '' : `/${CONFIG.limit}`}`);
     }
   } finally {
     await client.close();
@@ -73,11 +110,7 @@ async function main() {
   printSummary();
 }
 
-async function fetchCandidates(db) {
-  const matchesCol = db.collection('PDMX_to_IMSLP_exact_matches');
-  const imslpCol = db.collection('imslp');
-  const pdmxCol = db.collection('PDMX');
-
+function buildMatchesCursor(matchesCol) {
   const query = { confidence: CONFIG.confidence };
   if (CONFIG.resumeAfter) {
     if (!ObjectId.isValid(CONFIG.resumeAfter)) {
@@ -85,12 +118,19 @@ async function fetchCandidates(db) {
     }
     query._id = { $gt: new ObjectId(CONFIG.resumeAfter) };
   }
+  const cursor = matchesCol.find(query).sort({ _id: 1 });
+  if (!CONFIG.unlimited && CONFIG.limit) {
+    cursor.limit(CONFIG.limit);
+  }
+  return cursor;
+}
 
-  const docs = await matchesCol.find(query).sort({ _id: 1 }).limit(CONFIG.limit).toArray();
-  console.log(`Fetched ${docs.length} match documents`);
-
+async function fetchBatch(cursor, imslpCol, pdmxCol, maxItems) {
   const results = [];
-  for (const doc of docs) {
+  for (let i = 0; i < maxItems; i += 1) {
+    const hasNext = await cursor.hasNext();
+    if (!hasNext) break;
+    const doc = await cursor.next();
     const imslpObjectId = toObjectId(doc.imslp_page_id || doc.imslp_id);
     const pdmxObjectId = toObjectId(doc.pdmx_id);
 
@@ -114,7 +154,6 @@ async function fetchCandidates(db) {
       imslpMongoId: imslpObjectId ? imslpObjectId.toString() : null
     });
   }
-
   return results;
 }
 
@@ -422,6 +461,9 @@ function parseArgs(argv) {
       case '--limit':
         out.limit = argv[++i];
         break;
+      case '--batch-size':
+        out.batchSize = argv[++i];
+        break;
       case '--resume-after':
         out.resumeAfter = argv[++i];
         break;
@@ -451,12 +493,13 @@ Options:
   --mongo-db <db>          Mongo database name (default: env MONGO_DB or scores)
   --api-base <url>         API base URL (default: env API_BASE or http://localhost:4000/api)
   --confidence <value>     Confidence filter (default: high)
-  --limit <n>              Max records to process (default: 10)
+  --limit <n|all>          Max records to process (number or "all"; default: 10)
+  --batch-size <n>         Max records per batch (default: 200)
   --resume-after <oid>     Resume after this ObjectId from matches collection
   --dry-run, -d            Do not call APIs; just log planned actions
   --help, -h               Show this help
 
-Env overrides: MONGO_URI, MONGO_DB, API_BASE, CONFIDENCE, LIMIT, RESUME_AFTER, DRY_RUN.`);
+Env overrides: MONGO_URI, MONGO_DB, API_BASE, CONFIDENCE, LIMIT, BATCH_SIZE, RESUME_AFTER, DRY_RUN.`);
 }
 
 function printSummary() {
