@@ -409,20 +409,38 @@ async function uploadSource({ workId, mxlPath, label, description, license, lice
 }
 
 async function fetchJson(url, options) {
-  const response = await fetch(url, options);
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
+  const maxRetries = 3;
+  const baseDelayMs = 1000;
+  let attempt = 0;
+  let lastErr;
+  while (attempt < maxRetries) {
+    try {
+      const response = await fetch(url, options);
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+      const payload = {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        data,
+        error: !response.ok ? data?.message || data?.error : null
+      };
+      if (response.ok || response.status < 500) {
+        return payload;
+      }
+      lastErr = new Error(`HTTP ${response.status}: ${response.statusText || payload.error || 'unknown error'}`);
+    } catch (err) {
+      lastErr = err;
+    }
+    attempt += 1;
+    const delay = baseDelayMs * Math.pow(2, attempt - 1);
+    await new Promise((res) => setTimeout(res, delay));
   }
-  return {
-    ok: response.ok,
-    status: response.status,
-    statusText: response.statusText,
-    data,
-    error: !response.ok ? data?.message || data?.error : null
-  };
+  throw lastErr || new Error('fetchJson failed after retries');
 }
 
 function toObjectId(value) {
