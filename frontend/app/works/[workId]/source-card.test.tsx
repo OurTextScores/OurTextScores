@@ -16,7 +16,7 @@
  */
 
 // Mock environment variable BEFORE imports
-process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL = 'http://localhost:9000';
+// process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL = 'http://localhost:9000';
 
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../test-utils';
@@ -102,7 +102,13 @@ describe('SourceCard', () => {
         );
 
         expect(screen.getByTestId('watch-controls')).toBeInTheDocument();
-        // Branches panel is inside the collapsible content, which is open by default
+
+        // Expand to see branches panel
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (header) {
+            fireEvent.click(header);
+        }
+
         expect(screen.getByTestId('branches-panel')).toBeInTheDocument();
     });
 
@@ -117,10 +123,10 @@ describe('SourceCard', () => {
             />
         );
 
-        // Initially open
-        expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
+        // Initially closed
+        expect(screen.queryByTestId('source-card-body')).not.toBeInTheDocument();
 
-        // Click header to collapse
+        // Click header to expand
         // The click handler is on the div wrapping the header content
         const header = screen.getByText('Full Score').closest('div')?.parentElement;
         if (header) {
@@ -129,16 +135,16 @@ describe('SourceCard', () => {
             throw new Error("Header not found");
         }
 
-        // Should be collapsed (content removed from DOM)
-        expect(screen.queryByTestId('source-card-body')).not.toBeInTheDocument();
+        // Should be visible
+        expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
 
-        // Click again to expand
+        // Click again to collapse
         if (header) {
             fireEvent.click(header);
         }
 
-        // Should be visible again
-        expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
+        // Should be collapsed again
+        expect(screen.queryByTestId('source-card-body')).not.toBeInTheDocument();
     });
 
     it('shows original filename when open', () => {
@@ -152,7 +158,12 @@ describe('SourceCard', () => {
             />
         );
 
-        // Expand if needed (it defaults to open)
+        // Expand first
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (header) {
+            fireEvent.click(header);
+        }
+
         const filename = screen.getByText(/Original filename:/i);
         expect(filename).toBeInTheDocument();
         expect(filename).toHaveTextContent('symphony.mxl');
@@ -185,16 +196,15 @@ describe('SourceCard', () => {
         );
 
         // Check that thumbnail container is rendered when thumbnail data exists
-        // Note: The img element may not have a src if MINIO_PUBLIC_BASE is not set at module load time
         const thumbnailContainer = document.querySelector('.h-20.w-14.shrink-0');
+        expect(thumbnailContainer).toBeInTheDocument();
+
         if (thumbnailContainer) {
             const img = thumbnailContainer.querySelector('img');
             expect(img).toBeInTheDocument();
             expect(img).toHaveAttribute('alt', `Thumbnail for ${mockSource.label}`);
-        } else {
-            // If thumbnail didn't render, it's likely due to buildObjectUrl returning undefined
-            // This is acceptable in test environment without proper env var setup
-            expect(true).toBe(true);
+            // Should use API URL now
+            expect(img?.src).toContain('/api/works/work-123/sources/source-1/thumbnail.png');
         }
     });
 });

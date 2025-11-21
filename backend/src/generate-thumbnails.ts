@@ -19,6 +19,7 @@ async function bootstrap() {
     const sourceRevisionModel = app.get<Model<SourceRevisionDocument>>('SourceRevisionModel');
     const sourceModel = app.get<Model<SourceDocument>>('SourceModel');
     const storageService = app.get(StorageService);
+    const derivativePipelineService = app.get(DerivativePipelineService);
     // We need to access the private generateThumbnail method or expose it. 
     // Since it's private, we'll duplicate the logic here for the script to avoid changing the service public API just for this.
     // Alternatively, we could make it public. Let's duplicate for safety and standalone execution.
@@ -43,26 +44,18 @@ async function bootstrap() {
 
             // Generate thumbnail
             const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-thumb-'));
-            const pdfPath = join(workspace, 'source.pdf');
-            const thumbPrefix = join(workspace, 'thumbnail');
-            await fs.writeFile(pdfPath, pdfBuffer);
+            let thumbBuffer: Buffer | undefined;
 
-            const { spawn } = await import('child_process');
+            try {
+                thumbBuffer = await derivativePipelineService.generateThumbnail(pdfBuffer, workspace);
+            } finally {
+                await fs.rm(workspace, { recursive: true, force: true });
+            }
 
-            await new Promise<void>((resolve, reject) => {
-                const child = spawn('pdftoppm', [
-                    '-png', '-f', '1', '-l', '1', '-scale-to', '300', '-singlefile',
-                    pdfPath, thumbPrefix
-                ]);
-                child.on('close', (code) => {
-                    if (code === 0) resolve();
-                    else reject(new Error(`pdftoppm exited with code ${code}`));
-                });
-                child.on('error', reject);
-            });
-
-            const thumbPath = `${thumbPrefix}.png`;
-            const thumbBuffer = await fs.readFile(thumbPath);
+            if (!thumbBuffer) {
+                logger.warn(`Failed to generate thumbnail for ${rev.revisionId}`);
+                continue;
+            }
 
             // Store thumbnail
             const derivativesBaseKey = `${rev.workId}/${rev.sourceId}/rev-${rev.sequenceNumber.toString().padStart(4, '0')}`;
@@ -104,7 +97,6 @@ async function bootstrap() {
                 );
             }
 
-            await fs.rm(workspace, { recursive: true, force: true });
             logger.log(`Generated thumbnail for ${rev.revisionId}`);
 
         } catch (err) {

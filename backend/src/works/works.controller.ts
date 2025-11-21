@@ -42,7 +42,7 @@ export class WorksController {
     private readonly storageService: StorageService,
     private readonly fossilService: FossilService,
     private readonly progressService: ProgressService
-  ) {}
+  ) { }
 
   private sendBuffer(
     res: Response,
@@ -406,6 +406,40 @@ export class WorksController {
     this.sendBuffer(res, buffer, baseName, 'application/vnd.musescore.mscz', !!revisionId, 'attachment');
   }
 
+  @Get(":workId/sources/:sourceId/thumbnail.png")
+  @UseGuards(AuthOptionalGuard)
+  @ApiTags('derivatives')
+  @ApiOperation({
+    summary: 'Download thumbnail',
+    description: 'Get the PNG thumbnail of a source or specific revision'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiResponse({ status: 200, description: 'Thumbnail returned', content: { 'image/png': {} } })
+  @ApiResponse({ status: 404, description: 'Thumbnail not found for this source' })
+  async downloadThumbnail(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Query('r') revisionId: string | undefined,
+    @Res() res: Response,
+    @CurrentUser() user?: RequestUser
+  ) {
+    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
+    const detail = await this.worksService.getWorkDetail(workId, viewer);
+    const source = detail.sources.find((s) => s.sourceId === sourceId);
+    const locator = revisionId
+      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.thumbnail)
+      : source?.derivatives?.thumbnail;
+    if (!source || !locator) {
+      throw new NotFoundException('Thumbnail not found for this source');
+    }
+    const loc = locator;
+    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
+    // Thumbnails are always inline images
+    this.sendBuffer(res, buffer, '', 'image/png', !!revisionId, 'inline');
+  }
+
   @Get(":workId/sources/:sourceId/linearized.lmx")
   @UseGuards(AuthOptionalGuard)
   @ApiTags('derivatives')
@@ -578,7 +612,7 @@ export class WorksController {
         } as any;
         await this.worksService.upsertMusicDiffDerivatives(workId, sourceId, currentRev.revisionId, { musicDiffHtml: locator as any });
       } finally {
-        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => {});
+        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
       }
     }
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
@@ -666,7 +700,7 @@ export class WorksController {
         } as any;
         await this.worksService.upsertMusicDiffDerivatives(workId, sourceId, currentRev.revisionId, { musicDiffPdf: locator as any });
       } finally {
-        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => {});
+        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
       }
     }
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
@@ -734,7 +768,7 @@ export class WorksController {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         return res.send(cached);
       }
-    } catch {}
+    } catch { }
 
     try {
       const pA = path.join(dir, 'a.xml');
@@ -780,7 +814,7 @@ export class WorksController {
         throw new BadRequestException('Unsupported format (use text|html|pdf)');
       }
     } finally {
-      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => {});
+      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
     }
   }
 
@@ -851,7 +885,7 @@ export class WorksController {
         throw err;
       }
     } finally {
-      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => {});
+      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
     }
   }
 

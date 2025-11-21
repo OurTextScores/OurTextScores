@@ -7,6 +7,10 @@ const nextConfig = {
         source: '/files/:bucket/:path*',
         destination: 'http://minio:9000/:bucket/:path*',
       },
+      {
+        source: '/api/:path*',
+        destination: 'http://backend:4000/api/:path*',
+      },
     ];
   },
 };

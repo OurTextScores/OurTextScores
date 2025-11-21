@@ -522,7 +522,7 @@ export class DerivativePipelineService {
     }
   }
 
-  private async generateThumbnail(
+  public async generateThumbnail(
     pdfBuffer: Buffer,
     workspace: string
   ): Promise<Buffer | undefined> {

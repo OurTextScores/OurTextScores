@@ -14,16 +14,7 @@ import MxlViewer from "./mxl-viewer";
 import PdfViewer from "./pdf-viewer";
 import UploadRevisionForm from "./upload-revision-form";
 
-const MINIO_PUBLIC_BASE = process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL;
 const PUBLIC_API_BASE = getPublicApiBase();
-
-function buildObjectUrl(locator: StorageLocator): string | undefined {
-    if (!MINIO_PUBLIC_BASE) return undefined;
-    const normalizedBase = MINIO_PUBLIC_BASE.endsWith("/")
-        ? MINIO_PUBLIC_BASE
-        : `${MINIO_PUBLIC_BASE}/`;
-    return `${normalizedBase}${locator.bucket}/${locator.objectKey}`;
-}
 
 function formatDate(value?: string) {
     if (!value) return "—";
@@ -84,37 +75,35 @@ function StorageBadge({
         );
     }
 
-    const direct = buildObjectUrl(locator);
-    let href = direct;
-    if (!href) {
-        const r = revisionId ? `?r=${encodeURIComponent(revisionId)}` : '';
-        switch (kind) {
-            case 'normalizedMxl':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/normalized.mxl${r}`;
-                break;
-            case 'canonicalXml':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml${r}`;
-                break;
-            case 'linearizedXml':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/linearized.lmx${r}`;
-                break;
-            case 'pdf':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.pdf${r}`;
-                break;
-            case 'manifest':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
-                break;
-            case 'musicDiffReport':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.txt${r}`;
-                break;
-            case 'musicDiffHtml':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.html${r}`;
-                break;
-            case 'musicDiffPdf':
-                href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.pdf${r}`;
-                break;
-        }
+    let href = '';
+    const r = revisionId ? `?r=${encodeURIComponent(revisionId)}` : '';
+    switch (kind) {
+        case 'normalizedMxl':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/normalized.mxl${r}`;
+            break;
+        case 'canonicalXml':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml${r}`;
+            break;
+        case 'linearizedXml':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/linearized.lmx${r}`;
+            break;
+        case 'pdf':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.pdf${r}`;
+            break;
+        case 'manifest':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
+            break;
+        case 'musicDiffReport':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.txt${r}`;
+            break;
+        case 'musicDiffHtml':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.html${r}`;
+            break;
+        case 'musicDiffPdf':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.pdf${r}`;
+            break;
     }
+
     const content = (
         <>
             <span className="font-semibold text-slate-700 dark:text-slate-200">{label}</span>
@@ -182,11 +171,11 @@ export default function SourceCard({
                 onClick={() => setIsOpen(!isOpen)}
             >
                 <div className="flex items-start gap-4">
-                    {source.derivatives?.thumbnail && buildObjectUrl(source.derivatives.thumbnail) && (
+                    {source.derivatives?.thumbnail && (
                         <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                                src={buildObjectUrl(source.derivatives.thumbnail)}
+                                src={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/thumbnail.png`}
                                 alt={`Thumbnail for ${source.label}`}
                                 className="h-full w-full object-cover"
                             />
