@@ -41,6 +41,13 @@ export function getPublicApiBase(): string {
   return normalizeApiBase(process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_CLIENT_API_BASE);
 }
 
+export interface BackendSessionUser {
+  userId: string;
+  email?: string;
+  name?: string;
+  roles?: string[];
+}
+
 export interface WorkSummary {
   workId: string;
   latestRevisionAt?: string;

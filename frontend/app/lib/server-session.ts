@@ -1,12 +1,6 @@
-import { getApiBase } from "./api";
+import { getApiBase, BackendSessionUser } from "./api";
+export type { BackendSessionUser };
 import { getApiAuthHeaders } from "./authToken";
-
-export interface BackendSessionUser {
-  userId: string;
-  email?: string;
-  name?: string;
-  roles?: string[];
-}
 
 export interface BackendSession {
   user: BackendSessionUser | null;
