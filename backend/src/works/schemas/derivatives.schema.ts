@@ -29,6 +29,9 @@ export class DerivativeArtifacts {
 
   @Prop({ type: StorageLocatorSchema })
   musicDiffPdf?: StorageLocator;
+
+  @Prop({ type: StorageLocatorSchema })
+  thumbnail?: StorageLocator;
 }
 
 export const DerivativeArtifactsSchema = SchemaFactory.createForClass(DerivativeArtifacts);

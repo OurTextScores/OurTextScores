@@ -43,6 +43,22 @@ export class StorageService {
     const exists = await this.client.bucketExists(bucket);
     if (!exists) {
       await this.client.makeBucket(bucket, '');
+
+      // Set public read policy for derivatives bucket to allow thumbnail access
+      if (bucket === this.derivativesBucket) {
+        const policy = {
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { AWS: ['*'] },
+              Action: ['s3:GetObject'],
+              Resource: [`arn:aws:s3:::${bucket}/*`]
+            }
+          ]
+        };
+        await this.client.setBucketPolicy(bucket, JSON.stringify(policy));
+      }
     }
   }
 

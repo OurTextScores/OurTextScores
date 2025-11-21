@@ -275,7 +275,9 @@ export class UploadSourceService {
           storage: storageLocator,
           validation: validationState,
           provenance,
-          derivatives: setLatest ? derivativeOutcome.derivatives : (existing.derivatives ?? undefined),
+          // Always update derivatives when they're successfully generated, even for pending revisions
+          // This ensures thumbnails and other derivatives are visible immediately
+          derivatives: derivativeOutcome.derivatives,
           ...(setLatest ? {
             latestRevisionId: revisionId,
             latestRevisionAt: receivedAt,
@@ -299,17 +301,18 @@ export class UploadSourceService {
       await this.notifications.queuePushRequest({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId, ownerUserId: approval?.ownerUserId });
     }
     // Kick off async musicdiff if we have previous and current canonical
-    if (currentCanonical && previousCanonical) {
-      this.progress.publish(progressId, 'Queueing musicdiff (async)', 'diff.queued');
-      this.generateMusicDiffAsync(
-        trimmedWorkId,
-        trimmedSourceId,
-        revisionId,
-        sequenceNumber,
-        currentCanonical,
-        previousCanonical
-      ).catch(() => { });
-    }
+    // DISABLED: Causes OOM issues - will be moved to distributed job queue
+    // if (currentCanonical && previousCanonical) {
+    //   this.progress.publish(progressId, 'Queueing musicdiff (async)', 'diff.queued');
+    //   this.generateMusicDiffAsync(
+    //     trimmedWorkId,
+    //     trimmedSourceId,
+    //     revisionId,
+    //     sequenceNumber,
+    //     currentCanonical,
+    //     previousCanonical
+    //   ).catch(() => { });
+    // }
     this.progress.publish(progressId, 'Done', 'done');
     this.progress.complete(progressId);
 
@@ -532,7 +535,9 @@ export class UploadSourceService {
       storage: storageLocator,
       validation: validationState,
       provenance,
-      derivatives: status === 'approved' ? derivativeOutcome.derivatives : undefined,
+      // Always set derivatives when successfully generated, even for pending approvals
+      // This ensures thumbnails and other derivatives are visible immediately
+      derivatives: derivativeOutcome.derivatives,
       latestRevisionId: status === 'approved' ? revisionId : undefined,
       latestRevisionAt: status === 'approved' ? receivedAt : undefined
     });

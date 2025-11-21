@@ -151,7 +151,7 @@ export default function SourceCard({
     watchControlsSlot: React.ReactNode;
     branchesPanelSlot: React.ReactNode;
 }) {
-    const [isOpen, setIsOpen] = useState(true);
+    const [isOpen, setIsOpen] = useState(false);
     const latest = source.revisions[0];
     const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
     const isOwner =
@@ -181,62 +181,74 @@ export default function SourceCard({
                 className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between cursor-pointer"
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <div>
-                    <h2 className="text-xl font-semibold flex items-center gap-2">
-                        <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▶</span>
-                        {source.label}{" "}
-                        <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
-                            ({source.sourceType}, {source.format})
-                        </span>
-                    </h2>
-                    {isOpen && (
-                        <>
-                            <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
-                                Original filename: {source.originalFilename || "—"}
-                            </p>
-                            {source.description && (
-                                <p className="text-sm text-slate-700 dark:text-slate-300 pl-6">{source.description}</p>
-                            )}
-                            <StopPropagation className="mt-2 pl-6">
-                                <EditSourceForm
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    initial={{ label: source.label, description: source.description }}
-                                />
-                            </StopPropagation>
-                            {source.license && (
-                                <StopPropagation className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 pl-6">
-                                    <span className="font-semibold">License:</span>
-                                    {source.license === 'Other' && source.licenseUrl ? (
-                                        <a
-                                            href={source.licenseUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-cyan-600 underline-offset-2 hover:underline dark:text-cyan-400"
-                                        >
-                                            {source.license} →
-                                        </a>
-                                    ) : source.license.startsWith('CC') ? (
-                                        <a
-                                            href={`https://creativecommons.org/licenses/${source.license.toLowerCase().replace('cc-', '').replace('-4.0', '')}/4.0/`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-cyan-600 underline-offset-2 hover:underline dark:text-cyan-400"
-                                        >
-                                            {source.license} →
-                                        </a>
-                                    ) : (
-                                        <span>{source.license}</span>
-                                    )}
-                                    {source.licenseAttribution && (
-                                        <span className="text-slate-500 dark:text-slate-500">
-                                            · Attribution: {source.licenseAttribution}
-                                        </span>
-                                    )}
-                                </StopPropagation>
-                            )}
-                        </>
+                <div className="flex items-start gap-4">
+                    {source.derivatives?.thumbnail && buildObjectUrl(source.derivatives.thumbnail) && (
+                        <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={buildObjectUrl(source.derivatives.thumbnail)}
+                                alt={`Thumbnail for ${source.label}`}
+                                className="h-full w-full object-cover"
+                            />
+                        </div>
                     )}
+                    <div>
+                        <h2 className="text-xl font-semibold flex items-center gap-2">
+                            <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                            {source.label}{" "}
+                            <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
+                                ({source.sourceType}, {source.format})
+                            </span>
+                        </h2>
+                        {isOpen && (
+                            <>
+                                <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">
+                                    Original filename: {source.originalFilename || "—"}
+                                </p>
+                                {source.description && (
+                                    <p className="text-sm text-slate-700 dark:text-slate-300 pl-6">{source.description}</p>
+                                )}
+                                <StopPropagation className="mt-2 pl-6">
+                                    <EditSourceForm
+                                        workId={workId}
+                                        sourceId={source.sourceId}
+                                        initial={{ label: source.label, description: source.description }}
+                                    />
+                                </StopPropagation>
+                                {source.license && (
+                                    <StopPropagation className="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 pl-6">
+                                        <span className="font-semibold">License:</span>
+                                        {source.license === 'Other' && source.licenseUrl ? (
+                                            <a
+                                                href={source.licenseUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-cyan-600 underline-offset-2 hover:underline dark:text-cyan-400"
+                                            >
+                                                {source.license} →
+                                            </a>
+                                        ) : source.license.startsWith('CC') ? (
+                                            <a
+                                                href={`https://creativecommons.org/licenses/${source.license.toLowerCase().replace('cc-', '').replace('-4.0', '')}/4.0/`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-cyan-600 underline-offset-2 hover:underline dark:text-cyan-400"
+                                            >
+                                                {source.license} →
+                                            </a>
+                                        ) : (
+                                            <span>{source.license}</span>
+                                        )}
+                                        {source.licenseAttribution && (
+                                            <span className="text-slate-500 dark:text-slate-500">
+                                                · Attribution: {source.licenseAttribution}
+                                            </span>
+                                        )}
+                                    </StopPropagation>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
                 <StopPropagation className="flex flex-wrap items-center gap-2 pl-6 md:pl-0">
                     <span

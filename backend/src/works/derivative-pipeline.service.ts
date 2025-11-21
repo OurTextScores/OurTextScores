@@ -69,7 +69,7 @@ export class DerivativePipelineService {
   constructor(
     private readonly storageService: StorageService,
     private readonly progress: ProgressService
-  ) {}
+  ) { }
 
   private getMuseScoreCommand(): string {
     return process.env.MUSESCORE_CLI || 'musescore3';
@@ -189,9 +189,9 @@ export class DerivativePipelineService {
 
       let linearized:
         | {
-            buffer: Buffer;
-            path: string;
-          }
+          buffer: Buffer;
+          path: string;
+        }
         | undefined;
 
       if (canonicalBuffer && canonicalPath) {
@@ -240,6 +240,29 @@ export class DerivativePipelineService {
           'application/pdf'
         );
         publish('Stored PDF', 'store.pdf');
+
+        // Generate thumbnail from PDF
+        this.logger.log('Starting thumbnail generation...');
+        try {
+          const thumbnail = await this.generateThumbnail(pdfBuffer, workspace);
+          if (thumbnail) {
+            this.logger.log(`Thumbnail generated successfully (${thumbnail.length} bytes), storing...`);
+            this.logger.log(`Storing to: ${derivativesBaseKey}/thumbnail.png`);
+            derivatives.thumbnail = await this.storeDerivative(
+              `${derivativesBaseKey}/thumbnail.png`,
+              thumbnail,
+              'image/png'
+            );
+            this.logger.log(`Thumbnail stored successfully: ${JSON.stringify(derivatives.thumbnail)}`);
+            publish('Stored thumbnail', 'store.thumbnail');
+          } else {
+            this.logger.warn('Thumbnail generation returned undefined');
+          }
+        } catch (err) {
+          this.logger.error(`Thumbnail generation/storage error: ${this.readableError(err)}`);
+          this.logger.error(`Error stack: ${err instanceof Error ? err.stack : String(err)}`);
+          notes.push(`Could not generate thumbnail: ${this.readableError(err)}`);
+        }
       }
 
       const tools = await this.getToolVersions();
@@ -260,6 +283,9 @@ export class DerivativePipelineService {
       }
       if (derivatives.musicDiffReport) {
         artifacts.push({ type: 'musicDiffReport', locator: derivatives.musicDiffReport });
+      }
+      if (derivatives.thumbnail) {
+        artifacts.push({ type: 'thumbnail', locator: derivatives.thumbnail });
       }
 
       const manifestData: DerivativeManifest = {
@@ -496,6 +522,47 @@ export class DerivativePipelineService {
     }
   }
 
+  private async generateThumbnail(
+    pdfBuffer: Buffer,
+    workspace: string
+  ): Promise<Buffer | undefined> {
+    this.logger.log(`generateThumbnail called with buffer size: ${pdfBuffer.length}`);
+    const pdfPath = join(workspace, 'source.pdf');
+    const thumbPrefix = join(workspace, 'thumbnail'); // pdftoppm appends extension
+    await fs.writeFile(pdfPath, pdfBuffer);
+    this.logger.log(`PDF written to: ${pdfPath}`);
+
+    try {
+      // Generate PNG thumbnail of the first page
+      // -png: Output PNG format
+      // -f 1 -l 1: First page only
+      // -scale-to 300: Scale to 300px width (maintaining aspect ratio)
+      // -singlefile: Write to a single file named prefix.png instead of prefix-1.png
+      this.logger.log(`Running pdftoppm command...`);
+      await this.runCommand('pdftoppm', [
+        '-png',
+        '-f',
+        '1',
+        '-l',
+        '1',
+        '-scale-to',
+        '300',
+        '-singlefile',
+        pdfPath,
+        thumbPrefix
+      ]);
+
+      const thumbPath = `${thumbPrefix}.png`;
+      this.logger.log(`Reading thumbnail from: ${thumbPath}`);
+      const thumbBuffer = await fs.readFile(thumbPath);
+      this.logger.log(`Thumbnail read successfully, size: ${thumbBuffer.length}`);
+      return thumbBuffer;
+    } catch (error) {
+      this.logger.warn(`Thumbnail generation failed: ${this.readableError(error)}`);
+      return undefined;
+    }
+  }
+
   private async getToolVersions(): Promise<ToolVersions> {
     if (!this.toolVersionsPromise) {
       this.toolVersionsPromise = this.fetchToolVersions();
@@ -569,7 +636,7 @@ export class DerivativePipelineService {
       if (options.timeoutMs && options.timeoutMs > 0) {
         timer = setTimeout(() => {
           killed = true;
-          try { child.kill('SIGTERM'); } catch {}
+          try { child.kill('SIGTERM'); } catch { }
         }, options.timeoutMs);
       }
       child.stdout.on('data', (chunk) => {

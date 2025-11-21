@@ -86,6 +86,7 @@ export interface DerivativeArtifacts {
   manifest?: StorageLocator;
   musicDiffReport?: StorageLocator;
   musicDiffHtml?: StorageLocator;
+  thumbnail?: StorageLocator;
 }
 
 export interface ValidationState {

@@ -30,6 +30,7 @@ RUN apt-get update && \
         musicdiff \
         imslp \
         PyPDF2 && \
+    apt-get install -y --no-install-recommends poppler-utils && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install MuseScore 4 CLI via AppImage at build time.
