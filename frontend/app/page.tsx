@@ -90,7 +90,7 @@ export default function WorksPage() {
           <div className="max-w-3xl">
             <h1 className="text-4xl font-semibold tracking-tight">🎼 OurTextScores</h1>
             <p className="text-slate-600 dark:text-slate-300">
-              Browse machine-readable music scores sourced from IMSLP metadata, with full revision
+              Browse machine-readable music scores, each linked to an IMSLP work, with full revision
               history and derivative artifacts.
             </p>
           </div>

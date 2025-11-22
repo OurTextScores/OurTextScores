@@ -17,6 +17,7 @@ type SourceRevisionView = {
     canonicalXml?: StorageLocator;
     normalizedMxl?: StorageLocator;
     pdf?: StorageLocator;
+    mscz?: StorageLocator;
     musicDiffReport?: StorageLocator;
   };
   manifest?: StorageLocator;
@@ -124,7 +125,7 @@ function StorageBadge({
   validationStatus
 }: {
   label: string;
-  kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'manifest' | 'musicDiffReport';
+  kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'mscz' | 'manifest' | 'musicDiffReport';
   locator?: StorageLocator;
   workId: string;
   sourceId: string;
@@ -158,6 +159,9 @@ function StorageBadge({
       break;
     case 'pdf':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.pdf${r}`;
+      break;
+    case 'mscz':
+      href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mscz${r}`;
       break;
     case 'manifest':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
@@ -287,6 +291,16 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
               label="PDF"
               kind="pdf"
               locator={revision.derivatives?.pdf}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="MSCZ"
+              kind="mscz"
+              locator={revision.derivatives?.mscz}
               workId={workId}
               sourceId={sourceId}
               revisionId={revision.revisionId}

@@ -55,7 +55,7 @@ function StorageBadge({
     validationStatus
 }: {
     label: string;
-    kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'manifest' | 'musicDiffReport' | 'musicDiffHtml' | 'musicDiffPdf';
+    kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'mscz' | 'manifest' | 'musicDiffReport' | 'musicDiffHtml' | 'musicDiffPdf';
     locator?: StorageLocator;
     workId: string;
     sourceId: string;
@@ -89,6 +89,9 @@ function StorageBadge({
             break;
         case 'pdf':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.pdf${r}`;
+            break;
+        case 'mscz':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mscz${r}`;
             break;
         case 'manifest':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
@@ -332,6 +335,15 @@ export default function SourceCard({
                                     label="PDF"
                                     kind="pdf"
                                     locator={latest.derivatives?.pdf}
+                                    workId={workId}
+                                    sourceId={source.sourceId}
+                                    revisionId={latest.revisionId}
+                                    validationStatus={latest.validation.status}
+                                />
+                                <StorageBadge
+                                    label="MSCZ"
+                                    kind="mscz"
+                                    locator={latest.derivatives?.mscz}
                                     workId={workId}
                                     sourceId={source.sourceId}
                                     revisionId={latest.revisionId}

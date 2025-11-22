@@ -293,4 +293,42 @@ describe('RevisionHistory', () => {
     expect(licenseLink).toBeInTheDocument();
     expect(licenseLink.closest('a')).toHaveAttribute('href', 'https://creativecommons.org/publicdomain/zero/1.0/');
   });
+
+  it('displays MSCZ badge when mscz derivative is present', () => {
+    const revisionsWithMscz = [
+      {
+        ...mockRevisions[0],
+        derivatives: {
+          ...mockRevisions[0].derivatives,
+          mscz: { bucket: 'scores-derivatives', objectKey: 'work123/rev3.mscz', sizeBytes: 120000 }
+        }
+      },
+      {
+        ...mockRevisions[1],
+        // No mscz derivative - should not show badge
+      }
+    ];
+
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        revisions={revisionsWithMscz}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    // Should have MSCZ badge for first revision
+    const msczBadges = screen.getAllByText('MSCZ');
+    expect(msczBadges.length).toBeGreaterThan(0);
+
+    // Check that the link is correctly formatted
+    const msczLinks = screen.getAllByRole('link').filter(link =>
+      link.getAttribute('href')?.includes('score.mscz')
+    );
+    expect(msczLinks.length).toBeGreaterThan(0);
+    expect(msczLinks[0].getAttribute('href')).toContain('works/12345/sources/source-1/score.mscz');
+    expect(msczLinks[0].getAttribute('href')).toContain('r=rev-3');
+  });
 });
