@@ -18,7 +18,7 @@
 'use client';
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchWorksPaginated, searchWorks, WorkSummary } from "./lib/api";
 import SearchBox from "./components/SearchBox";
 import Pagination from "./components/Pagination";
@@ -72,10 +72,10 @@ export default function WorksPage() {
     loadWorks();
   }, [currentPage, searchQuery]);
 
-  const handleSearch = (query: string) => {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     setCurrentPage(1); // Reset to first page when searching
-  };
+  }, []);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
