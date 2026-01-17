@@ -13,6 +13,7 @@ export default function Header() {
           OurTextScores
         </Link>
         <div className="flex items-center gap-3">
+          <Link href="/score-editor" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Score Editor</Link>
           <ThemeToggle />
           {user ? (
             <>

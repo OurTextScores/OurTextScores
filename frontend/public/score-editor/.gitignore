@@ -1,0 +1,2 @@
+# Exclude soundfonts (too large for GitHub)
+soundfonts/
