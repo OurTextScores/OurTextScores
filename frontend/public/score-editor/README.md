@@ -2,32 +2,14 @@
 
 This directory contains the static build of the OTS Score Editor, embedded from the [OTS_Web](https://github.com/OurTextScores/OTS_Web) project.
 
-## Important: Soundfont Files
+## Audio Playback
 
-**Soundfont files (142MB) are excluded from git** due to GitHub's 100MB file size limit. This affects:
-- ✅ All other features work normally
-- ❌ Audio playback will not work without a soundfont
+Audio playback uses a soundfont loaded from **Cloudflare R2 CDN**:
+- **URL**: `https://cdn.ourtextscores.com/default.sf2` (142MB)
+- **Why**: Soundfont exceeds GitHub's 100MB file size limit
+- **Result**: ✅ Audio works in production and local development
 
-### For Production (Vercel) - Audio Playback Currently Unavailable
-
-The soundfont is NOT included in Vercel deployments. See [docs/SOUNDFONT_SETUP.md](../../docs/SOUNDFONT_SETUP.md) for options to enable audio:
-- Upload soundfont to Cloudflare R2
-- Add build script to download during deployment
-- Or keep audio playback disabled
-
-### For Local Development (Docker)
-
-To add soundfonts for local testing:
-
-```bash
-# Copy from OTS_Web build
-mkdir -p frontend/public/score-editor/soundfonts
-cp ~/soundfonts.backup/default.sf2 frontend/public/score-editor/soundfonts/
-
-# Rebuild Docker
-docker compose build --no-cache frontend
-docker compose up -d frontend
-```
+No local soundfont files needed - everything loads from CDN.
 
 ## Updating the Score Editor
 
@@ -36,17 +18,12 @@ To update with the latest version from OTS_Web:
 ```bash
 # In OTS_Web repository
 cd ~/workspace/OTS_Web
-npm run build:embed:full
+npm run build:embed
 
-# Copy to OurTextScores (excluding soundfonts)
+# Copy to OurTextScores
 cd ~/workspace/OurTextScores
 rm -rf frontend/public/score-editor/*
 cp -r ~/workspace/OTS_Web/out/* frontend/public/score-editor/
-rm -rf frontend/public/score-editor/soundfonts  # Excluded from git
-
-# For local development, optionally copy soundfonts:
-mkdir -p frontend/public/score-editor/soundfonts
-cp ~/soundfonts.backup/default.sf2 frontend/public/score-editor/soundfonts/
 
 # Rebuild Docker (if using)
 docker compose build --no-cache frontend
@@ -56,7 +33,7 @@ docker compose up -d frontend
 ## Features
 
 - ✅ Full score editing with MusicXML support
+- ✅ Audio playback via CDN soundfont
 - ✅ AI assistant (requires OpenAI API key)
 - ✅ Export to PDF, MIDI, PNG, etc.
 - ✅ All features work in embedded/static mode
-- ⚠️ Audio playback requires soundfont (see above)
