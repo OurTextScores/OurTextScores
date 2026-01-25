@@ -44,6 +44,11 @@ export default function DiffPreview({
   const [html, setHtml] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
   const [isDark, setIsDark] = useState<boolean>(false);
+
+  // Find sequence numbers for labels
+  const revASeq = revisions.find(r => r.revisionId === revA)?.sequenceNumber;
+  const revBSeq = revisions.find(r => r.revisionId === revB)?.sequenceNumber;
+
   const pdfUrl = revA && revB
     ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&format=pdf`
     : undefined;
@@ -71,14 +76,26 @@ export default function DiffPreview({
       setRawText("");
       try {
         if (kind === "musicdiff_visual") {
-          if (!pdfUrl) {
-            setState("error");
-            setError("PDF URL unavailable");
-            return;
-          }
-          const wrapper = `<object data="${pdfUrl}" type="application/pdf" style="width:100%;min-height:24rem;height:100%"><p>Open PDF: <a href="${pdfUrl}">PDF</a></p></object>`;
+          // Ensure we have an absolute API base URL
+          const absoluteApiBase = PUBLIC_API_BASE.startsWith('http')
+            ? PUBLIC_API_BASE
+            : `${window.location.protocol}//${window.location.hostname}:4000${PUBLIC_API_BASE}`;
+
+          // Construct URLs for canonical XML files
+          const leftXmlUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml?r=${encodeURIComponent(revA)}`;
+          const rightXmlUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml?r=${encodeURIComponent(revB)}`;
+
+          // Construct labels
+          const leftLabel = `Rev #${revASeq || '?'}`;
+          const rightLabel = `Rev #${revBSeq || '?'}`;
+
+          // Construct the embed URL
+          const embedUrl = `/score-editor/index.html?compareLeft=${encodeURIComponent(leftXmlUrl)}&compareRight=${encodeURIComponent(rightXmlUrl)}&leftLabel=${encodeURIComponent(leftLabel)}&rightLabel=${encodeURIComponent(rightLabel)}`;
+
+          // Create iframe HTML
+          const wrapper = `<iframe src="${embedUrl}" style="width:100%;height:800px;border:1px solid #e2e8f0;border-radius:0.5rem;" title="Score Editor Visual Diff"></iframe>`;
           setHtml(wrapper);
-          setRawText(`Visual PDF diff: ${pdfUrl}\n`);
+          setRawText(`Visual diff (Score Editor): ${embedUrl}\n`);
           setState("ready");
           return;
         }
@@ -112,7 +129,7 @@ export default function DiffPreview({
     return () => {
       aborted = true;
     };
-  }, [revA, revB, kind, view, workId, sourceId, canVisualize, pdfUrl]);
+  }, [revA, revB, kind, view, workId, sourceId, canVisualize, pdfUrl, revASeq, revBSeq]);
 
   return (
     <div className="mt-3 flex flex-col gap-2">
@@ -153,7 +170,7 @@ export default function DiffPreview({
             <option value="xml">XML (text)</option>
             <option value="manifest">Manifest (text)</option>
             <option value="musicdiff">Musicdiff (semantic text)</option>
-            <option value="musicdiff_visual">Musicdiff (visual)</option>
+            <option value="musicdiff_visual">Visual Diff (Score Editor)</option>
           </select>
         </label>
         <label className={`ml-auto flex items-center gap-1 ${canVisualize ? '' : 'opacity-50'}`} title={canVisualize ? 'Visual view' : 'Visual view not available for musicdiff'}>
@@ -168,16 +185,22 @@ export default function DiffPreview({
             <option value="line-by-line">Inline</option>
           </select>
         </label>
-        {kind === 'musicdiff_visual' && pdfUrl && (
-          <a
-            href={pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+        {kind === 'musicdiff_visual' && revA && revB && (
+          <button
+            onClick={() => {
+              const absoluteApiBase = PUBLIC_API_BASE.startsWith('http')
+                ? PUBLIC_API_BASE
+                : `${window.location.protocol}//${window.location.hostname}:4000${PUBLIC_API_BASE}`;
+              const leftXmlUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml?r=${encodeURIComponent(revA)}`;
+              const rightXmlUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml?r=${encodeURIComponent(revB)}`;
+              const editorUrl = `/score-editor/index.html?compareLeft=${encodeURIComponent(leftXmlUrl)}&compareRight=${encodeURIComponent(rightXmlUrl)}&leftLabel=${encodeURIComponent(`Rev #${revASeq || '?'}`)}&rightLabel=${encodeURIComponent(`Rev #${revBSeq || '?'}`)}`;
+              window.open(editorUrl, '_blank');
+            }}
             className="ml-auto rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            title="Open visual PDF in a new tab"
+            title="Open in Score Editor in a new tab"
           >
-            Open visual PDF
-          </a>
+            Open in Score Editor
+          </button>
         )}
         {state === "loading" && <span className="text-slate-400">Loading diff…</span>}
         {state === "error" && <span className="text-rose-300">{error}</span>}

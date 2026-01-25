@@ -10,7 +10,6 @@ import DeleteSourceButton from "./delete-source-button";
 import RevisionHistory from "./revision-history";
 import DiffPreview from "./diff-preview";
 import LazyDetails from "../../components/lazy-details";
-import MxlViewer from "./mxl-viewer";
 import PdfViewer from "./pdf-viewer";
 import UploadRevisionForm from "./upload-revision-form";
 
@@ -265,16 +264,6 @@ export default function SourceCard({
                             Download MSCZ
                         </Link>
                     )}
-                    {source.derivatives?.normalizedMxl && (
-                        <Link
-                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/normalized.mxl`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            Download MXL
-                        </Link>
-                    )}
                     {source.derivatives?.pdf && (
                         <Link
                             href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.pdf`}
@@ -284,6 +273,31 @@ export default function SourceCard({
                         >
                             Download PDF
                         </Link>
+                    )}
+                    {source.derivatives?.normalizedMxl && (
+                        <>
+                            <Link
+                                href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/normalized.mxl`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                                Download MXL
+                            </Link>
+                            <button
+                                onClick={() => {
+                                    const absoluteApiBase = PUBLIC_API_BASE.startsWith('http')
+                                        ? PUBLIC_API_BASE
+                                        : `${window.location.protocol}//${window.location.hostname}:4000${PUBLIC_API_BASE}`;
+                                    const canonicalUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/canonical.xml`;
+                                    const editorUrl = `/score-editor/index.html?score=${encodeURIComponent(canonicalUrl)}`;
+                                    window.open(editorUrl, '_blank');
+                                }}
+                                className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
+                            >
+                                Open Score in Editor
+                            </button>
+                        </>
                     )}
                     {/* Watch toggle */}
                     {watchControlsSlot}
@@ -359,29 +373,9 @@ export default function SourceCard({
                                     validationStatus={latest.validation.status}
                                 />
                                 <StorageBadge
-                                    label="Diff"
+                                    label="Diff (text)"
                                     kind="musicDiffReport"
                                     locator={latest.derivatives?.musicDiffReport}
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    revisionId={latest.revisionId}
-                                    missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'}
-                                    validationStatus={latest.validation.status}
-                                />
-                                <StorageBadge
-                                    label="Diff (visual)"
-                                    kind="musicDiffHtml"
-                                    locator={(latest.derivatives as any)?.musicDiffHtml}
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    revisionId={latest.revisionId}
-                                    missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'}
-                                    validationStatus={latest.validation.status}
-                                />
-                                <StorageBadge
-                                    label="Diff (visual PDF)"
-                                    kind="musicDiffPdf"
-                                    locator={(latest.derivatives as any)?.musicDiffPdf}
                                     workId={workId}
                                     sourceId={source.sourceId}
                                     revisionId={latest.revisionId}
@@ -403,26 +397,6 @@ export default function SourceCard({
                             />
                         </div>
                     </details>
-
-                    {source.derivatives?.normalizedMxl && (
-                        <LazyDetails
-                            className="group border-t border-slate-200 dark:border-slate-800"
-                            summary={
-                                <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
-                                    Score preview (MXL)
-                                </summary>
-                            }
-                        >
-                            <div className="px-5 pb-5">
-                                <MxlViewer
-                                    key={source.latestRevisionId || source.sourceId}
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    revisionId={source.latestRevisionId}
-                                />
-                            </div>
-                        </LazyDetails>
-                    )}
 
                     {source.derivatives?.pdf && (
                         <LazyDetails

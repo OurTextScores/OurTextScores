@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_SCORE_EDITOR_URL: ${NEXT_PUBLIC_SCORE_EDITOR_URL:-http://localhost:3000/score-editor}
     environment:
       - NEXT_PUBLIC_API_URL=/api
       - INTERNAL_API_URL=http://backend:4000/api
