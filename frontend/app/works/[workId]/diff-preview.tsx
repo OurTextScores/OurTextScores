@@ -37,7 +37,7 @@ export default function DiffPreview({
 
   const [revA, setRevA] = useState(options[1]?.value ?? options[0]?.value ?? "");
   const [revB, setRevB] = useState(options[0]?.value ?? "");
-  const [kind, setKind] = useState<DiffKind>("lmx");
+  const [kind, setKind] = useState<DiffKind>("musicdiff_visual");
   const [view, setView] = useState<ViewMode>("side-by-side");
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [error, setError] = useState<string>("");
@@ -166,11 +166,11 @@ export default function DiffPreview({
         <label className="flex items-center gap-1">
           <span className="text-slate-400">Type</span>
           <select value={kind} onChange={(e) => setKind(e.target.value as DiffKind)} className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+            <option value="musicdiff_visual">Visual Diff (Score Editor)</option>
+            <option value="musicdiff">Musicdiff (semantic text)</option>
             <option value="lmx">LMX (text)</option>
             <option value="xml">XML (text)</option>
             <option value="manifest">Manifest (text)</option>
-            <option value="musicdiff">Musicdiff (semantic text)</option>
-            <option value="musicdiff_visual">Visual Diff (Score Editor)</option>
           </select>
         </label>
         <label className={`ml-auto flex items-center gap-1 ${canVisualize ? '' : 'opacity-50'}`} title={canVisualize ? 'Visual view' : 'Visual view not available for musicdiff'}>

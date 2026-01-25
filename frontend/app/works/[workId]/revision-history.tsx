@@ -328,6 +328,21 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
               missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'}
               validationStatus={revision.validation.status}
             />
+            {revision.derivatives?.canonicalXml && (
+              <button
+                onClick={() => {
+                  const absoluteApiBase = publicApiBase.startsWith('http')
+                    ? publicApiBase
+                    : `${window.location.protocol}//${window.location.hostname}:4000${publicApiBase}`;
+                  const canonicalUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml?r=${encodeURIComponent(revision.revisionId)}`;
+                  const editorUrl = `/score-editor/index.html?score=${encodeURIComponent(canonicalUrl)}`;
+                  window.open(editorUrl, '_blank');
+                }}
+                className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
+              >
+                Open in Editor
+              </button>
+            )}
           </div>
         ) : (
           <span className="text-slate-500">No artifacts yet</span>
