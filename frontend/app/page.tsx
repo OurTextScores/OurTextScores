@@ -36,6 +36,8 @@ export default function WorksPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterReferencePdf, setFilterReferencePdf] = useState(false);
+  const [filterVerified, setFilterVerified] = useState(false);
+  const [filterFlagged, setFilterFlagged] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +45,11 @@ export default function WorksPage() {
       setIsLoading(true);
       try {
         const offset = (currentPage - 1) * ITEMS_PER_PAGE;
-        const filter = filterReferencePdf ? 'hasReferencePdf = true' : undefined;
+        const filters: string[] = [];
+        if (filterReferencePdf) filters.push('hasReferencePdf = true');
+        if (filterVerified) filters.push('hasVerifiedSources = true');
+        if (filterFlagged) filters.push('hasFlaggedSources = true');
+        const filter = filters.length > 0 ? filters.join(' AND ') : undefined;
 
         if (searchQuery.trim()) {
           // Use search API when there's a query
@@ -74,7 +80,7 @@ export default function WorksPage() {
     }
 
     loadWorks();
-  }, [currentPage, searchQuery, filterReferencePdf]);
+  }, [currentPage, searchQuery, filterReferencePdf, filterVerified, filterFlagged]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -124,7 +130,7 @@ export default function WorksPage() {
         </div>
 
         {/* Filter Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
             <input
               type="checkbox"
@@ -136,6 +142,30 @@ export default function WorksPage() {
               className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 dark:border-slate-700 dark:bg-slate-900"
             />
             <span>Has reference PDF</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filterVerified}
+              onChange={(e) => {
+                setFilterVerified(e.target.checked);
+                setCurrentPage(1); // Reset to first page when filtering
+              }}
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900"
+            />
+            <span>Admin verified</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filterFlagged}
+              onChange={(e) => {
+                setFilterFlagged(e.target.checked);
+                setCurrentPage(1); // Reset to first page when filtering
+              }}
+              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-900"
+            />
+            <span>Has flagged sources</span>
           </label>
         </div>
 

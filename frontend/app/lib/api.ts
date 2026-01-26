@@ -54,6 +54,8 @@ export interface WorkSummary {
   sourceCount: number;
   availableFormats: string[];
   hasReferencePdf?: boolean;
+  hasVerifiedSources?: boolean;
+  hasFlaggedSources?: boolean;
   title?: string;
   composer?: string;
   catalogNumber?: string;
@@ -135,6 +137,14 @@ export interface SourceView {
   originalFilename: string;
   isPrimary: boolean;
   hasReferencePdf?: boolean;
+  adminVerified?: boolean;
+  adminVerifiedBy?: string;
+  adminVerifiedAt?: string;
+  adminVerificationNote?: string;
+  adminFlagged?: boolean;
+  adminFlaggedBy?: string;
+  adminFlaggedAt?: string;
+  adminFlagReason?: string;
   storage: StorageLocator;
   validation: ValidationState;
   provenance: {

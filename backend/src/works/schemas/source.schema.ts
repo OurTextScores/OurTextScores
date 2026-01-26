@@ -79,6 +79,32 @@ export class Source {
 
   @Prop({ type: Date })
   latestRevisionAt?: Date;
+
+  // Admin verification (source is a valid transcription)
+  @Prop({ default: false })
+  adminVerified?: boolean;
+
+  @Prop({ trim: true })
+  adminVerifiedBy?: string;
+
+  @Prop({ type: Date })
+  adminVerifiedAt?: Date;
+
+  @Prop({ trim: true })
+  adminVerificationNote?: string;
+
+  // Admin flagging (source should be deleted)
+  @Prop({ default: false })
+  adminFlagged?: boolean;
+
+  @Prop({ trim: true })
+  adminFlaggedBy?: string;
+
+  @Prop({ type: Date })
+  adminFlaggedAt?: Date;
+
+  @Prop({ trim: true })
+  adminFlagReason?: string;
 }
 
 export type SourceDocument = HydratedDocument<Source>;

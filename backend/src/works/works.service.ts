@@ -41,6 +41,8 @@ export interface WorkSummary {
   sourceCount: number;
   availableFormats: string[];
   hasReferencePdf?: boolean;
+  hasVerifiedSources?: boolean;
+  hasFlaggedSources?: boolean;
   title?: string;
   composer?: string;
   catalogNumber?: string;
@@ -82,6 +84,14 @@ export interface SourceView {
   originalFilename: string;
   isPrimary: boolean;
   hasReferencePdf?: boolean;
+  adminVerified?: boolean;
+  adminVerifiedBy?: string;
+  adminVerifiedAt?: Date;
+  adminVerificationNote?: string;
+  adminFlagged?: boolean;
+  adminFlaggedBy?: string;
+  adminFlaggedAt?: Date;
+  adminFlagReason?: string;
   storage: StorageLocator;
   validation: ValidationState;
   provenance: Source['provenance'];
@@ -143,6 +153,8 @@ export class WorksService {
         sourceCount: hit.sourceCount ?? 0,
         availableFormats: hit.availableFormats ?? [],
         hasReferencePdf: hit.hasReferencePdf,
+        hasVerifiedSources: hit.hasVerifiedSources,
+        hasFlaggedSources: hit.hasFlaggedSources,
         title: hit.title ?? undefined,
         composer: hit.composer ?? undefined,
         catalogNumber: hit.catalogNumber ?? undefined
@@ -175,6 +187,8 @@ export class WorksService {
       sourceCount: doc.sourceCount,
       availableFormats: doc.availableFormats ?? [],
       hasReferencePdf: doc.hasReferencePdf,
+      hasVerifiedSources: doc.hasVerifiedSources,
+      hasFlaggedSources: doc.hasFlaggedSources,
       title: doc.title ?? undefined,
       composer: doc.composer ?? undefined,
       catalogNumber: doc.catalogNumber ?? undefined
@@ -459,6 +473,14 @@ except Exception:
       originalFilename: source.originalFilename,
       isPrimary: source.isPrimary,
       hasReferencePdf: source.hasReferencePdf,
+      adminVerified: (source as any).adminVerified,
+      adminVerifiedBy: (source as any).adminVerifiedBy,
+      adminVerifiedAt: (source as any).adminVerifiedAt,
+      adminVerificationNote: (source as any).adminVerificationNote,
+      adminFlagged: (source as any).adminFlagged,
+      adminFlaggedBy: (source as any).adminFlaggedBy,
+      adminFlaggedAt: (source as any).adminFlaggedAt,
+      adminFlagReason: (source as any).adminFlagReason,
       storage: source.storage,
       validation: source.validation,
       provenance: source.provenance,
@@ -538,6 +560,8 @@ except Exception:
     const sourceCount = remaining.length;
     const formats = new Set<string>();
     let hasReferencePdf = false;
+    let hasVerifiedSources = false;
+    let hasFlaggedSources = false;
     for (const s of remaining) {
       if (s.format) formats.add(s.format);
       const d: any = s.derivatives ?? {};
@@ -545,11 +569,13 @@ except Exception:
       if (d.canonicalXml) formats.add('application/xml');
       if (d.linearizedXml) formats.add('text/plain');
       if (s.hasReferencePdf) hasReferencePdf = true;
+      if ((s as any).adminVerified) hasVerifiedSources = true;
+      if ((s as any).adminFlagged) hasFlaggedSources = true;
     }
     const updated = await this.workModel
       .findOneAndUpdate(
         { workId },
-        { $set: { sourceCount, availableFormats: Array.from(formats), hasReferencePdf } },
+        { $set: { sourceCount, availableFormats: Array.from(formats), hasReferencePdf, hasVerifiedSources, hasFlaggedSources } },
         { new: true }
       )
       .exec();
@@ -686,6 +712,8 @@ except Exception:
       sourceCount: work.sourceCount,
       availableFormats: work.availableFormats ?? [],
       hasReferencePdf: (work as any).hasReferencePdf,
+      hasVerifiedSources: (work as any).hasVerifiedSources,
+      hasFlaggedSources: (work as any).hasFlaggedSources,
       title: (work as any).title ?? undefined,
       composer: (work as any).composer ?? undefined,
       catalogNumber: (work as any).catalogNumber ?? undefined
@@ -705,6 +733,8 @@ except Exception:
       sourceCount: summary.sourceCount,
       availableFormats: summary.availableFormats,
       hasReferencePdf: summary.hasReferencePdf,
+      hasVerifiedSources: summary.hasVerifiedSources,
+      hasFlaggedSources: summary.hasFlaggedSources,
       latestRevisionAt: summary.latestRevisionAt?.getTime()
     });
   }
@@ -865,6 +895,132 @@ except Exception:
     if (!updated) {
       throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
     }
+
+    return { ok: true };
+  }
+
+  async verifySource(
+    workId: string,
+    sourceId: string,
+    userId: string,
+    note?: string
+  ): Promise<{ ok: true; verifiedAt: Date }> {
+    const now = new Date();
+    const updated = await this.sourceModel
+      .findOneAndUpdate(
+        { workId, sourceId },
+        {
+          $set: {
+            adminVerified: true,
+            adminVerifiedBy: userId,
+            adminVerifiedAt: now,
+            adminVerificationNote: note?.trim() || undefined
+          }
+        },
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
+    }
+
+    // Recompute work stats to update hasVerifiedSources aggregation
+    await this.recomputeWorkStats(workId);
+
+    return { ok: true, verifiedAt: now };
+  }
+
+  async removeVerification(
+    workId: string,
+    sourceId: string
+  ): Promise<{ ok: true }> {
+    const updated = await this.sourceModel
+      .findOneAndUpdate(
+        { workId, sourceId },
+        {
+          $set: {
+            adminVerified: false,
+            adminVerifiedBy: undefined,
+            adminVerifiedAt: undefined,
+            adminVerificationNote: undefined
+          }
+        },
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
+    }
+
+    // Recompute work stats to update hasVerifiedSources aggregation
+    await this.recomputeWorkStats(workId);
+
+    return { ok: true };
+  }
+
+  async flagSource(
+    workId: string,
+    sourceId: string,
+    userId: string,
+    reason: string
+  ): Promise<{ ok: true; flaggedAt: Date }> {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Flag reason is required');
+    }
+
+    const now = new Date();
+    const updated = await this.sourceModel
+      .findOneAndUpdate(
+        { workId, sourceId },
+        {
+          $set: {
+            adminFlagged: true,
+            adminFlaggedBy: userId,
+            adminFlaggedAt: now,
+            adminFlagReason: reason.trim()
+          }
+        },
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
+    }
+
+    // Recompute work stats to update hasFlaggedSources aggregation
+    await this.recomputeWorkStats(workId);
+
+    return { ok: true, flaggedAt: now };
+  }
+
+  async removeFlag(
+    workId: string,
+    sourceId: string
+  ): Promise<{ ok: true }> {
+    const updated = await this.sourceModel
+      .findOneAndUpdate(
+        { workId, sourceId },
+        {
+          $set: {
+            adminFlagged: false,
+            adminFlaggedBy: undefined,
+            adminFlaggedAt: undefined,
+            adminFlagReason: undefined
+          }
+        },
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
+    }
+
+    // Recompute work stats to update hasFlaggedSources aggregation
+    await this.recomputeWorkStats(workId);
 
     return { ok: true };
   }

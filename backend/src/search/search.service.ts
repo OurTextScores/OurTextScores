@@ -29,6 +29,8 @@ export interface WorkSearchDocument {
   availableFormats: string[];
   latestRevisionAt?: number; // timestamp for sorting
   hasReferencePdf?: boolean;
+  hasVerifiedSources?: boolean;
+  hasFlaggedSources?: boolean;
 }
 
 @Injectable()
@@ -84,7 +86,9 @@ export class SearchService implements OnModuleInit {
         filterableAttributes: [
           'sourceCount',
           'availableFormats',
-          'hasReferencePdf'
+          'hasReferencePdf',
+          'hasVerifiedSources',
+          'hasFlaggedSources'
         ],
         sortableAttributes: [
           'latestRevisionAt',
@@ -98,6 +102,7 @@ export class SearchService implements OnModuleInit {
           'sourceCount',
           'availableFormats',
           'hasReferencePdf',
+          'hasVerifiedSources',
           'latestRevisionAt'
         ],
         rankingRules: [

@@ -10,6 +10,7 @@ import {
   UploadedFiles,
   UseInterceptors,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Res,
   Query,
@@ -1116,6 +1117,119 @@ export class WorksController {
     @CurrentUser() user: RequestUser
   ) {
     return this.worksService.rejectRevision(workId, sourceId, revisionId, { userId: user.userId, roles: user.roles });
+  }
+
+  // Admin verification endpoints
+  @Post(':workId/sources/:sourceId/verify')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Verify source (admin only)',
+    description: 'Mark a source as verified/valid transcription'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        note: { type: 'string', description: 'Optional verification note' }
+      }
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Source verified successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  @ApiResponse({ status: 404, description: 'Source not found' })
+  async verifySource(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Body() body: { note?: string },
+    @CurrentUser() user?: RequestUser
+  ) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.verifySource(workId, sourceId, user.userId, body.note);
+  }
+
+  @Delete(':workId/sources/:sourceId/verify')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Remove verification (admin only)',
+    description: 'Remove verification from a source'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiResponse({ status: 200, description: 'Verification removed successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  @ApiResponse({ status: 404, description: 'Source not found' })
+  async removeVerification(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.removeVerification(workId, sourceId);
+  }
+
+  @Post(':workId/sources/:sourceId/flag')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Flag source for deletion',
+    description: 'Mark a source as problematic/should be deleted. Any authenticated user can flag sources.'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['reason'],
+      properties: {
+        reason: { type: 'string', description: 'Reason for flagging' }
+      }
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Source flagged successfully' })
+  @ApiResponse({ status: 400, description: 'Reason required' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 404, description: 'Source not found' })
+  async flagSource(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user?: RequestUser
+  ) {
+    if (!body.reason?.trim()) {
+      throw new BadRequestException('Reason is required');
+    }
+    return this.worksService.flagSource(workId, sourceId, user.userId, body.reason);
+  }
+
+  @Delete(':workId/sources/:sourceId/flag')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Remove flag (admin only)',
+    description: 'Remove deletion flag from a source'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiResponse({ status: 200, description: 'Flag removed successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  @ApiResponse({ status: 404, description: 'Source not found' })
+  async removeFlag(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.removeFlag(workId, sourceId);
   }
 
   // Server-Sent Events stream for progress updates

@@ -21,6 +21,12 @@ export class Work {
   @Prop({ required: true, default: false })
   hasReferencePdf!: boolean;
 
+  @Prop({ required: true, default: false })
+  hasVerifiedSources!: boolean;
+
+  @Prop({ required: true, default: false })
+  hasFlaggedSources!: boolean;
+
   // Optional human-friendly overrides
   @Prop({ trim: true })
   title?: string;

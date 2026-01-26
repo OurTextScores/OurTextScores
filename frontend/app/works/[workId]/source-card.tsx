@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useTransition } from "react";
 import Link from "next/link";
 import { SourceView, SourceRevisionView, StorageLocator, BackendSessionUser } from "../../lib/api";
 import { getPublicApiBase } from "../../lib/api";
@@ -11,6 +11,7 @@ import RevisionHistory from "./revision-history";
 import DiffPreview from "./diff-preview";
 import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
+import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction } from "./admin-actions";
 
 const PUBLIC_API_BASE = getPublicApiBase();
 
@@ -40,6 +41,196 @@ function statusColor(status: string) {
         default:
             return "bg-amber-100 text-amber-700 ring-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-400/40";
     }
+}
+
+function AdminActionsPanel({
+    workId,
+    sourceId,
+    source
+}: {
+    workId: string;
+    sourceId: string;
+    source: SourceView;
+}) {
+    const [verifyNote, setVerifyNote] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const [isPending, startTransition] = useTransition();
+
+    const handleVerify = () => {
+        setError(null);
+        startTransition(async () => {
+            try {
+                await verifySourceAction(workId, sourceId, verifyNote.trim() || undefined);
+            } catch (err: any) {
+                setError(err.message || "Failed to verify source");
+            }
+        });
+    };
+
+    const handleRemoveVerification = () => {
+        setError(null);
+        startTransition(async () => {
+            try {
+                await removeVerificationAction(workId, sourceId);
+            } catch (err: any) {
+                setError(err.message || "Failed to remove verification");
+            }
+        });
+    };
+
+    return (
+        <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/30">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">Admin Actions</h3>
+            {error && (
+                <div className="mb-3 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
+                    {error}
+                </div>
+            )}
+            <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                    Source Verification
+                </p>
+                {source.adminVerified ? (
+                    <div className="space-y-2">
+                        <div className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200">
+                            <p className="font-semibold">✅ Verified</p>
+                            {source.adminVerificationNote && (
+                                <p className="mt-1 text-xs">Note: {source.adminVerificationNote}</p>
+                            )}
+                            {source.adminVerifiedAt && (
+                                <p className="mt-1 text-xs">
+                                    {new Date(source.adminVerifiedAt).toLocaleString()}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            onClick={handleRemoveVerification}
+                            disabled={isPending}
+                            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                            Remove Verification
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <input
+                            type="text"
+                            placeholder="Optional note..."
+                            value={verifyNote}
+                            onChange={(e) => setVerifyNote(e.target.value)}
+                            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                        />
+                        <button
+                            onClick={handleVerify}
+                            disabled={isPending}
+                            className="w-full rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200 dark:hover:bg-emerald-900"
+                        >
+                            Verify Source
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function FlagSourcePanel({
+    workId,
+    sourceId,
+    source,
+    isAdmin
+}: {
+    workId: string;
+    sourceId: string;
+    source: SourceView;
+    isAdmin: boolean;
+}) {
+    const [flagReason, setFlagReason] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const [isPending, startTransition] = useTransition();
+
+    const handleFlag = () => {
+        if (!flagReason.trim()) {
+            setError("Flag reason is required");
+            return;
+        }
+        setError(null);
+        startTransition(async () => {
+            try {
+                await flagSourceAction(workId, sourceId, flagReason.trim());
+            } catch (err: any) {
+                setError(err.message || "Failed to flag source");
+            }
+        });
+    };
+
+    const handleRemoveFlag = () => {
+        setError(null);
+        startTransition(async () => {
+            try {
+                await removeFlagAction(workId, sourceId);
+            } catch (err: any) {
+                setError(err.message || "Failed to remove flag");
+            }
+        });
+    };
+
+    return (
+        <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">Report Issue</h3>
+            {error && (
+                <div className="mb-3 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
+                    {error}
+                </div>
+            )}
+            <div className="space-y-2">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Flag this source if it contains inappropriate content, is not a valid transcription, or violates terms of use.
+                </p>
+                {source.adminFlagged ? (
+                    <div className="space-y-2">
+                        <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
+                            <p className="font-semibold">⚠️ Flagged for Review</p>
+                            {source.adminFlagReason && (
+                                <p className="mt-1 text-xs">Reason: {source.adminFlagReason}</p>
+                            )}
+                            {source.adminFlaggedAt && (
+                                <p className="mt-1 text-xs">
+                                    {new Date(source.adminFlaggedAt).toLocaleString()}
+                                </p>
+                            )}
+                        </div>
+                        {isAdmin && (
+                            <button
+                                onClick={handleRemoveFlag}
+                                disabled={isPending}
+                                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                            >
+                                Remove Flag
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <input
+                            type="text"
+                            placeholder="Reason for flagging (required)..."
+                            value={flagReason}
+                            onChange={(e) => setFlagReason(e.target.value)}
+                            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                        />
+                        <button
+                            onClick={handleFlag}
+                            disabled={isPending}
+                            className="w-full rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200 dark:hover:bg-rose-900"
+                        >
+                            Flag for Review
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 }
 
 function StorageBadge({
@@ -254,6 +445,16 @@ export default function SourceCard({
                     {source.isPrimary && (
                         <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-700 ring-1 ring-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:ring-cyan-400/40">
                             Primary
+                        </span>
+                    )}
+                    {source.adminVerified && (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/40" title={source.adminVerificationNote || 'Verified by admin'}>
+                            ✅ Admin Verified
+                        </span>
+                    )}
+                    {source.adminFlagged && (
+                        <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-400/40" title={source.adminFlagReason || 'Flagged for deletion by admin'}>
+                            ⚠️ Flagged for Deletion
                         </span>
                     )}
                     {source.derivatives?.mscz && (
@@ -485,6 +686,21 @@ export default function SourceCard({
                         <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-200">Upload a new revision</h3>
                         <UploadRevisionForm workId={workId} sourceId={source.sourceId} defaultBranch={(source.revisions[0]?.fossilBranch as any) ?? 'trunk'} initialBranches={initialBranches} />
                     </div>
+                    {isAdmin && (
+                        <AdminActionsPanel
+                            workId={workId}
+                            sourceId={source.sourceId}
+                            source={source}
+                        />
+                    )}
+                    {currentUser && (
+                        <FlagSourcePanel
+                            workId={workId}
+                            sourceId={source.sourceId}
+                            source={source}
+                            isAdmin={isAdmin}
+                        />
+                    )}
                     <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
                         {branchesPanelSlot}
                     </div>
