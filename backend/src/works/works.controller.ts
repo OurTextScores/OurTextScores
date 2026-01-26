@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
   BadRequestException,
   NotFoundException,
@@ -18,7 +19,7 @@ import {
 import type { Response } from 'express';
 import { StorageService } from '../storage/storage.service';
 import { FossilService } from '../fossil/fossil.service';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { EnsureWorkResponse, WorksService } from './works.service';
 import { UseGuards } from '@nestjs/common';
@@ -77,6 +78,12 @@ export class WorksController {
     description: 'Number of results to skip for pagination (default: 0)',
     example: 0
   })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    description: 'MeiliSearch filter string (e.g., "hasReferencePdf = true")',
+    example: 'hasReferencePdf = true'
+  })
   @ApiResponse({
     status: 200,
     description: 'List of works retrieved successfully',
@@ -110,11 +117,12 @@ export class WorksController {
   })
   findAll(
     @Query('limit') limit?: string,
-    @Query('offset') offset?: string
+    @Query('offset') offset?: string,
+    @Query('filter') filter?: string
   ) {
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : 20;
     const parsedOffset = offset ? Math.max(parseInt(offset, 10), 0) : 0;
-    return this.worksService.findAll({ limit: parsedLimit, offset: parsedOffset });
+    return this.worksService.findAll({ limit: parsedLimit, offset: parsedOffset, filter });
   }
 
   @Post()
@@ -404,6 +412,40 @@ export class WorksController {
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.mscz';
     this.sendBuffer(res, buffer, baseName, 'application/vnd.musescore.mscz', !!revisionId, 'attachment');
+  }
+
+  @Get(":workId/sources/:sourceId/reference.pdf")
+  @UseGuards(AuthOptionalGuard)
+  @ApiTags('derivatives')
+  @ApiOperation({
+    summary: 'Download reference PDF',
+    description: 'Get the reference PDF file for a source or specific revision'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiResponse({ status: 200, description: 'Reference PDF file returned', content: { 'application/pdf': {} } })
+  @ApiResponse({ status: 404, description: 'Reference PDF not found for this source' })
+  async downloadReferencePdf(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Query('r') revisionId: string | undefined,
+    @Res() res: Response,
+    @CurrentUser() user?: RequestUser
+  ) {
+    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
+    const detail = await this.worksService.getWorkDetail(workId, viewer);
+    const source = detail.sources.find((s) => s.sourceId === sourceId);
+    const locator = revisionId
+      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.referencePdf)
+      : source?.derivatives?.referencePdf;
+    if (!source || !locator) {
+      throw new NotFoundException('Reference PDF not found for this source');
+    }
+    const loc = locator;
+    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
+    const baseName = 'reference.pdf';
+    this.sendBuffer(res, buffer, baseName, 'application/pdf', !!revisionId, 'inline');
   }
 
   @Get(":workId/sources/:sourceId/thumbnail.png")
@@ -920,7 +962,10 @@ export class WorksController {
 
   @Post(':workId/sources')
   @UseInterceptors(
-    FileInterceptor('file', {
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'referencePdf', maxCount: 1 }
+    ], {
       storage: memoryStorage(),
       limits: {
         fileSize: 100 * 1024 * 1024 // 100 MB safeguard
@@ -931,7 +976,7 @@ export class WorksController {
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload a new source',
-    description: 'Upload a MusicXML file as a new source for a work. Generates derivatives (PDF, canonical XML, etc.) asynchronously.'
+    description: 'Upload a MusicXML file as a new source for a work. Optionally include a reference PDF. Generates derivatives (PDF, canonical XML, etc.) asynchronously.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
@@ -940,6 +985,7 @@ export class WorksController {
       type: 'object',
       properties: {
         file: { type: 'string', format: 'binary', description: 'MusicXML file (.musicxml, .mxl, or .xml)' },
+        referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source', example: true },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
@@ -953,7 +999,7 @@ export class WorksController {
   uploadSource(
     @Param('workId') workId: string,
     @Body() body: UploadSourceRequest,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ) {
@@ -962,12 +1008,17 @@ export class WorksController {
       isPrimary: this.toBoolean(body?.isPrimary),
       formatHint: body?.formatHint
     };
-    return this.uploadSourceService.upload(workId, normalizedBody, file, progressId, user);
+    const file = files?.file?.[0];
+    const referencePdfFile = files?.referencePdf?.[0];
+    return this.uploadSourceService.upload(workId, normalizedBody, file, referencePdfFile, progressId, user);
   }
 
   @Post(':workId/sources/:sourceId/revisions')
   @UseInterceptors(
-    FileInterceptor('file', {
+    FileFieldsInterceptor([
+      { name: 'file', maxCount: 1 },
+      { name: 'referencePdf', maxCount: 1 }
+    ], {
       storage: memoryStorage(),
       limits: {
         fileSize: 100 * 1024 * 1024
@@ -978,7 +1029,7 @@ export class WorksController {
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload a revision to an existing source',
-    description: 'Upload a new revision of an existing source. Generates derivatives and MusicDiff comparison with previous revision.'
+    description: 'Upload a new revision of an existing source. Optionally include a reference PDF. Generates derivatives and MusicDiff comparison with previous revision.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
@@ -988,6 +1039,7 @@ export class WorksController {
       type: 'object',
       properties: {
         file: { type: 'string', format: 'binary', description: 'MusicXML file (.musicxml, .mxl, or .xml)' },
+        referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source' },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
@@ -1006,7 +1058,7 @@ export class WorksController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body() body: UploadSourceRequest,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ) {
@@ -1017,7 +1069,9 @@ export class WorksController {
       createBranch: this.toBoolean((body as any)?.createBranch),
       branchName: (body as any)?.branchName
     };
-    return this.uploadSourceService.uploadRevision(workId, sourceId, normalizedBody, file, progressId, user);
+    const file = files?.file?.[0];
+    const referencePdfFile = files?.referencePdf?.[0];
+    return this.uploadSourceService.uploadRevision(workId, sourceId, normalizedBody, file, referencePdfFile, progressId, user);
   }
 
   @Post(':workId/sources/:sourceId/revisions/:revisionId/approve')

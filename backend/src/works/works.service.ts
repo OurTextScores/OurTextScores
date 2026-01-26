@@ -40,6 +40,7 @@ export interface WorkSummary {
   latestRevisionAt?: Date;
   sourceCount: number;
   availableFormats: string[];
+  hasReferencePdf?: boolean;
   title?: string;
   composer?: string;
   catalogNumber?: string;
@@ -80,6 +81,7 @@ export interface SourceView {
   description?: string;
   originalFilename: string;
   isPrimary: boolean;
+  hasReferencePdf?: boolean;
   storage: StorageLocator;
   validation: ValidationState;
   provenance: Source['provenance'];
@@ -122,10 +124,39 @@ export class WorksService {
     private readonly usersService: UsersService
   ) { }
 
-  async findAll(options?: { limit?: number; offset?: number }): Promise<PaginatedWorksResponse> {
+  async findAll(options?: { limit?: number; offset?: number; filter?: string }): Promise<PaginatedWorksResponse> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
+    const filter = options?.filter;
 
+    // If a filter is provided, use the search service (MeiliSearch)
+    if (filter) {
+      const searchResult = await this.searchService.searchWorks('', {
+        limit,
+        offset,
+        filter
+      });
+
+      const summaries: WorkSummary[] = searchResult.hits.map((hit: any) => ({
+        workId: hit.workId,
+        latestRevisionAt: hit.latestRevisionAt ? new Date(hit.latestRevisionAt) : undefined,
+        sourceCount: hit.sourceCount ?? 0,
+        availableFormats: hit.availableFormats ?? [],
+        hasReferencePdf: hit.hasReferencePdf,
+        title: hit.title ?? undefined,
+        composer: hit.composer ?? undefined,
+        catalogNumber: hit.catalogNumber ?? undefined
+      }));
+
+      return {
+        works: summaries,
+        total: searchResult.estimatedTotalHits,
+        limit,
+        offset
+      };
+    }
+
+    // Otherwise use MongoDB directly (no search/filter)
     // Get total count
     const total = await this.workModel.countDocuments().exec();
 
@@ -143,6 +174,7 @@ export class WorksService {
       latestRevisionAt: doc.latestRevisionAt ?? undefined,
       sourceCount: doc.sourceCount,
       availableFormats: doc.availableFormats ?? [],
+      hasReferencePdf: doc.hasReferencePdf,
       title: doc.title ?? undefined,
       composer: doc.composer ?? undefined,
       catalogNumber: doc.catalogNumber ?? undefined
@@ -426,6 +458,7 @@ except Exception:
       description: source.description,
       originalFilename: source.originalFilename,
       isPrimary: source.isPrimary,
+      hasReferencePdf: source.hasReferencePdf,
       storage: source.storage,
       validation: source.validation,
       provenance: source.provenance,
@@ -504,17 +537,19 @@ except Exception:
     const remaining = await this.sourceModel.find({ workId }).lean().exec();
     const sourceCount = remaining.length;
     const formats = new Set<string>();
+    let hasReferencePdf = false;
     for (const s of remaining) {
       if (s.format) formats.add(s.format);
       const d: any = s.derivatives ?? {};
       if (d.normalizedMxl) formats.add('application/vnd.recordare.musicxml');
       if (d.canonicalXml) formats.add('application/xml');
       if (d.linearizedXml) formats.add('text/plain');
+      if (s.hasReferencePdf) hasReferencePdf = true;
     }
     const updated = await this.workModel
       .findOneAndUpdate(
         { workId },
-        { $set: { sourceCount, availableFormats: Array.from(formats) } },
+        { $set: { sourceCount, availableFormats: Array.from(formats), hasReferencePdf } },
         { new: true }
       )
       .exec();
@@ -650,6 +685,7 @@ except Exception:
       latestRevisionAt: work.latestRevisionAt ?? undefined,
       sourceCount: work.sourceCount,
       availableFormats: work.availableFormats ?? [],
+      hasReferencePdf: (work as any).hasReferencePdf,
       title: (work as any).title ?? undefined,
       composer: (work as any).composer ?? undefined,
       catalogNumber: (work as any).catalogNumber ?? undefined
@@ -668,6 +704,7 @@ except Exception:
       catalogNumber: summary.catalogNumber,
       sourceCount: summary.sourceCount,
       availableFormats: summary.availableFormats,
+      hasReferencePdf: summary.hasReferencePdf,
       latestRevisionAt: summary.latestRevisionAt?.getTime()
     });
   }

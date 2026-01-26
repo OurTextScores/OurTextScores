@@ -35,6 +35,7 @@ export default function WorksPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterReferencePdf, setFilterReferencePdf] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -42,12 +43,14 @@ export default function WorksPage() {
       setIsLoading(true);
       try {
         const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+        const filter = filterReferencePdf ? 'hasReferencePdf = true' : undefined;
 
         if (searchQuery.trim()) {
           // Use search API when there's a query
           const result = await searchWorks(searchQuery, {
             limit: ITEMS_PER_PAGE,
             offset,
+            filter,
           });
           setWorks(result.works);
           setTotalItems(result.total);
@@ -56,6 +59,7 @@ export default function WorksPage() {
           const result = await fetchWorksPaginated({
             limit: ITEMS_PER_PAGE,
             offset,
+            filter,
           });
           setWorks(result.works);
           setTotalItems(result.total);
@@ -70,7 +74,7 @@ export default function WorksPage() {
     }
 
     loadWorks();
-  }, [currentPage, searchQuery]);
+  }, [currentPage, searchQuery, filterReferencePdf]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -117,6 +121,22 @@ export default function WorksPage() {
             placeholder="Search by title, composer, or catalogue..."
             debounceMs={300}
           />
+        </div>
+
+        {/* Filter Controls */}
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filterReferencePdf}
+              onChange={(e) => {
+                setFilterReferencePdf(e.target.checked);
+                setCurrentPage(1); // Reset to first page when filtering
+              }}
+              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 dark:border-slate-700 dark:bg-slate-900"
+            />
+            <span>Has reference PDF</span>
+          </label>
         </div>
 
         {/* Loading State */}

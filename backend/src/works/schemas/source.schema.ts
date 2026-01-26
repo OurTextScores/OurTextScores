@@ -59,6 +59,9 @@ export class Source {
   @Prop({ required: true, default: false })
   isPrimary!: boolean;
 
+  @Prop({ required: true, default: false })
+  hasReferencePdf!: boolean;
+
   @Prop({ type: StorageLocatorSchema, required: true })
   storage!: StorageLocator;
 

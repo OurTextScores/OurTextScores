@@ -10,7 +10,6 @@ import DeleteSourceButton from "./delete-source-button";
 import RevisionHistory from "./revision-history";
 import DiffPreview from "./diff-preview";
 import LazyDetails from "../../components/lazy-details";
-import PdfViewer from "./pdf-viewer";
 import UploadRevisionForm from "./upload-revision-form";
 
 const PUBLIC_API_BASE = getPublicApiBase();
@@ -54,7 +53,7 @@ function StorageBadge({
     validationStatus
 }: {
     label: string;
-    kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'mscz' | 'manifest' | 'musicDiffReport' | 'musicDiffHtml' | 'musicDiffPdf';
+    kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'mscz' | 'referencePdf' | 'manifest' | 'musicDiffReport' | 'musicDiffHtml' | 'musicDiffPdf';
     locator?: StorageLocator;
     workId: string;
     sourceId: string;
@@ -91,6 +90,9 @@ function StorageBadge({
             break;
         case 'mscz':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mscz${r}`;
+            break;
+        case 'referencePdf':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf${r}`;
             break;
         case 'manifest':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
@@ -264,6 +266,16 @@ export default function SourceCard({
                             Download MSCZ
                         </Link>
                     )}
+                    {source.derivatives?.referencePdf && (
+                        <Link
+                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded border border-rose-300 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200 dark:hover:bg-rose-900"
+                        >
+                            Download Reference PDF
+                        </Link>
+                    )}
                     {source.derivatives?.pdf && (
                         <Link
                             href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.pdf`}
@@ -363,6 +375,17 @@ export default function SourceCard({
                                     revisionId={latest.revisionId}
                                     validationStatus={latest.validation.status}
                                 />
+                                {source.hasReferencePdf && (
+                                    <StorageBadge
+                                        label="Reference PDF"
+                                        kind="referencePdf"
+                                        locator={latest.derivatives?.referencePdf}
+                                        workId={workId}
+                                        sourceId={source.sourceId}
+                                        revisionId={latest.revisionId}
+                                        validationStatus={latest.validation.status}
+                                    />
+                                )}
                                 <StorageBadge
                                     label="Manifest"
                                     kind="manifest"
@@ -398,22 +421,62 @@ export default function SourceCard({
                         </div>
                     </details>
 
+                    {source.derivatives?.referencePdf && (
+                        <LazyDetails
+                            className="group border-t border-slate-200 dark:border-slate-800"
+                            summary={
+                                <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
+                                    Browse Reference
+                                </summary>
+                            }
+                        >
+                            <div className="px-5 pb-5">
+                                <object
+                                    data={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf${source.latestRevisionId ? `?r=${encodeURIComponent(source.latestRevisionId)}` : ''}`}
+                                    type="application/pdf"
+                                    className="h-[800px] w-full rounded border border-slate-200 dark:border-slate-700"
+                                >
+                                    <p className="p-4 text-sm text-slate-600 dark:text-slate-400">
+                                        Your browser does not support PDF viewing.{' '}
+                                        <a
+                                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf${source.latestRevisionId ? `?r=${encodeURIComponent(source.latestRevisionId)}` : ''}`}
+                                            className="text-primary-600 hover:underline dark:text-primary-400"
+                                            download
+                                        >
+                                            Download Reference PDF
+                                        </a>
+                                    </p>
+                                </object>
+                            </div>
+                        </LazyDetails>
+                    )}
+
                     {source.derivatives?.pdf && (
                         <LazyDetails
                             className="group border-t border-slate-200 dark:border-slate-800"
                             summary={
                                 <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
-                                    Score preview (PDF)
+                                    Browse Source
                                 </summary>
                             }
                         >
                             <div className="px-5 pb-5">
-                                <PdfViewer
-                                    key={(source.latestRevisionId || source.sourceId) + '-pdf'}
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    revisionId={source.latestRevisionId}
-                                />
+                                <object
+                                    data={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.pdf${source.latestRevisionId ? `?r=${encodeURIComponent(source.latestRevisionId)}` : ''}`}
+                                    type="application/pdf"
+                                    className="h-[800px] w-full rounded border border-slate-200 dark:border-slate-700"
+                                >
+                                    <p className="p-4 text-sm text-slate-600 dark:text-slate-400">
+                                        Your browser does not support PDF viewing.{' '}
+                                        <a
+                                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.pdf${source.latestRevisionId ? `?r=${encodeURIComponent(source.latestRevisionId)}` : ''}`}
+                                            className="text-primary-600 hover:underline dark:text-primary-400"
+                                            download
+                                        >
+                                            Download Generated PDF
+                                        </a>
+                                    </p>
+                                </object>
                             </div>
                         </LazyDetails>
                     )}

@@ -77,6 +77,7 @@ export class UploadSourceService {
     sourceId: string,
     request: UploadSourceRequest,
     file?: Express.Multer.File,
+    referencePdfFile?: Express.Multer.File,
     progressId?: string,
     user?: RequestUser
   ): Promise<UploadSourceResult> {
@@ -212,6 +213,28 @@ export class UploadSourceService {
       validationState.status = 'passed';
     }
 
+    // Handle reference PDF if provided
+    let hasReferencePdf = (existing as any).hasReferencePdf ?? false;
+    if (referencePdfFile && referencePdfFile.buffer) {
+      try {
+        const referencePdfLocator = await this.storeReferencePdf(
+          referencePdfFile,
+          trimmedWorkId,
+          trimmedSourceId,
+          sequenceNumber,
+          progressId
+        );
+        if (referencePdfLocator) {
+          derivativeOutcome.derivatives.referencePdf = referencePdfLocator;
+          hasReferencePdf = true;
+          notes.push('Reference PDF stored successfully.');
+        }
+      } catch (error) {
+        notes.push(`Reference PDF storage failed: ${this.readableError(error)}`);
+        this.progress.publish(progressId, 'Reference PDF storage failed', 'store.refpdf.failed');
+      }
+    }
+
     const existingProvenance = (existing as any).provenance as Provenance | undefined;
     const provenance: Provenance = {
       ingestType: existingProvenance?.ingestType ?? 'manual',
@@ -272,6 +295,7 @@ export class UploadSourceService {
           description: request.description ?? existing.description,
           format,
           originalFilename: file.originalname,
+          hasReferencePdf,
           storage: storageLocator,
           validation: validationState,
           provenance,
@@ -314,6 +338,10 @@ export class UploadSourceService {
     //   ).catch(() => { });
     // }
     this.progress.publish(progressId, 'Done', 'done');
+
+    // Recompute work stats (including hasReferencePdf aggregation)
+    await (this.worksService as any).recomputeWorkStats(trimmedWorkId);
+
     this.progress.complete(progressId);
 
     return {
@@ -334,6 +362,7 @@ export class UploadSourceService {
     workId: string,
     request: UploadSourceRequest,
     file?: Express.Multer.File,
+    referencePdfFile?: Express.Multer.File,
     progressId?: string,
     user?: RequestUser
   ): Promise<UploadSourceResult> {
@@ -467,6 +496,28 @@ export class UploadSourceService {
       validationState.status = 'passed';
     }
 
+    // Handle reference PDF if provided
+    let hasReferencePdf = false;
+    if (referencePdfFile && referencePdfFile.buffer) {
+      try {
+        const referencePdfLocator = await this.storeReferencePdf(
+          referencePdfFile,
+          work.workId,
+          sourceId,
+          sequenceNumber,
+          progressId
+        );
+        if (referencePdfLocator) {
+          derivativeOutcome.derivatives.referencePdf = referencePdfLocator;
+          hasReferencePdf = true;
+          notes.push('Reference PDF stored successfully.');
+        }
+      } catch (error) {
+        notes.push(`Reference PDF storage failed: ${this.readableError(error)}`);
+        this.progress.publish(progressId, 'Reference PDF storage failed', 'store.refpdf.failed');
+      }
+    }
+
     const provenance: Provenance = {
       ingestType: 'manual',
       uploadedAt: receivedAt,
@@ -532,6 +583,7 @@ export class UploadSourceService {
       licenseAttribution: request.licenseAttribution,
       originalFilename: file.originalname,
       isPrimary: request.isPrimary ?? false,
+      hasReferencePdf,
       storage: storageLocator,
       validation: validationState,
       provenance,
@@ -565,6 +617,10 @@ export class UploadSourceService {
     }
     // No previous on brand-new sources; nothing to diff
     this.progress.publish(progressId, 'Done', 'done');
+
+    // Recompute work stats (including hasReferencePdf aggregation)
+    await (this.worksService as any).recomputeWorkStats(trimmedWorkId);
+
     this.progress.complete(progressId);
 
     return {
@@ -893,5 +949,57 @@ export class UploadSourceService {
     throw new BadRequestException(
       'Unsupported file format. Accepted: .mscz, .mxl, .xml.'
     );
+  }
+
+  private async storeReferencePdf(
+    referencePdfFile: Express.Multer.File,
+    workId: string,
+    sourceId: string,
+    sequenceNumber: number,
+    progressId?: string
+  ): Promise<StorageLocator | undefined> {
+    // Validate PDF type and size
+    const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50 MB
+    if (referencePdfFile.size > MAX_PDF_SIZE) {
+      throw new BadRequestException('Reference PDF is too large (max 50MB)');
+    }
+
+    const mime = (referencePdfFile.mimetype || '').toLowerCase();
+    if (mime !== 'application/pdf') {
+      throw new BadRequestException('Reference file must be a PDF');
+    }
+
+    const ext = extname(referencePdfFile.originalname?.toLowerCase() ?? '');
+    if (ext && ext !== '.pdf') {
+      throw new BadRequestException('Reference file must have .pdf extension');
+    }
+
+    this.progress.publish(progressId, 'Storing reference PDF', 'store.refpdf');
+
+    const base = `${workId}/${sourceId}/rev-${sequenceNumber.toString().padStart(4, '0')}`;
+    const storageKey = `${base}/reference.pdf`;
+
+    const checksumHex = createHash('sha256').update(referencePdfFile.buffer).digest('hex');
+
+    const storageResult = await this.storageService.putAuxiliaryObject(
+      storageKey,
+      referencePdfFile.buffer,
+      referencePdfFile.size,
+      'application/pdf'
+    );
+
+    const storageLocator: StorageLocator = {
+      bucket: storageResult.bucket,
+      objectKey: storageResult.objectKey,
+      sizeBytes: referencePdfFile.size,
+      checksum: {
+        algorithm: 'sha256',
+        hexDigest: checksumHex
+      },
+      contentType: 'application/pdf',
+      lastModifiedAt: new Date()
+    };
+
+    return storageLocator;
   }
 }

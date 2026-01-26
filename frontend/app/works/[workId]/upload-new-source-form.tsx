@@ -25,6 +25,7 @@ const LICENSE_OPTIONS = [
 export default function UploadNewSourceForm({ workId }: { workId: string }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
+  const [referencePdfFile, setReferencePdfFile] = useState<File | null>(null);
   const [label, setLabel] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
   const [description, setDescription] = useState("");
@@ -84,6 +85,7 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
 
       const form = new FormData();
       form.append("file", file);
+      if (referencePdfFile) form.append("referencePdf", referencePdfFile);
       if (label.trim()) form.append("label", label.trim());
       if (commitMessage.trim()) form.append("commitMessage", commitMessage.trim());
       if (description.trim()) form.append("description", description.trim());
@@ -102,6 +104,7 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
       setMsg("Source uploaded.");
       setStatus("success");
       setFile(null);
+      setReferencePdfFile(null);
       setLabel("");
       setCommitMessage("");
       setDescription("");
@@ -121,15 +124,44 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
     }
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const refPdfInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <input
+          ref={fileInputRef}
           type="file"
           accept=".mscz,.mxl,.xml"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="text-slate-700 file:mr-2 file:cursor-pointer file:rounded file:border-0 file:bg-cyan-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-cyan-700 dark:text-slate-300"
+          className="hidden"
         />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+        >
+          Upload Source
+        </button>
+        {file && <span className="text-slate-600 dark:text-slate-400">{file.name}</span>}
+
+        <input
+          ref={refPdfInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          onChange={(e) => setReferencePdfFile(e.target.files?.[0] ?? null)}
+          className="hidden"
+          title="Optional reference PDF"
+        />
+        <button
+          type="button"
+          onClick={() => refPdfInputRef.current?.click()}
+          className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+        >
+          Upload Reference
+        </button>
+        {referencePdfFile && <span className="text-slate-600 dark:text-slate-400">{referencePdfFile.name}</span>}
         <input
           type="text"
           placeholder="source title (optional)"

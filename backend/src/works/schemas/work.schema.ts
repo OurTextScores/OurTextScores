@@ -18,6 +18,9 @@ export class Work {
   @Prop({ type: [String], default: [] })
   availableFormats!: string[];
 
+  @Prop({ required: true, default: false })
+  hasReferencePdf!: boolean;
+
   // Optional human-friendly overrides
   @Prop({ trim: true })
   title?: string;

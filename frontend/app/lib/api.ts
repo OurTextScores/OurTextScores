@@ -53,6 +53,7 @@ export interface WorkSummary {
   latestRevisionAt?: string;
   sourceCount: number;
   availableFormats: string[];
+  hasReferencePdf?: boolean;
   title?: string;
   composer?: string;
   catalogNumber?: string;
@@ -83,6 +84,7 @@ export interface DerivativeArtifacts {
   linearizedXml?: StorageLocator;
   pdf?: StorageLocator;
   mscz?: StorageLocator;
+  referencePdf?: StorageLocator;
   manifest?: StorageLocator;
   musicDiffReport?: StorageLocator;
   musicDiffHtml?: StorageLocator;
@@ -132,6 +134,7 @@ export interface SourceView {
   licenseAttribution?: string;
   originalFilename: string;
   isPrimary: boolean;
+  hasReferencePdf?: boolean;
   storage: StorageLocator;
   validation: ValidationState;
   provenance: {
@@ -218,11 +221,12 @@ export async function fetchWorks(options?: { limit?: number; offset?: number }):
   }
 }
 
-export async function fetchWorksPaginated(options?: { limit?: number; offset?: number }): Promise<PaginatedWorksResponse> {
+export async function fetchWorksPaginated(options?: { limit?: number; offset?: number; filter?: string }): Promise<PaginatedWorksResponse> {
   try {
     const params = new URLSearchParams();
     if (options?.limit !== undefined) params.set('limit', String(options.limit));
     if (options?.offset !== undefined) params.set('offset', String(options.offset));
+    if (options?.filter) params.set('filter', options.filter);
     const url = `${getApiBase()}/works${params.toString() ? `?${params.toString()}` : ''}`;
     return await fetchJson<PaginatedWorksResponse>(url);
   } catch (error) {
@@ -471,7 +475,7 @@ interface MeiliSearchResponse {
 
 export async function searchWorks(
   query: string,
-  options?: { limit?: number; offset?: number; sort?: string }
+  options?: { limit?: number; offset?: number; sort?: string; filter?: string }
 ): Promise<SearchWorksResponse> {
   const trimmed = query.trim();
   const limit = options?.limit ?? 20;
@@ -490,6 +494,9 @@ export async function searchWorks(
     });
     if (options?.sort) {
       params.set('sort', options.sort);
+    }
+    if (options?.filter) {
+      params.set('filter', options.filter);
     }
 
     const url = `${getApiBase()}/search/works?${params.toString()}`;
