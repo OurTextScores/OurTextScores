@@ -23,6 +23,7 @@ import { Model } from 'mongoose';
 import { Work, WorkDocument } from './schemas/work.schema';
 import { Source, SourceDocument } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from './schemas/source-revision.schema';
+import { RevisionRating, RevisionRatingDocument } from './schemas/revision-rating.schema';
 import { ValidationState } from './schemas/validation.schema';
 import { StorageLocator } from './schemas/storage-locator.schema';
 import { DerivativeArtifacts } from './schemas/derivatives.schema';
@@ -125,6 +126,8 @@ export class WorksService {
     private readonly sourceModel: Model<SourceDocument>,
     @InjectModel(SourceRevision.name)
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>,
+    @InjectModel(RevisionRating.name)
+    private readonly revisionRatingModel: Model<RevisionRatingDocument>,
     private readonly imslpService: ImslpService,
     private readonly storageService: StorageService,
     private readonly fossilService: FossilService,
@@ -1070,5 +1073,114 @@ except Exception:
 
     const m = /"wgArticleId"\s*:\s*(\d+)/.exec(html);
     return m ? m[1] : null;
+  }
+
+  /**
+   * Rate a revision (1-5 stars). One rating per user per revision.
+   */
+  async rateRevision(
+    workId: string,
+    sourceId: string,
+    revisionId: string,
+    userId: string,
+    rating: number,
+    isAdmin: boolean
+  ): Promise<{ ok: true; ratedAt: Date }> {
+    if (rating < 1 || rating > 5) {
+      throw new BadRequestException('Rating must be between 1 and 5');
+    }
+
+    // Verify revision exists
+    const revision = await this.sourceRevisionModel
+      .findOne({ workId, sourceId, revisionId })
+      .exec();
+
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    // Check if user already rated
+    const existing = await this.revisionRatingModel
+      .findOne({ revisionId, userId })
+      .exec();
+
+    if (existing) {
+      throw new BadRequestException('You have already rated this revision');
+    }
+
+    const now = new Date();
+    await this.revisionRatingModel.create({
+      workId,
+      sourceId,
+      revisionId,
+      userId,
+      rating,
+      isAdmin,
+      ratedAt: now
+    });
+
+    return { ok: true, ratedAt: now };
+  }
+
+  /**
+   * Get rating histogram for a revision
+   * Returns counts per star level (1-5), split by user vs admin
+   */
+  async getRevisionRatings(
+    workId: string,
+    sourceId: string,
+    revisionId: string
+  ): Promise<{
+    histogram: Array<{ stars: number; userCount: number; adminCount: number }>;
+    totalRatings: number;
+  }> {
+    // Verify revision exists
+    const revision = await this.sourceRevisionModel
+      .findOne({ workId, sourceId, revisionId })
+      .exec();
+
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    // Aggregate ratings by star level and admin status
+    const aggregation = await this.revisionRatingModel.aggregate([
+      { $match: { revisionId } },
+      {
+        $group: {
+          _id: { rating: '$rating', isAdmin: '$isAdmin' },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Build histogram with all star levels (1-5)
+    const histogram = [1, 2, 3, 4, 5].map(stars => {
+      const userEntry = aggregation.find(a => a._id.rating === stars && !a._id.isAdmin);
+      const adminEntry = aggregation.find(a => a._id.rating === stars && a._id.isAdmin);
+      return {
+        stars,
+        userCount: userEntry?.count ?? 0,
+        adminCount: adminEntry?.count ?? 0
+      };
+    });
+
+    const totalRatings = aggregation.reduce((sum, a) => sum + a.count, 0);
+
+    return { histogram, totalRatings };
+  }
+
+  /**
+   * Check if a user has rated a specific revision
+   */
+  async hasUserRatedRevision(
+    revisionId: string,
+    userId: string
+  ): Promise<boolean> {
+    const existing = await this.revisionRatingModel
+      .findOne({ revisionId, userId })
+      .exec();
+
+    return !!existing;
   }
 }

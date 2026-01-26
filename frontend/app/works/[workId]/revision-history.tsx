@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import RevisionRating from "./revision-rating";
 
 type StorageLocator = { bucket: string; objectKey: string; sizeBytes?: number };
 type SourceRevisionView = {
@@ -61,13 +62,15 @@ export default function RevisionHistory({
   sourceId,
   revisions,
   branchNames,
-  publicApiBase
+  publicApiBase,
+  currentUser
 }: {
   workId: string;
   sourceId: string;
   revisions: SourceRevisionView[];
   branchNames: string[];
   publicApiBase: string;
+  currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
 }) {
   const uniqueBranches = useMemo(() => {
     const names = new Set<string>(["All", "trunk", ...branchNames]);
@@ -104,7 +107,7 @@ export default function RevisionHistory({
           </thead>
           <tbody className="divide-y divide-slate-200 text-slate-700 dark:divide-slate-800 dark:text-slate-300">
             {filtered.map((revision) => (
-              <RevisionRow key={revision.revisionId} revision={revision} workId={workId} sourceId={sourceId} publicApiBase={publicApiBase} />
+              <RevisionRow key={revision.revisionId} revision={revision} workId={workId} sourceId={sourceId} publicApiBase={publicApiBase} currentUser={currentUser} />
             ))}
           </tbody>
         </table>
@@ -215,7 +218,13 @@ function UserBadge({ userId, username }: { userId?: string; username?: string })
   );
 }
 
-function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: SourceRevisionView; workId: string; sourceId: string; publicApiBase: string }) {
+function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }: {
+  revision: SourceRevisionView;
+  workId: string;
+  sourceId: string;
+  publicApiBase: string;
+  currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
+}) {
   const artifactsAvailable = [
     revision.derivatives?.linearizedXml,
     revision.derivatives?.canonicalXml,
@@ -226,7 +235,8 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
   ].some(Boolean);
 
   return (
-    <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
+    <>
+      <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
       <td className="px-3 py-2 font-mono text-slate-800 dark:text-slate-200">{revision.sequenceNumber}</td>
       <td className="px-3 py-2">
         <div className="text-slate-800 dark:text-slate-200">{formatDate(revision.createdAt)}</div>
@@ -357,6 +367,17 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase }: { revision: 
           <span className="text-slate-500">—</span>
         )}
       </td>
-    </tr >
+      </tr>
+      <tr>
+        <td colSpan={6} className="p-0 bg-slate-50 dark:bg-slate-900/30">
+          <RevisionRating
+            workId={workId}
+            sourceId={sourceId}
+            revisionId={revision.revisionId}
+            currentUser={currentUser}
+          />
+        </td>
+      </tr>
+    </>
   );
 }

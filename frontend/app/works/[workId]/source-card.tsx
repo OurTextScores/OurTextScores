@@ -612,7 +612,14 @@ export default function SourceCard({
 
                     <details className="group">
                         <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">Revision history ({source.revisions.length})</summary>
-                        <RevisionHistory workId={workId} sourceId={source.sourceId} revisions={source.revisions as any} branchNames={initialBranches} publicApiBase={PUBLIC_API_BASE} />
+                        <RevisionHistory
+                            workId={workId}
+                            sourceId={source.sourceId}
+                            revisions={source.revisions as any}
+                            branchNames={initialBranches}
+                            publicApiBase={PUBLIC_API_BASE}
+                            currentUser={currentUser ? { ...currentUser, isAdmin } : null}
+                        />
                         <div className="px-5 pb-6">
                             <DiffPreview
                                 workId={workId}

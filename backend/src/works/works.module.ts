@@ -6,6 +6,7 @@ import { WorksService } from './works.service';
 import { Work, WorkSchema } from './schemas/work.schema';
 import { Source, SourceSchema } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionSchema } from './schemas/source-revision.schema';
+import { RevisionRating, RevisionRatingSchema } from './schemas/revision-rating.schema';
 import { UploadSourceService } from './upload-source.service';
 import { StorageModule } from '../storage/storage.module';
 import { DerivativePipelineService } from './derivative-pipeline.service';
@@ -33,7 +34,8 @@ import { UsersModule } from '../users/users.module';
     MongooseModule.forFeature([
       { name: Work.name, schema: WorkSchema },
       { name: Source.name, schema: SourceSchema },
-      { name: SourceRevision.name, schema: SourceRevisionSchema }
+      { name: SourceRevision.name, schema: SourceRevisionSchema },
+      { name: RevisionRating.name, schema: RevisionRatingSchema }
     ])
   ],
   controllers: [WorksController],

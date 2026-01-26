@@ -1119,6 +1119,78 @@ export class WorksController {
     return this.worksService.rejectRevision(workId, sourceId, revisionId, { userId: user.userId, roles: user.roles });
   }
 
+  // Rating endpoints
+  @Post(':workId/sources/:sourceId/revisions/:revisionId/rate')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Rate a revision',
+    description: 'Submit a 1-5 star rating for a revision. One rating per user per revision.'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID to rate' })
+  @ApiResponse({ status: 200, description: 'Rating submitted successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid rating or user already rated' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  async rateRevision(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('revisionId') revisionId: string,
+    @Body() body: { rating: number },
+    @CurrentUser() user: RequestUser
+  ) {
+    const isAdmin = user?.roles?.includes('admin') ?? false;
+    return this.worksService.rateRevision(
+      workId,
+      sourceId,
+      revisionId,
+      user.userId,
+      body.rating,
+      isAdmin
+    );
+  }
+
+  @Get(':workId/sources/:sourceId/revisions/:revisionId/ratings')
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Get rating histogram',
+    description: 'Get rating distribution (histogram) for a revision, showing user and admin counts per star level'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiResponse({ status: 200, description: 'Rating histogram returned' })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  async getRevisionRatings(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('revisionId') revisionId: string
+  ) {
+    return this.worksService.getRevisionRatings(workId, sourceId, revisionId);
+  }
+
+  @Get(':workId/sources/:sourceId/revisions/:revisionId/ratings/check')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Check if user has rated',
+    description: 'Check if the current user has already rated this revision'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiResponse({ status: 200, description: 'Returns { hasRated: boolean }' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  async checkUserRating(
+    @Param('revisionId') revisionId: string,
+    @CurrentUser() user: RequestUser
+  ) {
+    const hasRated = await this.worksService.hasUserRatedRevision(revisionId, user.userId);
+    return { hasRated };
+  }
+
   // Admin verification endpoints
   @Post(':workId/sources/:sourceId/verify')
   @UseGuards(AuthRequiredGuard)
