@@ -23,18 +23,23 @@ export default function NotificationsClient({ initialNotifications }: Props) {
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const [loading, setLoading] = useState<string | null>(null);
 
-  const getNotificationText = (n: Notification): { title: string; description: string } => {
+  const getNotificationText = (n: Notification): { title: string; description: string; preview?: string } => {
     const actor = n.actorUsername || "Someone";
+    const commentContent = n.payload?.commentContent;
+    const preview = commentContent ? (commentContent.length > 100 ? commentContent.slice(0, 100) + '...' : commentContent) : undefined;
+
     switch (n.type) {
       case 'comment_reply':
         return {
           title: `${actor} replied to your comment`,
-          description: `on ${n.workId}`
+          description: `on ${n.workId}`,
+          preview
         };
       case 'source_comment':
         return {
           title: `${actor} commented on your source`,
-          description: `${n.workId}/${n.sourceId}`
+          description: `${n.workId}/${n.sourceId}`,
+          preview
         };
       case 'new_revision':
         return {
@@ -47,6 +52,18 @@ export default function NotificationsClient({ initialNotifications }: Props) {
           description: n.workId
         };
     }
+  };
+
+  const getNotificationLink = (n: Notification): string => {
+    // Create deep link with URL parameters to open specific source/revision
+    const params = new URLSearchParams({
+      source: n.sourceId,
+      revision: n.revisionId
+    });
+    if (n.payload?.commentId) {
+      params.set('comment', n.payload.commentId);
+    }
+    return `/works/${encodeURIComponent(n.workId)}?${params.toString()}`;
   };
 
   const handleMarkAsRead = async (notificationId: string) => {
@@ -130,8 +147,9 @@ export default function NotificationsClient({ initialNotifications }: Props) {
 
       <div className="space-y-2">
         {notifications.map((notification) => {
-          const { title, description } = getNotificationText(notification);
+          const { title, description, preview } = getNotificationText(notification);
           const isLoading = loading === notification.notificationId;
+          const notificationLink = getNotificationLink(notification);
 
           return (
             <div
@@ -159,6 +177,13 @@ export default function NotificationsClient({ initialNotifications }: Props) {
                       <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                         {description}
                       </p>
+                      {preview && (
+                        <div className="mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
+                          <p className="text-sm text-slate-700 dark:text-slate-300 italic">
+                            &ldquo;{preview}&rdquo;
+                          </p>
+                        </div>
+                      )}
                       <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
                         {formatDate(notification.createdAt)}
                       </p>
@@ -166,7 +191,7 @@ export default function NotificationsClient({ initialNotifications }: Props) {
 
                     <div className="flex items-center gap-2">
                       <Link
-                        href={`/works/${encodeURIComponent(notification.workId)}`}
+                        href={notificationLink}
                         className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                       >
                         View

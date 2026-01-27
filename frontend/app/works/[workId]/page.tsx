@@ -31,6 +31,7 @@ import DeleteSourceButton from "./delete-source-button";
 import LazyDetails from "../../components/lazy-details";
 import StopPropagation from "../../components/stop-propagation";
 import SourceCard from "./source-card";
+import NotificationDeepLink from "./notification-deep-link";
 
 function formatDate(value?: string) {
   if (!value) return "—";
@@ -40,11 +41,16 @@ function formatDate(value?: string) {
 
 
 export default async function WorkDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: { workId: string };
+  searchParams: { source?: string; revision?: string; comment?: string };
 }) {
   const { workId } = params;
+  const targetSourceId = searchParams.source;
+  const targetRevisionId = searchParams.revision;
+  const targetCommentId = searchParams.comment;
   const [work, imslp, raw, session] = await Promise.all([
     fetchWorkDetail(workId).catch(() => notFound()),
     fetchImslpMetadataByWorkId(workId).catch(() => undefined),
@@ -162,6 +168,7 @@ export default async function WorkDetailPage({
                 source={source}
                 workId={workId}
                 currentUser={currentUser}
+                autoOpen={source.sourceId === targetSourceId}
                 watchControlsSlot={
                   <Suspense fallback={<span className="rounded px-3 py-1 text-xs text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">Loading…</span>}>
                     <WatchControls workId={workId} sourceId={source.sourceId} />
@@ -176,6 +183,9 @@ export default async function WorkDetailPage({
             ))
           )}
         </section>
+
+        {/* Deep link handler for notification links */}
+        <NotificationDeepLink />
       </div>
     </main>
   );

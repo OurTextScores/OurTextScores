@@ -55,7 +55,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async queueCommentReply(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string }) {
+  async queueCommentReply(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string; commentContent: string }) {
     // Create in-app notification
     await this.createNotification({
       userId: params.recipientUserId,
@@ -63,11 +63,11 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
-      payload: { commentId: params.commentId, actorUserId: params.actorUserId }
+      payload: { commentId: params.commentId, actorUserId: params.actorUserId, commentContent: params.commentContent }
     });
   }
 
-  async queueSourceComment(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string }) {
+  async queueSourceComment(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string; commentContent: string }) {
     // Create in-app notification
     await this.createNotification({
       userId: params.recipientUserId,
@@ -75,7 +75,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
-      payload: { commentId: params.commentId, actorUserId: params.actorUserId }
+      payload: { commentId: params.commentId, actorUserId: params.actorUserId, commentContent: params.commentContent }
     });
   }
 

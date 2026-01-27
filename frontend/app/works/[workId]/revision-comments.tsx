@@ -311,7 +311,7 @@ function CommentItem({
 
   return (
     <div style={{ marginLeft }} className="space-y-2">
-      <div className={`rounded border p-3 ${comment.flagged ? 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'}`}>
+      <div id={`comment-${comment.commentId}`} className={`rounded border p-3 transition-all ${comment.flagged ? 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'}`}>
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{comment.username}</span>

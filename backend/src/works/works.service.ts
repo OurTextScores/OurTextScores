@@ -1251,7 +1251,8 @@ except Exception:
           revisionId,
           commentId,
           recipientUserId: parent.userId,
-          actorUserId: userId
+          actorUserId: userId,
+          commentContent: content.trim()
         });
       }
     } else {
@@ -1264,7 +1265,8 @@ except Exception:
           revisionId,
           commentId,
           recipientUserId: source.provenance.uploadedByUserId,
-          actorUserId: userId
+          actorUserId: userId,
+          commentContent: content.trim()
         });
       }
     }
@@ -1311,10 +1313,11 @@ except Exception:
       }
     }
 
-    // Build nested structure
+    // Build nested structure (two-pass to handle any sort order)
     const commentMap = new Map();
     const result: any[] = [];
 
+    // First pass: Build all comment objects and add to map
     comments.forEach(c => {
       const comment = {
         commentId: c.commentId,
@@ -1330,7 +1333,11 @@ except Exception:
       };
 
       commentMap.set(c.commentId, comment);
+    });
 
+    // Second pass: Build nested structure
+    comments.forEach(c => {
+      const comment = commentMap.get(c.commentId);
       if (c.parentCommentId) {
         const parent = commentMap.get(c.parentCommentId);
         if (parent) {

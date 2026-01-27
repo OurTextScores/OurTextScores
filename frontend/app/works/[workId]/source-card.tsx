@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense, useTransition } from "react";
+import { useState, Suspense, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
 import { SourceView, SourceRevisionView, StorageLocator, BackendSessionUser } from "../../lib/api";
 import { getPublicApiBase } from "../../lib/api";
@@ -327,15 +327,31 @@ export default function SourceCard({
     workId,
     currentUser,
     watchControlsSlot,
-    branchesPanelSlot
+    branchesPanelSlot,
+    autoOpen = false
 }: {
     source: SourceView;
     workId: string;
     currentUser: BackendSessionUser | null;
     watchControlsSlot: React.ReactNode;
     branchesPanelSlot: React.ReactNode;
+    autoOpen?: boolean;
 }) {
     const [isOpen, setIsOpen] = useState(false);
+    const revisionHistoryRef = useRef<HTMLDetailsElement>(null);
+
+    // Auto-open card and revision history if specified via URL params
+    useEffect(() => {
+        if (autoOpen) {
+            setIsOpen(true);
+            // Wait a bit for the card to open, then open revision history
+            setTimeout(() => {
+                if (revisionHistoryRef.current) {
+                    revisionHistoryRef.current.open = true;
+                }
+            }, 100);
+        }
+    }, [autoOpen]);
     const latest = source.revisions[0];
     const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
     const isOwner =
@@ -610,7 +626,7 @@ export default function SourceCard({
                         </div>
                     )}
 
-                    <details className="group">
+                    <details ref={revisionHistoryRef} className="group">
                         <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">Revision history ({source.revisions.length})</summary>
                         <RevisionHistory
                             workId={workId}
