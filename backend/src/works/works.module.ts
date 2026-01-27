@@ -7,6 +7,8 @@ import { Work, WorkSchema } from './schemas/work.schema';
 import { Source, SourceSchema } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionSchema } from './schemas/source-revision.schema';
 import { RevisionRating, RevisionRatingSchema } from './schemas/revision-rating.schema';
+import { RevisionComment, RevisionCommentSchema } from './schemas/revision-comment.schema';
+import { RevisionCommentVote, RevisionCommentVoteSchema } from './schemas/revision-comment-vote.schema';
 import { UploadSourceService } from './upload-source.service';
 import { StorageModule } from '../storage/storage.module';
 import { DerivativePipelineService } from './derivative-pipeline.service';
@@ -35,7 +37,9 @@ import { UsersModule } from '../users/users.module';
       { name: Work.name, schema: WorkSchema },
       { name: Source.name, schema: SourceSchema },
       { name: SourceRevision.name, schema: SourceRevisionSchema },
-      { name: RevisionRating.name, schema: RevisionRatingSchema }
+      { name: RevisionRating.name, schema: RevisionRatingSchema },
+      { name: RevisionComment.name, schema: RevisionCommentSchema },
+      { name: RevisionCommentVote.name, schema: RevisionCommentVoteSchema }
     ])
   ],
   controllers: [WorksController],

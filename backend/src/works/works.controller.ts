@@ -1191,6 +1191,173 @@ export class WorksController {
     return { hasRated };
   }
 
+  // Comment endpoints
+  @Post(':workId/sources/:sourceId/revisions/:revisionId/comments')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Create a comment',
+    description: 'Post a comment on a revision or reply to an existing comment'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiResponse({ status: 201, description: 'Comment created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid content or parent comment not found' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  async createComment(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('revisionId') revisionId: string,
+    @Body() body: { content: string; parentCommentId?: string },
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.worksService.createComment(
+      workId,
+      sourceId,
+      revisionId,
+      user.userId,
+      body.content,
+      body.parentCommentId
+    );
+  }
+
+  @Get(':workId/sources/:sourceId/revisions/:revisionId/comments')
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Get comments',
+    description: 'Get all comments for a revision (nested structure with vote info for authenticated user)'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiResponse({ status: 200, description: 'Comments retrieved' })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  async getComments(
+    @Param('revisionId') revisionId: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    return this.worksService.getComments(revisionId, user?.userId);
+  }
+
+  @Patch(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Update a comment',
+    description: 'Edit your own comment'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiParam({ name: 'commentId', description: 'Comment ID' })
+  @ApiResponse({ status: 200, description: 'Comment updated' })
+  @ApiResponse({ status: 400, description: 'Invalid content' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 403, description: 'Not your comment' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  async updateComment(
+    @Param('commentId') commentId: string,
+    @Body() body: { content: string },
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.worksService.updateComment(commentId, user.userId, body.content);
+  }
+
+  @Delete(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Delete a comment',
+    description: 'Delete your own comment (or any comment if admin)'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiParam({ name: 'commentId', description: 'Comment ID' })
+  @ApiResponse({ status: 200, description: 'Comment deleted' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 403, description: 'Not authorized to delete' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  async deleteComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: RequestUser
+  ) {
+    const isAdmin = user?.roles?.includes('admin') ?? false;
+    return this.worksService.deleteComment(commentId, user.userId, isAdmin);
+  }
+
+  @Post(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId/vote')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Vote on a comment',
+    description: 'Upvote or downvote a comment (toggle to remove vote)'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiParam({ name: 'commentId', description: 'Comment ID' })
+  @ApiResponse({ status: 200, description: 'Vote recorded' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  async voteComment(
+    @Param('commentId') commentId: string,
+    @Body() body: { voteType: 'up' | 'down' },
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.worksService.voteComment(commentId, user.userId, body.voteType);
+  }
+
+  @Post(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId/flag')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Flag a comment for review',
+    description: 'Report a comment as inappropriate or violating guidelines'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiParam({ name: 'commentId', description: 'Comment ID' })
+  @ApiResponse({ status: 200, description: 'Comment flagged' })
+  @ApiResponse({ status: 400, description: 'Reason required' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  async flagComment(
+    @Param('commentId') commentId: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.worksService.flagComment(commentId, user.userId, body.reason);
+  }
+
+  @Delete(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId/flag')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Remove flag from comment (admin only)',
+    description: 'Clear the flag from a comment'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiParam({ name: 'revisionId', description: 'Revision ID' })
+  @ApiParam({ name: 'commentId', description: 'Comment ID' })
+  @ApiResponse({ status: 200, description: 'Flag removed' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 403, description: 'Admin role required' })
+  @ApiResponse({ status: 404, description: 'Comment not found' })
+  async unflagComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.unflagComment(commentId);
+  }
+
   // Admin verification endpoints
   @Post(':workId/sources/:sourceId/verify')
   @UseGuards(AuthRequiredGuard)

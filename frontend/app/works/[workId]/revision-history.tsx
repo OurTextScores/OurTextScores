@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import RevisionRating from "./revision-rating";
+import RevisionComments from "./revision-comments";
 
 type StorageLocator = { bucket: string; objectKey: string; sizeBytes?: number };
 type SourceRevisionView = {
@@ -371,6 +372,12 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
       <tr>
         <td colSpan={6} className="p-0 bg-slate-50 dark:bg-slate-900/30">
           <RevisionRating
+            workId={workId}
+            sourceId={sourceId}
+            revisionId={revision.revisionId}
+            currentUser={currentUser}
+          />
+          <RevisionComments
             workId={workId}
             sourceId={sourceId}
             revisionId={revision.revisionId}

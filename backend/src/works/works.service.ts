@@ -24,6 +24,8 @@ import { Work, WorkDocument } from './schemas/work.schema';
 import { Source, SourceDocument } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from './schemas/source-revision.schema';
 import { RevisionRating, RevisionRatingDocument } from './schemas/revision-rating.schema';
+import { RevisionComment, RevisionCommentDocument } from './schemas/revision-comment.schema';
+import { RevisionCommentVote, RevisionCommentVoteDocument } from './schemas/revision-comment-vote.schema';
 import { ValidationState } from './schemas/validation.schema';
 import { StorageLocator } from './schemas/storage-locator.schema';
 import { DerivativeArtifacts } from './schemas/derivatives.schema';
@@ -128,6 +130,10 @@ export class WorksService {
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>,
     @InjectModel(RevisionRating.name)
     private readonly revisionRatingModel: Model<RevisionRatingDocument>,
+    @InjectModel(RevisionComment.name)
+    private readonly revisionCommentModel: Model<RevisionCommentDocument>,
+    @InjectModel(RevisionCommentVote.name)
+    private readonly revisionCommentVoteModel: Model<RevisionCommentVoteDocument>,
     private readonly imslpService: ImslpService,
     private readonly storageService: StorageService,
     private readonly fossilService: FossilService,
@@ -1182,5 +1188,313 @@ except Exception:
       .exec();
 
     return !!existing;
+  }
+
+  /**
+   * Create a comment on a revision
+   */
+  async createComment(
+    workId: string,
+    sourceId: string,
+    revisionId: string,
+    userId: string,
+    content: string,
+    parentCommentId?: string
+  ): Promise<{ commentId: string; createdAt: Date }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('Comment content is required');
+    }
+
+    // Verify revision exists
+    const revision = await this.sourceRevisionModel
+      .findOne({ workId, sourceId, revisionId })
+      .exec();
+
+    if (!revision) {
+      throw new NotFoundException(`Revision ${revisionId} not found`);
+    }
+
+    // If replying to a comment, verify parent exists
+    if (parentCommentId) {
+      const parent = await this.revisionCommentModel
+        .findOne({ commentId: parentCommentId })
+        .exec();
+
+      if (!parent || parent.deleted) {
+        throw new NotFoundException('Parent comment not found');
+      }
+    }
+
+    const commentId = `cmt-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const now = new Date();
+
+    await this.revisionCommentModel.create({
+      commentId,
+      workId,
+      sourceId,
+      revisionId,
+      userId,
+      content: content.trim(),
+      parentCommentId,
+      voteScore: 0,
+      createdAt: now
+    });
+
+    // TODO: Send notifications for replies and new comments on sources
+
+    return { commentId, createdAt: now };
+  }
+
+  /**
+   * Get comments for a revision (with vote info for current user)
+   */
+  async getComments(
+    revisionId: string,
+    currentUserId?: string
+  ): Promise<any[]> {
+    const comments = await this.revisionCommentModel
+      .find({ revisionId, deleted: { $ne: true } })
+      .sort({ voteScore: -1, createdAt: -1 })
+      .exec();
+
+    // Get user votes if authenticated
+    let userVotes: Map<string, 'up' | 'down'> = new Map();
+    if (currentUserId) {
+      const votes = await this.revisionCommentVoteModel
+        .find({
+          commentId: { $in: comments.map(c => c.commentId) },
+          userId: currentUserId
+        })
+        .exec();
+
+      votes.forEach(v => userVotes.set(v.commentId, v.voteType));
+    }
+
+    // Get usernames
+    const userIds = [...new Set(comments.map(c => c.userId))];
+    const userMap = new Map<string, string>();
+    for (const uid of userIds) {
+      try {
+        const user = await this.usersService.findById(uid);
+        if (user) {
+          userMap.set(uid, user.username || user.email || 'Unknown');
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Build nested structure
+    const commentMap = new Map();
+    const result: any[] = [];
+
+    comments.forEach(c => {
+      const comment = {
+        commentId: c.commentId,
+        userId: c.userId,
+        username: userMap.get(c.userId) || 'Unknown',
+        content: c.content,
+        voteScore: c.voteScore,
+        createdAt: c.createdAt,
+        editedAt: c.editedAt,
+        flagged: c.flagged,
+        userVote: userVotes.get(c.commentId),
+        replies: []
+      };
+
+      commentMap.set(c.commentId, comment);
+
+      if (c.parentCommentId) {
+        const parent = commentMap.get(c.parentCommentId);
+        if (parent) {
+          parent.replies.push(comment);
+        }
+      } else {
+        result.push(comment);
+      }
+    });
+
+    return result;
+  }
+
+  /**
+   * Update a comment (user must own it)
+   */
+  async updateComment(
+    commentId: string,
+    userId: string,
+    content: string
+  ): Promise<{ ok: true; editedAt: Date }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('Comment content is required');
+    }
+
+    const now = new Date();
+    const updated = await this.revisionCommentModel
+      .findOneAndUpdate(
+        { commentId, userId, deleted: { $ne: true } },
+        { $set: { content: content.trim(), editedAt: now } },
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException('Comment not found or you do not have permission to edit it');
+    }
+
+    return { ok: true, editedAt: now };
+  }
+
+  /**
+   * Delete a comment (soft delete - user must own it or be admin)
+   */
+  async deleteComment(
+    commentId: string,
+    userId: string,
+    isAdmin: boolean
+  ): Promise<{ ok: true }> {
+    const comment = await this.revisionCommentModel
+      .findOne({ commentId })
+      .exec();
+
+    if (!comment || comment.deleted) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    if (!isAdmin && comment.userId !== userId) {
+      throw new ForbiddenException('You do not have permission to delete this comment');
+    }
+
+    const now = new Date();
+    await this.revisionCommentModel
+      .updateOne(
+        { commentId },
+        { $set: { deleted: true, deletedAt: now, content: '[deleted]' } }
+      )
+      .exec();
+
+    return { ok: true };
+  }
+
+  /**
+   * Vote on a comment (upvote or downvote)
+   */
+  async voteComment(
+    commentId: string,
+    userId: string,
+    voteType: 'up' | 'down'
+  ): Promise<{ ok: true; newScore: number }> {
+    const comment = await this.revisionCommentModel
+      .findOne({ commentId, deleted: { $ne: true } })
+      .exec();
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    // Check existing vote
+    const existingVote = await this.revisionCommentVoteModel
+      .findOne({ commentId, userId })
+      .exec();
+
+    const now = new Date();
+
+    if (existingVote) {
+      if (existingVote.voteType === voteType) {
+        // Remove vote (toggle off)
+        await this.revisionCommentVoteModel.deleteOne({ commentId, userId }).exec();
+        const scoreChange = voteType === 'up' ? -1 : 1;
+        comment.voteScore += scoreChange;
+      } else {
+        // Change vote
+        existingVote.voteType = voteType;
+        existingVote.votedAt = now;
+        await existingVote.save();
+        const scoreChange = voteType === 'up' ? 2 : -2; // From -1 to +1 or vice versa
+        comment.voteScore += scoreChange;
+      }
+    } else {
+      // New vote
+      await this.revisionCommentVoteModel.create({
+        commentId,
+        userId,
+        voteType,
+        votedAt: now
+      });
+      comment.voteScore += voteType === 'up' ? 1 : -1;
+    }
+
+    await comment.save();
+
+    return { ok: true, newScore: comment.voteScore };
+  }
+
+  /**
+   * Flag a comment for review
+   */
+  async flagComment(
+    commentId: string,
+    userId: string,
+    reason: string
+  ): Promise<{ ok: true }> {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Flag reason is required');
+    }
+
+    const comment = await this.revisionCommentModel
+      .findOne({ commentId, deleted: { $ne: true } })
+      .exec();
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    const now = new Date();
+    await this.revisionCommentModel
+      .updateOne(
+        { commentId },
+        {
+          $set: {
+            flagged: true,
+            flaggedBy: userId,
+            flaggedAt: now,
+            flagReason: reason.trim()
+          }
+        }
+      )
+      .exec();
+
+    return { ok: true };
+  }
+
+  /**
+   * Remove flag from comment (admin only)
+   */
+  async unflagComment(
+    commentId: string
+  ): Promise<{ ok: true }> {
+    const comment = await this.revisionCommentModel
+      .findOne({ commentId })
+      .exec();
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    await this.revisionCommentModel
+      .updateOne(
+        { commentId },
+        {
+          $set: {
+            flagged: false,
+            flaggedBy: undefined,
+            flaggedAt: undefined,
+            flagReason: undefined
+          }
+        }
+      )
+      .exec();
+
+    return { ok: true };
   }
 }
