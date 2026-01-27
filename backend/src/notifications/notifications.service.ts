@@ -2,9 +2,11 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { NotificationOutbox, NotificationOutboxDocument } from './schemas/outbox.schema';
+import { NotificationInbox, NotificationInboxDocument } from './schemas/inbox.schema';
 import { UsersService } from '../users/users.service';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
@@ -16,6 +18,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectModel(NotificationOutbox.name)
     private readonly outboxModel: Model<NotificationOutboxDocument>,
+    @InjectModel(NotificationInbox.name)
+    private readonly inboxModel: Model<NotificationInboxDocument>,
     private readonly users: UsersService,
     private readonly config: ConfigService
   ) {}
@@ -33,36 +37,145 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async queueNewRevision(params: { workId: string; sourceId: string; revisionId: string; userIds: string[] }) {
-    // Fan out by user preference: immediate -> new_revision; daily/weekly -> digest_item
+  async queueNewRevision(params: { workId: string; sourceId: string; revisionId: string; userIds: string[]; actorUserId?: string }) {
+    // Create in-app notifications for all watchers
     for (const id of params.userIds) {
       try {
-        const user = await this.users.findById(id);
-        const pref = user?.notify?.watchPreference || 'immediate';
-        const recipient = `user:${id}`;
-        if (pref === 'immediate') {
-          await this.outboxModel.create({
-            type: 'new_revision',
-            workId: params.workId,
-            sourceId: params.sourceId,
-            revisionId: params.revisionId,
-            recipients: [recipient],
-            payload: {}
-          });
-        } else {
-          await this.outboxModel.create({
-            type: 'digest_item',
-            workId: params.workId,
-            sourceId: params.sourceId,
-            revisionId: params.revisionId,
-            recipients: [recipient],
-            payload: { period: pref }
-          });
-        }
+        await this.createNotification({
+          userId: id,
+          type: 'new_revision',
+          workId: params.workId,
+          sourceId: params.sourceId,
+          revisionId: params.revisionId,
+          payload: { actorUserId: params.actorUserId }
+        });
       } catch {
         // ignore per-user failures
       }
     }
+  }
+
+  async queueCommentReply(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string }) {
+    // Create in-app notification
+    await this.createNotification({
+      userId: params.recipientUserId,
+      type: 'comment_reply',
+      workId: params.workId,
+      sourceId: params.sourceId,
+      revisionId: params.revisionId,
+      payload: { commentId: params.commentId, actorUserId: params.actorUserId }
+    });
+  }
+
+  async queueSourceComment(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string }) {
+    // Create in-app notification
+    await this.createNotification({
+      userId: params.recipientUserId,
+      type: 'source_comment',
+      workId: params.workId,
+      sourceId: params.sourceId,
+      revisionId: params.revisionId,
+      payload: { commentId: params.commentId, actorUserId: params.actorUserId }
+    });
+  }
+
+  /**
+   * Create an in-app notification
+   */
+  async createNotification(params: {
+    userId: string;
+    type: 'comment_reply' | 'source_comment' | 'new_revision';
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    payload: Record<string, any>;
+  }): Promise<void> {
+    const notificationId = randomUUID();
+    await this.inboxModel.create({
+      notificationId,
+      userId: params.userId,
+      type: params.type,
+      workId: params.workId,
+      sourceId: params.sourceId,
+      revisionId: params.revisionId,
+      payload: params.payload,
+      read: false,
+      createdAt: new Date()
+    });
+  }
+
+  /**
+   * Get user's notifications
+   */
+  async getUserNotifications(userId: string, unreadOnly = false): Promise<any[]> {
+    const query: any = { userId };
+    if (unreadOnly) {
+      query.read = false;
+    }
+
+    const notifications = await this.inboxModel
+      .find(query)
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .exec();
+
+    // Get actor usernames
+    const actorIds = notifications
+      .map(n => n.payload?.actorUserId)
+      .filter(Boolean) as string[];
+
+    const userMap = new Map<string, string>();
+    for (const uid of actorIds) {
+      try {
+        const user = await this.users.findById(uid);
+        if (user) {
+          userMap.set(uid, user.username || user.email || 'Unknown');
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return notifications.map(n => ({
+      notificationId: n.notificationId,
+      type: n.type,
+      workId: n.workId,
+      sourceId: n.sourceId,
+      revisionId: n.revisionId,
+      payload: n.payload,
+      actorUsername: n.payload?.actorUserId ? userMap.get(n.payload.actorUserId) : undefined,
+      read: n.read,
+      createdAt: n.createdAt
+    }));
+  }
+
+  /**
+   * Get unread notification count for a user
+   */
+  async getUnreadCount(userId: string): Promise<number> {
+    return this.inboxModel.countDocuments({ userId, read: false }).exec();
+  }
+
+  /**
+   * Mark notification as read
+   */
+  async markNotificationAsRead(notificationId: string, userId: string): Promise<{ ok: true }> {
+    await this.inboxModel.updateOne(
+      { notificationId, userId },
+      { $set: { read: true } }
+    ).exec();
+    return { ok: true };
+  }
+
+  /**
+   * Mark all notifications as read for a user
+   */
+  async markAllAsRead(userId: string): Promise<{ ok: true }> {
+    await this.inboxModel.updateMany(
+      { userId, read: false },
+      { $set: { read: true } }
+    ).exec();
+    return { ok: true };
   }
 
   onModuleInit() {
@@ -88,13 +201,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer as NodeJS.Timeout);
   }
 
-  // Very simple worker: mark as sent without actually sending (scaffold)
+  // Process outbox for approval requests only
   async processOutbox(): Promise<void> {
-    // 1) Immediate notifications
-    const batch = await this.outboxModel.find({ status: 'queued', type: { $in: ['push_request', 'new_revision'] } }).sort({ createdAt: 1 }).limit(10).exec();
+    // Process push_request notifications (approvals)
+    const batch = await this.outboxModel.find({ status: 'queued', type: 'push_request' }).sort({ createdAt: 1 }).limit(10).exec();
     for (const n of batch) {
       try {
-        // Resolve recipients to emails (best-effort)
         const emails: string[] = [];
         for (const r of n.recipients) {
           if (r.startsWith('user:')) {
@@ -123,55 +235,101 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         await n.save();
       }
     }
-    // 2) Digest notifications
-    const now = Date.now();
-    const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
-    const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-    // Daily
-    await this.sendDigestForPeriod('daily', dayAgo);
-    // Weekly
-    await this.sendDigestForPeriod('weekly', weekAgo);
+
+    // Process in-app notification email digests
+    await this.processInboxDigests();
   }
 
-  private async sendDigestForPeriod(period: 'daily' | 'weekly', threshold: Date): Promise<void> {
-    const items = await this.outboxModel.find({ status: 'queued', type: 'digest_item', 'payload.period': period, createdAt: { $lte: threshold } }).sort({ createdAt: 1 }).lean().exec();
-    if (items.length === 0) return;
+  /**
+   * Process in-app notifications and send email digests based on user preference
+   */
+  private async processInboxDigests(): Promise<void> {
+    // Get all users with unemailed notifications
+    const notifications = await this.inboxModel
+      .find({ emailSent: { $ne: true } })
+      .sort({ createdAt: 1 })
+      .exec();
 
-    // Group by recipient (expect one recipient per item)
-    const byRecipient = new Map<string, typeof items>();
-    for (const it of items) {
-      const r = it.recipients[0] || '';
-      const list = byRecipient.get(r) || [] as any;
-      (list as any).push(it);
-      byRecipient.set(r, list as any);
+    if (notifications.length === 0) return;
+
+    // Group by user
+    const byUser = new Map<string, typeof notifications>();
+    for (const n of notifications) {
+      const list = byUser.get(n.userId) || [];
+      list.push(n);
+      byUser.set(n.userId, list);
     }
-    for (const [recipient, list] of byRecipient) {
+
+    const now = new Date();
+
+    for (const [userId, userNotifications] of byUser) {
       try {
-        const emails: string[] = [];
-        if (recipient.startsWith('user:')) {
-          const id = recipient.substring('user:'.length);
-          const user = await this.users.findById(id);
-          if (user?.email) emails.push(user.email);
+        const user = await this.users.findById(userId);
+        if (!user?.email) continue;
+
+        const preference = user.notify?.watchPreference || 'immediate';
+
+        if (preference === 'immediate') {
+          // Send email for each notification immediately
+          for (const notification of userNotifications) {
+            if (this.transporter) {
+              const subject = this.renderNotificationSubject(notification);
+              const html = this.renderNotificationHtml(notification);
+              await this.transporter.sendMail({
+                from: this.emailFrom,
+                to: user.email,
+                subject,
+                html
+              });
+            }
+            notification.emailSent = true;
+            notification.emailSentAt = now;
+            await notification.save();
+          }
+        } else {
+          // Send digest (daily or weekly)
+          const threshold = preference === 'daily'
+            ? new Date(now.getTime() - 24 * 60 * 60 * 1000)
+            : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+          // Only send digest if notifications are old enough
+          const oldNotifications = userNotifications.filter(n => n.createdAt <= threshold);
+          if (oldNotifications.length === 0) continue;
+
+          if (this.transporter) {
+            const subject = `[${preference} digest] ${oldNotifications.length} new notification${oldNotifications.length > 1 ? 's' : ''}`;
+            const html = this.renderDigestHtml(oldNotifications);
+            await this.transporter.sendMail({
+              from: this.emailFrom,
+              to: user.email,
+              subject,
+              html
+            });
+          }
+
+          // Mark as emailed
+          for (const notification of oldNotifications) {
+            notification.emailSent = true;
+            notification.emailSentAt = now;
+            await notification.save();
+          }
         }
-        if (emails.length > 0 && this.transporter) {
-          const subject = `[${period} digest] New revisions (${list.length})`;
-          const lines = list.map((it) => `- ${it.workId}/${it.sourceId} (${it.revisionId})`).join('<br/>');
-          const html = `<p>${list.length} new revisions you watch:</p><p>${lines}</p>`;
-          await this.transporter.sendMail({ from: this.emailFrom, to: emails.join(','), subject, html });
-        }
-        // Mark items sent
-        const ids = list.map((it) => (it as any)._id);
-        await this.outboxModel.updateMany({ _id: { $in: ids } }, { $set: { status: 'sent', sentAt: new Date() }, $inc: { attempts: 1 } }).exec();
-      } catch {
-        // continue
+      } catch (err) {
+        this.logger.error(`Failed to send notification digest to ${userId}:`, err);
+        continue;
       }
     }
   }
+
 
   private renderSubject(type: string, workId: string, sourceId: string, revisionId: string): string {
     switch (type) {
       case 'push_request':
         return `Approval requested for ${workId}/${sourceId} (${revisionId})`;
+      case 'comment_reply':
+        return `New reply to your comment on ${workId}`;
+      case 'source_comment':
+        return `New comment on your source ${workId}/${sourceId}`;
       case 'new_revision':
       default:
         return `New revision on ${workId}/${sourceId} (${revisionId})`;
@@ -181,6 +339,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private renderHtml(type: string, workId: string, sourceId: string, revisionId: string): string {
     const workUrl = `${this.publicWebBaseUrl}/works/${encodeURIComponent(workId)}`;
     const approvalsUrl = `${this.publicWebBaseUrl}/approvals`;
+
     if (type === 'push_request') {
       return `
         <p>A new revision <code>${revisionId}</code> requires your approval.</p>
@@ -188,10 +347,101 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         <p><a href="${approvalsUrl}">Open approvals inbox</a> • <a href="${workUrl}">View work</a></p>
       `;
     }
+
+    if (type === 'comment_reply') {
+      return `
+        <p>Someone replied to your comment on revision <code>${revisionId}</code>.</p>
+        <p>Work: <code>${workId}</code></p>
+        <p><a href="${workUrl}">View comments</a></p>
+      `;
+    }
+
+    if (type === 'source_comment') {
+      return `
+        <p>Someone commented on revision <code>${revisionId}</code> of your source.</p>
+        <p>Source: <code>${workId}/${sourceId}</code></p>
+        <p><a href="${workUrl}">View comments</a></p>
+      `;
+    }
+
     return `
       <p>A new revision <code>${revisionId}</code> was approved.</p>
       <p>Source: <code>${workId}/${sourceId}</code></p>
       <p><a href="${workUrl}">View work</a></p>
+    `;
+  }
+
+  private renderNotificationSubject(notification: NotificationInboxDocument): string {
+    switch (notification.type) {
+      case 'comment_reply':
+        return `New reply to your comment on ${notification.workId}`;
+      case 'source_comment':
+        return `New comment on your source ${notification.workId}/${notification.sourceId}`;
+      case 'new_revision':
+        return `New revision on ${notification.workId}/${notification.sourceId}`;
+      default:
+        return `New notification from OurTextScores`;
+    }
+  }
+
+  private renderNotificationHtml(notification: NotificationInboxDocument): string {
+    const workUrl = `${this.publicWebBaseUrl}/works/${encodeURIComponent(notification.workId)}`;
+    const notificationsUrl = `${this.publicWebBaseUrl}/notifications`;
+
+    switch (notification.type) {
+      case 'comment_reply':
+        return `
+          <p>Someone replied to your comment.</p>
+          <p>Work: <code>${notification.workId}</code></p>
+          <p>Revision: <code>${notification.revisionId}</code></p>
+          <p><a href="${workUrl}">View comments</a> • <a href="${notificationsUrl}">See all notifications</a></p>
+        `;
+      case 'source_comment':
+        return `
+          <p>Someone commented on your source.</p>
+          <p>Source: <code>${notification.workId}/${notification.sourceId}</code></p>
+          <p>Revision: <code>${notification.revisionId}</code></p>
+          <p><a href="${workUrl}">View comments</a> • <a href="${notificationsUrl}">See all notifications</a></p>
+        `;
+      case 'new_revision':
+        return `
+          <p>A new revision was uploaded to a work you're watching.</p>
+          <p>Source: <code>${notification.workId}/${notification.sourceId}</code></p>
+          <p>Revision: <code>${notification.revisionId}</code></p>
+          <p><a href="${workUrl}">View work</a> • <a href="${notificationsUrl}">See all notifications</a></p>
+        `;
+      default:
+        return `
+          <p>You have a new notification from OurTextScores.</p>
+          <p><a href="${notificationsUrl}">View notification</a></p>
+        `;
+    }
+  }
+
+  private renderDigestHtml(notifications: NotificationInboxDocument[]): string {
+    const notificationsUrl = `${this.publicWebBaseUrl}/notifications`;
+
+    const lines = notifications.map(n => {
+      const workUrl = `${this.publicWebBaseUrl}/works/${encodeURIComponent(n.workId)}`;
+      let typeLabel = '';
+      switch (n.type) {
+        case 'comment_reply':
+          typeLabel = 'Reply to your comment';
+          break;
+        case 'source_comment':
+          typeLabel = 'Comment on your source';
+          break;
+        case 'new_revision':
+          typeLabel = 'New revision';
+          break;
+      }
+      return `<li>${typeLabel}: <a href="${workUrl}">${n.workId}/${n.sourceId}</a> (${n.revisionId.slice(0, 8)}...)</li>`;
+    }).join('');
+
+    return `
+      <p>You have ${notifications.length} new notification${notifications.length > 1 ? 's' : ''}:</p>
+      <ul>${lines}</ul>
+      <p><a href="${notificationsUrl}">View all notifications</a></p>
     `;
   }
 }

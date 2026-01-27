@@ -46,6 +46,20 @@ export default async function SettingsPage() {
           <h2 className="mb-3 text-lg font-semibold">Notifications</h2>
           <NotificationsForm preference={pref} />
         </section>
+
+        {roles.includes('admin') && (
+          <section className="mt-6 rounded border border-rose-200 bg-rose-50 p-5 text-sm dark:border-rose-900 dark:bg-rose-950/30">
+            <h2 className="mb-3 text-lg font-semibold text-rose-900 dark:text-rose-100">Admin Tools</h2>
+            <div className="space-y-2">
+              <Link
+                href="/admin/flagged-comments"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                Flagged Comments Dashboard
+              </Link>
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

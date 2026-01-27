@@ -1240,7 +1240,34 @@ except Exception:
       createdAt: now
     });
 
-    // TODO: Send notifications for replies and new comments on sources
+    // Send notifications
+    if (parentCommentId) {
+      // Reply notification
+      const parent = await this.revisionCommentModel.findOne({ commentId: parentCommentId }).exec();
+      if (parent && parent.userId !== userId) {
+        await this.notifications.queueCommentReply({
+          workId,
+          sourceId,
+          revisionId,
+          commentId,
+          recipientUserId: parent.userId,
+          actorUserId: userId
+        });
+      }
+    } else {
+      // New comment on source - notify source owner
+      const source = await this.sourceModel.findOne({ workId, sourceId }).exec();
+      if (source && source.provenance?.uploadedByUserId && source.provenance.uploadedByUserId !== userId) {
+        await this.notifications.queueSourceComment({
+          workId,
+          sourceId,
+          revisionId,
+          commentId,
+          recipientUserId: source.provenance.uploadedByUserId,
+          actorUserId: userId
+        });
+      }
+    }
 
     return { commentId, createdAt: now };
   }
@@ -1496,5 +1523,62 @@ except Exception:
       .exec();
 
     return { ok: true };
+  }
+
+  /**
+   * Get all flagged comments (admin only)
+   */
+  async getFlaggedComments(): Promise<any[]> {
+    const comments = await this.revisionCommentModel
+      .find({ flagged: true, deleted: { $ne: true } })
+      .sort({ flaggedAt: -1 })
+      .exec();
+
+    // Get usernames for comment authors and flaggers
+    const userIds = [
+      ...new Set([
+        ...comments.map(c => c.userId),
+        ...comments.map(c => c.flaggedBy).filter(Boolean)
+      ])
+    ] as string[];
+
+    const userMap = new Map<string, string>();
+    for (const uid of userIds) {
+      try {
+        const user = await this.usersService.findById(uid);
+        if (user) {
+          userMap.set(uid, user.username || user.email || 'Unknown');
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Get revision info
+    const revisionIds = [...new Set(comments.map(c => c.revisionId))];
+    const revisions = await this.sourceRevisionModel
+      .find({ revisionId: { $in: revisionIds } })
+      .exec();
+    const revisionMap = new Map(revisions.map(r => [r.revisionId, r]));
+
+    return comments.map(c => {
+      const revision = revisionMap.get(c.revisionId);
+      return {
+        commentId: c.commentId,
+        workId: c.workId,
+        sourceId: c.sourceId,
+        revisionId: c.revisionId,
+        revisionSeq: revision?.sequenceNumber,
+        userId: c.userId,
+        username: userMap.get(c.userId) || 'Unknown',
+        content: c.content,
+        voteScore: c.voteScore,
+        createdAt: c.createdAt,
+        flaggedBy: c.flaggedBy,
+        flaggedByUsername: c.flaggedBy ? userMap.get(c.flaggedBy) || 'Unknown' : undefined,
+        flaggedAt: c.flaggedAt,
+        flagReason: c.flagReason
+      };
+    });
   }
 }

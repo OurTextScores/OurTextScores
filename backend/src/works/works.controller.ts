@@ -1358,6 +1358,23 @@ export class WorksController {
     return this.worksService.unflagComment(commentId);
   }
 
+  // Admin flagged comments dashboard
+  @Get('admin/flagged-comments')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Get all flagged comments (admin only)',
+    description: 'Retrieve all flagged comments for moderation dashboard'
+  })
+  @ApiResponse({ status: 200, description: 'List of flagged comments with context' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  async getFlaggedComments(@CurrentUser() user?: RequestUser) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.getFlaggedComments();
+  }
+
   // Admin verification endpoints
   @Post(':workId/sources/:sourceId/verify')
   @UseGuards(AuthRequiredGuard)
