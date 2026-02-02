@@ -29,6 +29,7 @@ export default function UploadNewSourceForm({
   workId: string;
   imslpPermalink?: string;
 }) {
+  const refreshDelayMs = 5000;
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [referencePdfFile, setReferencePdfFile] = useState<File | null>(null);
@@ -39,10 +40,10 @@ export default function UploadNewSourceForm({
   const [licenseUrl, setLicenseUrl] = useState("");
   const [licenseAttribution, setLicenseAttribution] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
   const [status, setStatus] = useState<UploadProgressStatus>("idle");
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
   const [steps, setSteps] = useState<StepState[]>(() => initSteps());
+  const [errorModal, setErrorModal] = useState<{ open: boolean; message: string } | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const progressId = useMemo(
     () =>
@@ -56,12 +57,11 @@ export default function UploadNewSourceForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
-      setMsg("Choose a file first.");
+      setErrorModal({ open: true, message: "Choose a file first." });
       return;
     }
     setBusy(true);
     setStatus("running");
-    setMsg(null);
     setEvents([]);
     setSteps(initSteps());
     const startedAt = Date.now();
@@ -108,7 +108,6 @@ export default function UploadNewSourceForm({
         const text = await res.text();
         throw new Error(text || `Upload failed (${res.status})`);
       }
-      setMsg("Source uploaded.");
       setStatus("success");
       setFile(null);
       setReferencePdfFile(null);
@@ -118,10 +117,19 @@ export default function UploadNewSourceForm({
       setLicense("");
       setLicenseUrl("");
       setLicenseAttribution("");
-      router.refresh();
+      setTimeout(() => {
+        setStatus("idle");
+        setEvents([]);
+        setSteps(initSteps());
+        router.refresh();
+      }, refreshDelayMs);
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : String(err));
-      setStatus("error");
+      setErrorModal({ open: true, message: err instanceof Error ? err.message : String(err) });
+      setStatus("idle");
+      setFile(null);
+      setReferencePdfFile(null);
+      setEvents([]);
+      setSteps(initSteps());
     } finally {
       setBusy(false);
       if (esRef.current) {
@@ -254,7 +262,44 @@ export default function UploadNewSourceForm({
           status={status}
         />
       )}
-      {msg && <div className="text-slate-400">{msg}</div>}
+      {errorModal?.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="upload-error-title"
+            className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900"
+          >
+            <h3 id="upload-error-title" className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              Upload failed
+            </h3>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+              {errorModal.message}
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    void navigator.clipboard.writeText(errorModal.message);
+                  } catch {}
+                }}
+                className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                Copy error
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setErrorModal(null)}
+                className="rounded bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

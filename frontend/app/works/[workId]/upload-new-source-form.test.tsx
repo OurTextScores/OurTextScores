@@ -104,7 +104,8 @@ describe('UploadNewSourceForm', () => {
   });
 
   it('submits form with file and optional fields', async () => {
-    const user = userEvent.setup();
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     mockFetch({ sourceId: 'new-source-123' });
 
     renderWithProviders(<UploadNewSourceForm workId="12345" />);
@@ -140,11 +141,9 @@ describe('UploadNewSourceForm', () => {
       );
     });
 
-    await waitFor(() => {
-      expect(screen.getByText('Source uploaded.')).toBeInTheDocument();
-    });
-
+    jest.advanceTimersByTime(5000);
     expect(mockRefresh).toHaveBeenCalled();
+    jest.useRealTimers();
   });
 
   it('displays error message on upload failure', async () => {
@@ -163,14 +162,15 @@ describe('UploadNewSourceForm', () => {
     await user.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/Upload failed: file too large/i)).toBeInTheDocument();
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
 
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it('shows busy state during upload', async () => {
-    const user = userEvent.setup();
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     mockFetch({ sourceId: 'new-source-123' });
 
     renderWithProviders(<UploadNewSourceForm workId="12345" />);
@@ -185,13 +185,14 @@ describe('UploadNewSourceForm', () => {
     await user.click(submitButton);
 
     // Upload should complete and show success message
-    await waitFor(() => {
-      expect(screen.getByText('Source uploaded.')).toBeInTheDocument();
-    });
+    jest.advanceTimersByTime(5000);
+    expect(mockRefresh).toHaveBeenCalled();
+    jest.useRealTimers();
   });
 
   it('resets form fields after successful upload', async () => {
-    const user = userEvent.setup();
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     mockFetch({ sourceId: 'new-source-123' });
 
     renderWithProviders(<UploadNewSourceForm workId="12345" />);
@@ -208,13 +209,15 @@ describe('UploadNewSourceForm', () => {
     const submitButton = screen.getByRole('button', { name: /upload new source/i });
     await user.click(submitButton);
 
-    await waitFor(() => {
-      expect(screen.getByText('Source uploaded.')).toBeInTheDocument();
-    });
+    jest.advanceTimersByTime(5000);
+    expect(mockRefresh).toHaveBeenCalled();
 
     // Check that text fields are reset
-    expect(descInput.value).toBe('');
+    await waitFor(() => {
+      expect(descInput.value).toBe('');
+    });
     // Note: File input reset doesn't work reliably in jsdom
+    jest.useRealTimers();
   });
 
   it('shows error when submitting without a file', async () => {

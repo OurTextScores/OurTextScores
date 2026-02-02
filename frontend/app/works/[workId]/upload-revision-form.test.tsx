@@ -51,6 +51,7 @@ describe("UploadRevisionForm", () => {
   });
 
   it("uploads a file to trunk successfully", async () => {
+    jest.useFakeTimers();
     (fetch as jest.Mock).mockResolvedValue({ ok: true });
     const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
 
@@ -73,10 +74,9 @@ describe("UploadRevisionForm", () => {
       );
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Revision uploaded.")).toBeInTheDocument();
-    });
+    jest.advanceTimersByTime(5000);
     expect(mockRouter.refresh).toHaveBeenCalled();
+    jest.useRealTimers();
   });
 
   it("uploads a file to a new branch", async () => {
@@ -121,7 +121,7 @@ describe("UploadRevisionForm", () => {
     fireEvent.click(uploadButton);
 
     await waitFor(() => {
-      expect(screen.getByText(errorMessage)).toBeInTheDocument();
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
   });
 });
