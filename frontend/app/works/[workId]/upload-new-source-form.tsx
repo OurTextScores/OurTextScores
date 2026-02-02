@@ -22,7 +22,13 @@ const LICENSE_OPTIONS = [
   { value: 'Other', label: 'Other (specify URL)' }
 ];
 
-export default function UploadNewSourceForm({ workId }: { workId: string }) {
+export default function UploadNewSourceForm({
+  workId,
+  imslpPermalink
+}: {
+  workId: string;
+  imslpPermalink?: string;
+}) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [referencePdfFile, setReferencePdfFile] = useState<File | null>(null);
@@ -45,6 +51,7 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
     []
   );
+  const imslpUrl = imslpPermalink || (workId ? `https://imslp.org/wiki/${workId}` : undefined);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +169,22 @@ export default function UploadNewSourceForm({ workId }: { workId: string }) {
           Upload Reference
         </button>
         {referencePdfFile && <span className="text-slate-600 dark:text-slate-400">{referencePdfFile.name}</span>}
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          Reference PDF must match an IMSLP PDF for this work.
+          {imslpUrl && (
+            <>
+              {" "}
+              <a
+                href={imslpUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-400"
+              >
+                Open IMSLP ↗
+              </a>
+            </>
+          )}
+        </span>
         <input
           type="text"
           placeholder="source title (optional)"

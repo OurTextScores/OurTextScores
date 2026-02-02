@@ -20,6 +20,19 @@ export class StorageLocator {
 
   @Prop({ type: Date, required: true })
   lastModifiedAt!: Date;
+
+  @Prop({ type: Object })
+  metadata?: {
+    imslpSource?: {
+      name: string;
+      title: string;
+      url: string;
+      sha1: string;
+      size: number;
+      timestamp: string;
+      user: string;
+    };
+  };
 }
 
 export const StorageLocatorSchema = SchemaFactory.createForClass(StorageLocator);

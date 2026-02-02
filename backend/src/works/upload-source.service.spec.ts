@@ -7,13 +7,15 @@ import { FossilService } from '../fossil/fossil.service';
 import { ProgressService } from '../progress/progress.service';
 import { BranchesService } from '../branches/branches.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { createHash } from 'node:crypto';
 
 describe('UploadSourceService (unit)', () => {
   let service: UploadSourceService;
   const worksService = {
     ensureWork: jest.fn(),
     recordSourceUpload: jest.fn(),
-    recordSourceRevision: jest.fn()
+    recordSourceRevision: jest.fn(),
+    recomputeWorkStats: jest.fn()
   } as unknown as jest.Mocked<WorksService>;
 
   const storageService = {
@@ -53,6 +55,10 @@ describe('UploadSourceService (unit)', () => {
     queuePushRequest: jest.fn()
   } as unknown as jest.Mocked<NotificationsService>;
 
+  const imslpService = {
+    getRawByWorkId: jest.fn()
+  } as any;
+
   beforeEach(() => {
     jest.resetAllMocks();
     service = new UploadSourceService(
@@ -63,6 +69,7 @@ describe('UploadSourceService (unit)', () => {
       progress,
       branchesService,
       notifications,
+      imslpService,
       sourceModel,
       sourceRevisionModel
     );
@@ -90,7 +97,7 @@ describe('UploadSourceService (unit)', () => {
     fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
-    const res = await service.upload('10', { label: 'Uploaded source' }, file, 'pid');
+    const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
     expect(derivativePipeline.process).toHaveBeenCalled();
@@ -110,7 +117,7 @@ describe('UploadSourceService (unit)', () => {
     ; (service as any).generateMusicDiffAsync = jest.fn().mockResolvedValue(undefined);
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
-    const res = await service.uploadRevision('10', 'x', {}, file, 'pid');
+    const res = await service.uploadRevision('10', 'x', {}, file, undefined, 'pid');
     expect(res.status).toBe('accepted');
     expect(sourceRevisionModel.create).toHaveBeenCalled();
     expect(sourceModel.updateOne).toHaveBeenCalled();
@@ -127,7 +134,7 @@ describe('UploadSourceService (unit)', () => {
     } as any;
 
     await expect(
-      service.upload('10', { label: 'Large file' }, file, 'pid')
+      service.upload('10', { label: 'Large file' }, file, undefined, 'pid')
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(storageService.putRawObject).not.toHaveBeenCalled();
     expect(derivativePipeline.process).not.toHaveBeenCalled();
@@ -144,7 +151,7 @@ describe('UploadSourceService (unit)', () => {
     sourceModel.findOne.mockReturnValue({ lean: () => ({ label: 'Existing', sourceType: 'score' }) });
 
     await expect(
-      service.uploadRevision('10', 'source-1', {}, file, 'pid')
+      service.uploadRevision('10', 'source-1', {}, file, undefined, 'pid')
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(storageService.putRawObject).not.toHaveBeenCalled();
     expect(derivativePipeline.process).not.toHaveBeenCalled();
@@ -170,7 +177,7 @@ describe('UploadSourceService (unit)', () => {
     } as any;
 
     await expect(
-      service.upload('10', { label: 'Uploaded MuseScore' }, file, 'pid')
+      service.upload('10', { label: 'Uploaded MuseScore' }, file, undefined, 'pid')
     ).rejects.toMatchObject({
       constructor: BadRequestException,
       message: expect.stringContaining('Could not process MuseScore file')
@@ -206,7 +213,7 @@ describe('UploadSourceService (unit)', () => {
     } as any;
 
     await expect(
-      service.uploadRevision('10', 'source-1', {}, file, 'pid')
+      service.uploadRevision('10', 'source-1', {}, file, undefined, 'pid')
     ).rejects.toMatchObject({
       constructor: BadRequestException,
       message: expect.stringContaining('Could not process MuseScore file')
@@ -224,7 +231,7 @@ describe('UploadSourceService (unit)', () => {
     fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
-    const res = await service.upload('10', { label: 'Source with license', license: 'CC0', licenseUrl: 'http://cc0' }, file, 'pid');
+    const res = await service.upload('10', { label: 'Source with license', license: 'CC0', licenseUrl: 'http://cc0' }, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
     expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -243,7 +250,7 @@ describe('UploadSourceService (unit)', () => {
     ; (service as any).generateMusicDiffAsync = jest.fn().mockResolvedValue(undefined);
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
-    const res = await service.uploadRevision('10', 'x', { license: 'CC-BY-4.0' }, file, 'pid');
+    const res = await service.uploadRevision('10', 'x', { license: 'CC-BY-4.0' }, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
     expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -265,12 +272,54 @@ describe('UploadSourceService (unit)', () => {
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
     // No license provided in request
-    const res = await service.uploadRevision('10', 'x', {}, file, 'pid');
+    const res = await service.uploadRevision('10', 'x', {}, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
     expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
       license: 'CC0',
       licenseUrl: 'http://cc0'
     }));
+  });
+
+  it('validateReferencePdfAgainstImslp() accepts a matching IMSLP PDF hash', async () => {
+    const buffer = Buffer.from('%PDF-1.4 test');
+    const sha1 = createHash('sha1').update(buffer).digest('hex');
+    imslpService.getRawByWorkId.mockResolvedValue({
+      metadata: {
+        files: [
+          {
+            name: 'PMLP0001-Test.pdf',
+            title: 'File:PMLP0001-Test.pdf',
+            url: 'https://imslp.org/images/abc.pdf',
+            sha1,
+            size: 123,
+            mime_type: 'application/pdf',
+            timestamp: '2024-01-01T00:00:00Z',
+            user: 'Uploader'
+          }
+        ]
+      }
+    });
+
+    const result = await (service as any).validateReferencePdfAgainstImslp({ buffer } as any, '10');
+
+    expect(result.valid).toBe(true);
+    expect(result.imslpFile.sha1).toBe(sha1);
+  });
+
+  it('validateReferencePdfAgainstImslp() rejects when IMSLP metadata is missing', async () => {
+    imslpService.getRawByWorkId.mockResolvedValue(null);
+    const result = await (service as any).validateReferencePdfAgainstImslp({ buffer: Buffer.from('x') } as any, '10');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('IMSLP metadata not available');
+  });
+
+  it('validateReferencePdfAgainstImslp() rejects when no IMSLP PDFs are available', async () => {
+    imslpService.getRawByWorkId.mockResolvedValue({
+      metadata: { files: [{ name: 'not-pdf.txt', mime_type: 'text/plain' }] }
+    });
+    const result = await (service as any).validateReferencePdfAgainstImslp({ buffer: Buffer.from('x') } as any, '10');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('No PDF files found');
   });
 });

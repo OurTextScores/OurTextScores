@@ -325,6 +325,7 @@ function StorageBadge({
 export default function SourceCard({
     source,
     workId,
+    imslpPermalink,
     currentUser,
     watchControlsSlot,
     branchesPanelSlot,
@@ -332,6 +333,7 @@ export default function SourceCard({
 }: {
     source: SourceView;
     workId: string;
+    imslpPermalink?: string;
     currentUser: BackendSessionUser | null;
     watchControlsSlot: React.ReactNode;
     branchesPanelSlot: React.ReactNode;
@@ -707,7 +709,13 @@ export default function SourceCard({
 
                     <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
                         <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-200">Upload a new revision</h3>
-                        <UploadRevisionForm workId={workId} sourceId={source.sourceId} defaultBranch={(source.revisions[0]?.fossilBranch as any) ?? 'trunk'} initialBranches={initialBranches} />
+                        <UploadRevisionForm
+                            workId={workId}
+                            sourceId={source.sourceId}
+                            defaultBranch={(source.revisions[0]?.fossilBranch as any) ?? 'trunk'}
+                            initialBranches={initialBranches}
+                            imslpPermalink={imslpPermalink}
+                        />
                     </div>
                     {isAdmin && (
                         <AdminActionsPanel

@@ -155,6 +155,7 @@ This file orients future agents quickly: what the project does, how it’s wired
 
 ## Known Gotchas
 - Ensure `NEXT_PUBLIC_API_URL` includes `/api` path; several components default to `http://localhost:4000/api` but a few fallback constants omit `/api` if env is absent. Prefer setting env.
+- Reference PDF uploads must match an IMSLP PDF hash (SHA1) or the upload will be rejected.
 - MuseScore CLI requires headless Qt (`QT_QPA_PLATFORM=offscreen` set in Dockerfile).
 - MuseScore 4 requires specific xvfb configuration with GLX extension (`-s "-screen 0 640x480x24 -ac +extension GLX +render -noreset"`), 60-second timeout wrapper, and `libpipewire-0.3-0` dependency. See `MUSESCORE4_DOCKER_NOTES.md` for implementation details.
 - MuseScore 4 AppImage must be extracted and binary (`/opt/musescore4/bin/mscore4portable`) called directly, not via AppRun wrapper.

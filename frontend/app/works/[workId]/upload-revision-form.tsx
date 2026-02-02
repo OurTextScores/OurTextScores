@@ -25,12 +25,14 @@ export default function UploadRevisionForm({
   workId,
   sourceId,
   defaultBranch,
-  initialBranches
+  initialBranches,
+  imslpPermalink
 }: {
   workId: string;
   sourceId: string;
   defaultBranch?: string;
   initialBranches?: string[];
+  imslpPermalink?: string;
 }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -63,6 +65,7 @@ export default function UploadRevisionForm({
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
     []
   );
+  const imslpUrl = imslpPermalink || (workId ? `https://imslp.org/wiki/${workId}` : undefined);
 
   // Sync branches from server-provided list when it changes
   useEffect(() => {
@@ -184,6 +187,22 @@ export default function UploadRevisionForm({
           Upload Reference
         </button>
         {referencePdfFile && <span className="text-slate-600 dark:text-slate-400">{referencePdfFile.name}</span>}
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          Reference PDF must match an IMSLP PDF for this work.
+          {imslpUrl && (
+            <>
+              {" "}
+              <a
+                href={imslpUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-400"
+              >
+                Open IMSLP ↗
+              </a>
+            </>
+          )}
+        </span>
         <input
           type="text"
           placeholder="commit message (optional)"

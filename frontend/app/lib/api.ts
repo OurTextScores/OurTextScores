@@ -78,6 +78,17 @@ export interface StorageLocator {
     algorithm: string;
     hexDigest: string;
   };
+  metadata?: {
+    imslpSource?: {
+      name: string;
+      title: string;
+      url: string;
+      sha1: string;
+      size: number;
+      timestamp: string;
+      user: string;
+    };
+  };
 }
 
 export interface DerivativeArtifacts {

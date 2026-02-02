@@ -60,6 +60,7 @@ export default async function WorkDetailPage({
   const currentUser = session.user;
   const currentRoles = Array.isArray(currentUser?.roles) ? currentUser.roles as string[] : [];
   const isAdmin = currentRoles.includes("admin");
+  const imslpPermalink = imslp?.permalink || (imslp?.workId ? `https://imslp.org/wiki/${imslp.workId}` : undefined);
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -144,7 +145,7 @@ export default async function WorkDetailPage({
 
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
           <h2 className="mb-3 text-lg font-semibold text-slate-800 dark:text-slate-100">Upload a new source</h2>
-          <UploadNewSourceForm workId={workId} />
+          <UploadNewSourceForm workId={workId} imslpPermalink={imslpPermalink} />
         </section>
 
         {imslp && (
@@ -167,6 +168,7 @@ export default async function WorkDetailPage({
                 key={source.sourceId}
                 source={source}
                 workId={workId}
+                imslpPermalink={imslpPermalink}
                 currentUser={currentUser}
                 autoOpen={source.sourceId === targetSourceId}
                 watchControlsSlot={

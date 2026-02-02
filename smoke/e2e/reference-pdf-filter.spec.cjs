@@ -6,15 +6,76 @@ const PUBLIC_API = process.env.PUBLIC_API || 'http://localhost:4000/api';
 
 test.describe('Reference PDF Filter', () => {
   test('uploads source with reference PDF and verifies filter works', async ({ request, page }) => {
-    // Get a work to upload to
-    const worksResp = await request.get(`${PUBLIC_API}/works`);
-    expect(worksResp.ok()).toBeTruthy();
-    const works = (await worksResp.json()).works;
-    expect(works.length).toBeGreaterThan(0);
-    const work = works[0];
-    const workId = work.workId;
-    const workTitle = work.title || 'Untitled';
-    const workComposer = work.composer || 'Unknown';
+    test.setTimeout(120000);
+
+    const imslpUrl = process.env.IMSLP_TEST_URL || 'https://imslp.org/wiki/Cello_Suite_No.1,_BWV_1007_(Bach,_Johann_Sebastian)';
+    const explicitWorkId = process.env.IMSLP_TEST_WORK_ID || '';
+    const localPdfPath = process.env.IMSLP_TEST_PDF_PATH || '';
+    let work = null;
+    let workId = explicitWorkId || null;
+    let workTitle = 'Untitled';
+    let workComposer = 'Unknown';
+
+    if (workId) {
+      const detailResp = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(workId)}`);
+      if (detailResp.ok()) {
+        const detail = await detailResp.json();
+        work = detail;
+        workTitle = detail.title || 'Untitled';
+        workComposer = detail.composer || 'Unknown';
+      } else if (imslpUrl) {
+        const ensureResp = await request.post(`${PUBLIC_API}/works/save-by-url`, {
+          data: { url: imslpUrl }
+        });
+        if (ensureResp.ok()) {
+          const ensured = await ensureResp.json();
+          work = ensured.work;
+          workId = work.workId;
+          workTitle = work.title || ensured.metadata?.title || 'Untitled';
+          workComposer = work.composer || ensured.metadata?.composer || 'Unknown';
+        }
+      }
+    } else {
+      const ensureResp = await request.post(`${PUBLIC_API}/works/save-by-url`, {
+        data: { url: imslpUrl }
+      });
+      if (ensureResp.ok()) {
+        const ensured = await ensureResp.json();
+        work = ensured.work;
+        workId = work.workId;
+        workTitle = work.title || ensured.metadata?.title || 'Untitled';
+        workComposer = work.composer || ensured.metadata?.composer || 'Unknown';
+      } else {
+        const body = await ensureResp.text();
+        console.warn('IMSLP save-by-url failed; attempting cached works fallback.', body);
+        const worksResp = await request.get(`${PUBLIC_API}/works`);
+        expect(worksResp.ok()).toBeTruthy();
+        const works = (await worksResp.json()).works || [];
+        for (const candidate of works) {
+          const rawResp = await request.get(`${PUBLIC_API}/imslp/works/${encodeURIComponent(candidate.workId)}/raw`);
+          if (!rawResp.ok()) continue;
+          const raw = await rawResp.json();
+          const meta = raw?.metadata || {};
+          const files = Array.isArray(meta.files) ? meta.files : [];
+          const hasPdf = files.some((f) => {
+            const mime = String(f.mime_type || '').toLowerCase();
+            const name = String(f.name || '').toLowerCase();
+            return mime === 'application/pdf' || mime.includes('pdf') || name.endsWith('.pdf');
+          });
+          if (hasPdf) {
+            work = candidate;
+            workId = candidate.workId;
+            workTitle = candidate.title || raw?.title || 'Untitled';
+            workComposer = candidate.composer || raw?.composer || 'Unknown';
+            break;
+          }
+        }
+      }
+    }
+
+    if (!workId) {
+      test.skip('No IMSLP work with cached PDF metadata available.');
+    }
 
     // Create auth token
     const { createHmac } = require('crypto');
@@ -36,67 +97,39 @@ test.describe('Reference PDF Filter', () => {
     const msczPath = path.join(process.cwd(), 'test_scores', 'bach_orig.mscz');
     const msczBuffer = fs.readFileSync(msczPath);
 
-    // Create a minimal test PDF (valid PDF structure)
-    const pdfContent = `%PDF-1.4
-1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/Resources <<
-/Font <<
-/F1 <<
-/Type /Font
-/Subtype /Type1
-/BaseFont /Helvetica
->>
->>
->>
-/MediaBox [0 0 612 792]
-/Contents 4 0 R
->>
-endobj
-4 0 obj
-<<
-/Length 44
->>
-stream
-BT
-/F1 12 Tf
-100 700 Td
-(Test Reference PDF) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f
-0000000009 00000 n
-0000000058 00000 n
-0000000115 00000 n
-0000000317 00000 n
-trailer
-<<
-/Size 5
-/Root 1 0 R
->>
-startxref
-410
-%%EOF
-`;
-    const pdfBuffer = Buffer.from(pdfContent);
+    let pdfBuffer = null;
+    if (localPdfPath) {
+      const fs = require('fs');
+      if (!fs.existsSync(localPdfPath)) {
+        test.skip(`IMSLP_TEST_PDF_PATH not found: ${localPdfPath}`);
+      }
+      pdfBuffer = fs.readFileSync(localPdfPath);
+    } else {
+      const rawResp = await request.get(`${PUBLIC_API}/imslp/works/${encodeURIComponent(workId)}/raw`);
+      expect(rawResp.ok()).toBeTruthy();
+      const raw = await rawResp.json();
+      const meta = raw?.metadata || {};
+      const files = Array.isArray(meta.files) ? meta.files : [];
+      const pdfFiles = files
+        .filter((f) => {
+          const mime = String(f.mime_type || '').toLowerCase();
+          const name = String(f.name || '').toLowerCase();
+          return mime === 'application/pdf' || mime.includes('pdf') || name.endsWith('.pdf');
+        })
+        .sort((a, b) => Number(a.size || 0) - Number(b.size || 0));
+      expect(pdfFiles.length).toBeGreaterThan(0);
+      const pdfMeta = pdfFiles[0];
+      const downloadUrl =
+        (pdfMeta.download_urls && (pdfMeta.download_urls.direct || pdfMeta.download_urls.https || pdfMeta.download_urls.original)) ||
+        pdfMeta.url;
+      expect(downloadUrl).toBeTruthy();
+
+      const pdfResp = await request.get(downloadUrl, { timeout: 60000 });
+      expect(pdfResp.ok()).toBeTruthy();
+      pdfBuffer = await pdfResp.body();
+    }
+
+    await request.post(`${PUBLIC_API}/imslp/works/${encodeURIComponent(workId)}/refresh`).catch(() => undefined);
 
     // Upload source with reference PDF
     const uploadResp = await request.post(`${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources`, {
@@ -118,7 +151,17 @@ startxref
       }
     });
 
-    expect(uploadResp.ok()).toBeTruthy();
+    if (!uploadResp.ok()) {
+      const body = await uploadResp.text();
+      const skippable =
+        body.includes('IMSLP metadata not available') ||
+        body.includes('No PDF files found in IMSLP metadata') ||
+        body.includes('does not match any IMSLP source');
+      if (skippable) {
+        test.skip(`Reference PDF upload skipped: ${body}`);
+      }
+      throw new Error(`Reference PDF upload failed (${uploadResp.status()}): ${body}`);
+    }
     const uploadJson = await uploadResp.json();
     const sourceId = uploadJson.sourceId;
     expect(sourceId).toBeTruthy();

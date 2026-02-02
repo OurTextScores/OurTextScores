@@ -24,6 +24,7 @@ import { FossilService, FossilCommitFile } from '../fossil/fossil.service';
 import { ProgressService } from '../progress/progress.service';
 import { BranchesService } from '../branches/branches.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ImslpService } from '../imslp/imslp.service';
 import type { RequestUser } from '../auth/types/auth-user';
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100MB
@@ -66,6 +67,7 @@ export class UploadSourceService {
     private readonly progress: ProgressService,
     private readonly branchesService: BranchesService,
     private readonly notifications: NotificationsService,
+    private readonly imslpService: ImslpService,
     @InjectModel(Source.name)
     private readonly sourceModel: Model<SourceDocument>,
     @InjectModel(SourceRevision.name)
@@ -232,6 +234,7 @@ export class UploadSourceService {
       } catch (error) {
         notes.push(`Reference PDF storage failed: ${this.readableError(error)}`);
         this.progress.publish(progressId, 'Reference PDF storage failed', 'store.refpdf.failed');
+        throw error;
       }
     }
 
@@ -515,6 +518,7 @@ export class UploadSourceService {
       } catch (error) {
         notes.push(`Reference PDF storage failed: ${this.readableError(error)}`);
         this.progress.publish(progressId, 'Reference PDF storage failed', 'store.refpdf.failed');
+        throw error;
       }
     }
 
@@ -974,6 +978,11 @@ export class UploadSourceService {
       throw new BadRequestException('Reference file must have .pdf extension');
     }
 
+    const validation = await this.validateReferencePdfAgainstImslp(referencePdfFile, workId);
+    if (validation.valid === false) {
+      throw new BadRequestException(validation.reason);
+    }
+
     this.progress.publish(progressId, 'Storing reference PDF', 'store.refpdf');
 
     const base = `${workId}/${sourceId}/rev-${sequenceNumber.toString().padStart(4, '0')}`;
@@ -997,9 +1006,61 @@ export class UploadSourceService {
         hexDigest: checksumHex
       },
       contentType: 'application/pdf',
-      lastModifiedAt: new Date()
+      lastModifiedAt: new Date(),
+      metadata: {
+        imslpSource: validation.imslpFile
+      }
     };
 
     return storageLocator;
+  }
+
+  private async validateReferencePdfAgainstImslp(
+    file: Express.Multer.File,
+    workId: string
+  ): Promise<{ valid: true; imslpFile: { name: string; title: string; url: string; sha1: string; size: number; timestamp: string; user: string } } | { valid: false; reason: string }> {
+    const hash = createHash('sha1').update(file.buffer).digest('hex');
+    const imslpData = await this.imslpService.getRawByWorkId(workId).catch(() => null);
+    if (!imslpData) {
+      return { valid: false, reason: 'IMSLP metadata not available for this work' };
+    }
+
+    const metadata = (imslpData.metadata as Record<string, unknown>) ?? {};
+    const files = (metadata['files'] as Array<Record<string, unknown>>) ?? [];
+
+    const pdfFiles = files.filter((f) => {
+      const mimeType = String(f['mime_type'] ?? '').toLowerCase();
+      const name = String(f['name'] ?? '').toLowerCase();
+      return mimeType === 'application/pdf' || mimeType.includes('pdf') || name.endsWith('.pdf');
+    });
+
+    if (pdfFiles.length === 0) {
+      return { valid: false, reason: 'No PDF files found in IMSLP metadata for this work' };
+    }
+
+    const matchingFile = pdfFiles.find((f) => {
+      const imslpSha1 = String(f['sha1'] ?? '').toLowerCase();
+      return imslpSha1 && imslpSha1 === hash.toLowerCase();
+    });
+
+    if (!matchingFile) {
+      return {
+        valid: false,
+        reason: `PDF does not match any IMSLP source (${pdfFiles.length} PDFs available). Please download from IMSLP.`
+      };
+    }
+
+    return {
+      valid: true,
+      imslpFile: {
+        name: String(matchingFile['name'] ?? ''),
+        title: String(matchingFile['title'] ?? ''),
+        url: String(matchingFile['url'] ?? ''),
+        sha1: String(matchingFile['sha1'] ?? ''),
+        size: Number(matchingFile['size'] ?? 0),
+        timestamp: String(matchingFile['timestamp'] ?? ''),
+        user: String(matchingFile['user'] ?? '')
+      }
+    };
   }
 }
