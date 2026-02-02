@@ -126,6 +126,12 @@ test.describe('User profile discovery', () => {
     const card = page.locator('article', { hasText: label }).first();
     await expect(card).toBeVisible({ timeout: 20000 });
 
+    // Open the source card to reveal revision history
+    const cardHeader = card.locator('h2').first();
+    if (await cardHeader.count()) {
+      await cardHeader.click();
+    }
+
     // Open revision history for this source
     const revSummary = card.locator('summary', { hasText: 'Revision history' }).first();
     await revSummary.click();
@@ -147,4 +153,3 @@ test.describe('User profile discovery', () => {
     await expect(sourceRow).toBeVisible({ timeout: 15000 });
   });
 });
-

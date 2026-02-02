@@ -949,10 +949,12 @@ except Exception:
         { workId, sourceId },
         {
           $set: {
-            adminVerified: false,
-            adminVerifiedBy: undefined,
-            adminVerifiedAt: undefined,
-            adminVerificationNote: undefined
+            adminVerified: false
+          },
+          $unset: {
+            adminVerifiedBy: '',
+            adminVerifiedAt: '',
+            adminVerificationNote: ''
           }
         },
         { new: true }
@@ -1014,10 +1016,12 @@ except Exception:
         { workId, sourceId },
         {
           $set: {
-            adminFlagged: false,
-            adminFlaggedBy: undefined,
-            adminFlaggedAt: undefined,
-            adminFlagReason: undefined
+            adminFlagged: false
+          },
+          $unset: {
+            adminFlaggedBy: '',
+            adminFlaggedAt: '',
+            adminFlagReason: ''
           }
         },
         { new: true }

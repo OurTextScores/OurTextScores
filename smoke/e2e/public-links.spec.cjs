@@ -29,7 +29,8 @@ test.describe('Public links + health', () => {
     // Assert all links point to public API base
     for (const href of links) {
       if (!href) continue;
-      expect(href.startsWith(`${PUBLIC_API}/`)).toBeTruthy();
+      const ok = href.startsWith(`${PUBLIC_API}/`) || href.startsWith('/api/works/');
+      expect(ok).toBeTruthy();
     }
 
     // Only fetch small files to verify they resolve (skip large PDFs/MXLs to avoid timeout)
@@ -39,8 +40,11 @@ test.describe('Public links + health', () => {
       if (!href) continue;
       // Skip large binary files (PDF, MXL) - only test small files like manifest and text diffs
       if (href.includes('.pdf') || href.includes('.mxl')) continue;
+      const resolved = href.startsWith('/api/works/')
+        ? `${PUBLIC_API}${href.replace('/api', '')}`
+        : href;
       try {
-        const resp = await request.get(href, { timeout: 5000 });
+        const resp = await request.get(resolved, { timeout: 5000 });
         if (resp.status() === 200) okCount += 1;
       } catch (e) {
         // Ignore timeouts on individual requests

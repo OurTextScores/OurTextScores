@@ -95,8 +95,8 @@ test.describe('Source Labeling', () => {
     const descriptionInput = page.locator('input[placeholder*="description"]').first();
     await descriptionInput.fill(sourceDescription);
 
-    const fileInput = page.locator('section:has-text("Upload a new source") input[type="file"]').first();
-    await expect(fileInput).toBeVisible();
+    const uploadButton = page.locator('section:has-text("Upload a new source") button:has-text("Upload Source")').first();
+    await expect(uploadButton).toBeVisible();
 
     // NOTE: We intentionally skip actual upload here to keep this test fast and robust.
     // Upload behavior (including MuseScore 4 .mscz pipeline) is covered by other smoke tests

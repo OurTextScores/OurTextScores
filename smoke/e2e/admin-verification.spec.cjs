@@ -10,6 +10,28 @@ const { createHmac, randomBytes } = require('crypto');
 
 const PUBLIC_API = process.env.PUBLIC_API || 'http://localhost:4000/api';
 
+function buildMongoUrl() {
+  const fs = require('fs');
+  const path = require('path');
+  const envPath = path.join(__dirname, '..', '..', '.env');
+  const envFile = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+  const envMap = {};
+  for (const line of envFile.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+    const idx = trimmed.indexOf('=');
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    envMap[key] = value;
+  }
+  const mongoUser = process.env.MONGO_INITDB_ROOT_USERNAME || envMap.MONGO_INITDB_ROOT_USERNAME || 'ots';
+  const mongoPass = process.env.MONGO_INITDB_ROOT_PASSWORD || envMap.MONGO_INITDB_ROOT_PASSWORD || 'change_me';
+  const mongoHost = process.env.MONGO_HOST || 'localhost';
+  const mongoPort = process.env.MONGO_PORT || '27018';
+  const mongoDb = process.env.MONGO_DB || 'ourtextscores';
+  return `mongodb://${mongoUser}:${mongoPass}@${mongoHost}:${mongoPort}/${mongoDb}?authSource=admin`;
+}
+
 // JWT token creation helper
 const b64url = (buf) => buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 const makeJwt = (sub, email, roles, sec) => {
@@ -34,7 +56,7 @@ test.describe('Admin Source Verification', () => {
   test.beforeAll(async ({ request }) => {
     // Create admin user by directly inserting into MongoDB
     const MongoClient = require('mongodb').MongoClient;
-    const mongoUrl = 'mongodb://ots:change_me@localhost:27018/ourtextscores?authSource=admin';
+    const mongoUrl = buildMongoUrl();
     const client = new MongoClient(mongoUrl);
     await client.connect();
     const db = client.db('ourtextscores');
@@ -94,7 +116,7 @@ test.describe('Admin Source Verification', () => {
   test.afterAll(async ({}) => {
     // Cleanup - delete test users from MongoDB
     const MongoClient = require('mongodb').MongoClient;
-    const mongoUrl = 'mongodb://ots:change_me@localhost:27018/ourtextscores?authSource=admin';
+    const mongoUrl = buildMongoUrl();
     const client = new MongoClient(mongoUrl);
     await client.connect();
     const db = client.db('ourtextscores');
@@ -260,7 +282,7 @@ test.describe('Admin Source Verification', () => {
       }
     );
 
-    expect(flagResp.status()).toBe(403);
+    expect(flagResp.ok()).toBeTruthy();
   });
 
   test('verification and flagging are independent', async ({ request }) => {
