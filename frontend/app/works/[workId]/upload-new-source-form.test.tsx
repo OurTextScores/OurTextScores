@@ -44,8 +44,8 @@ describe('UploadNewSourceForm', () => {
     renderWithProviders(<UploadNewSourceForm workId="12345" />);
 
     expect(screen.getByText('Upload new source')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('description (optional)')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('commit message (optional)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Description (optional)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Commit Message (optional)')).toBeInTheDocument();
     expect(screen.getByRole('combobox')).toBeInTheDocument(); // License select
   });
 
@@ -116,10 +116,10 @@ describe('UploadNewSourceForm', () => {
       await user.upload(fileInput, file);
     }
 
-    const descInput = screen.getByPlaceholderText('description (optional)');
+    const descInput = screen.getByPlaceholderText('Description (optional)');
     await user.type(descInput, 'Bach score');
 
-    const commitInput = screen.getByPlaceholderText('commit message (optional)');
+    const commitInput = screen.getByPlaceholderText('Commit Message (optional)');
     await user.type(commitInput, 'Initial upload');
 
     const select = screen.getByRole('combobox');
@@ -203,7 +203,7 @@ describe('UploadNewSourceForm', () => {
       await user.upload(fileInput, file);
     }
 
-    const descInput = screen.getByPlaceholderText('description (optional)') as HTMLInputElement;
+    const descInput = screen.getByPlaceholderText('Description (optional)') as HTMLInputElement;
     await user.type(descInput, 'Test description');
 
     const submitButton = screen.getByRole('button', { name: /upload new source/i });

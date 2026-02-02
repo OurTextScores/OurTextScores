@@ -92,7 +92,7 @@ describe("UploadRevisionForm", () => {
       fireEvent.change(fileInput, { target: { files: [file] } });
     });
     fireEvent.click(newBranchRadio);
-    const branchNameInput = screen.getByPlaceholderText("branch name");
+    const branchNameInput = screen.getByPlaceholderText("Branch Name");
     fireEvent.change(branchNameInput, { target: { value: "new-branch" } });
     fireEvent.click(uploadButton);
 

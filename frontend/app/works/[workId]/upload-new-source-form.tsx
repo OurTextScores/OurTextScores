@@ -10,7 +10,7 @@ import { UploadProgressStepper, type UploadProgressStatus } from "../../componen
 const API_BASE = getPublicApiBase();
 
 const LICENSE_OPTIONS = [
-  { value: '', label: '(No license specified)' },
+  { value: '', label: 'No license specified' },
   { value: 'CC0', label: 'CC0 - Public Domain Dedication' },
   { value: 'CC-BY-4.0', label: 'CC-BY 4.0 - Attribution' },
   { value: 'CC-BY-SA-4.0', label: 'CC-BY-SA 4.0 - Attribution-ShareAlike' },
@@ -174,42 +174,44 @@ export default function UploadNewSourceForm({
           onClick={() => refPdfInputRef.current?.click()}
           className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
         >
-          Upload Reference
+          Upload IMSLP PDF Reference (optional)
         </button>
         {referencePdfFile && <span className="text-slate-600 dark:text-slate-400">{referencePdfFile.name}</span>}
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          Reference PDF must match an IMSLP PDF for this work.
-          {imslpUrl && (
-            <>
-              {" "}
-              <a
-                href={imslpUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-400"
-              >
-                Open IMSLP ↗
-              </a>
-            </>
-          )}
+        <span
+          className="text-xs text-slate-500 dark:text-slate-400"
+          title="Reference PDF must match an IMSLP PDF for this work."
+        >
+          IMSLP PDF rules
         </span>
+        {imslpUrl && (
+          <a
+            href={imslpUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-400"
+          >
+            Open IMSLP ↗
+          </a>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
-          placeholder="source title (optional)"
+          placeholder="Source Title (optional)"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
         />
         <input
           type="text"
-          placeholder="description (optional)"
+          placeholder="Description (optional)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
         />
         <input
           type="text"
-          placeholder="commit message (optional)"
+          placeholder="Commit Message (optional)"
           value={commitMessage}
           onChange={(e) => setCommitMessage(e.target.value)}
           className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
