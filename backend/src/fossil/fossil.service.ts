@@ -112,7 +112,6 @@ export class FossilService {
     const isText =
       lower.endsWith('.xml') ||
       lower.endsWith('.json') ||
-      lower.endsWith('.lmx') ||
       lower.endsWith('.txt');
     if (!isText) {
       return content;

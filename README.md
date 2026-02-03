@@ -2,7 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-OurTextScores is an open, community-driven platform for publishing and transcribing machine-readable music scores (MusicXML, MuseScore). The platform supports version control, semantic diffs, derivative generation, and collaborative workflows for music transcription projects.
+OurTextScores is an open, community-driven platform for publishing and transcribing machine-readable music scores (MusicXML, MuseScore). The platform supports version control, text diffs, derivative generation, and collaborative workflows for music transcription projects.
 
 ## Project Goals
 
@@ -10,8 +10,8 @@ OurTextScores is an open, community-driven platform for publishing and transcrib
 - Support transcription communities and projects 
 - Enable fine-grained version history using Fossil VCS for each score source
 - Offer branching, approval workflows, and collaborative transcription features
-- Generate derivatives automatically (PDF, linearized XML, canonical XML)
-- Provide semantic music diffs (musicdiff) for visualizing notation changes
+- Generate derivatives automatically (PDF, canonical XML)
+- Provide text diffs for canonical XML and manifests
 
 ## Quick Start
 
@@ -36,8 +36,8 @@ The command builds the frontend and backend images locally and starts the suppor
 ## Key Features
 
 - **Version Control**: Per-source Fossil repositories with branching and merge workflows
-- **Derivative Generation**: Automatic conversion (MuseScore → MXL → canonical XML → linearized text → PDF)
-- **Semantic Diffs**: Visual musicdiff PDFs and text diffs showing notation changes
+- **Derivative Generation**: Automatic conversion (MuseScore → MXL → canonical XML → PDF)
+- **Text Diffs**: Diffs for canonical XML and manifests showing notation changes
 - **IMSLP Integration**: Fetch metadata and link to IMSLP works
 - **Approval Workflows**: Branch policies (public/owner-approval) for quality control
 - **Notifications**: Email notifications for watched sources (immediate or digest)

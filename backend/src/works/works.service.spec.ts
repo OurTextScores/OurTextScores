@@ -18,6 +18,9 @@ describe('WorksService (unit, mocked models)', () => {
   let workModel: jest.Mocked<Partial<Model<Work>>> & any;
   let sourceModel: jest.Mocked<Partial<Model<Source>>> & any;
   let sourceRevisionModel: jest.Mocked<Partial<Model<SourceRevision>>> & any;
+  let revisionRatingModel: any;
+  let revisionCommentModel: any;
+  let revisionCommentVoteModel: any;
   let usersService: any;
   const imslpService = {
     ensureByWorkId: jest.fn(),
@@ -52,11 +55,17 @@ describe('WorksService (unit, mocked models)', () => {
       updateOne: jest.fn(),
       deleteMany: jest.fn(),
     } as any;
+    revisionRatingModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    revisionCommentModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    revisionCommentVoteModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
 
     service = new WorksService(
       workModel as any,
       sourceModel as any,
       sourceRevisionModel as any,
+      revisionRatingModel as any,
+      revisionCommentModel as any,
+      revisionCommentVoteModel as any,
       imslpService,
       storageService,
       fossilService,
@@ -350,38 +359,6 @@ describe('WorksService (unit, mocked models)', () => {
     });
   });
 
-  describe('upsertMusicDiffDerivatives', () => {
-    it('should update derivatives', async () => {
-      const workId = 'work-1';
-      const sourceId = 'source-1';
-      const revisionId = 'rev-1';
-      const updates = {
-        musicDiffHtml: { bucket: 'b', objectKey: 'h' },
-        musicDiffPdf: { bucket: 'b', objectKey: 'p' },
-        musicDiffReport: { bucket: 'b', objectKey: 'r' },
-      };
-      sourceRevisionModel.updateOne.mockReturnValue(chain(undefined));
-      sourceModel.updateOne.mockReturnValue(chain(undefined));
-
-      await service.upsertMusicDiffDerivatives(workId, sourceId, revisionId, updates as any);
-
-      expect(sourceRevisionModel.updateOne).toHaveBeenCalled();
-      expect(sourceModel.updateOne).toHaveBeenCalled();
-    });
-
-    it('should do nothing if no updates are provided', async () => {
-      const workId = 'work-1';
-      const sourceId = 'source-1';
-      const revisionId = 'rev-1';
-      const updates = {};
-
-      await service.upsertMusicDiffDerivatives(workId, sourceId, revisionId, updates);
-
-      expect(sourceRevisionModel.updateOne).not.toHaveBeenCalled();
-      expect(sourceModel.updateOne).not.toHaveBeenCalled();
-    });
-  });
-
   describe('deleteSource', () => {
     it('should delete a source and its revisions', async () => {
       const workId = 'work-1';
@@ -558,7 +535,7 @@ describe('WorksService (unit, mocked models)', () => {
   });
 
   it('getWorkDetail composes sources with revisions', async () => {
-    const work = { workId: '300', sourceCount: 1, availableFormats: ['text/plain'], latestRevisionAt: new Date('2024-06-01') };
+    const work = { workId: '300', sourceCount: 1, availableFormats: ['application/xml'], latestRevisionAt: new Date('2024-06-01') };
     const sources = [
       {
         workId: '300',
@@ -588,7 +565,7 @@ describe('WorksService (unit, mocked models)', () => {
         rawStorage: { bucket: 'b', objectKey: 'rk', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'aa' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
         checksum: { algorithm: 'sha256', hexDigest: 'aa' },
         validationSnapshot: { status: 'passed', issues: [] },
-        derivatives: { linearizedXml: { bucket: 'b', objectKey: 'l', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'bb' }, contentType: 'text/plain', lastModifiedAt: new Date() } },
+        derivatives: { canonicalXml: { bucket: 'b', objectKey: 'c', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'bb' }, contentType: 'application/xml', lastModifiedAt: new Date() } },
         manifest: { bucket: 'b', objectKey: 'm', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'cc' }, contentType: 'application/json', lastModifiedAt: new Date() },
         fossilArtifactId: 'abc',
         fossilParentArtifactIds: ['def']

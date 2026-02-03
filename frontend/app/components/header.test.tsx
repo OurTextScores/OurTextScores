@@ -13,6 +13,16 @@ jest.mock("next-auth/react", () => ({
 }));
 
 describe("Header", () => {
+  beforeEach(() => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      json: async () => ({ unreadCount: 0 }),
+    }) as any;
+  });
+
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
+
   it("renders sign-in button when unauthenticated", () => {
     (useSession as jest.Mock).mockReturnValue({ data: null });
     render(<Header />);

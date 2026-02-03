@@ -31,7 +31,6 @@ describe('WorksController (unit)', () => {
     prunePendingSources: jest.fn(),
     deleteAllSources: jest.fn(),
     deleteSource: jest.fn(),
-    musicDiffOnDemand: jest.fn(),
     textDiffOnDemand: jest.fn(),
   } as any as jest.Mocked<WorksService>;
   const uploadSourceService = {
@@ -162,36 +161,6 @@ describe('WorksController (unit)', () => {
     expect(res.send).toHaveBeenCalled();
   });
 
-  it('downloadLinearized sets headers and returns buffer', async () => {
-    worksService.getWorkDetail.mockResolvedValue({
-      workId: '1',
-      sourceCount: 1,
-      availableFormats: [],
-      sources: [
-        {
-          sourceId: 's',
-          label: 'Uploaded source',
-          sourceType: 'score',
-          format: 'application/xml',
-          isPrimary: true,
-          originalFilename: 'file.mscz',
-          storage: { bucket: 'raw', objectKey: 'rawk', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
-          validation: { status: 'passed', issues: [] },
-          provenance: { ingestType: 'manual', uploadedAt: new Date(), notes: [] },
-          revisions: [],
-          derivatives: { linearizedXml: { bucket: 'b', objectKey: 'k', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'text/plain', lastModifiedAt: new Date() } }
-        }
-      ]
-    });
-    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
-    const { res, headers } = createMockResponse();
-    await controller.downloadLinearized('1', 's', undefined, res as any, undefined);
-    expect(headers['Content-Type']).toMatch('text/plain');
-    expect(headers['Content-Disposition']).toMatch('attachment; filename=');
-    expect(headers['Cache-Control']).toBe('no-cache');
-    expect(res.send).toHaveBeenCalled();
-  });
-
   it('download throws not found if derivative is not available', async () => {
     worksService.getWorkDetail.mockResolvedValue({
       workId: '1',
@@ -217,84 +186,6 @@ describe('WorksController (unit)', () => {
     await expect(controller.downloadNormalized('1', 's', undefined, res as any, undefined)).rejects.toThrow('Normalized MXL not found for this source');
   });
 
-  it('downloadMusicDiff sets headers and returns buffer', async () => {
-    worksService.getWorkDetail.mockResolvedValue({
-      workId: '1',
-      sourceCount: 1,
-      availableFormats: [],
-      sources: [
-        {
-          sourceId: 's',
-          revisions: [
-            {
-              revisionId: 'r1',
-              derivatives: { musicDiffReport: { bucket: 'b', objectKey: 'k', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'text/plain', lastModifiedAt: new Date() } }
-            }
-          ]
-        }
-      ]
-    } as any);
-    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
-    const { res, headers } = createMockResponse();
-    await controller.downloadMusicDiff('1', 's', 'r1', res as any, undefined);
-    expect(headers['Content-Type']).toMatch('text/plain');
-    expect(headers['Content-Disposition']).toMatch('attachment; filename=');
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
-    expect(res.send).toHaveBeenCalled();
-  });
-
-  it('downloadMusicDiffHtml sets headers and returns buffer', async () => {
-    worksService.getWorkDetail.mockResolvedValue({
-      workId: '1',
-      sourceCount: 1,
-      availableFormats: [],
-      sources: [
-        {
-          sourceId: 's',
-          revisions: [
-            {
-              revisionId: 'r1',
-              derivatives: { musicDiffHtml: { bucket: 'b', objectKey: 'k', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'text/html', lastModifiedAt: new Date() } }
-            }
-          ]
-        }
-      ]
-    } as any);
-    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
-    const { res, headers } = createMockResponse();
-    await controller.downloadMusicDiffHtml('1', 's', 'r1', res as any, undefined);
-    expect(headers['Content-Type']).toMatch('text/html');
-    expect(headers['Content-Disposition']).toMatch('inline');
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
-    expect(res.send).toHaveBeenCalled();
-  });
-
-  it('downloadMusicDiffPdf sets headers and returns buffer', async () => {
-    worksService.getWorkDetail.mockResolvedValue({
-      workId: '1',
-      sourceCount: 1,
-      availableFormats: [],
-      sources: [
-        {
-          sourceId: 's',
-          revisions: [
-            {
-              revisionId: 'r1',
-              derivatives: { musicDiffPdf: { bucket: 'b', objectKey: 'k', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/pdf', lastModifiedAt: new Date() } }
-            }
-          ]
-        }
-      ]
-    } as any);
-    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
-    const { res, headers } = createMockResponse();
-    await controller.downloadMusicDiffPdf('1', 's', 'r1', res as any, undefined);
-    expect(headers['Content-Type']).toMatch('application/pdf');
-    expect(headers['Content-Disposition']).toMatch('inline');
-    expect(headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
-    expect(res.send).toHaveBeenCalled();
-  });
-
   describe('uploadSource', () => {
     it('should upload a source', async () => {
       const workId = '123';
@@ -304,9 +195,9 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1' };
       uploadSourceService.upload.mockResolvedValue({} as any);
 
-      await controller.uploadSource(workId, body, file, progressId, user as any);
+      await controller.uploadSource(workId, body, { file: [file] }, progressId, user as any);
 
-      expect(uploadSourceService.upload).toHaveBeenCalledWith(workId, { ...body, formatHint: undefined, isPrimary: true }, file, progressId, user);
+      expect(uploadSourceService.upload).toHaveBeenCalledWith(workId, { ...body, formatHint: undefined, isPrimary: true }, file, undefined, progressId, user);
     });
   });
 
@@ -320,9 +211,9 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1' };
       uploadSourceService.uploadRevision.mockResolvedValue({} as any);
 
-      await controller.uploadRevision(workId, sourceId, body, file, progressId, user as any);
+      await controller.uploadRevision(workId, sourceId, body, { file: [file] }, progressId, user as any);
 
-      expect(uploadSourceService.uploadRevision).toHaveBeenCalledWith(workId, sourceId, { ...body, formatHint: undefined, createBranch: undefined, branchName: undefined, isPrimary: true }, file, progressId, user);
+      expect(uploadSourceService.uploadRevision).toHaveBeenCalledWith(workId, sourceId, { ...body, formatHint: undefined, createBranch: undefined, branchName: undefined, isPrimary: true }, file, undefined, progressId, user);
     });
   });
 

@@ -7,7 +7,7 @@ import "diff2html/bundles/css/diff2html.min.css";
 import { getPublicApiBase } from "../../lib/api";
 const PUBLIC_API_BASE = getPublicApiBase();
 
-type DiffKind = "musicdiff" | "musicdiff_visual" | "lmx" | "xml" | "manifest";
+type DiffKind = "score_editor" | "xml" | "manifest";
 type ViewMode = "side-by-side" | "line-by-line";
 
 export default function DiffPreview({
@@ -37,7 +37,7 @@ export default function DiffPreview({
 
   const [revA, setRevA] = useState(options[1]?.value ?? options[0]?.value ?? "");
   const [revB, setRevB] = useState(options[0]?.value ?? "");
-  const [kind, setKind] = useState<DiffKind>("musicdiff_visual");
+  const [kind, setKind] = useState<DiffKind>("score_editor");
   const [view, setView] = useState<ViewMode>("side-by-side");
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [error, setError] = useState<string>("");
@@ -49,11 +49,7 @@ export default function DiffPreview({
   const revASeq = revisions.find(r => r.revisionId === revA)?.sequenceNumber;
   const revBSeq = revisions.find(r => r.revisionId === revB)?.sequenceNumber;
 
-  const pdfUrl = revA && revB
-    ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&format=pdf`
-    : undefined;
-
-  const canVisualize = kind !== "musicdiff";
+  const canVisualize = kind !== "score_editor";
 
   // Track theme to toggle diff2html theme class
   useEffect(() => {
@@ -75,7 +71,7 @@ export default function DiffPreview({
       setHtml("");
       setRawText("");
       try {
-        if (kind === "musicdiff_visual") {
+        if (kind === "score_editor") {
           // Ensure we have an absolute API base URL
           const absoluteApiBase = PUBLIC_API_BASE.startsWith('http')
             ? PUBLIC_API_BASE
@@ -100,12 +96,9 @@ export default function DiffPreview({
           return;
         }
 
-        const url =
-          kind === "musicdiff"
-            ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}`
-            : `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/textdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&file=${encodeURIComponent(
-                kind === "lmx" ? "linearized" : kind === "xml" ? "canonical" : "manifest"
-              )}`;
+        const url = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/textdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&file=${encodeURIComponent(
+          kind === "xml" ? "canonical" : "manifest"
+        )}`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`Diff fetch failed (${res.status})`);
         const text = await res.text();
@@ -129,7 +122,7 @@ export default function DiffPreview({
     return () => {
       aborted = true;
     };
-  }, [revA, revB, kind, view, workId, sourceId, canVisualize, pdfUrl, revASeq, revBSeq]);
+  }, [revA, revB, kind, view, workId, sourceId, canVisualize, revASeq, revBSeq]);
 
   return (
     <div className="mt-3 flex flex-col gap-2">
@@ -166,14 +159,12 @@ export default function DiffPreview({
         <label className="flex items-center gap-1">
           <span className="text-slate-400">Type</span>
           <select value={kind} onChange={(e) => setKind(e.target.value as DiffKind)} className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-            <option value="musicdiff_visual">Visual Diff (Score Editor)</option>
-            <option value="musicdiff">Musicdiff (semantic text)</option>
-            <option value="lmx">LMX (text)</option>
+            <option value="score_editor">Visual Diff (Score Editor)</option>
             <option value="xml">XML (text)</option>
             <option value="manifest">Manifest (text)</option>
           </select>
         </label>
-        <label className={`ml-auto flex items-center gap-1 ${canVisualize ? '' : 'opacity-50'}`} title={canVisualize ? 'Visual view' : 'Visual view not available for musicdiff'}>
+        <label className={`ml-auto flex items-center gap-1 ${canVisualize ? '' : 'opacity-50'}`} title={canVisualize ? 'Visual view' : 'Visual view not available for score editor'}>
           <span className="text-slate-400">View</span>
           <select
             value={view}
@@ -185,7 +176,7 @@ export default function DiffPreview({
             <option value="line-by-line">Inline</option>
           </select>
         </label>
-        {kind === 'musicdiff_visual' && revA && revB && (
+        {kind === 'score_editor' && revA && revB && (
           <button
             onClick={() => {
               const absoluteApiBase = PUBLIC_API_BASE.startsWith('http')
@@ -211,16 +202,11 @@ export default function DiffPreview({
             <CopyDownload text={rawText} filename={`diff-${kind}-${revA}-${revB}.txt`} />
           </div>
         )}
-        {state === "ready" && kind === 'musicdiff_visual' && (
+        {state === "ready" && kind === 'score_editor' && (
           <div className="rounded border border-slate-200 p-2 dark:border-slate-800" dangerouslySetInnerHTML={{ __html: html }} />
         )}
-        {state === "ready" && canVisualize && kind !== 'musicdiff_visual' && (
+        {state === "ready" && canVisualize && (
           <div className={isDark ? "diff2html--theme-dark" : undefined} dangerouslySetInnerHTML={{ __html: html }} />
-        )}
-        {state === "ready" && !canVisualize && (
-          <pre className="whitespace-pre-wrap p-3 text-xs text-slate-800 dark:text-slate-200">
-            {rawText}
-          </pre>
         )}
         {state !== "ready" && state !== "error" && (
           <div className="p-3 text-xs text-slate-400">Select revisions to view a diff.</div>

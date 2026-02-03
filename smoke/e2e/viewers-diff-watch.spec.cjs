@@ -87,47 +87,29 @@ test.describe('Viewers + Diff + Watch', () => {
     const revSummaries = page.locator('summary', { hasText: 'Revision history' });
     const rs = await revSummaries.count();
     for (let i = 0; i < rs; i++) await revSummaries.nth(i).click();
-    // Switch Diff type to LMX and expect diff content
+    // Switch Diff type to XML and expect diff content
     const typeSelect = page.locator('label:has-text("Type") >> select');
     if (await typeSelect.count()) {
-      await typeSelect.first().selectOption('lmx');
+      await typeSelect.first().selectOption('xml');
       const diffEl = page.locator('.d2h-wrapper, .d2h-file-wrapper').first();
       // UI may render but be offscreen/hidden; try to scroll into view then fallback to API checks
       try {
         await diffEl.scrollIntoViewIfNeeded();
         await expect(diffEl).toBeVisible({ timeout: 15000 });
       } catch {
-        // Fallback: call textdiff API directly (LMX/XML), ensure non-empty
+        // Fallback: call textdiff API directly (XML/manifest), ensure non-empty
         const detailResp = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}`);
         const detail = await detailResp.json();
         const src = detail.sources[0];
         const revs = src.revisions.slice(0, 2);
         if (revs.length >= 2) {
           const a = revs[1].revisionId, b = revs[0].revisionId;
-          const t1 = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}/sources/${encodeURIComponent(src.sourceId)}/textdiff?revA=${encodeURIComponent(a)}&revB=${encodeURIComponent(b)}&file=linearized`);
-          expect(t1.ok()).toBeTruthy();
-          const txt1 = await t1.text();
-          expect((txt1 || '').length).toBeGreaterThan(0);
           const t2 = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}/sources/${encodeURIComponent(src.sourceId)}/textdiff?revA=${encodeURIComponent(a)}&revB=${encodeURIComponent(b)}&file=canonical`);
           expect(t2.ok()).toBeTruthy();
           const txt2 = await t2.text();
           expect((txt2 || '').length).toBeGreaterThan(0);
         }
       }
-      // Try switching type to XML regardless, but don't fail if UI hidden
-      await typeSelect.first().selectOption('xml');
-    }
-
-    // API: Visual diff should respond for any source with 2+ revisions (html wrapper and pdf)
-    const d2 = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}`);
-    const dj = await d2.json();
-    const src2 = (dj.sources || []).find((s) => Array.isArray(s.revisions) && s.revisions.length >= 2);
-    if (src2) {
-      const a = src2.revisions[1].revisionId, b = src2.revisions[0].revisionId;
-      const h = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}/sources/${encodeURIComponent(src2.sourceId)}/musicdiff?revA=${encodeURIComponent(a)}&revB=${encodeURIComponent(b)}&format=html`);
-      expect(h.ok()).toBeTruthy();
-      const p = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}/sources/${encodeURIComponent(src2.sourceId)}/musicdiff?revA=${encodeURIComponent(a)}&revB=${encodeURIComponent(b)}&format=pdf`);
-      expect(p.ok()).toBeTruthy();
     }
 
     // Watch toggle (first source card)

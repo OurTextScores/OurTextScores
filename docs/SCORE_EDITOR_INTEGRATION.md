@@ -94,10 +94,10 @@ http://localhost:3001/?compareLeft=http%3A%2F%2Flocalhost%3A4000%2Fapi%2Fworks%2
 ```
 
 **UI Changes**:
-- The dropdown option is now labeled "Visual Diff (Score Editor)" instead of "Musicdiff (visual)"
+- The dropdown option is labeled "Visual Diff (Score Editor)"
 - The "Open visual PDF" button is now "Open in Score Editor"
 - Removed redundant "Diff (visual)" and "Diff (visual PDF)" badges from the source card
-- Kept the "Diff (text)" badge for the musicdiff text report
+- Kept the "Diff (text)" badge for canonical/manifest text diffs
 
 ## Implementation Details
 

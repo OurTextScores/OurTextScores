@@ -8,18 +8,10 @@ This directory contains end-to-end (E2E) tests for the OurTextScores backend API
 Comprehensive smoke tests covering critical user flows:
 - Work creation and source uploads
 - License metadata (CC0, CC-BY, etc.)
-- Derivative generation (PDF, XML, LMX)
-- MusicDiff generation
+- Derivative generation (PDF, XML)
 - Branch operations
 - Watch/subscribe functionality
 - Search operations
-
-### `musicdiff-pdf.e2e-spec.ts`
-Focused tests for the MusicDiff PDF generation bug fix:
-- Verifies PDF diffs are generated correctly (not empty)
-- Tests the fix for the issue where `python3 -m musicdiff -o=visual` was returning 0-byte PDFs
-- Validates caching behavior
-- Tests error handling
 
 ### `licensing.e2e-spec.ts`
 User content licensing feature tests:
@@ -63,7 +55,6 @@ npm run test:smoke
 
 ### Run specific test file
 ```bash
-npm run test:e2e -- musicdiff-pdf.e2e-spec.ts
 npm run test:e2e -- licensing.e2e-spec.ts
 ```
 

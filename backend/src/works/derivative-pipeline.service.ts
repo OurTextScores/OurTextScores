@@ -12,8 +12,6 @@ import { DerivativeArtifacts } from './schemas/derivatives.schema';
 
 interface ToolVersions {
   musescore3: string;
-  linearizedMusicXml: string;
-  musicdiff: string;
 }
 
 interface ManifestArtifact {
@@ -187,13 +185,6 @@ export class DerivativePipelineService {
         publish('Stored normalized MXL', 'store.normalized');
       }
 
-      let linearized:
-        | {
-          buffer: Buffer;
-          path: string;
-        }
-        | undefined;
-
       if (canonicalBuffer && canonicalPath) {
         derivatives.canonicalXml = await this.storeDerivative(
           `${derivativesBaseKey}/canonical.xml`,
@@ -201,36 +192,9 @@ export class DerivativePipelineService {
           'application/xml'
         );
         publish('Stored canonical XML', 'store.canonical');
-
-        // Prefer using the MXL container for linearization when available,
-        // because the lmx CLI reads only a single line from XML files.
-        if (normalizedMxlPath) {
-          linearized = await this.generateLinearizedFromMxl(normalizedMxlPath, workspace);
-        } else {
-          linearized = await this.generateLinearized(canonicalPath, workspace);
-        }
-        if (linearized) {
-          derivatives.linearizedXml = await this.storeDerivative(
-            `${derivativesBaseKey}/linearized.lmx`,
-            linearized.buffer,
-            'text/plain'
-          );
-          notes.push('Linearized MusicXML generated.');
-          publish('Linearized LMX generated', 'deriv.linearized');
-          publish('Stored linearized LMX', 'store.linearized');
-        } else {
-          pending = true;
-          notes.push('Linearized MusicXML generation failed.');
-        }
       } else {
         pending = true;
         notes.push('Canonical MusicXML could not be produced.');
-      }
-
-      // Queue semantic diff asynchronously (post-upload)
-      if (canonicalPath && input.previousCanonicalXml) {
-        notes.push('musicdiff comparison queued (async).');
-        publish('Diff queued (async)', 'diff.queued');
       }
 
       if (pdfBuffer) {
@@ -275,14 +239,8 @@ export class DerivativePipelineService {
       if (derivatives.canonicalXml) {
         artifacts.push({ type: 'canonicalXml', locator: derivatives.canonicalXml });
       }
-      if (derivatives.linearizedXml) {
-        artifacts.push({ type: 'linearizedXml', locator: derivatives.linearizedXml });
-      }
       if (derivatives.pdf) {
         artifacts.push({ type: 'pdf', locator: derivatives.pdf });
-      }
-      if (derivatives.musicDiffReport) {
-        artifacts.push({ type: 'musicDiffReport', locator: derivatives.musicDiffReport });
       }
       if (derivatives.thumbnail) {
         artifacts.push({ type: 'thumbnail', locator: derivatives.thumbnail });
@@ -478,49 +436,6 @@ export class DerivativePipelineService {
     return { path: canonicalPath, buffer };
   }
 
-  private async generateLinearized(
-    canonicalPath: string,
-    workspace: string
-  ): Promise<{ buffer: Buffer; path: string } | undefined> {
-    const linearizedPath = join(workspace, 'linearized.lmx');
-    try {
-      // Use our wrapper to process full XML content (lmx CLI reads one line).
-      const { stdout } = await this.runCommand('python3', [
-        'python/linearize.py',
-        canonicalPath
-      ]);
-      const buffer = Buffer.from(stdout, 'utf-8');
-      await fs.writeFile(linearizedPath, buffer);
-      return { buffer, path: linearizedPath };
-    } catch (error) {
-      this.logger.warn(
-        `Linearized MusicXML generation failed for ${canonicalPath}: ${this.readableError(error)}`
-      );
-      return undefined;
-    }
-  }
-
-  private async generateLinearizedFromMxl(
-    mxlPath: string,
-    workspace: string
-  ): Promise<{ buffer: Buffer; path: string } | undefined> {
-    const linearizedPath = join(workspace, 'linearized.lmx');
-    try {
-      // Use our wrapper to properly handle .mxl (supports .musicxml entries).
-      const { stdout } = await this.runCommand('python3', [
-        'python/linearize.py',
-        mxlPath
-      ]);
-      const buffer = Buffer.from(stdout, 'utf-8');
-      await fs.writeFile(linearizedPath, buffer);
-      return { buffer, path: linearizedPath };
-    } catch (error) {
-      this.logger.warn(
-        `Linearized MusicXML generation (from MXL) failed for ${mxlPath}: ${this.readableError(error)}`
-      );
-      return undefined;
-    }
-  }
 
   public async generateThumbnail(
     pdfBuffer: Buffer,
@@ -572,15 +487,11 @@ export class DerivativePipelineService {
 
   private async fetchToolVersions(): Promise<ToolVersions> {
     const museCmd = this.getMuseScoreCommand();
-    const [musescore, linearized, musicdiff] = await Promise.all([
+    const [musescore] = await Promise.all([
       this.getCommandVersion(museCmd, ['--version']),
-      this.getPythonPackageVersion('linearized-musicxml'),
-      this.getPythonPackageVersion('musicdiff')
     ]);
     return {
-      musescore3: musescore,
-      linearizedMusicXml: linearized,
-      musicdiff
+      musescore3: musescore
     };
   }
 
@@ -597,21 +508,6 @@ export class DerivativePipelineService {
     } catch (error) {
       this.logger.warn(
         `Unable to determine version for ${command}: ${this.readableError(error)}`
-      );
-      return 'unknown';
-    }
-  }
-
-  private async getPythonPackageVersion(packageName: string): Promise<string> {
-    try {
-      const { stdout } = await this.runCommand('python3', ['-m', 'pip', 'show', packageName]);
-      const line = stdout
-        .split('\n')
-        .find((entry) => entry.toLowerCase().startsWith('version:'));
-      return line ? line.split(':')[1].trim() : 'unknown';
-    } catch (error) {
-      this.logger.warn(
-        `Unable to determine version for ${packageName}: ${this.readableError(error)}`
       );
       return 'unknown';
     }

@@ -483,39 +483,6 @@ export class WorksController {
     this.sendBuffer(res, buffer, '', 'image/png', !!revisionId, 'inline');
   }
 
-  @Get(":workId/sources/:sourceId/linearized.lmx")
-  @UseGuards(AuthOptionalGuard)
-  @ApiTags('derivatives')
-  @ApiOperation({
-    summary: 'Download linearized XML',
-    description: 'Get the linearized MusicXML representation (LMX format) for MusicDiff processing'
-  })
-  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
-  @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'Linearized XML file returned', content: { 'text/plain': {} } })
-  @ApiResponse({ status: 404, description: 'Linearized XML not found for this source' })
-  async downloadLinearized(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string,
-    @Query('r') revisionId: string | undefined,
-    @Res() res: Response,
-    @CurrentUser() user?: RequestUser
-  ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.linearizedXml)
-      : source?.derivatives?.linearizedXml;
-    if (!source || !locator) {
-      throw new NotFoundException('Linearized XML not found for this source');
-    }
-    const buffer = await this.storageService.getObjectBuffer(locator!.bucket, locator!.objectKey);
-    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.lmx';
-    this.sendBuffer(res, buffer, baseName, 'text/plain; charset=utf-8', !!revisionId, 'attachment');
-  }
-
   @Get(":workId/sources/:sourceId/manifest.json")
   @UseGuards(AuthOptionalGuard)
   @ApiTags('derivatives')
@@ -549,319 +516,7 @@ export class WorksController {
     this.sendBuffer(res, buffer, baseName, 'application/json; charset=utf-8', !!revisionId, 'attachment');
   }
 
-  @Get(":workId/sources/:sourceId/musicdiff.txt")
-  @UseGuards(AuthOptionalGuard)
-  @ApiTags('diffs')
-  @ApiOperation({
-    summary: 'Download MusicDiff text report',
-    description: 'Get the semantic diff report comparing this revision to its predecessor (text format)'
-  })
-  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
-  @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'MusicDiff text report returned', content: { 'text/plain': {} } })
-  @ApiResponse({ status: 404, description: 'MusicDiff report not found for this source' })
-  async downloadMusicDiff(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string,
-    @Query('r') revisionId: string | undefined,
-    @Res() res: Response,
-    @CurrentUser() user?: RequestUser
-  ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.musicDiffReport)
-      : source?.revisions.length && source.revisions.length > 1
-        ? source.revisions[0].derivatives?.musicDiffReport
-        : undefined;
-    if (!source || !locator) {
-      throw new NotFoundException('musicdiff report not found for this source');
-    }
-    const buffer = await this.storageService.getObjectBuffer(locator!.bucket, locator!.objectKey);
-    const baseName = 'musicdiff.txt';
-    this.sendBuffer(res, buffer, baseName, 'text/plain; charset=utf-8', !!revisionId, 'attachment');
-  }
-
-  @Get(":workId/sources/:sourceId/musicdiff.html")
-  @UseGuards(AuthOptionalGuard)
-  @ApiTags('diffs')
-  @ApiOperation({
-    summary: 'Download MusicDiff HTML wrapper',
-    description: 'Get an HTML page embedding the visual PDF diff for viewing in a browser'
-  })
-  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
-  @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'HTML wrapper returned', content: { 'text/html': {} } })
-  @ApiResponse({ status: 404, description: 'Revision not found for HTML diff' })
-  async downloadMusicDiffHtml(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string,
-    @Query('r') revisionId: string | undefined,
-    @Res() res: Response,
-    @CurrentUser() user?: RequestUser
-  ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    if (!source) throw new NotFoundException('Source not found');
-    const currentRev = revisionId
-      ? source.revisions.find(r => r.revisionId === revisionId)
-      : (source.revisions.length >= 2 ? source.revisions[0] : undefined);
-    if (!currentRev) throw new NotFoundException('Revision not found for HTML diff');
-    let locator = currentRev.derivatives?.musicDiffHtml;
-    if (!locator) {
-      // Fallback: compute for adjacent previous revision and persist
-      const prev = source.revisions.find(r => r.sequenceNumber === currentRev.sequenceNumber - 1);
-      const a = prev?.derivatives?.canonicalXml;
-      const b = currentRev.derivatives?.canonicalXml;
-      if (!a || !b) throw new NotFoundException('Canonical XML missing for one or both adjacent revisions');
-      const [bufA, bufB] = await Promise.all([
-        this.storageService.getObjectBuffer(a.bucket, a.objectKey),
-        this.storageService.getObjectBuffer(b.bucket, b.objectKey)
-      ]);
-      const { exec } = await import('node:child_process');
-      const { promisify } = await import('node:util');
-      const execAsync = promisify(exec);
-      const tmp = await import('node:os');
-      const fsPromises = await import('node:fs/promises');
-      const path = await import('node:path');
-      const { createHash } = await import('node:crypto');
-      const dir = await fsPromises.mkdtemp(path.join(tmp.tmpdir(), 'ots-mdiff-html-'));
-      try {
-        const pA = path.join(dir, 'a.xml');
-        const pB = path.join(dir, 'b.xml');
-        await fsPromises.writeFile(pA, bufA);
-        await fsPromises.writeFile(pB, bufB);
-        // Build wrapper that embeds the PDF endpoint for this revision
-        const pdfUrl = `/api/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.pdf?r=${encodeURIComponent(currentRev.revisionId)}`;
-        const html = Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><title>MusicDiff (visual)</title></head><body style=\"margin:0;padding:0;height:100vh\"><object data=\"${pdfUrl}\" type=\"application/pdf\" style=\"width:100%;height:100%\"><p>Open PDF: <a href=\"${pdfUrl}\">${pdfUrl}</a></p></object></body></html>`, 'utf-8');
-        const base = `${workId}/${sourceId}/rev-${currentRev.sequenceNumber.toString().padStart(4, '0')}`;
-        const put = await this.storageService.putAuxiliaryObject(
-          `${base}/musicdiff.html`,
-          html,
-          html.length,
-          'text/html'
-        );
-        locator = {
-          bucket: put.bucket,
-          objectKey: put.objectKey,
-          sizeBytes: html.length,
-          checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(html).digest('hex') },
-          contentType: 'text/html',
-          lastModifiedAt: new Date()
-        } as any;
-        await this.worksService.upsertMusicDiffDerivatives(workId, sourceId, currentRev.revisionId, { musicDiffHtml: locator as any });
-      } finally {
-        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
-      }
-    }
-    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
-    const baseName = 'musicdiff.html';
-    this.sendBuffer(res, buffer, baseName, 'text/html; charset=utf-8', !!revisionId, 'inline');
-  }
-
-  @Get(":workId/sources/:sourceId/musicdiff.pdf")
-  @UseGuards(AuthOptionalGuard)
-  @ApiTags('diffs')
-  @ApiOperation({
-    summary: 'Download MusicDiff PDF',
-    description: 'Get the visual diff PDF comparing this revision to its predecessor, generated by MusicDiff'
-  })
-  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
-  @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'MusicDiff PDF returned', content: { 'application/pdf': {} } })
-  @ApiResponse({ status: 404, description: 'Revision not found for PDF diff' })
-  async downloadMusicDiffPdf(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string,
-    @Query('r') revisionId: string | undefined,
-    @Res() res: Response,
-    @CurrentUser() user?: RequestUser
-  ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    if (!source) throw new NotFoundException('Source not found');
-    const currentRev = revisionId
-      ? source.revisions.find(r => r.revisionId === revisionId)
-      : (source.revisions.length >= 2 ? source.revisions[0] : undefined);
-    if (!currentRev) throw new NotFoundException('Revision not found for PDF diff');
-    let locator = (currentRev as any).derivatives?.musicDiffPdf as any;
-    if (locator && (!locator.sizeBytes || locator.sizeBytes <= 0)) {
-      locator = undefined;
-    }
-    if (!locator) {
-      // Fallback compute for adjacent pair
-      const prev = source.revisions.find(r => r.sequenceNumber === currentRev.sequenceNumber - 1);
-      const a = prev?.derivatives?.canonicalXml;
-      const b = currentRev.derivatives?.canonicalXml;
-      if (!a || !b) throw new NotFoundException('Canonical XML missing for one or both adjacent revisions');
-      const [bufA, bufB] = await Promise.all([
-        this.storageService.getObjectBuffer(a.bucket, a.objectKey),
-        this.storageService.getObjectBuffer(b.bucket, b.objectKey)
-      ]);
-      const { exec } = await import('node:child_process');
-      const { promisify } = await import('node:util');
-      const execAsync = promisify(exec);
-      const tmp = await import('node:os');
-      const fsPromises = await import('node:fs/promises');
-      const path = await import('node:path');
-      const { createHash } = await import('node:crypto');
-      const dir = await fsPromises.mkdtemp(path.join(tmp.tmpdir(), 'ots-mdiff-pdf-'));
-      try {
-        const pA = path.join(dir, 'a.xml');
-        const pB = path.join(dir, 'b.xml');
-        await fsPromises.writeFile(pA, bufA);
-        await fsPromises.writeFile(pB, bufB);
-        const pdfOut = path.join(dir, 'musicdiff.pdf');
-        const scriptPath = '/app/python/musicdiff_pdf.py';
-        const { stdout: scriptOutput, stderr: scriptErr } = await execAsync(
-          `python3 ${scriptPath} ${pA} ${pB} ${pdfOut}`
-        );
-        if (!await fsPromises.stat(pdfOut).catch(() => null)) {
-          throw new Error(`musicdiff PDF generation failed: ${scriptErr || scriptOutput}`);
-        }
-        const pdf = await fsPromises.readFile(pdfOut);
-        const base = `${workId}/${sourceId}/rev-${currentRev.sequenceNumber.toString().padStart(4, '0')}`;
-        const put = await this.storageService.putAuxiliaryObject(
-          `${base}/musicdiff.pdf`,
-          pdf,
-          pdf.length,
-          'application/pdf'
-        );
-        locator = {
-          bucket: put.bucket,
-          objectKey: put.objectKey,
-          sizeBytes: pdf.length,
-          checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(pdf).digest('hex') },
-          contentType: 'application/pdf',
-          lastModifiedAt: new Date()
-        } as any;
-        await this.worksService.upsertMusicDiffDerivatives(workId, sourceId, currentRev.revisionId, { musicDiffPdf: locator as any });
-      } finally {
-        await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
-      }
-    }
-    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
-    this.sendBuffer(res, buffer, 'musicdiff.pdf', 'application/pdf', !!revisionId, 'inline');
-  }
-
-  @Get(":workId/sources/:sourceId/musicdiff")
-  @UseGuards(AuthOptionalGuard)
-  @ApiTags('diffs')
-  @ApiOperation({
-    summary: 'On-demand MusicDiff between any two revisions',
-    description: 'Generate a MusicDiff comparison between any two revisions (not just adjacent ones). Returns text or visual PDF format.'
-  })
-  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
-  @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'revA', required: true, description: 'First revision ID to compare' })
-  @ApiQuery({ name: 'revB', required: true, description: 'Second revision ID to compare' })
-  @ApiQuery({ name: 'format', required: false, description: 'Output format: "semantic" for text diff (default), "visual" for PDF diff', example: 'semantic' })
-  @ApiResponse({ status: 200, description: 'MusicDiff comparison returned (text/plain or application/pdf)' })
-  @ApiResponse({ status: 400, description: 'Bad request - revA and revB are required' })
-  @ApiResponse({ status: 404, description: 'Source or canonical XML not found for one or both revisions' })
-  async musicDiffOnDemand(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string,
-    @Query('revA') revA: string,
-    @Query('revB') revB: string,
-    @Query('format') format: string | undefined,
-    @Res() res: Response,
-    @CurrentUser() user?: RequestUser,
-    @Param() _params?: any,
-    @Body() _body?: any,
-    @Query() _query?: any,
-    @Headers() _headers?: any,
-    @Param('workId') _w?: string,
-    @Param('sourceId') _s?: string
-  ) {
-    if (!revA || !revB) throw new BadRequestException('revA and revB are required');
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    if (!source) throw new NotFoundException('Source not found');
-    const a = source.revisions.find(r => r.revisionId === revA)?.derivatives?.canonicalXml;
-    const b = source.revisions.find(r => r.revisionId === revB)?.derivatives?.canonicalXml;
-    if (!a || !b) throw new NotFoundException('Canonical XML missing for one or both revisions');
-    const [bufA, bufB] = await Promise.all([
-      this.storageService.getObjectBuffer(a.bucket, a.objectKey),
-      this.storageService.getObjectBuffer(b.bucket, b.objectKey)
-    ]);
-    // Run musicdiff
-    const { exec, spawn } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execAsync = promisify(exec);
-    const tmp = await import('node:os');
-    const fsPromises = await import('node:fs/promises');
-    const path = await import('node:path');
-    const dir = await fsPromises.mkdtemp(path.join(tmp.tmpdir(), 'ots-mdiff-'));
-    // Try cached aux object first
-    const outFmt = (format || 'text').toLowerCase();
-    const ext = outFmt === 'pdf' ? 'pdf' : (outFmt === 'html' ? 'html' : 'txt');
-    const key = `diffs/${revA}_to_${revB}/musicdiff.${ext}`;
-    try {
-      if (outFmt !== 'html' && await this.storageService.statAuxObject(key)) {
-        const cached = await this.storageService.getAuxObjectBuffer(key);
-        res.setHeader('Content-Type', outFmt === 'pdf' ? 'application/pdf' : 'text/plain; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.send(cached);
-      }
-    } catch { }
-
-    try {
-      const pA = path.join(dir, 'a.xml');
-      const pB = path.join(dir, 'b.xml');
-      await fsPromises.writeFile(pA, bufA);
-      await fsPromises.writeFile(pB, bufB);
-      const outFmt = (format || 'text').toLowerCase();
-      if (outFmt === 'html') {
-        // Build absolute origin from the incoming request since this HTML will often be embedded in the frontend page
-        const req = (res as any).req as import('express').Request;
-        const host = req.get('host');
-        const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
-        const origin = `${proto}://${host}`;
-        const absPdf = `${origin}/api/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(revA)}&revB=${encodeURIComponent(revB)}&format=pdf`;
-        const wrapper = Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><title>MusicDiff (visual)</title></head><body style="margin:0;padding:0;height:100vh"><object data="${absPdf}" type="application/pdf" style="width:100%;height:100%"><p>Open PDF: <a href="${absPdf}">PDF</a></p></object></body></html>`, 'utf-8');
-        await this.storageService.putAuxiliaryObject(key, wrapper, wrapper.length, 'text/html');
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        res.send(wrapper);
-      } else if (outFmt === 'text') {
-        const { stdout } = await execAsync(`python3 -m musicdiff -o=text -- ${pA} ${pB}`);
-        const buf = Buffer.from(stdout, 'utf-8');
-        await this.storageService.putAuxiliaryObject(key, buf, buf.length, 'text/plain');
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        res.send(buf);
-      } else if (outFmt === 'pdf') {
-        // Use helper script that properly uses musicdiff API with explicit output paths
-        const pdfOut = path.join(dir, 'combined.pdf');
-        const scriptPath = '/app/python/musicdiff_pdf.py';
-        const { stdout: scriptOutput, stderr: scriptErr } = await execAsync(
-          `python3 ${scriptPath} ${pA} ${pB} ${pdfOut}`
-        );
-        if (!await fsPromises.stat(pdfOut).catch(() => null)) {
-          throw new Error(`musicdiff PDF generation failed: ${scriptErr || scriptOutput}`);
-        }
-        const pdf = await fsPromises.readFile(pdfOut);
-        await this.storageService.putAuxiliaryObject(key, pdf, pdf.length, 'application/pdf');
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        res.send(pdf);
-      } else {
-        throw new BadRequestException('Unsupported format (use text|html|pdf)');
-      }
-    } finally {
-      await fsPromises.rm(dir, { recursive: true, force: true }).catch(() => { });
-    }
-  }
-
-  // On-demand non-adjacent plain text diff for LMX/XML/manifest
+  // On-demand non-adjacent plain text diff for XML/manifest
   @Get(":workId/sources/:sourceId/textdiff")
   @UseGuards(AuthOptionalGuard)
   async textDiffOnDemand(
@@ -884,10 +539,7 @@ export class WorksController {
     if (!aRev || !bRev) throw new NotFoundException('One or both revisions not found');
 
     let aLoc, bLoc;
-    if (kind === 'linearized' || kind === 'lmx') {
-      aLoc = aRev.derivatives?.linearizedXml;
-      bLoc = bRev.derivatives?.linearizedXml;
-    } else if (kind === 'canonical' || kind === 'xml') {
+    if (kind === 'canonical' || kind === 'xml') {
       aLoc = aRev.derivatives?.canonicalXml;
       bLoc = bRev.derivatives?.canonicalXml;
     } else if (kind === 'manifest' || kind === 'json') {
@@ -939,11 +591,11 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('a') artifactA: string,
     @Query('b') artifactB: string,
-    @Query('file') file: string = 'linearized.lmx',
+    @Query('file') file: string = 'canonical.xml',
     @Res() res: Response
   ) {
     if (!artifactA || !artifactB) throw new BadRequestException('a and b (artifact ids) are required');
-    const allowed = new Set(['linearized.lmx', 'canonical.xml', 'manifest.json']);
+    const allowed = new Set(['canonical.xml', 'manifest.json']);
     if (!allowed.has(file)) throw new BadRequestException('Unsupported file for fossil diff');
     const diffText = await this.fossilService.diff(workId, sourceId, artifactA, artifactB, file);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1030,7 +682,7 @@ export class WorksController {
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload a revision to an existing source',
-    description: 'Upload a new revision of an existing source. Optionally include a reference PDF. Generates derivatives and MusicDiff comparison with previous revision.'
+    description: 'Upload a new revision of an existing source. Optionally include a reference PDF. Generates derivatives.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })

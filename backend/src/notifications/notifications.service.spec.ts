@@ -8,6 +8,11 @@ describe('NotificationsService', () => {
     find: jest.fn(),
     updateMany: jest.fn()
   } as any;
+  const inboxModel = {
+    create: jest.fn(),
+    find: jest.fn(),
+    updateMany: jest.fn()
+  } as any;
   const users = {
     findById: jest.fn()
   } as any;
@@ -17,7 +22,15 @@ describe('NotificationsService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
-    svc = new NotificationsService(outboxModel as any, users as any, config as any);
+    inboxModel.find.mockReturnValue({
+      sort: () => ({
+        exec: () => Promise.resolve([]),
+        limit: () => ({
+          exec: () => Promise.resolve([])
+        })
+      })
+    });
+    svc = new NotificationsService(outboxModel as any, inboxModel as any, users as any, config as any);
     // force a mock transporter
     (svc as any).transporter = { sendMail: jest.fn().mockResolvedValue({}) };
   });
@@ -51,110 +64,29 @@ describe('NotificationsService', () => {
   });
 
   describe('queueNewRevision', () => {
-    it('respects immediate preference', async () => {
-      users.findById.mockResolvedValue({ notify: { watchPreference: 'immediate' } });
-      outboxModel.create.mockResolvedValue({});
-
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1'] });
-
-      expect(outboxModel.create).toHaveBeenCalledWith({
-        type: 'new_revision',
-        workId: 'w',
-        sourceId: 's',
-        revisionId: 'r',
-        recipients: ['user:u1'],
-        payload: {}
-      });
+    it('creates inbox notifications for each user', async () => {
+      inboxModel.create.mockResolvedValue({});
+      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1', 'u2'] });
+      expect(inboxModel.create).toHaveBeenCalledTimes(2);
     });
 
-    it('respects daily digest preference', async () => {
-      users.findById.mockResolvedValue({ notify: { watchPreference: 'daily' } });
-      outboxModel.create.mockResolvedValue({});
-
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1'] });
-
-      expect(outboxModel.create).toHaveBeenCalledWith({
-        type: 'digest_item',
-        workId: 'w',
-        sourceId: 's',
-        revisionId: 'r',
-        recipients: ['user:u1'],
-        payload: { period: 'daily' }
-      });
-    });
-
-    it('respects weekly digest preference', async () => {
-      users.findById.mockResolvedValue({ notify: { watchPreference: 'weekly' } });
-      outboxModel.create.mockResolvedValue({});
-
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1'] });
-
-      expect(outboxModel.create).toHaveBeenCalledWith({
-        type: 'digest_item',
-        workId: 'w',
-        sourceId: 's',
-        revisionId: 'r',
-        recipients: ['user:u1'],
-        payload: { period: 'weekly' }
-      });
-    });
-
-    it('defaults to immediate when no preference', async () => {
-      users.findById.mockResolvedValue({ notify: {} });
-      outboxModel.create.mockResolvedValue({});
-
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1'] });
-
-      expect(outboxModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'new_revision' })
-      );
-    });
-
-    it('defaults to immediate when user not found', async () => {
-      users.findById.mockResolvedValue(null);
-      outboxModel.create.mockResolvedValue({});
-
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1'] });
-
-      expect(outboxModel.create).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'new_revision' })
-      );
-    });
-
-    it('handles multiple users with mixed preferences', async () => {
-      users.findById.mockResolvedValueOnce({ notify: { watchPreference: 'immediate' } });
-      users.findById.mockResolvedValueOnce({ notify: { watchPreference: 'daily' } });
-      outboxModel.create.mockResolvedValue({});
-
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['a', 'b'] });
-
-      expect(outboxModel.create).toHaveBeenCalledTimes(2);
-    });
-
-    it('continues processing when findById throws error', async () => {
-      users.findById.mockRejectedValueOnce(new Error('DB error'));
-      users.findById.mockResolvedValueOnce({ notify: { watchPreference: 'immediate' } });
-      outboxModel.create.mockResolvedValue({});
-
+    it('continues processing when a create fails', async () => {
+      inboxModel.create.mockRejectedValueOnce(new Error('DB error'));
+      inboxModel.create.mockResolvedValueOnce({});
       await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['bad', 'good'] });
-
-      // Should only create one notification (for 'good' user)
-      expect(outboxModel.create).toHaveBeenCalledTimes(1);
+      expect(inboxModel.create).toHaveBeenCalledTimes(2);
     });
 
     it('handles empty userIds array', async () => {
-      outboxModel.create.mockResolvedValue({});
-
       await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: [] });
-
-      expect(outboxModel.create).not.toHaveBeenCalled();
+      expect(inboxModel.create).not.toHaveBeenCalled();
     });
   });
 
   describe('processOutbox', () => {
-    it('sends immediate notifications and marks sent', async () => {
+    it('sends approval notifications and marks sent', async () => {
       const doc = {
-        type: 'new_revision',
+        type: 'push_request',
         workId: 'w',
         sourceId: 's',
         revisionId: 'r',
@@ -189,7 +121,7 @@ describe('NotificationsService', () => {
 
     it('handles email recipients directly', async () => {
       const doc = {
-        type: 'new_revision',
+        type: 'push_request',
         workId: 'w',
         sourceId: 's',
         revisionId: 'r',
@@ -227,7 +159,7 @@ describe('NotificationsService', () => {
       (svc as any).transporter = null;
       const logSpy = jest.spyOn((svc as any).logger, 'log');
       const doc = {
-        type: 'new_revision',
+        type: 'push_request',
         workId: 'w',
         sourceId: 's',
         revisionId: 'r',
@@ -262,7 +194,7 @@ describe('NotificationsService', () => {
     it('marks as error when sendMail fails', async () => {
       (svc as any).transporter = { sendMail: jest.fn().mockRejectedValue(new Error('SMTP error')) };
       const doc = {
-        type: 'new_revision',
+        type: 'push_request',
         workId: 'w',
         sourceId: 's',
         revisionId: 'r',
@@ -299,7 +231,7 @@ describe('NotificationsService', () => {
       (svc as any).transporter = null;
       const logSpy = jest.spyOn((svc as any).logger, 'log');
       const doc = {
-        type: 'new_revision',
+        type: 'push_request',
         workId: 'w',
         sourceId: 's',
         revisionId: 'r',
@@ -331,21 +263,21 @@ describe('NotificationsService', () => {
       expect(doc.status).toBe('sent');
     });
 
-    it('processes digest items for daily period', async () => {
+    it('processes inbox digests for daily period', async () => {
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const digestDoc = {
-        _id: 'digest1',
-        type: 'digest_item',
+        notificationId: 'n1',
+        userId: 'u1',
+        type: 'new_revision',
         workId: 'w1',
         sourceId: 's1',
         revisionId: 'r1',
-        recipients: ['user:u1'],
-        status: 'queued',
         createdAt: dayAgo,
-        payload: { period: 'daily' }
+        emailSent: false,
+        save: jest.fn().mockResolvedValue({})
       };
 
-      // First call: immediate notifications (empty)
+      // Outbox (approvals) empty
       outboxModel.find.mockReturnValueOnce({
         sort: () => ({
           limit: () => ({
@@ -353,24 +285,12 @@ describe('NotificationsService', () => {
           })
         })
       });
-      // Daily digest query
-      outboxModel.find.mockReturnValueOnce({
+      inboxModel.find.mockReturnValue({
         sort: () => ({
-          lean: () => ({
-            exec: () => Promise.resolve([digestDoc])
-          })
+          exec: () => Promise.resolve([digestDoc])
         })
       });
-      // Weekly digest query
-      outboxModel.find.mockReturnValue({
-        sort: () => ({
-          lean: () => ({
-            exec: () => Promise.resolve([])
-          })
-        })
-      });
-      outboxModel.updateMany.mockReturnValue({ exec: jest.fn().mockResolvedValue({}) });
-      users.findById.mockResolvedValue({ email: 'user@example.com' });
+      users.findById.mockResolvedValue({ email: 'user@example.com', notify: { watchPreference: 'daily' } });
 
       await svc.processOutbox();
 
@@ -379,7 +299,7 @@ describe('NotificationsService', () => {
           subject: expect.stringContaining('[daily digest]')
         })
       );
-      expect(outboxModel.updateMany).toHaveBeenCalled();
+      expect(digestDoc.emailSent).toBe(true);
     });
   });
 
@@ -393,7 +313,7 @@ describe('NotificationsService', () => {
         return undefined;
       });
 
-      const newSvc = new NotificationsService(outboxModel, users, config);
+      const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       newSvc.onModuleInit();
 
       expect((newSvc as any).timer).toBeDefined();
@@ -407,7 +327,7 @@ describe('NotificationsService', () => {
     it('handles missing email server config', () => {
       config.get.mockReturnValue(undefined);
 
-      const newSvc = new NotificationsService(outboxModel, users, config);
+      const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       newSvc.onModuleInit();
 
       expect((newSvc as any).transporter).toBeNull();
@@ -422,7 +342,7 @@ describe('NotificationsService', () => {
         return undefined;
       });
 
-      const newSvc = new NotificationsService(outboxModel, users, config);
+      const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       newSvc.onModuleInit();
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to configure email transporter'));
@@ -435,7 +355,7 @@ describe('NotificationsService', () => {
   describe('onModuleDestroy', () => {
     it('clears timer', () => {
       jest.useFakeTimers();
-      const newSvc = new NotificationsService(outboxModel, users, config);
+      const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       newSvc.onModuleInit();
 
       const timer = (newSvc as any).timer;
@@ -447,7 +367,7 @@ describe('NotificationsService', () => {
     });
 
     it('handles null timer', () => {
-      const newSvc = new NotificationsService(outboxModel, users, config);
+      const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       (newSvc as any).timer = null;
 
       // Should not throw
@@ -504,4 +424,3 @@ describe('NotificationsService', () => {
     });
   });
 });
-

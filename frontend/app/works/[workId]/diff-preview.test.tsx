@@ -74,8 +74,8 @@ describe('DiffPreview', () => {
     );
 
     // Should have options for different diff types
-    const musicdiffOptions = screen.getAllByText(/musicdiff/i);
-    expect(musicdiffOptions.length).toBeGreaterThan(0);
+    const xmlOptions = screen.getAllByText(/XML/i);
+    expect(xmlOptions.length).toBeGreaterThan(0);
   });
 
   it('allows branch filtering', async () => {
@@ -123,7 +123,7 @@ describe('DiffPreview', () => {
     );
 
     if (typeSelect) {
-      await user.selectOptions(typeSelect, 'lmx');
+      await user.selectOptions(typeSelect, 'xml');
 
       await waitFor(
         () => {
@@ -153,7 +153,7 @@ describe('DiffPreview', () => {
     );
 
     if (typeSelect) {
-      await user.selectOptions(typeSelect, 'lmx');
+      await user.selectOptions(typeSelect, 'xml');
 
       await waitFor(
         () => {
@@ -194,8 +194,12 @@ describe('DiffPreview', () => {
     const viewSelect = selects.find((select) =>
       select.previousElementSibling?.textContent === 'View'
     );
+    const typeSelect = selects.find((select) =>
+      select.previousElementSibling?.textContent === 'Type'
+    );
 
-    if (viewSelect) {
+    if (typeSelect && viewSelect) {
+      await user.selectOptions(typeSelect, 'xml');
       await user.selectOptions(viewSelect, 'line-by-line');
       // View mode should change
       expect(viewSelect).toHaveValue('line-by-line');
@@ -230,7 +234,7 @@ describe('DiffPreview', () => {
     }
   });
 
-  it('handles musicdiff visual PDF mode', () => {
+  it('handles visual diff mode', () => {
     renderWithProviders(
       <DiffPreview
         workId="12345"
@@ -239,10 +243,10 @@ describe('DiffPreview', () => {
       />
     );
 
-    // Component renders with type selector including musicdiff_visual option
+    // Component renders with type selector including visual diff option
     const selects = screen.getAllByRole('combobox');
     const typeSelect = selects.find((select) =>
-      select.innerHTML.includes('musicdiff_visual')
+      select.innerHTML.includes('score_editor')
     );
     expect(typeSelect).toBeInTheDocument();
   });
@@ -281,7 +285,7 @@ describe('DiffPreview', () => {
     );
 
     if (typeSelect) {
-      await user.selectOptions(typeSelect, 'lmx');
+      await user.selectOptions(typeSelect, 'xml');
 
       // Should show loading indicator
       const loadingMsg = screen.queryByText(/loading/i) || screen.queryByText(/fetching/i);

@@ -94,13 +94,10 @@ export interface StorageLocator {
 export interface DerivativeArtifacts {
   normalizedMxl?: StorageLocator;
   canonicalXml?: StorageLocator;
-  linearizedXml?: StorageLocator;
   pdf?: StorageLocator;
   mscz?: StorageLocator;
   referencePdf?: StorageLocator;
   manifest?: StorageLocator;
-  musicDiffReport?: StorageLocator;
-  musicDiffHtml?: StorageLocator;
   thumbnail?: StorageLocator;
 }
 

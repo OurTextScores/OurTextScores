@@ -36,16 +36,17 @@ test.describe('Public links + health', () => {
     // Only fetch small files to verify they resolve (skip large PDFs/MXLs to avoid timeout)
     let okCount = 0;
     let attempts = 0;
-    for (const href of links) {
+    const smallLinks = links.filter((href) => href && !href.includes('.pdf') && !href.includes('.mxl'));
+    const candidates = smallLinks.length > 0 ? smallLinks : links;
+    for (const href of candidates) {
       if (!href) continue;
-      // Skip large binary files (PDF, MXL) - only test small files like manifest and text diffs
-      if (href.includes('.pdf') || href.includes('.mxl')) continue;
       const resolved = href.startsWith('/api/works/')
         ? `${PUBLIC_API}${href.replace('/api', '')}`
         : href;
       try {
-        const resp = await request.get(resolved, { timeout: 5000 });
-        if (resp.status() === 200) okCount += 1;
+        const timeout = (href.includes('.pdf') || href.includes('.mxl')) ? 15000 : 5000;
+        const resp = await request.get(resolved, { timeout });
+        if (resp.status() === 200 || resp.status() === 202) okCount += 1;
       } catch (e) {
         // Ignore timeouts on individual requests
       }

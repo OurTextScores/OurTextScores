@@ -15,12 +15,10 @@ type SourceRevisionView = {
   changeSummary?: string;
   validation: { status: string };
   derivatives?: {
-    linearizedXml?: StorageLocator;
     canonicalXml?: StorageLocator;
     normalizedMxl?: StorageLocator;
     pdf?: StorageLocator;
     mscz?: StorageLocator;
-    musicDiffReport?: StorageLocator;
   };
   manifest?: StorageLocator;
   fossilArtifactId?: string;
@@ -129,7 +127,7 @@ function StorageBadge({
   validationStatus
 }: {
   label: string;
-  kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'mscz' | 'manifest' | 'musicDiffReport';
+  kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'manifest';
   locator?: StorageLocator;
   workId: string;
   sourceId: string;
@@ -158,9 +156,6 @@ function StorageBadge({
     case 'canonicalXml':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml${r}`;
       break;
-    case 'linearizedXml':
-      href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/linearized.lmx${r}`;
-      break;
     case 'pdf':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.pdf${r}`;
       break;
@@ -169,9 +164,6 @@ function StorageBadge({
       break;
     case 'manifest':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
-      break;
-    case 'musicDiffReport':
-      href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.txt${r}`;
       break;
   }
   const content = (
@@ -227,12 +219,11 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
   currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
 }) {
   const artifactsAvailable = [
-    revision.derivatives?.linearizedXml,
     revision.derivatives?.canonicalXml,
     revision.derivatives?.normalizedMxl,
     revision.derivatives?.pdf,
-    revision.manifest,
-    revision.derivatives?.musicDiffReport
+    revision.derivatives?.mscz,
+    revision.manifest
   ].some(Boolean);
 
   return (
@@ -268,16 +259,6 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
       <td className="px-3 py-2">
         {artifactsAvailable ? (
           <div className="flex flex-wrap gap-1">
-            <StorageBadge
-              label="LMX"
-              kind="linearizedXml"
-              locator={revision.derivatives?.linearizedXml}
-              workId={workId}
-              sourceId={sourceId}
-              revisionId={revision.revisionId}
-              publicApiBase={publicApiBase}
-              validationStatus={revision.validation.status}
-            />
             <StorageBadge
               label="XML"
               kind="canonicalXml"
@@ -326,17 +307,6 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
               sourceId={sourceId}
               revisionId={revision.revisionId}
               publicApiBase={publicApiBase}
-              validationStatus={revision.validation.status}
-            />
-            <StorageBadge
-              label="Diff"
-              kind="musicDiffReport"
-              locator={revision.derivatives?.musicDiffReport}
-              workId={workId}
-              sourceId={sourceId}
-              revisionId={revision.revisionId}
-              publicApiBase={publicApiBase}
-              missingText={revision.sequenceNumber === 1 ? 'n/a' : 'pending'}
               validationStatus={revision.validation.status}
             />
             {revision.derivatives?.canonicalXml && (

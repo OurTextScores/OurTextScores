@@ -447,7 +447,7 @@ except Exception:
       const list = revisionsBySource.get(revision.sourceId) ?? [];
       // Derive a safer validation view: if derivatives exist but snapshot is still 'pending', treat as passed in the view
       const vSnap: ValidationState = (revision as any).validationSnapshot || { status: 'pending', issues: [] };
-      const hasDerivatives = !!((revision as any).derivatives?.linearizedXml || (revision as any).derivatives?.canonicalXml);
+      const hasDerivatives = !!((revision as any).derivatives?.canonicalXml);
       const validationForView: ValidationState = (vSnap.status === 'pending' && hasDerivatives)
         ? { ...vSnap, status: 'passed', performedAt: vSnap.performedAt || (revision as any).createdAt }
         : vSnap;
@@ -508,12 +508,12 @@ except Exception:
   }
 
   async prunePendingSources(workId: string): Promise<{ removed: number }> {
-    // Define "pending" sources as those lacking a linearized derivative
+    // Define "pending" sources as those lacking a canonical derivative
     const pendingSources = await this.sourceModel
       .find({
         workId, $or: [
           { derivatives: { $exists: false } },
-          { 'derivatives.linearizedXml': { $exists: false } }
+          { 'derivatives.canonicalXml': { $exists: false } }
         ]
       })
       .lean()
@@ -534,14 +534,14 @@ except Exception:
       add(src.storage);
       add(src.derivatives?.normalizedMxl);
       add(src.derivatives?.canonicalXml);
-      add(src.derivatives?.linearizedXml);
+      add((src as any).derivatives?.linearizedXml);
       add(src.derivatives?.manifest);
       for (const rev of revisions) {
         add(rev.rawStorage);
         add(rev.derivatives?.normalizedMxl);
         add(rev.derivatives?.canonicalXml);
-        add(rev.derivatives?.linearizedXml);
-        add(rev.derivatives?.musicDiffReport);
+        add((rev as any).derivatives?.linearizedXml);
+        add((rev as any).derivatives?.musicDiffReport);
         add(rev.manifest);
       }
 
@@ -576,7 +576,6 @@ except Exception:
       const d: any = s.derivatives ?? {};
       if (d.normalizedMxl) formats.add('application/vnd.recordare.musicxml');
       if (d.canonicalXml) formats.add('application/xml');
-      if (d.linearizedXml) formats.add('text/plain');
       if (s.hasReferencePdf) hasReferencePdf = true;
       if ((s as any).adminVerified) hasVerifiedSources = true;
       if ((s as any).adminFlagged) hasFlaggedSources = true;
@@ -613,14 +612,14 @@ except Exception:
       add(src.storage);
       add(src.derivatives?.normalizedMxl);
       add(src.derivatives?.canonicalXml);
-      add(src.derivatives?.linearizedXml);
+      add((src as any).derivatives?.linearizedXml);
       add(src.derivatives?.manifest);
       for (const rev of revisions) {
         add(rev.rawStorage);
         add(rev.derivatives?.normalizedMxl);
         add(rev.derivatives?.canonicalXml);
-        add(rev.derivatives?.linearizedXml);
-        add(rev.derivatives?.musicDiffReport);
+        add((rev as any).derivatives?.linearizedXml);
+        add((rev as any).derivatives?.musicDiffReport);
         add(rev.manifest);
       }
 
@@ -690,14 +689,14 @@ except Exception:
     add(src.storage);
     add(src.derivatives?.normalizedMxl);
     add(src.derivatives?.canonicalXml);
-    add(src.derivatives?.linearizedXml);
+    add((src as any).derivatives?.linearizedXml);
     add(src.derivatives?.manifest);
     for (const rev of revisions) {
       add(rev.rawStorage);
       add(rev.derivatives?.normalizedMxl);
       add(rev.derivatives?.canonicalXml);
-      add(rev.derivatives?.linearizedXml);
-      add(rev.derivatives?.musicDiffReport);
+      add((rev as any).derivatives?.linearizedXml);
+      add((rev as any).derivatives?.musicDiffReport);
       add((rev as any).derivatives?.musicDiffHtml);
       add((rev as any).derivatives?.musicDiffPdf);
       add(rev.manifest);
@@ -788,7 +787,6 @@ except Exception:
     // Update work summary
     const formatsForWork = new Set<string>();
     if (rev.derivatives?.normalizedMxl) formatsForWork.add('application/vnd.recordare.musicxml');
-    if (rev.derivatives?.linearizedXml) formatsForWork.add('text/plain');
     if (rev.derivatives?.canonicalXml) formatsForWork.add('application/xml');
     await this.recordSourceRevision(workId, Array.from(formatsForWork), receivedAt);
 
@@ -826,32 +824,6 @@ except Exception:
     };
     await rev.save();
     return { status: 'rejected' };
-  }
-
-  // Attach or update musicdiff derivative locators for a specific revision.
-  // Also mirrors onto Source.derivatives if this revision is the latest.
-  async upsertMusicDiffDerivatives(
-    workId: string,
-    sourceId: string,
-    revisionId: string,
-    updates: {
-      musicDiffHtml?: StorageLocator;
-      musicDiffPdf?: StorageLocator;
-      musicDiffReport?: StorageLocator;
-    }
-  ): Promise<void> {
-    const setPayload: Record<string, unknown> = {};
-    if (updates.musicDiffHtml) setPayload['derivatives.musicDiffHtml'] = updates.musicDiffHtml;
-    if (updates.musicDiffPdf) setPayload['derivatives.musicDiffPdf'] = updates.musicDiffPdf;
-    if (updates.musicDiffReport) setPayload['derivatives.musicDiffReport'] = updates.musicDiffReport;
-    if (Object.keys(setPayload).length > 0) {
-      await this.sourceRevisionModel.updateOne({ workId, sourceId, revisionId }, { $set: setPayload }).exec();
-      // If this revision is the latest for the source, also mirror onto Source.
-      await this.sourceModel.updateOne(
-        { workId, sourceId, latestRevisionId: revisionId },
-        { $set: setPayload }
-      ).exec();
-    }
   }
 
   async updateWorkMetadata(

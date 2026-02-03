@@ -10,9 +10,6 @@ export class DerivativeArtifacts {
   canonicalXml?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })
-  linearizedXml?: StorageLocator;
-
-  @Prop({ type: StorageLocatorSchema })
   pdf?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })
@@ -23,15 +20,6 @@ export class DerivativeArtifacts {
 
   @Prop({ type: StorageLocatorSchema })
   manifest?: StorageLocator;
-
-  @Prop({ type: StorageLocatorSchema })
-  musicDiffReport?: StorageLocator;
-
-  @Prop({ type: StorageLocatorSchema })
-  musicDiffHtml?: StorageLocator;
-
-  @Prop({ type: StorageLocatorSchema })
-  musicDiffPdf?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })
   thumbnail?: StorageLocator;

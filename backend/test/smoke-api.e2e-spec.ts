@@ -26,7 +26,7 @@ import * as request from 'supertest';
  * Tests critical functionality:
  * - Work creation and source upload with licensing
  * - Derivative generation
- * - MusicDiff PDF generation (bug fix verification)
+ * - Text diff generation
  */
 describe('API Smoke Tests (running server)', () => {
   const API_BASE = process.env.API_BASE || 'http://localhost:4000';
@@ -133,58 +133,6 @@ describe('API Smoke Tests (running server)', () => {
 
       if (response.body.length >= 2) {
         revisionId2 = response.body[1].revisionId;
-      }
-    });
-  });
-
-  describe('MusicDiff PDF (Bug Fix Verification)', () => {
-    it('GET /api/works/:workId/sources/:sourceId/musicdiff?format=pdf should return non-empty PDF', async () => {
-      if (!revisionId2) {
-        console.log('  Skipping: Need 2 revisions for diff test');
-        return;
-      }
-
-      const response = await request(API_BASE)
-        .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/musicdiff`)
-        .query({ revA: revisionId1, revB: revisionId2, format: 'pdf' })
-        .timeout(30000)
-        .expect((res) => {
-          // Accept success or not implemented
-          expect([200, 400, 500, 501]).toContain(res.status);
-        });
-
-      if (response.status === 200) {
-        console.log('✓ PDF diff generated successfully');
-        expect(response.headers['content-type']).toContain('application/pdf');
-
-        // CRITICAL: PDF must not be empty (this was the bug!)
-        expect(response.body.length).toBeGreaterThan(0);
-
-        // PDF should have valid header
-        const pdfHeader = response.body.slice(0, 4).toString('utf-8');
-        expect(pdfHeader).toBe('%PDF');
-
-        console.log(`  PDF size: ${response.body.length} bytes`);
-      } else {
-        console.log(`  PDF generation returned ${response.status} - may need musicdiff/MuseScore`);
-      }
-    });
-
-    it('GET /api/works/:workId/sources/:sourceId/musicdiff?format=lmx should return diff', async () => {
-      if (!revisionId2) {
-        console.log('  Skipping: Need 2 revisions for diff test');
-        return;
-      }
-
-      const response = await request(API_BASE)
-        .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/musicdiff`)
-        .query({ revA: revisionId1, revB: revisionId2, format: 'lmx' })
-        .expect((res) => {
-          expect([200, 400, 500]).toContain(res.status);
-        });
-
-      if (response.status === 200) {
-        expect(response.text).toBeDefined();
       }
     });
   });

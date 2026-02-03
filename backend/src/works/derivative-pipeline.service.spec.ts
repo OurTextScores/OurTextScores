@@ -16,9 +16,7 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     // Stub out calls that hit external tools and file IO complexity
     (service as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({ bucket: 'der', objectKey: key, sizeBytes: buf.length, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: ct, lastModifiedAt: new Date() }));
     (service as any).extractCanonicalXml = jest.fn(async () => ({ path: '/tmp/canonical.xml', buffer: Buffer.from('<xml/>') }));
-    // Simulate linearize success for MXL path
     (service as any).runCommand = jest.fn(async (cmd: string, args: string[]) => {
-      if (cmd === 'python3') return { stdout: 'LMX_CONTENT', stderr: '' };
       if (cmd === 'musescore3') return { stdout: '', stderr: '' };
       return { stdout: '', stderr: '' };
     });
@@ -37,7 +35,6 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     const out = await service.process(input);
     expect(out.pending).toBe(false);
     expect(out.derivatives.canonicalXml).toBeTruthy();
-    expect(out.derivatives.linearizedXml).toBeTruthy();
     expect(out.derivatives.normalizedMxl).toBeTruthy();
     expect(out.manifest).toBeTruthy();
   });
@@ -45,7 +42,6 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
   it('process tolerates failed PDF generation', async () => {
     // Rewire runCommand to throw for musescore PDF
     (service as any).runCommand = jest.fn(async (cmd: string, args: string[]) => {
-      if (cmd === 'python3') return { stdout: 'LMX_CONTENT', stderr: '' };
       if (cmd === 'musescore3') throw new Error('no musescore');
       return { stdout: '', stderr: '' };
     });
@@ -79,7 +75,6 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
       buffer: Buffer.from('<xml/>')
     }));
     const runSpy = jest.fn(async (cmd: string, args: string[]) => {
-      if (cmd === 'python3') return { stdout: 'LMX_CONTENT', stderr: '' };
       if (cmd === 'musescore4') return { stdout: '', stderr: '' };
       return { stdout: '', stderr: '' };
     });

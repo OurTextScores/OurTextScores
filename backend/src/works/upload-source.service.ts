@@ -4,10 +4,7 @@ import { Model } from 'mongoose';
 import { createHash } from 'node:crypto';
 import { extname } from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
-import { promises as fs } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
 import { WorksService } from './works.service';
 import { Source, SourceDocument } from './schemas/source.schema';
 import { StorageService } from '../storage/storage.service';
@@ -167,7 +164,7 @@ export class UploadSourceService {
       validationState.performedAt = new Date();
     }
 
-    if (!pendingStatus && derivativeOutcome.derivatives.linearizedXml && derivativeOutcome.manifest) {
+    if (!pendingStatus && derivativeOutcome.derivatives.canonicalXml && derivativeOutcome.manifest) {
       try {
         this.progress.publish(progressId, 'Committing to Fossil', 'fossil.start');
         const fossilFiles = await this.collectFossilFiles(derivativeOutcome);
@@ -318,7 +315,6 @@ export class UploadSourceService {
 
     const formatsForWork = new Set<string>([format]);
     if (derivativeOutcome.derivatives.normalizedMxl) formatsForWork.add('application/vnd.recordare.musicxml');
-    if (derivativeOutcome.derivatives.linearizedXml) formatsForWork.add('text/plain');
     if (derivativeOutcome.derivatives.canonicalXml) formatsForWork.add('application/xml');
 
     if (setLatest) {
@@ -327,19 +323,6 @@ export class UploadSourceService {
     if (status === 'pending_approval') {
       await this.notifications.queuePushRequest({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId, ownerUserId: approval?.ownerUserId });
     }
-    // Kick off async musicdiff if we have previous and current canonical
-    // DISABLED: Causes OOM issues - will be moved to distributed job queue
-    // if (currentCanonical && previousCanonical) {
-    //   this.progress.publish(progressId, 'Queueing musicdiff (async)', 'diff.queued');
-    //   this.generateMusicDiffAsync(
-    //     trimmedWorkId,
-    //     trimmedSourceId,
-    //     revisionId,
-    //     sequenceNumber,
-    //     currentCanonical,
-    //     previousCanonical
-    //   ).catch(() => { });
-    // }
     this.progress.publish(progressId, 'Done', 'done');
 
     // Recompute work stats (including hasReferencePdf aggregation)
@@ -452,7 +435,7 @@ export class UploadSourceService {
 
     if (
       !pendingStatus &&
-      derivativeOutcome.derivatives.linearizedXml &&
+      derivativeOutcome.derivatives.canonicalXml &&
       derivativeOutcome.manifest
     ) {
       try {
@@ -602,9 +585,6 @@ export class UploadSourceService {
     if (derivativeOutcome.derivatives.normalizedMxl) {
       formatsForWork.add('application/vnd.recordare.musicxml');
     }
-    if (derivativeOutcome.derivatives.linearizedXml) {
-      formatsForWork.add('text/plain');
-    }
     if (derivativeOutcome.derivatives.canonicalXml) {
       formatsForWork.add('application/xml');
     }
@@ -644,180 +624,6 @@ export class UploadSourceService {
     };
   }
 
-  private async generateMusicDiffAsync(
-    workId: string,
-    sourceId: string,
-    revisionId: string,
-    sequenceNumber: number,
-    current: StorageLocator,
-    previous: StorageLocator
-  ): Promise<void> {
-    const dir = await fs.mkdtemp(join(tmpdir(), 'ots-mdiff-'));
-    try {
-      const currentPath = join(dir, 'current.xml');
-      const previousPath = join(dir, 'previous.xml');
-      const [bufCur, bufPrev] = await Promise.all([
-        this.storageService.getObjectBuffer(current.bucket, current.objectKey),
-        this.storageService.getObjectBuffer(previous.bucket, previous.objectKey)
-      ]);
-      await fs.writeFile(currentPath, bufCur);
-      await fs.writeFile(previousPath, bufPrev);
-      const diff = await this.exec(['python3', '-m', 'musicdiff', '-o=text', '--', previousPath, currentPath]);
-      const diffBuffer = Buffer.from(diff, 'utf-8');
-      const base = `${workId}/${sourceId}/rev-${sequenceNumber.toString().padStart(4, '0')}`;
-      const locator = await this.storageService.putAuxiliaryObject(
-        `${base}/musicdiff.txt`,
-        diffBuffer,
-        diffBuffer.length,
-        'text/plain'
-      );
-      // Visual (PDF) report
-      let pdfLocator: { bucket: string; objectKey: string } | undefined = undefined;
-      let pdfSize = 0;
-      let pdfDigest = '';
-      try {
-        const pdfOut = join(dir, 'musicdiff.pdf');
-        const scriptPath = '/app/python/musicdiff_pdf.py';
-        await this.exec(['python3', scriptPath, previousPath, currentPath, pdfOut]);
-        const pdfBuffer = await fs.readFile(pdfOut);
-        if (pdfBuffer.length > 0) {
-          pdfSize = pdfBuffer.length;
-          pdfDigest = createHash('sha256').update(pdfBuffer).digest('hex');
-          pdfLocator = await this.storageService.putAuxiliaryObject(
-            `${base}/musicdiff.pdf`,
-            pdfBuffer,
-            pdfBuffer.length,
-            'application/pdf'
-          );
-        }
-      } catch {
-        // ignore pdf generation failures
-      }
-
-      // HTML wrapper that embeds/links the PDF for convenience
-      let htmlLocator: { bucket: string; objectKey: string } | undefined = undefined;
-      let htmlSize = 0;
-      let htmlDigest = '';
-      try {
-        const pdfUrl = `/api/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.pdf?r=${encodeURIComponent(revisionId)}`;
-        const wrapper = `<!doctype html><html><head><meta charset="utf-8"><title>MusicDiff (visual)</title></head><body style="margin:0;padding:0;height:100vh"><object data="${pdfUrl}" type="application/pdf" style="width:100%;height:100%"><p>Open PDF: <a href="${pdfUrl}">${pdfUrl}</a></p></object></body></html>`;
-        const htmlBuffer = Buffer.from(wrapper, 'utf-8');
-        htmlSize = htmlBuffer.length;
-        htmlDigest = createHash('sha256').update(htmlBuffer).digest('hex');
-        htmlLocator = await this.storageService.putAuxiliaryObject(
-          `${base}/musicdiff.html`,
-          htmlBuffer,
-          htmlBuffer.length,
-          'text/html'
-        );
-      } catch {
-        // ignore wrapper generation failures
-      }
-      // Update revision derivatives
-      await this.sourceRevisionModel.updateOne(
-        { workId, sourceId, revisionId },
-        {
-          $set: {
-            'derivatives.musicDiffReport': {
-              bucket: locator.bucket,
-              objectKey: locator.objectKey,
-              sizeBytes: diffBuffer.length,
-              checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(diffBuffer).digest('hex') },
-              contentType: 'text/plain',
-              lastModifiedAt: new Date()
-            }, ...(htmlLocator ? {
-              'derivatives.musicDiffHtml': {
-                bucket: htmlLocator.bucket,
-                objectKey: htmlLocator.objectKey,
-                sizeBytes: htmlSize,
-                checksum: { algorithm: 'sha256', hexDigest: htmlDigest },
-                contentType: 'text/html',
-                lastModifiedAt: new Date()
-              }
-            } : {}), ...(pdfLocator ? {
-              'derivatives.musicDiffPdf': {
-                bucket: pdfLocator.bucket,
-                objectKey: pdfLocator.objectKey,
-                sizeBytes: pdfSize,
-                checksum: { algorithm: 'sha256', hexDigest: pdfDigest },
-                contentType: 'application/pdf',
-                lastModifiedAt: new Date()
-              }
-            } : {})
-          }
-        }
-      ).exec();
-      // Also update source.latest derivatives if this is latest
-      await this.sourceModel.updateOne(
-        { workId, sourceId, latestRevisionId: revisionId },
-        {
-          $set: {
-            'derivatives.musicDiffReport': {
-              bucket: locator.bucket,
-              objectKey: locator.objectKey,
-              sizeBytes: diffBuffer.length,
-              checksum: { algorithm: 'sha256', hexDigest: createHash('sha256').update(diffBuffer).digest('hex') },
-              contentType: 'text/plain',
-              lastModifiedAt: new Date()
-            }, ...(htmlLocator ? {
-              'derivatives.musicDiffHtml': {
-                bucket: htmlLocator.bucket,
-                objectKey: htmlLocator.objectKey,
-                sizeBytes: htmlSize,
-                checksum: { algorithm: 'sha256', hexDigest: htmlDigest },
-                contentType: 'text/html',
-                lastModifiedAt: new Date()
-              }
-            } : {}), ...(pdfLocator ? {
-              'derivatives.musicDiffPdf': {
-                bucket: pdfLocator.bucket,
-                objectKey: pdfLocator.objectKey,
-                sizeBytes: pdfSize,
-                checksum: { algorithm: 'sha256', hexDigest: pdfDigest },
-                contentType: 'application/pdf',
-                lastModifiedAt: new Date()
-              }
-            } : {})
-          }
-        }
-      ).exec();
-    } catch (err) {
-      // Best effort; swallow errors
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true }).catch(() => { });
-    }
-  }
-
-  private exec(args: string[]): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(args[0], args.slice(1), { stdio: ['ignore', 'pipe', 'pipe'] });
-      let out = '';
-      let err = '';
-      child.stdout.on('data', (c) => (out += c.toString()));
-      child.stderr.on('data', (c) => (err += c.toString()));
-      child.on('error', reject);
-      child.on('close', (code) => {
-        if (code === 0) resolve(out);
-        else reject(new Error(err || `command exited with code ${code}`));
-      });
-    });
-  }
-
-  private execBuffer(args: string[]): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(args[0], args.slice(1), { stdio: ['ignore', 'pipe', 'pipe'] });
-      const chunks: Buffer[] = [];
-      let err = '';
-      child.stdout.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
-      child.stderr.on('data', (c) => (err += c.toString()));
-      child.on('error', reject);
-      child.on('close', (code) => {
-        if (code === 0) resolve(Buffer.concat(chunks));
-        else reject(new Error(err || `command exited with code ${code}`));
-      });
-    });
-  }
-
   private async collectFossilFiles(
     outcome: DerivativePipelineResult
   ): Promise<FossilCommitFile[]> {
@@ -835,7 +641,6 @@ export class UploadSourceService {
       files.push({ relativePath, content: buffer });
     };
 
-    await addFile('linearized.lmx', outcome.derivatives.linearizedXml);
     await addFile('canonical.xml', outcome.derivatives.canonicalXml);
     // normalized.mxl is binary; skip committing it to Fossil to avoid
     // binary-file commit guards. It is still stored in object storage.
@@ -854,7 +659,7 @@ export class UploadSourceService {
     }
 
     const missingCore =
-      !outcome.derivatives?.canonicalXml || !outcome.derivatives?.linearizedXml;
+      !outcome.derivatives?.canonicalXml;
     if (!outcome.pending && !missingCore) {
       return;
     }

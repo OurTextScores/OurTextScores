@@ -35,9 +35,9 @@ async function bootstrap() {
       'API for OurTextScores - a collaborative platform for musical score transcription and version control.\n\n' +
       '## Features\n' +
       '- Work and source management with IMSLP integration\n' +
-      '- File upload and derivative generation (PDF, MXL, LMX, canonical XML)\n' +
+      '- File upload and derivative generation (PDF, MXL, canonical XML)\n' +
       '- Version control with Fossil VCS\n' +
-      '- MusicDiff - semantic and visual diffs for musical scores\n' +
+      '- Text diffs for canonical XML and manifests\n' +
       '- Branch management for collaborative workflows\n' +
       '- Watch/subscribe for notifications\n' +
       '- User content licensing (CC licenses, Public Domain, etc.)\n\n' +
@@ -56,8 +56,8 @@ async function bootstrap() {
     .addTag('health', 'Health check endpoints')
     .addTag('works', 'Work and source management')
     .addTag('uploads', 'File upload operations')
-    .addTag('derivatives', 'Generated file derivatives (PDF, XML, LMX)')
-    .addTag('diffs', 'MusicDiff operations for comparing revisions')
+    .addTag('derivatives', 'Generated file derivatives (PDF, XML)')
+    .addTag('diffs', 'Text diff operations for comparing revisions')
     .addTag('branches', 'Branch management with Fossil VCS')
     .addTag('watches', 'Watch and notification subscriptions')
     .addTag('approvals', 'Branch merge approval workflows')

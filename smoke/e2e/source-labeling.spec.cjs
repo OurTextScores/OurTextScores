@@ -87,12 +87,12 @@ test.describe('Source Labeling', () => {
     await expect(page.locator('h2:has-text("Upload a new source")')).toBeVisible();
 
     // Fill in source title
-    const labelInput = page.locator('input[placeholder*="source title"]');
+    const labelInput = page.locator('input[placeholder*="Source Title"]');
     await expect(labelInput).toBeVisible();
     await labelInput.fill(sourceLabel);
 
     // Fill in description
-    const descriptionInput = page.locator('input[placeholder*="description"]').first();
+    const descriptionInput = page.locator('input[placeholder*="Description"]').first();
     await descriptionInput.fill(sourceDescription);
 
     const uploadButton = page.locator('section:has-text("Upload a new source") button:has-text("Upload Source")').first();
@@ -122,7 +122,7 @@ test.describe('Source Labeling', () => {
 
     // Verify upload form has source title input
     await expect(page.locator('h2:has-text("Upload a new source")')).toBeVisible();
-    const sourceTitleInput = page.locator('input[placeholder*="source title"]');
+    const sourceTitleInput = page.locator('input[placeholder*="Source Title"]');
     await expect(sourceTitleInput).toBeVisible();
 
     // Verify it's optional (placeholder should indicate optional)

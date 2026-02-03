@@ -23,20 +23,17 @@ export default function CompareRevisions({
   );
   const [a, setA] = useState(options[1]?.value ?? options[0]?.value ?? "");
   const [b, setB] = useState(options[0]?.value ?? "");
-  const [kind, setKind] = useState<'musicdiff' | 'lmx' | 'xml' | 'manifest'>("musicdiff");
+  const [kind, setKind] = useState<'xml' | 'manifest'>("xml");
 
   const href = (() => {
     if (!a || !b) return undefined;
-    if (kind === 'musicdiff') {
-      return `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff?revA=${encodeURIComponent(a)}&revB=${encodeURIComponent(b)}`;
-    }
-    const fileParam = kind === 'lmx' ? 'linearized' : (kind === 'xml' ? 'canonical' : 'manifest');
+    const fileParam = kind === 'xml' ? 'canonical' : 'manifest';
     return `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/textdiff?revA=${encodeURIComponent(a)}&revB=${encodeURIComponent(b)}&file=${encodeURIComponent(fileParam)}`;
   })();
 
   return (
     <div className="mt-3 flex flex-wrap items-end gap-2 text-xs text-slate-300">
-      <span className="text-slate-400">Compare revisions (musicdiff):</span>
+      <span className="text-slate-400">Compare revisions (text diff):</span>
       <label className="flex items-center gap-1">
         <span className="text-slate-400">From</span>
         <select value={a} onChange={(e) => setA(e.target.value)} className="rounded border border-slate-700 bg-slate-900 px-2 py-1">
@@ -56,8 +53,6 @@ export default function CompareRevisions({
       <label className="flex items-center gap-1">
         <span className="text-slate-400">Type</span>
         <select value={kind} onChange={(e) => setKind(e.target.value as any)} className="rounded border border-slate-700 bg-slate-900 px-2 py-1">
-          <option value="musicdiff">Musicdiff (semantic)</option>
-          <option value="lmx">LMX (text)</option>
           <option value="xml">XML (text)</option>
           <option value="manifest">Manifest (text)</option>
         </select>

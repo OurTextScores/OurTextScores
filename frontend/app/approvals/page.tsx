@@ -55,8 +55,7 @@ export default async function ApprovalsPage() {
               const source = wd?.sources?.find((s: any) => s.sourceId === item.sourceId);
               const pendingIdx = source ? source.revisions.findIndex((r: any) => r.revisionId === item.revisionId) : -1;
               const prev = pendingIdx >= 0 && source.revisions[pendingIdx + 1] ? source.revisions[pendingIdx + 1].revisionId : undefined;
-              const textdiffLinearized = prev ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(item.workId)}/sources/${encodeURIComponent(item.sourceId)}/textdiff?revA=${encodeURIComponent(prev)}&revB=${encodeURIComponent(item.revisionId)}&file=linearized` : undefined;
-              const musicdiff = prev ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(item.workId)}/sources/${encodeURIComponent(item.sourceId)}/musicdiff?revA=${encodeURIComponent(prev)}&revB=${encodeURIComponent(item.revisionId)}` : undefined;
+              const textdiffXml = prev ? `${PUBLIC_API_BASE}/works/${encodeURIComponent(item.workId)}/sources/${encodeURIComponent(item.sourceId)}/textdiff?revA=${encodeURIComponent(prev)}&revB=${encodeURIComponent(item.revisionId)}&file=canonical` : undefined;
               const mxl = `${PUBLIC_API_BASE}/works/${encodeURIComponent(item.workId)}/sources/${encodeURIComponent(item.sourceId)}/normalized.mxl?r=${encodeURIComponent(item.revisionId)}`;
               const xml = `${PUBLIC_API_BASE}/works/${encodeURIComponent(item.workId)}/sources/${encodeURIComponent(item.sourceId)}/canonical.xml?r=${encodeURIComponent(item.revisionId)}`;
               return (
@@ -69,8 +68,7 @@ export default async function ApprovalsPage() {
                       <div className="mt-2 flex flex-wrap gap-3 text-xs">
                         <a href={mxl} className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300" target="_blank">MXL</a>
                         <a href={xml} className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300" target="_blank">XML</a>
-                        {textdiffLinearized && <a href={textdiffLinearized} className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300" target="_blank">Text diff (LMX)</a>}
-                        {musicdiff && <a href={musicdiff} className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300" target="_blank">Musicdiff</a>}
+                        {textdiffXml && <a href={textdiffXml} className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300" target="_blank">Text diff (XML)</a>}
                         <Link href={`/works/${encodeURIComponent(item.workId)}`} className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Open work</Link>
                       </div>
                     </div>

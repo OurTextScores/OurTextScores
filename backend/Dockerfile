@@ -26,8 +26,6 @@ RUN apt-get update && \
         libpipewire-0.3-0 \
         fossil && \
     pip3 install --no-cache-dir \
-        linearized-musicxml \
-        musicdiff \
         imslp \
         PyPDF2 && \
     apt-get install -y --no-install-recommends poppler-utils && \

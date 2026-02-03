@@ -244,7 +244,7 @@ function StorageBadge({
     validationStatus
 }: {
     label: string;
-    kind: 'normalizedMxl' | 'canonicalXml' | 'linearizedXml' | 'pdf' | 'mscz' | 'referencePdf' | 'manifest' | 'musicDiffReport' | 'musicDiffHtml' | 'musicDiffPdf';
+    kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'referencePdf' | 'manifest';
     locator?: StorageLocator;
     workId: string;
     sourceId: string;
@@ -273,9 +273,6 @@ function StorageBadge({
         case 'canonicalXml':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml${r}`;
             break;
-        case 'linearizedXml':
-            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/linearized.lmx${r}`;
-            break;
         case 'pdf':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.pdf${r}`;
             break;
@@ -287,15 +284,6 @@ function StorageBadge({
             break;
         case 'manifest':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
-            break;
-        case 'musicDiffReport':
-            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.txt${r}`;
-            break;
-        case 'musicDiffHtml':
-            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.html${r}`;
-            break;
-        case 'musicDiffPdf':
-            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/musicdiff.pdf${r}`;
             break;
     }
 
@@ -550,15 +538,6 @@ export default function SourceCard({
                             </div>
                             <div className="flex flex-wrap gap-2 text-xs">
                                 <StorageBadge
-                                    label="Linearized"
-                                    kind="linearizedXml"
-                                    locator={latest.derivatives?.linearizedXml}
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    revisionId={latest.revisionId}
-                                    validationStatus={latest.validation.status}
-                                />
-                                <StorageBadge
                                     label="Canonical XML"
                                     kind="canonicalXml"
                                     locator={latest.derivatives?.canonicalXml}
@@ -612,16 +591,6 @@ export default function SourceCard({
                                     workId={workId}
                                     sourceId={source.sourceId}
                                     revisionId={latest.revisionId}
-                                    validationStatus={latest.validation.status}
-                                />
-                                <StorageBadge
-                                    label="Diff (text)"
-                                    kind="musicDiffReport"
-                                    locator={latest.derivatives?.musicDiffReport}
-                                    workId={workId}
-                                    sourceId={source.sourceId}
-                                    revisionId={latest.revisionId}
-                                    missingText={latest.sequenceNumber === 1 ? 'n/a' : 'pending'}
                                     validationStatus={latest.validation.status}
                                 />
                             </div>

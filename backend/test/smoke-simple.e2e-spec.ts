@@ -154,16 +154,16 @@ describe('Simple Smoke Tests', () => {
       console.log('  ✓ PDF derivative endpoint exists');
     });
 
-    it('GET /api/works/:workId/sources/:sourceId/musicdiff - diff endpoint exists', async () => {
+    it('GET /api/works/:workId/sources/:sourceId/textdiff - diff endpoint exists', async () => {
       await request(API_BASE)
-        .get('/api/works/999999/sources/test-source/musicdiff')
-        .query({ revA: 'rev1', revB: 'rev2', format: 'lmx' })
+        .get('/api/works/999999/sources/test-source/textdiff')
+        .query({ revA: 'rev1', revB: 'rev2', file: 'canonical' })
         .expect((res) => {
           // Accept any response
           expect(res.status).toBeDefined();
         });
 
-      console.log('  ✓ MusicDiff endpoint exists');
+      console.log('  ✓ Text diff endpoint exists');
     });
   });
 

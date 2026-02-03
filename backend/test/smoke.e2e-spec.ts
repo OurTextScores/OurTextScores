@@ -25,8 +25,8 @@ import { AppModule } from '../src/app.module';
  *
  * These tests verify that the most important user flows work end-to-end:
  * - Creating works and uploading sources with licensing metadata
- * - Derivative generation (PDF, MusicXML, LMX)
- * - MusicDiff generation (both text and PDF)
+ * - Derivative generation (PDF, MusicXML)
+ * - Text diff generation
  * - Revision management
  *
  * Note: These tests require Docker services to be running:
@@ -169,18 +169,6 @@ describe('Smoke Tests (e2e)', () => {
       }
     });
 
-    it('GET /api/works/:workId/sources/:sourceId/lmx should return linearized XML', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/lmx`)
-        .expect((res) => {
-          expect([200, 202]).toContain(res.status);
-        });
-
-      if (response.status === 200) {
-        expect(response.headers['content-type']).toContain('text/plain');
-      }
-    });
-
     it('GET /api/works/:workId/sources/:sourceId/xml should return canonical XML', async () => {
       const response = await request(app.getHttpServer())
         .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/xml`)
@@ -190,62 +178,6 @@ describe('Smoke Tests (e2e)', () => {
 
       if (response.status === 200) {
         expect(response.headers['content-type']).toContain('application/xml');
-      }
-    });
-  });
-
-  describe('MusicDiff Generation (PDF Bug Fix)', () => {
-    it('GET /api/works/:workId/sources/:sourceId/musicdiff?format=lmx should return text diff', async () => {
-      if (!revisionId2) {
-        // Skip if we don't have two revisions
-        return;
-      }
-
-      const response = await request(app.getHttpServer())
-        .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/musicdiff`)
-        .query({ revA: revisionId1, revB: revisionId2, format: 'lmx' })
-        .expect((res) => {
-          expect([200, 400]).toContain(res.status);
-        });
-
-      if (response.status === 200) {
-        expect(response.text).toBeDefined();
-      }
-    });
-
-    it('GET /api/works/:workId/sources/:sourceId/musicdiff?format=pdf should return PDF diff (bug fix verification)', async () => {
-      if (!revisionId2) {
-        return;
-      }
-
-      const response = await request(app.getHttpServer())
-        .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/musicdiff`)
-        .query({ revA: revisionId1, revB: revisionId2, format: 'pdf' })
-        .expect((res) => {
-          expect([200, 400, 500]).toContain(res.status);
-        });
-
-      if (response.status === 200) {
-        expect(response.headers['content-type']).toContain('application/pdf');
-        // Critical: PDF should not be empty (this was the bug!)
-        expect(response.body.length).toBeGreaterThan(0);
-      }
-    });
-
-    it('GET /api/works/:workId/sources/:sourceId/musicdiff?format=musicdiff should return semantic diff', async () => {
-      if (!revisionId2) {
-        return;
-      }
-
-      const response = await request(app.getHttpServer())
-        .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/musicdiff`)
-        .query({ revA: revisionId1, revB: revisionId2, format: 'musicdiff' })
-        .expect((res) => {
-          expect([200, 400, 500]).toContain(res.status);
-        });
-
-      if (response.status === 200) {
-        expect(response.text).toBeDefined();
       }
     });
   });

@@ -17,7 +17,7 @@ This file orients future agents quickly: what the project does, how it’s wired
   - IMSLP: `src/imslp/**` (metadata cache + enrichment via Python and MediaWiki API).
   - Search: `src/search/**` (MeiliSearch integration for full-text work search, auto-indexing on create/update).
   - Progress: `src/progress/**` (SSE progress channel for uploads/pipeline).
-  - Python helpers: `backend/python/linearize.py`, `backend/python/imslp_enrich.py`, `backend/python/musicdiff_pdf.py` used by pipeline/IMSLP service.
+  - Python helpers: `backend/python/imslp_enrich.py` used by the IMSLP service.
 - `frontend/` Next.js app.
   - Works list: `app/page.tsx`.
   - Work detail: `app/works/[workId]/*` (upload new source/revision, viewers, diff preview, metadata editing, IMSLP refresh).
@@ -35,12 +35,11 @@ This file orients future agents quickly: what the project does, how it’s wired
    - Frontend opens SSE: `GET /api/works/progress/:id/stream`, posts `multipart/form-data` to:
      - New source: `POST /api/works/:workId/sources`
      - New revision: `POST /api/works/:workId/sources/:sourceId/revisions`
-   - Backend stores raw file to MinIO, runs derivative pipeline, records Source + SourceRevision, optionally commits linearized/canonical/manifest to a per‑source Fossil repo, updates Work aggregate summary.
+   - Backend stores raw file to MinIO, runs derivative pipeline, records Source + SourceRevision, optionally commits canonical/manifest to a per‑source Fossil repo, updates Work aggregate summary.
 3. Derivative Pipeline (DerivativePipelineService)
-   - Converts `.mscz` to `.mxl` (MuseScore 4 CLI), stores original `.mscz` file as artifact, extracts canonical XML from `.mxl`, generates linearized text (Python linearized-musicxml), attempts PDF, stores derivatives to MinIO, emits manifest with tool versions and checksums.
-   - Asynchronously computes `musicdiff` for canonical XML changes between adjacent revisions and stores the report.
-4. Viewing & Diff
-   - Frontend lists works, shows source artifacts, renders canonical XML or normalized MXL with OSMD, previews PDF, and offers diffs (musicdiff semantic text or textual diffs for LMX/XML/manifest, including non‑adjacent revision pairs).
+   - Converts `.mscz` to `.mxl` (MuseScore 4 CLI), stores original `.mscz` file as artifact, extracts canonical XML from `.mxl`, attempts PDF, stores derivatives to MinIO, emits manifest with tool versions and checksums.
+   4. Viewing & Diff
+   - Frontend lists works, shows source artifacts, renders canonical XML or normalized MXL with OSMD, previews PDF, and offers diffs (text diffs for XML/manifest, including non‑adjacent revision pairs) and a score editor visual compare.
 5. Search & Discovery
    - Works are automatically indexed in MeiliSearch when created, updated, or when sources/revisions are added.
    - Full-text search across title, composer, catalog number, and work ID with typo tolerance.
@@ -56,14 +55,14 @@ This file orients future agents quickly: what the project does, how it’s wired
 - `SourceRevision`: `{ workId, sourceId, revisionId, sequenceNumber, fossilArtifactId?, fossilParentArtifactIds[], fossilBranch?, rawStorage, checksum, createdBy, createdAt, validationSnapshot, derivatives?, manifest?, changeSummary? }`.
 - `User`: `{ email, username?, displayName?, emailVerifiedAt?, roles[], notify{watchPreference} }`. Username is unique, sparse index, lowercase, 3-20 chars (alphanumeric + underscores). Users with `roles` containing `"admin"` are treated as admins for destructive Works operations.
 - `StorageLocator`: `{ bucket, objectKey, sizeBytes, checksum{algorithm,hexDigest}, contentType, lastModifiedAt }`.
-- `DerivativeArtifacts`: optional locators for normalizedMxl, canonicalXml, linearizedXml, pdf, mscz, manifest, musicDiffReport.
+- `DerivativeArtifacts`: optional locators for normalizedMxl, canonicalXml, pdf, mscz, manifest.
 
 ## Environments & Config
 - `.env` (checked in for dev):
   - Backend: `MONGO_URI`, `INTERNAL_API_URL`, `MINIO_URL` or `MINIO_{ENDPOINT,PORT,USE_SSL}`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `FOSSIL_PATH`, `MEILI_HOST`, `MEILI_MASTER_KEY`.
   - Frontend: `NEXT_PUBLIC_API_URL` (browser) and `INTERNAL_API_URL` (server) used by `app/lib/api.ts`.
 - Docker volumes (host‑relative): `../mongo_data`, `../minio_data`, `../meilisearch_data`, `../fossil_data`.
-- Tooling required in backend container: `musescore4` (default, v4.6.3 via AppImage), `musescore3` (fallback), `python3` packages `linearized-musicxml`, `musicdiff`, `imslp`, `PyPDF2`, and `fossil`.
+- Tooling required in backend container: `musescore4` (default, v4.6.3 via AppImage), `musescore3` (fallback), `python3` packages `imslp`, `PyPDF2`, and `fossil`.
 - MuseScore CLI selection: Set via `MUSESCORE_CLI` env var (default: `musescore4`). Both v3 and v4 are installed for compatibility.
 
 ## Run / Dev Quickstart
@@ -87,11 +86,9 @@ This file orients future agents quickly: what the project does, how it’s wired
   - `POST /api/works/:workId/sources/:sourceId/revisions` new revision (multipart; optional branch controls)
   - SSE progress: `GET /api/works/progress/:progressId/stream`
 - Derivatives (tag: `derivatives`)
-  - `GET /api/works/:workId/sources/:sourceId/{normalized.mxl|canonical.xml|score.pdf|score.mscz|linearized.lmx|manifest.json}` (optionally `?r=revisionId`)
+  - `GET /api/works/:workId/sources/:sourceId/{normalized.mxl|canonical.xml|score.pdf|score.mscz|manifest.json}` (optionally `?r=revisionId`)
 - Diffs (tag: `diffs`)
-  - `GET /api/works/:workId/sources/:sourceId/musicdiff.{txt|html|pdf}` (optionally `?r=revisionId`)
-  - `GET /api/works/:workId/sources/:sourceId/musicdiff` on-demand diff (`revA`, `revB`, `format=semantic|visual`)
-  - `GET /api/works/:workId/sources/:sourceId/textdiff` (`revA`, `revB`, `file=linearized|canonical|manifest`)
+  - `GET /api/works/:workId/sources/:sourceId/textdiff` (`revA`, `revB`, `file=canonical|manifest`)
   - Fossil helpers: `GET /api/works/:workId/sources/:sourceId/fossil/{diff|branches}`
 - IMSLP (tag: `imslp`, search: `search`)
   - `GET /api/imslp/search?q=...&limit=...` (also tagged `search`)
@@ -126,7 +123,7 @@ This file orients future agents quickly: what the project does, how it’s wired
 ## Conventions
 - Backend TypeScript: NestJS modules/services/controllers, DTOs kept lightweight. Prefer explicit return shapes for API.
 - Mongo via Mongoose schemas (indexes declared in schemas). Consider `MONGO_AUTO_INDEX=true` in dev for index sync.
-- Storage content types: `.mscz` → `application/vnd.musescore.mscz`, `.mxl` → `application/vnd.recordare.musicxml`, XML → `application/xml`, LMX → `text/plain`, PDF → `application/pdf`, manifest → `application/json`.
+- Storage content types: `.mscz` → `application/vnd.musescore.mscz`, `.mxl` → `application/vnd.recordare.musicxml`, XML → `application/xml`, PDF → `application/pdf`, manifest → `application/json`.
 - Progress stages are used by UI steppers; keep them stable when changing pipeline steps.
 - Frontend: App Router pages under `app/`; fetch server‑side via `app/lib/api.ts`. Use Tailwind for styling, keep components server‑first; hydrate only where needed.
 
@@ -229,8 +226,8 @@ This file orients future agents quickly: what the project does, how it’s wired
 - **IMSLP Integration**: Metadata fetching, MongoDB caching, enrichment via MediaWiki API + Python `imslp_enrich.py`
 - **MuseScore 4 Support**: MuseScore 4.6.3 working headlessly in Docker via AppImage extraction and direct binary invocation; supports `.mscz` files created with MuseScore 4 (previously unsupported)
 - **MSCZ Artifact Storage**: When users upload `.mscz` files, the original MuseScore file is stored as a derivative artifact and available for download via `score.mscz` endpoint; includes UI badge for downloading original MuseScore files
-- **Derivative Pipeline**: MuseScore 4 conversion (.mscz → .mxl), MSCZ artifact storage, canonical XML extraction, linearization (Python), musicdiff, PDF generation
-- **Diff Viewers**: Text diffs (linearized/canonical/manifest via diff2html) and musicdiff semantic comparisons; supports non-adjacent revision pairs
+- **Derivative Pipeline**: MuseScore 4 conversion (.mscz → .mxl), MSCZ artifact storage, canonical XML extraction, PDF generation
+- **Diff Viewers**: Text diffs (canonical/manifest via diff2html) and score editor visual comparisons; supports non-adjacent revision pairs
 - **Progress Tracking**: SSE streams (RxJS Subjects) for real-time upload progress with stable stage names
 - **Storage (MinIO)**: Three bucket patterns (raw, derivatives, auxiliary) with auto-creation, checksums, content-type handling
 - **Health & Diagnostics**: Health check endpoints, email connectivity diagnostics (`/api/diagnostics/email`)
@@ -322,11 +319,6 @@ Each source gets its own `.fossil` file (e.g., `/data/fossil_data/{workId}/{sour
 - **Implementation**: `fossil.service.ts:40-60`
 
 ### Linearized XML for Diffs
-Uses `linearized-musicxml` Python package to convert MusicXML to line-oriented text before diffing.
-- **Rationale**: More human-readable diffs than XML tree diffs; better semantic comparisons with `musicdiff`
-- **Trade-off**: Additional processing step but significantly better UX
-- **Implementation**: `derivative-pipeline.service.ts:150-180`, `backend/python/linearize.py`
-
 ### Dual API Base URLs
 - `getApiBase()` returns `http://backend:4000/api` (internal Docker hostname for SSR)
 - `getPublicApiBase()` returns `http://localhost:4000/api` (public URL for browser)
@@ -349,7 +341,7 @@ Branch types (public vs owner-approval) cannot be changed after creation.
 ### Manifest Files for Traceability
 Each revision includes `manifest.json` with tool versions, checksums, timestamps.
 - **Rationale**: Enables reproducibility, debugging derivative generation issues
-- **Example**: `{"musescoreVersion": "3.6.2", "linearizedMusicxmlVersion": "0.10.5", "sha256": "...", "generatedAt": "..."}`
+- **Example**: `{"musescoreVersion": "3.6.2", "sha256": "...", "generatedAt": "..."}`
 - **Implementation**: `derivative-pipeline.service.ts:200-230`
 
 ### MuseScore 4 Headless Execution
