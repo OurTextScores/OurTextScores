@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createHash } from 'node:crypto';
@@ -343,6 +343,92 @@ export class UploadSourceService {
       manifest,
       manifestData
     };
+  }
+
+  async uploadReferencePdf(
+    workId: string,
+    sourceId: string,
+    referencePdfFile?: Express.Multer.File,
+    progressId?: string,
+    user?: RequestUser
+  ): Promise<{ ok: true; referencePdf: StorageLocator; revisionId: string }> {
+    if (!referencePdfFile || !referencePdfFile.buffer) {
+      throw new BadRequestException('Reference PDF file is required');
+    }
+    if (!user?.userId) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    const trimmedWorkId = workId.trim();
+    const trimmedSourceId = sourceId.trim();
+    const source = await this.sourceModel
+      .findOne({ workId: trimmedWorkId, sourceId: trimmedSourceId })
+      .lean()
+      .exec();
+
+    if (!source) {
+      throw new NotFoundException('Source not found for this work');
+    }
+
+    if (source.hasReferencePdf || source.derivatives?.referencePdf) {
+      throw new BadRequestException('Reference PDF already exists for this source');
+    }
+
+    const isAdmin = (user.roles ?? []).includes('admin');
+    if (!isAdmin) {
+      const ownerUserId = (source as any).provenance?.uploadedByUserId as string | undefined;
+      if (!ownerUserId || ownerUserId !== user.userId) {
+        throw new ForbiddenException('Only source owner or admin can upload reference PDF');
+      }
+    }
+
+    let latestRevision = null as any;
+    if ((source as any).latestRevisionId) {
+      latestRevision = await this.sourceRevisionModel
+        .findOne({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId: (source as any).latestRevisionId })
+        .lean()
+        .exec();
+    }
+    if (!latestRevision) {
+      latestRevision = await this.sourceRevisionModel
+        .findOne({ workId: trimmedWorkId, sourceId: trimmedSourceId })
+        .sort({ sequenceNumber: -1 })
+        .lean()
+        .exec();
+    }
+
+    if (!latestRevision) {
+      throw new BadRequestException('No revisions found for this source');
+    }
+
+    const referencePdfLocator = await this.storeReferencePdf(
+      referencePdfFile,
+      trimmedWorkId,
+      trimmedSourceId,
+      latestRevision.sequenceNumber,
+      progressId
+    );
+    if (!referencePdfLocator) {
+      throw new BadRequestException('Reference PDF could not be stored');
+    }
+
+    await this.sourceModel
+      .updateOne(
+        { workId: trimmedWorkId, sourceId: trimmedSourceId },
+        { $set: { hasReferencePdf: true, 'derivatives.referencePdf': referencePdfLocator } }
+      )
+      .exec();
+
+    await this.sourceRevisionModel
+      .updateOne(
+        { workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId: latestRevision.revisionId },
+        { $set: { 'derivatives.referencePdf': referencePdfLocator } }
+      )
+      .exec();
+
+    await (this.worksService as any).recomputeWorkStats(trimmedWorkId);
+
+    return { ok: true, referencePdf: referencePdfLocator, revisionId: latestRevision.revisionId };
   }
   async upload(
     workId: string,

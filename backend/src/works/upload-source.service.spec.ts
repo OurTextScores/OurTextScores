@@ -122,6 +122,61 @@ describe('UploadSourceService (unit)', () => {
     expect(worksService.recordSourceRevision).toHaveBeenCalled();
   });
 
+  it('uploadReferencePdf() stores reference PDF for latest revision when owner', async () => {
+    const buffer = Buffer.from('pdf-content');
+    const sha1 = createHash('sha1').update(buffer).digest('hex');
+    const sourceDoc = {
+      workId: '10',
+      sourceId: 's1',
+      hasReferencePdf: false,
+      derivatives: {},
+      provenance: { uploadedByUserId: 'owner-1' },
+      latestRevisionId: 'r1'
+    };
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(sourceDoc) })
+    });
+    sourceRevisionModel.findOne.mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve({ revisionId: 'r1', sequenceNumber: 2 }) })
+    });
+    sourceRevisionModel.updateOne.mockReturnValue({ exec: () => Promise.resolve() });
+    sourceModel.updateOne.mockReturnValue({ exec: () => Promise.resolve() });
+    storageService.putAuxiliaryObject.mockResolvedValue({ bucket: 'aux', objectKey: '10/s1/rev-0002/reference.pdf' });
+    imslpService.getRawByWorkId.mockResolvedValue({
+      metadata: {
+        files: [
+          { name: 'score.pdf', sha1, size: 123, mime_type: 'application/pdf', title: 'Score', url: 'u', timestamp: 't', user: 'u' }
+        ]
+      }
+    });
+
+    const file = { originalname: 'ref.pdf', mimetype: 'application/pdf', size: buffer.length, buffer } as any;
+    const res = await service.uploadReferencePdf('10', 's1', file, 'pid', { userId: 'owner-1', roles: ['user'] } as any);
+    expect(res.ok).toBe(true);
+    expect(sourceModel.updateOne).toHaveBeenCalled();
+    expect(sourceRevisionModel.updateOne).toHaveBeenCalled();
+    expect((worksService as any).recomputeWorkStats).toHaveBeenCalledWith('10');
+  });
+
+  it('uploadReferencePdf() rejects non-owner non-admin', async () => {
+    const sourceDoc = {
+      workId: '10',
+      sourceId: 's1',
+      hasReferencePdf: false,
+      derivatives: {},
+      provenance: { uploadedByUserId: 'owner-1' },
+      latestRevisionId: 'r1'
+    };
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(sourceDoc) })
+    });
+
+    const file = { originalname: 'ref.pdf', mimetype: 'application/pdf', size: 10, buffer: Buffer.from('x') } as any;
+    await expect(
+      service.uploadReferencePdf('10', 's1', file, 'pid', { userId: 'other', roles: ['user'] } as any)
+    ).rejects.toThrow('Only source owner or admin can upload reference PDF');
+  });
+
   it('upload() rejects files larger than 100MB', async () => {
     const bigSize = 100 * 1024 * 1024 + 1;
     const file = {

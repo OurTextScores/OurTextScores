@@ -727,6 +727,47 @@ export class WorksController {
     return this.uploadSourceService.uploadRevision(workId, sourceId, normalizedBody, file, referencePdfFile, progressId, user);
   }
 
+  @Post(':workId/sources/:sourceId/reference.pdf')
+  @UseInterceptors(
+    FileInterceptor('referencePdf', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 50 * 1024 * 1024 // 50 MB safeguard
+      }
+    })
+  )
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('uploads')
+  @ApiOperation({
+    summary: 'Upload reference PDF for an existing source',
+    description: 'Upload a reference PDF for a source that does not already have one. Requires source owner or admin.'
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        referencePdf: { type: 'string', format: 'binary', description: 'Reference PDF file (must match IMSLP hash)' }
+      },
+      required: ['referencePdf']
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Reference PDF uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid file or reference PDF already exists' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only source owner or admin can upload reference PDF' })
+  uploadReferencePdf(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @UploadedFile() referencePdfFile?: Express.Multer.File,
+    @Headers('x-progress-id') progressId?: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    return this.uploadSourceService.uploadReferencePdf(workId, sourceId, referencePdfFile, progressId, user);
+  }
+
   @Post(':workId/sources/:sourceId/revisions/:revisionId/approve')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({

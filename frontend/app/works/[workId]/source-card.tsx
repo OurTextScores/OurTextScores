@@ -2,6 +2,7 @@
 
 import { useState, Suspense, useTransition, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { SourceView, SourceRevisionView, StorageLocator, BackendSessionUser } from "../../lib/api";
 import { getPublicApiBase } from "../../lib/api";
 import StopPropagation from "../../components/stop-propagation";
@@ -129,6 +130,93 @@ function AdminActionsPanel({
                         </button>
                     </div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+function ReferencePdfUploadPanel({
+    workId,
+    sourceId
+}: {
+    workId: string;
+    sourceId: string;
+}) {
+    const [file, setFile] = useState<File | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [isPending, startTransition] = useTransition();
+    const router = useRouter();
+
+    const handleUpload = () => {
+        if (!file) {
+            setError("Please select a PDF file.");
+            return;
+        }
+        setError(null);
+        startTransition(async () => {
+            try {
+                const form = new FormData();
+                form.append("referencePdf", file);
+                const res = await fetch(
+                    `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`,
+                    {
+                        method: "POST",
+                        body: form,
+                        cache: "no-store"
+                    }
+                );
+
+                if (res.status === 401) {
+                    throw new Error("Sign in required");
+                }
+                if (!res.ok) {
+                    const text = await res.text();
+                    let message = "Failed to upload reference PDF";
+                    try {
+                        const json = JSON.parse(text);
+                        message = json.message || json.error || message;
+                    } catch {
+                        if (text && text.length < 200) message = text;
+                    }
+                    throw new Error(message);
+                }
+
+                setFile(null);
+                router.refresh();
+            } catch (err: any) {
+                setError(err.message || "Failed to upload reference PDF");
+            }
+        });
+    };
+
+    return (
+        <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/30">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-200">Reference PDF</h3>
+            <p className="mb-3 text-xs text-slate-600 dark:text-slate-400">
+                Upload a reference PDF that matches the IMSLP hash. This can only be done once.
+            </p>
+            {error && (
+                <div className="mb-3 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
+                    {error}
+                </div>
+            )}
+            <div className="flex flex-col gap-2">
+                <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="text-sm text-slate-700 file:mr-3 file:rounded file:border-0 file:bg-slate-200 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-300 dark:text-slate-200 dark:file:bg-slate-700 dark:file:text-slate-100 dark:hover:file:bg-slate-600"
+                />
+                {file && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{file.name}</span>
+                )}
+                <button
+                    onClick={handleUpload}
+                    disabled={isPending}
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                    Upload Reference PDF
+                </button>
             </div>
         </div>
     );
@@ -349,6 +437,8 @@ export default function SourceCard({
         !!(source as any).provenance?.uploadedByUserId &&
         currentUser.userId === (source as any).provenance.uploadedByUserId;
     const isAdmin = Array.isArray(currentUser?.roles) && (currentUser.roles as string[]).includes("admin");
+
+    const canUploadReferencePdf = (isAdmin || isOwner) && !source.hasReferencePdf;
 
     // Check if source has revisions from multiple users
     const distinctCreators = Array.from(
@@ -686,6 +776,12 @@ export default function SourceCard({
                             imslpPermalink={imslpPermalink}
                         />
                     </div>
+                    {canUploadReferencePdf && (
+                        <ReferencePdfUploadPanel
+                            workId={workId}
+                            sourceId={source.sourceId}
+                        />
+                    )}
                     {isAdmin && (
                         <AdminActionsPanel
                             workId={workId}
