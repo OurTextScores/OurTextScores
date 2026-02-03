@@ -33,17 +33,6 @@ function formatBytes(bytes?: number) {
     return `${size.toFixed(size < 10 && index > 0 ? 1 : 0)} ${units[index]}`;
 }
 
-function statusColor(status: string) {
-    switch (status) {
-        case "passed":
-            return "bg-emerald-100 text-emerald-700 ring-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/40";
-        case "failed":
-            return "bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:ring-rose-400/40";
-        default:
-            return "bg-amber-100 text-amber-700 ring-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-400/40";
-    }
-}
-
 function AdminActionsPanel({
     workId,
     sourceId,
@@ -475,10 +464,7 @@ export default function SourceCard({
                     <div>
                         <h2 className="text-xl font-semibold flex items-center gap-2">
                             <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▶</span>
-                            {source.label}{" "}
-                            <span className="text-sm font-normal text-slate-600 dark:text-slate-400">
-                                ({source.sourceType}, {source.format})
-                            </span>
+                            {source.label}
                         </h2>
                         {isOpen && (
                             <>
@@ -531,18 +517,6 @@ export default function SourceCard({
                     </div>
                 </div>
                 <StopPropagation className="flex flex-wrap items-center gap-2 pl-6 md:pl-0">
-                    <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ${statusColor(
-                            source.validation.status
-                        )}`}
-                    >
-                        {source.validation.status}
-                    </span>
-                    {source.isPrimary && (
-                        <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-700 ring-1 ring-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:ring-cyan-400/40">
-                            Primary
-                        </span>
-                    )}
                     {source.adminVerified && (
                         <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-400/40" title={source.adminVerificationNote || 'Verified by admin'}>
                             ✅ Admin Verified

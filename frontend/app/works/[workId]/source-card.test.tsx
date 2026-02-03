@@ -86,8 +86,6 @@ describe('SourceCard', () => {
         );
 
         expect(screen.getByText('Full Score')).toBeInTheDocument();
-        expect(screen.getByText('(score, MusicXML)')).toBeInTheDocument();
-        expect(screen.getByText('Primary')).toBeInTheDocument();
     });
 
     it('renders slots correctly', () => {

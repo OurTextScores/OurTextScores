@@ -192,13 +192,12 @@ export default function WorksPage() {
                   <th className="px-4 py-3">Catalogue</th>
                   <th className="px-4 py-3">Latest Revision</th>
                   <th className="px-4 py-3">Sources</th>
-                  <th className="px-4 py-3">Formats</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {works.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
                       {searchQuery.trim()
                         ? `No works found matching "${searchQuery}"`
                         : "No works have been uploaded yet."}
@@ -249,22 +248,6 @@ function WorkRow({ work }: { work: WorkSummary }) {
       <td className="px-4 py-4">{work.catalogNumber ?? "—"}</td>
       <td className="px-4 py-4">{formatDate(work.latestRevisionAt)}</td>
       <td className="px-4 py-4">{work.sourceCount}</td>
-      <td className="px-4 py-4">
-        <div className="flex flex-wrap gap-1">
-          {work.availableFormats.length === 0 ? (
-            <span className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700">pending</span>
-          ) : (
-            work.availableFormats.map((format) => (
-              <span
-                key={format}
-                className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
-              >
-                {format}
-              </span>
-            ))
-          )}
-        </div>
-      </td>
 
     </tr>
   );
