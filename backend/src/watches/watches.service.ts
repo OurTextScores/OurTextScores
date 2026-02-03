@@ -37,5 +37,18 @@ export class WatchesService {
     const subs = await this.watchModel.find({ workId, sourceId }).lean().exec();
     return subs.map((s) => s.userId);
   }
-}
 
+  async migrateSource(
+    oldWorkId: string,
+    oldSourceId: string,
+    newWorkId: string,
+    newSourceId: string
+  ): Promise<void> {
+    await this.watchModel
+      .updateMany(
+        { workId: oldWorkId, sourceId: oldSourceId },
+        { $set: { workId: newWorkId, sourceId: newSourceId } }
+      )
+      .exec();
+  }
+}

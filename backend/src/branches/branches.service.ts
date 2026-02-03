@@ -78,6 +78,20 @@ export class BranchesService {
     return doc?.ownerUserId ?? undefined;
   }
 
+  async migrateSource(
+    oldWorkId: string,
+    oldSourceId: string,
+    newWorkId: string,
+    newSourceId: string
+  ): Promise<void> {
+    await this.branchModel
+      .updateMany(
+        { workId: oldWorkId, sourceId: oldSourceId },
+        { $set: { workId: newWorkId, sourceId: newSourceId } }
+      )
+      .exec();
+  }
+
   async deleteBranch(
     workId: string,
     sourceId: string,

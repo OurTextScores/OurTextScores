@@ -79,6 +79,26 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async migrateSource(
+    oldWorkId: string,
+    oldSourceId: string,
+    newWorkId: string,
+    newSourceId: string
+  ): Promise<void> {
+    await this.inboxModel
+      .updateMany(
+        { workId: oldWorkId, sourceId: oldSourceId },
+        { $set: { workId: newWorkId, sourceId: newSourceId } }
+      )
+      .exec();
+    await this.outboxModel
+      .updateMany(
+        { workId: oldWorkId, sourceId: oldSourceId },
+        { $set: { workId: newWorkId, sourceId: newSourceId } }
+      )
+      .exec();
+  }
+
   /**
    * Create an in-app notification
    */

@@ -27,11 +27,12 @@ describe('WorksService (unit, mocked models)', () => {
     ensureByPermalink: jest.fn(),
     resolvePageIdFromUrl: jest.fn()
   } as any;
-  const storageService = {} as any;
-  const fossilService = {} as any;
-  const watches = { getSubscribersUserIds: jest.fn() } as any;
-  const notifications = { queueNewRevision: jest.fn() } as any;
+  const storageService = { moveObject: jest.fn() } as any;
+  const fossilService = { moveRepository: jest.fn() } as any;
+  const watches = { getSubscribersUserIds: jest.fn(), migrateSource: jest.fn() } as any;
+  const notifications = { queueNewRevision: jest.fn(), migrateSource: jest.fn() } as any;
   const searchService = { indexWork: jest.fn() } as any;
+  const branchesService = { migrateSource: jest.fn() } as any;
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -55,8 +56,8 @@ describe('WorksService (unit, mocked models)', () => {
       updateOne: jest.fn(),
       deleteMany: jest.fn(),
     } as any;
-    revisionRatingModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
-    revisionCommentModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    revisionRatingModel = { find: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    revisionCommentModel = { find: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
     revisionCommentVoteModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
 
     service = new WorksService(
@@ -72,7 +73,8 @@ describe('WorksService (unit, mocked models)', () => {
       watches,
       notifications,
       searchService,
-      usersService
+      usersService,
+      branchesService
     );
   });
 
@@ -141,6 +143,68 @@ describe('WorksService (unit, mocked models)', () => {
       limit: 10,
       offset: 20
     });
+  });
+
+  it('migrateSourceToWorkByImslpUrl moves source to new work and sourceId', async () => {
+    jest.spyOn(service as any, 'recomputeWorkStats').mockResolvedValue(undefined);
+    jest.spyOn(service, 'saveWorkByImslpUrl').mockResolvedValue({
+      work: { workId: '200', sourceCount: 0, availableFormats: [] },
+      metadata: {} as any
+    });
+
+    const sourceDoc = {
+      workId: '100',
+      sourceId: 's1',
+      storage: { bucket: 'raw', objectKey: '100/s1/raw/file.xml', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() },
+      derivatives: {
+        pdf: { bucket: 'der', objectKey: '100/s1/rev-0001/score.pdf', sizeBytes: 2, checksum: { algorithm: 'sha256', hexDigest: 'y' }, contentType: 'application/pdf', lastModifiedAt: new Date() }
+      }
+    };
+    sourceModel.findOne.mockImplementation((query: any) => {
+      if (query?.workId && query?.sourceId) {
+        return { lean: () => ({ exec: () => Promise.resolve(sourceDoc) }) } as any;
+      }
+      if (query?.sourceId) {
+        return { lean: () => ({ exec: () => Promise.resolve(null) }) } as any;
+      }
+      return { lean: () => ({ exec: () => Promise.resolve(null) }) } as any;
+    });
+    sourceRevisionModel.find.mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve([{
+        revisionId: 'r1',
+        rawStorage: { bucket: 'raw', objectKey: '100/s1/raw/file.xml', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() },
+        derivatives: {
+          pdf: { bucket: 'der', objectKey: '100/s1/rev-0001/score.pdf', sizeBytes: 2, checksum: { algorithm: 'sha256', hexDigest: 'y' }, contentType: 'application/pdf', lastModifiedAt: new Date() }
+        },
+        manifest: { bucket: 'der', objectKey: '100/s1/rev-0001/manifest.json', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'z' }, contentType: 'application/json', lastModifiedAt: new Date() }
+      }]) })
+    });
+    sourceModel.updateOne.mockReturnValue({ exec: () => Promise.resolve() });
+    sourceRevisionModel.updateOne.mockReturnValue({ exec: () => Promise.resolve() });
+    revisionRatingModel.updateMany.mockReturnValue({ exec: () => Promise.resolve() });
+    revisionCommentModel.updateMany.mockReturnValue({ exec: () => Promise.resolve() });
+
+    const res = await service.migrateSourceToWorkByImslpUrl(
+      '100',
+      's1',
+      'https://imslp.org/wiki/Test_Work',
+      { userId: 'admin', roles: ['admin'] }
+    );
+
+    expect(res.newWorkId).toBe('200');
+    expect(storageService.moveObject).toHaveBeenCalled();
+    expect(fossilService.moveRepository).toHaveBeenCalled();
+    expect(branchesService.migrateSource).toHaveBeenCalled();
+    expect(watches.migrateSource).toHaveBeenCalled();
+    expect(notifications.migrateSource).toHaveBeenCalled();
+    expect((service as any).recomputeWorkStats).toHaveBeenCalledWith('100');
+    expect((service as any).recomputeWorkStats).toHaveBeenCalledWith('200');
+  });
+
+  it('migrateSourceToWorkByImslpUrl rejects non-admin', async () => {
+    await expect(
+      service.migrateSourceToWorkByImslpUrl('100', 's1', 'https://imslp.org/wiki/Test', { userId: 'u1', roles: [] })
+    ).rejects.toThrow('Admin role required');
   });
 
   it('updateWorkMetadata trims and sets optional fields', async () => {

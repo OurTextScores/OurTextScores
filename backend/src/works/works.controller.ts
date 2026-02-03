@@ -768,6 +768,43 @@ export class WorksController {
     return this.uploadSourceService.uploadReferencePdf(workId, sourceId, referencePdfFile, progressId, user);
   }
 
+  @Post(':workId/sources/:sourceId/migrate')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Migrate source to a new work (admin only)',
+    description: 'Move a source and all associated data to a new work by IMSLP URL. Creates the work if needed.'
+  })
+  @ApiParam({ name: 'workId', description: 'Current Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        imslpUrl: { type: 'string', description: 'IMSLP permalink or slug URL for the target work' }
+      },
+      required: ['imslpUrl']
+    }
+  })
+  @ApiResponse({ status: 200, description: 'Migration completed' })
+  @ApiResponse({ status: 401, description: 'Authentication required' })
+  @ApiResponse({ status: 403, description: 'Admin role required' })
+  @ApiResponse({ status: 404, description: 'Source not found' })
+  async migrateSource(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Body('imslpUrl') imslpUrl: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    if (!imslpUrl || !imslpUrl.trim()) {
+      throw new BadRequestException('imslpUrl is required');
+    }
+    return this.worksService.migrateSourceToWorkByImslpUrl(workId, sourceId, imslpUrl.trim(), { userId: user.userId, roles: user.roles });
+  }
+
   @Post(':workId/sources/:sourceId/revisions/:revisionId/approve')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({

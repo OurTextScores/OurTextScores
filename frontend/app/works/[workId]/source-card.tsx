@@ -12,7 +12,7 @@ import RevisionHistory from "./revision-history";
 import DiffPreview from "./diff-preview";
 import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
-import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction } from "./admin-actions";
+import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction, migrateSourceAction } from "./admin-actions";
 
 const PUBLIC_API_BASE = getPublicApiBase();
 
@@ -44,7 +44,10 @@ function AdminActionsPanel({
 }) {
     const [verifyNote, setVerifyNote] = useState("");
     const [error, setError] = useState<string | null>(null);
+    const [migrateError, setMigrateError] = useState<string | null>(null);
+    const [migrateUrl, setMigrateUrl] = useState("");
     const [isPending, startTransition] = useTransition();
+    const router = useRouter();
 
     const handleVerify = () => {
         setError(null);
@@ -64,6 +67,26 @@ function AdminActionsPanel({
                 await removeVerificationAction(workId, sourceId);
             } catch (err: any) {
                 setError(err.message || "Failed to remove verification");
+            }
+        });
+    };
+
+    const handleMigrate = () => {
+        if (!migrateUrl.trim()) {
+            setMigrateError("IMSLP URL is required");
+            return;
+        }
+        setMigrateError(null);
+        startTransition(async () => {
+            try {
+                const result = await migrateSourceAction(workId, sourceId, migrateUrl.trim());
+                if (result?.newWorkId && result?.newSourceId) {
+                    router.push(`/works/${encodeURIComponent(result.newWorkId)}?source=${encodeURIComponent(result.newSourceId)}`);
+                } else if (result?.newWorkId) {
+                    router.push(`/works/${encodeURIComponent(result.newWorkId)}`);
+                }
+            } catch (err: any) {
+                setMigrateError(err.message || "Failed to migrate source");
             }
         });
     };
@@ -119,6 +142,33 @@ function AdminActionsPanel({
                         </button>
                     </div>
                 )}
+            </div>
+            <div className="mt-4 space-y-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                    Migrate Source
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Move this source (and all revisions) to a different IMSLP work. This generates a new source ID.
+                </p>
+                {migrateError && (
+                    <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
+                        {migrateError}
+                    </div>
+                )}
+                <input
+                    type="text"
+                    placeholder="https://imslp.org/wiki/Work_Title"
+                    value={migrateUrl}
+                    onChange={(e) => setMigrateUrl(e.target.value)}
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500"
+                />
+                <button
+                    onClick={handleMigrate}
+                    disabled={isPending}
+                    className="w-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+                >
+                    Migrate Source
+                </button>
             </div>
         </div>
     );

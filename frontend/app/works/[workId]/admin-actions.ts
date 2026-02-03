@@ -214,6 +214,48 @@ export async function flagSourceAction(workId: string, sourceId: string, reason:
   revalidatePath(`/works/${encodeURIComponent(workId)}`);
 }
 
+export async function migrateSourceAction(workId: string, sourceId: string, imslpUrl: string) {
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(
+    `${API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/migrate`,
+    {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ imslpUrl })
+    }
+  );
+
+  if (res.status === 401) {
+    redirect("/api/auth/signin");
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let errorMessage = "Failed to migrate source";
+
+    try {
+      const json = JSON.parse(text);
+      errorMessage = json.message || json.error || errorMessage;
+    } catch {
+      if (text && text.length > 0 && text.length < 200) {
+        errorMessage = text;
+      }
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  const body = await res.json().catch(() => ({}));
+  revalidatePath(`/works/${encodeURIComponent(workId)}`);
+  if (body?.newWorkId) {
+    revalidatePath(`/works/${encodeURIComponent(body.newWorkId)}`);
+  }
+  return body as { newWorkId?: string; newSourceId?: string };
+}
+
 export async function removeFlagAction(workId: string, sourceId: string) {
   const API_BASE = getApiBase();
   const headers = await getApiAuthHeaders();
@@ -246,4 +288,3 @@ export async function removeFlagAction(workId: string, sourceId: string) {
 
   revalidatePath(`/works/${encodeURIComponent(workId)}`);
 }
-

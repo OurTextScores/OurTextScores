@@ -18,6 +18,7 @@ describe('WorksService approvals flow', () => {
   const watches = { getSubscribersUserIds: jest.fn() } as any;
   const notifications = { queueNewRevision: jest.fn() } as any;
   const searchService = { indexWork: jest.fn() } as any;
+  const branchesService = { migrateSource: jest.fn() } as any;
   const usersService = { userModel: { find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) }) }) } } as any;
 
   beforeEach(() => {
@@ -41,7 +42,8 @@ describe('WorksService approvals flow', () => {
       watches,
       notifications,
       searchService,
-      usersService
+      usersService,
+      branchesService
     );
   });
 

@@ -154,4 +154,24 @@ export class StorageService {
       // ignore missing objects
     }
   }
+
+  async moveObject(
+    bucket: string,
+    sourceKey: string,
+    destKey: string,
+    contentType: string
+  ): Promise<void> {
+    await this.ensureBucket(bucket);
+    const buffer = await this.getObjectBuffer(bucket, sourceKey);
+    await this.client.putObject(
+      bucket,
+      destKey,
+      buffer,
+      buffer.length,
+      {
+        'Content-Type': contentType
+      }
+    );
+    await this.deleteObject(bucket, sourceKey);
+  }
 }

@@ -243,4 +243,19 @@ export class FossilService {
       // ignore
     }
   }
+
+  async moveRepository(
+    oldWorkId: string,
+    oldSourceId: string,
+    newWorkId: string,
+    newSourceId: string
+  ): Promise<void> {
+    const oldDir = join(this.rootPath, oldWorkId);
+    const oldPath = join(oldDir, `${oldSourceId}.fossil`);
+    const newDir = join(this.rootPath, newWorkId);
+    const newPath = join(newDir, `${newSourceId}.fossil`);
+
+    await fs.mkdir(newDir, { recursive: true });
+    await fs.rename(oldPath, newPath);
+  }
 }

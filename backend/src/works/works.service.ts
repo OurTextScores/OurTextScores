@@ -20,6 +20,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { randomUUID } from 'node:crypto';
 import { Work, WorkDocument } from './schemas/work.schema';
 import { Source, SourceDocument } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from './schemas/source-revision.schema';
@@ -37,6 +38,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { SearchService } from '../search/search.service';
 import { UsersService } from '../users/users.service';
 import { ImslpWorkDto } from '../imslp/dto/imslp-work.dto';
+import { BranchesService } from '../branches/branches.service';
 
 export interface WorkSummary {
   workId: string;
@@ -140,7 +142,8 @@ export class WorksService {
     private readonly watches: WatchesService,
     private readonly notifications: NotificationsService,
     private readonly searchService: SearchService,
-    private readonly usersService: UsersService
+    private readonly usersService: UsersService,
+    private readonly branchesService: BranchesService
   ) { }
 
   async findAll(options?: { limit?: number; offset?: number; filter?: string }): Promise<PaginatedWorksResponse> {
@@ -291,6 +294,149 @@ export class WorksService {
       work: this.toSummary(workDoc),
       metadata: metadataResult.metadata
     };
+  }
+
+  async migrateSourceToWorkByImslpUrl(
+    workId: string,
+    sourceId: string,
+    imslpUrl: string,
+    actor: { userId: string; roles?: string[] }
+  ): Promise<{ newWorkId: string; newSourceId: string }> {
+    const isAdmin = (actor.roles ?? []).includes('admin');
+    if (!isAdmin) {
+      throw new ForbiddenException('Admin role required');
+    }
+
+    const ensured = await this.saveWorkByImslpUrl(imslpUrl);
+    const newWorkId = ensured.work.workId;
+    if (newWorkId === workId) {
+      throw new BadRequestException('Source is already associated with this work');
+    }
+
+    const source = await this.sourceModel.findOne({ workId, sourceId }).lean().exec();
+    if (!source) {
+      throw new NotFoundException('Source not found for this work');
+    }
+
+    const revisions = await this.sourceRevisionModel.find({ workId, sourceId }).lean().exec();
+    if (!revisions || revisions.length === 0) {
+      throw new BadRequestException('No revisions found for this source');
+    }
+
+    let newSourceId = randomUUID();
+    while (await this.sourceModel.findOne({ sourceId: newSourceId }).lean().exec()) {
+      newSourceId = randomUUID();
+    }
+
+    const oldPrefix = `${workId}/${sourceId}/`;
+    const newPrefix = `${newWorkId}/${newSourceId}/`;
+    const moved = new Map<string, StorageLocator>();
+
+    const moveLocator = async (loc?: StorageLocator): Promise<StorageLocator | undefined> => {
+      if (!loc) return undefined;
+      const key = `${loc.bucket}:${loc.objectKey}`;
+      const existing = moved.get(key);
+      if (existing) return existing;
+      if (!loc.objectKey.startsWith(oldPrefix)) {
+        throw new BadRequestException('Unexpected storage key; migration aborted');
+      }
+      const newKey = newPrefix + loc.objectKey.slice(oldPrefix.length);
+      await this.storageService.moveObject(
+        loc.bucket,
+        loc.objectKey,
+        newKey,
+        loc.contentType || 'application/octet-stream'
+      );
+      const updated: StorageLocator = {
+        ...loc,
+        objectKey: newKey,
+        lastModifiedAt: new Date()
+      };
+      moved.set(key, updated);
+      return updated;
+    };
+
+    const moveDerivatives = async (derivatives?: DerivativeArtifacts | Record<string, any>) => {
+      if (!derivatives) return derivatives;
+      const updated: Record<string, any> = { ...(derivatives as any) };
+      for (const [key, value] of Object.entries(derivatives as any)) {
+        if (value && typeof value === 'object' && 'bucket' in value && 'objectKey' in value) {
+          updated[key] = await moveLocator(value as StorageLocator);
+        }
+      }
+      return updated as DerivativeArtifacts;
+    };
+
+    const newSourceStorage = await moveLocator(source.storage);
+    const newSourceDerivs = await moveDerivatives(source.derivatives as any);
+
+    const updatedRevisions = [];
+    for (const rev of revisions) {
+      const newRaw = await moveLocator(rev.rawStorage as any);
+      const newDerivs = await moveDerivatives((rev as any).derivatives as any);
+      const newManifest = await moveLocator((rev as any).manifest as any);
+      updatedRevisions.push({
+        revisionId: rev.revisionId,
+        rawStorage: newRaw,
+        derivatives: newDerivs,
+        manifest: newManifest
+      });
+    }
+
+    await this.fossilService.moveRepository(workId, sourceId, newWorkId, newSourceId);
+
+    await this.sourceModel
+      .updateOne(
+        { workId, sourceId },
+        {
+          $set: {
+            workId: newWorkId,
+            sourceId: newSourceId,
+            storage: newSourceStorage,
+            derivatives: newSourceDerivs
+          }
+        }
+      )
+      .exec();
+
+    for (const rev of updatedRevisions) {
+      await this.sourceRevisionModel
+        .updateOne(
+          { workId, sourceId, revisionId: rev.revisionId },
+          {
+            $set: {
+              workId: newWorkId,
+              sourceId: newSourceId,
+              rawStorage: rev.rawStorage,
+              derivatives: rev.derivatives,
+              manifest: rev.manifest
+            }
+          }
+        )
+        .exec();
+    }
+
+    await this.branchesService.migrateSource(workId, sourceId, newWorkId, newSourceId);
+    await this.watches.migrateSource(workId, sourceId, newWorkId, newSourceId);
+    await this.notifications.migrateSource(workId, sourceId, newWorkId, newSourceId);
+
+    await this.revisionRatingModel
+      .updateMany(
+        { workId, sourceId },
+        { $set: { workId: newWorkId, sourceId: newSourceId } }
+      )
+      .exec();
+    await this.revisionCommentModel
+      .updateMany(
+        { workId, sourceId },
+        { $set: { workId: newWorkId, sourceId: newSourceId } }
+      )
+      .exec();
+
+    await (this as any).recomputeWorkStats(workId);
+    await (this as any).recomputeWorkStats(newWorkId);
+
+    return { newWorkId, newSourceId };
   }
 
   private async resolvePageIdStrict(permalinkOrSlug: string): Promise<string | null> {
