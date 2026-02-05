@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 interface Comment {
   commentId: string;
@@ -314,7 +315,16 @@ function CommentItem({
       <div id={`comment-${comment.commentId}`} className={`rounded border p-3 transition-all ${comment.flagged ? 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'}`}>
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{comment.username}</span>
+          {comment.username ? (
+            <Link
+              href={`/users/${encodeURIComponent(comment.username)}`}
+              className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-300 transition hover:bg-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:ring-indigo-400/40 dark:hover:bg-indigo-500/30"
+            >
+              {comment.username}
+            </Link>
+          ) : (
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">unknown</span>
+          )}
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {new Date(comment.createdAt).toLocaleString()}
           </span>

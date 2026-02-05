@@ -10,6 +10,7 @@ import { useSearchParams } from "next/navigation";
 export default function NotificationDeepLink() {
   const searchParams = useSearchParams();
   const commentId = searchParams.get("comment");
+  const sourceId = searchParams.get("source");
 
   useEffect(() => {
     if (commentId) {
@@ -30,6 +31,23 @@ export default function NotificationDeepLink() {
       return () => clearTimeout(timer);
     }
   }, [commentId]);
+
+  useEffect(() => {
+    if (sourceId && !commentId) {
+      const timer = setTimeout(() => {
+        const sourceElement = document.getElementById(`source-${sourceId}`);
+        if (sourceElement) {
+          sourceElement.scrollIntoView({ behavior: "smooth", block: "start" });
+          sourceElement.classList.add("ring-2", "ring-cyan-500");
+          setTimeout(() => {
+            sourceElement.classList.remove("ring-2", "ring-cyan-500");
+          }, 3000);
+        }
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [sourceId, commentId]);
 
   return null; // This component doesn't render anything
 }

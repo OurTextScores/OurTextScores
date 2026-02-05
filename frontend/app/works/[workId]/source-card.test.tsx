@@ -198,4 +198,28 @@ describe('SourceCard', () => {
         // Should use API URL now
         expect(img).toHaveAttribute('src', expect.stringContaining('/api/works/work-123/sources/source-1/thumbnail.png'));
     });
+
+    it('renders linked uploader badge when username is available', () => {
+        const sourceWithUploader = {
+            ...mockSource,
+            provenance: {
+                ...mockSource.provenance,
+                uploadedByUsername: 'alice'
+            }
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithUploader}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const badge = screen.getByRole('link', { name: 'alice' });
+        expect(badge).toBeInTheDocument();
+        expect(badge).toHaveAttribute('href', '/users/alice');
+    });
 });

@@ -508,7 +508,10 @@ export default function SourceCard({
     const canDeleteSource = isAdmin || (isOwner && !hasMultipleCreators);
 
     return (
-        <article className="rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10">
+        <article
+            id={`source-${source.sourceId}`}
+            className="rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10"
+        >
             <div
                 className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between cursor-pointer"
                 onClick={() => setIsOpen(!isOpen)}
@@ -538,6 +541,16 @@ export default function SourceCard({
                             <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▶</span>
                             {source.label}
                         </h2>
+                        {source.provenance?.uploadedByUsername && (
+                            <StopPropagation className="pl-6">
+                                <Link
+                                    href={`/users/${encodeURIComponent(source.provenance.uploadedByUsername)}`}
+                                    className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-300 transition hover:bg-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:ring-indigo-400/40 dark:hover:bg-indigo-500/30"
+                                >
+                                    {source.provenance.uploadedByUsername}
+                                </Link>
+                            </StopPropagation>
+                        )}
                         {isOpen && (
                             <>
                                 <p className="text-sm text-slate-600 dark:text-slate-400 pl-6">

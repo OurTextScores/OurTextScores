@@ -161,6 +161,7 @@ export interface SourceView {
     sourceIdentifier?: string;
     uploadedByUserId?: string;
     uploadedByName?: string;
+    uploadedByUsername?: string;
     uploadedAt: string;
     notes: string[];
   };
@@ -394,6 +395,47 @@ export interface PublicUserProfile {
   id: string;
   username?: string;
   displayName?: string;
+}
+
+export interface UserContribution {
+  workId: string;
+  workTitle?: string;
+  workComposer?: string;
+  workCatalogNumber?: string;
+  sourceId: string;
+  label?: string;
+  format?: string;
+  isPrimary?: boolean;
+  latestRevisionId?: string;
+  latestRevisionAt?: string;
+  lastContributionAt?: string;
+  revisionCount?: number;
+}
+
+export interface UserContributionsResponse {
+  user: PublicUserProfile;
+  total: number;
+  limit: number;
+  offset: number;
+  contributions: UserContribution[];
+}
+
+export async function fetchPublicUserByUsername(username: string): Promise<PublicUserProfile> {
+  const result = await fetchJson<{ user: PublicUserProfile }>(
+    `${getApiBase()}/users/by-username/${encodeURIComponent(username)}`
+  );
+  return { ...result.user, username: result.user.username ?? username };
+}
+
+export async function fetchUserContributions(
+  userId: string,
+  options?: { limit?: number; offset?: number }
+): Promise<UserContributionsResponse> {
+  const params = new URLSearchParams();
+  if (options?.limit !== undefined) params.set('limit', String(options.limit));
+  if (options?.offset !== undefined) params.set('offset', String(options.offset));
+  const url = `${getApiBase()}/users/${encodeURIComponent(userId)}/contributions${params.toString() ? `?${params.toString()}` : ''}`;
+  return await fetchJson<UserContributionsResponse>(url);
 }
 
 export interface UserUploadSourceSummary {

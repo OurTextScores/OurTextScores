@@ -562,6 +562,12 @@ except Exception:
         uniqueUserIds.add(revision.createdBy);
       }
     }
+    for (const source of sources) {
+      const uploaderId = (source as any).provenance?.uploadedByUserId as string | undefined;
+      if (uploaderId) {
+        uniqueUserIds.add(uploaderId);
+      }
+    }
 
     // Fetch users and create userId -> username map
     const userIdToUsername = new Map<string, string>();
@@ -625,6 +631,13 @@ except Exception:
         licenseAttribution: (revision as any).licenseAttribution
       });
       revisionsBySource.set(revision.sourceId, list);
+    }
+
+    for (const source of sources) {
+      const uploaderId = (source as any).provenance?.uploadedByUserId as string | undefined;
+      if (uploaderId) {
+        (source as any).provenance.uploadedByUsername = userIdToUsername.get(uploaderId);
+      }
     }
 
     const sourceViews: SourceView[] = sources.map((source) => ({

@@ -1,10 +1,27 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { fetchUserByUsername, fetchUserUploads } from "../../lib/api";
+import type { Metadata } from "next";
+import {
+  fetchPublicUserByUsername,
+  fetchUserContributions,
+  UserContribution
+} from "../../lib/api";
 
 function formatDate(value?: string) {
   if (!value) return "—";
   return new Date(value).toLocaleString();
+}
+
+const ITEMS_PER_PAGE = 50;
+
+export async function generateMetadata({
+  params
+}: {
+  params: { username: string };
+}): Promise<Metadata> {
+  const username = params.username;
+  return {
+    title: `${username} | Contributors | OurTextScores`
+  };
 }
 
 export default async function UserProfilePage({
@@ -12,226 +29,111 @@ export default async function UserProfilePage({
   searchParams
 }: {
   params: { username: string };
-  searchParams?: { page?: string };
+  searchParams: { page?: string };
 }) {
-  const { username } = params;
-  const page = Number(searchParams?.page ?? "1");
-  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
-  const limit = 20;
-  const offset = (safePage - 1) * limit;
+  const username = params.username;
+  const page = Math.max(parseInt(searchParams.page ?? "1", 10) || 1, 1);
+  const offset = (page - 1) * ITEMS_PER_PAGE;
 
-  const profile = await fetchUserByUsername(username).catch(() => notFound());
-  const uploads = await fetchUserUploads(profile.id, { limit, offset });
+  const user = await fetchPublicUserByUsername(username);
+  const contributionsResponse = await fetchUserContributions(user.id, {
+    limit: ITEMS_PER_PAGE,
+    offset
+  });
 
-  const { stats, sources, recentRevisions } = uploads;
-  const hasNextPage = stats.sourceCount > offset + sources.length;
-  const hasPrevPage = safePage > 1;
-
-  const title = profile.username ? `@${profile.username}` : profile.displayName || "User";
+  const totalPages = Math.max(Math.ceil(contributionsResponse.total / ITEMS_PER_PAGE), 1);
+  const contributions = contributionsResponse.contributions;
 
   return (
-    <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6">
-        <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              <Link href="/" className="underline-offset-2 hover:underline">
-                ← Back to works
-              </Link>
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h1>
-            {profile.displayName && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">{profile.displayName}</p>
-            )}
-            {profile.username && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
-                Public profile for username <span className="font-mono">@{profile.username}</span>
-              </p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-300">
-            <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-              Sources <span className="font-semibold">{stats.sourceCount}</span>
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-              Revisions <span className="font-semibold">{stats.revisionCount}</span>
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-              Works <span className="font-semibold">{stats.workCount}</span>
-            </span>
-          </div>
+    <main className="min-h-screen bg-slate-50 py-12 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <section className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6">
+        <header className="flex flex-col gap-2">
+          <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Contributor</p>
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">
+            {user.displayName ?? user.username}
+          </h1>
+          {user.displayName && (
+            <p className="text-sm text-slate-600 dark:text-slate-300">@{user.username}</p>
+          )}
         </header>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
-          <h2 className="mb-3 text-lg font-semibold text-slate-800 dark:text-slate-100">Uploaded sources</h2>
-          {sources.length === 0 ? (
-            <p className="text-slate-600 dark:text-slate-400">This user has not uploaded any sources yet.</p>
+        <section className="rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              Sources contributed to
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {contributionsResponse.total} total sources
+            </p>
+          </div>
+          {contributions.length === 0 ? (
+            <div className="px-5 py-6 text-sm text-slate-500 dark:text-slate-400">
+              No contributions yet.
+            </div>
           ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
-                  <thead className="bg-slate-100 text-left uppercase tracking-wider text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
-                    <tr>
-                      <th className="px-3 py-2">Work</th>
-                      <th className="px-3 py-2">Source</th>
-                      <th className="px-3 py-2">Latest revision</th>
-                      <th className="px-3 py-2">Primary</th>
-                      <th className="px-3 py-2">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {sources.map((src) => (
-                      <tr key={src.sourceId} className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
-                        <td className="px-3 py-2 align-top">
-                          <div className="text-slate-800 dark:text-slate-200">
-                            {src.workTitle || src.workId}
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {src.workComposer || "—"}
-                          </div>
-                          {src.workCatalogNumber && (
-                            <div className="text-[11px] text-slate-500 dark:text-slate-500">
-                              {src.workCatalogNumber}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="text-slate-800 dark:text-slate-200">{src.label}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {src.format}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="text-slate-800 dark:text-slate-200">
-                            {src.latestRevisionId ? (
-                              <code className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                                {src.latestRevisionId}
-                              </code>
-                            ) : (
-                              "—"
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {formatDate(src.latestRevisionAt)}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          {src.isPrimary ? (
-                            <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-cyan-700 ring-1 ring-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:ring-cyan-400/40">
-                              Primary
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-500 dark:text-slate-500">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <Link
-                            href={`/works/${encodeURIComponent(src.workId)}`}
-                            className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
-                          >
-                            View work
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {(hasPrevPage || hasNextPage) && (
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                  <div>
-                    Showing{" "}
-                    <span className="font-semibold">
-                      {offset + 1}–{offset + sources.length}
-                    </span>{" "}
-                    of <span className="font-semibold">{stats.sourceCount}</span> sources
-                  </div>
-                  <div className="flex gap-2">
-                    {hasPrevPage && (
+            <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+              {contributions.map((item: UserContribution) => (
+                <li key={`${item.workId}-${item.sourceId}`} className="px-5 py-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
                       <Link
-                        href={`/users/${encodeURIComponent(username)}?page=${safePage - 1}`}
-                        className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+                        href={`/works/${encodeURIComponent(item.workId)}?source=${encodeURIComponent(item.sourceId)}`}
+                        className="text-base font-semibold text-cyan-700 hover:underline dark:text-cyan-300"
                       >
-                        Previous
+                        {item.workTitle ?? item.workId}
                       </Link>
-                    )}
-                    {hasNextPage && (
-                      <Link
-                        href={`/users/${encodeURIComponent(username)}?page=${safePage + 1}`}
-                        className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-                      >
-                        Next
-                      </Link>
-                    )}
+                      <div className="text-sm text-slate-600 dark:text-slate-300">
+                        {item.workComposer ?? "Unknown composer"}
+                        {item.workCatalogNumber && (
+                          <span className="ml-2 text-slate-400 dark:text-slate-500">
+                            • {item.workCatalogNumber}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        Source: {item.label ?? item.sourceId}
+                        {item.isPrimary && <span className="ml-2 text-emerald-600 dark:text-emerald-400">Primary</span>}
+                      </div>
+                    </div>
+                    <div className="text-right text-xs text-slate-500 dark:text-slate-400">
+                      <div>Last contribution: {formatDate(item.lastContributionAt)}</div>
+                      {item.revisionCount !== undefined && (
+                        <div>{item.revisionCount} revision{item.revisionCount === 1 ? "" : "s"}</div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </>
+                </li>
+              ))}
+            </ul>
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
-          <h2 className="mb-3 text-lg font-semibold text-slate-800 dark:text-slate-100">Recent revisions</h2>
-          {recentRevisions.length === 0 ? (
-            <p className="text-slate-600 dark:text-slate-400">No recent revisions for this user.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
-                <thead className="bg-slate-100 text-left uppercase tracking-wider text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
-                  <tr>
-                    <th className="px-3 py-2">Work</th>
-                    <th className="px-3 py-2">Revision</th>
-                    <th className="px-3 py-2">Created</th>
-                    <th className="px-3 py-2">Summary</th>
-                    <th className="px-3 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {recentRevisions.map((rev) => (
-                    <tr key={rev.revisionId} className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
-                      <td className="px-3 py-2 align-top">
-                        <div className="text-slate-800 dark:text-slate-200">
-                          {rev.workTitle || rev.workId}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        <code className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                          {rev.revisionId}
-                        </code>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                          Seq #{rev.sequenceNumber}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        <div className="text-slate-800 dark:text-slate-200">
-                          {formatDate(rev.createdAt)}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 max-w-[18rem] align-top">
-                        <div
-                          className="truncate text-slate-700 dark:text-slate-300"
-                          title={rev.changeSummary || ""}
-                        >
-                          {rev.changeSummary || "—"}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        <Link
-                          href={`/works/${encodeURIComponent(rev.workId)}`}
-                          className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
-                        >
-                          View work
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300">
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <div className="flex items-center gap-3">
+              {page > 1 && (
+                <Link
+                  href={`/users/${encodeURIComponent(username)}?page=${page - 1}`}
+                  className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Previous
+                </Link>
+              )}
+              {page < totalPages && (
+                <Link
+                  href={`/users/${encodeURIComponent(username)}?page=${page + 1}`}
+                  className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                >
+                  Next
+                </Link>
+              )}
             </div>
-          )}
-        </section>
-      </div>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
-

@@ -160,6 +160,26 @@ test.describe('Nested comments (3 levels deep)', () => {
 
     const token1 = generateAuthToken(user1Id, user1Email, secret);
     const token2 = generateAuthToken(user2Id, user2Email, secret);
+    const username1 = `user${Date.now().toString().slice(-6)}a`;
+    const username2 = `user${Date.now().toString().slice(-6)}b`;
+
+    const usernameResp1 = await request.patch(`${PUBLIC_API}/users/me`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token1}`
+      },
+      data: { username: username1 }
+    });
+    expect(usernameResp1.ok()).toBeTruthy();
+
+    const usernameResp2 = await request.patch(`${PUBLIC_API}/users/me`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token2}`
+      },
+      data: { username: username2 }
+    });
+    expect(usernameResp2.ok()).toBeTruthy();
 
     // Get an existing work
     const worksResp = await request.get(`${PUBLIC_API}/works`);
@@ -227,6 +247,13 @@ test.describe('Nested comments (3 levels deep)', () => {
     const nestedComment = page.locator(`text=UI test: nested reply`);
     await expect(nestedComment).toBeVisible({ timeout: 5000 });
     console.log('✓ Nested comment visible in UI');
+
+    const usernameLink1 = page.locator(`a:has-text("${username1}")`).first();
+    const usernameLink2 = page.locator(`a:has-text("${username2}")`).first();
+    await expect(usernameLink1).toBeVisible({ timeout: 5000 });
+    await expect(usernameLink2).toBeVisible({ timeout: 5000 });
+    await expect(usernameLink1).toHaveAttribute('href', `/users/${username1}`);
+    await expect(usernameLink2).toHaveAttribute('href', `/users/${username2}`);
 
     // Verify indentation (nested comment should have marginLeft applied)
     const nestedCommentElement = await nestedComment.locator('..').locator('..').first();

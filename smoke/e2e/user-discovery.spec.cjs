@@ -126,17 +126,7 @@ test.describe('User profile discovery', () => {
     const card = page.locator('article', { hasText: label }).first();
     await expect(card).toBeVisible({ timeout: 20000 });
 
-    // Open the source card to reveal revision history
-    const cardHeader = card.locator('h2').first();
-    if (await cardHeader.count()) {
-      await cardHeader.click();
-    }
-
-    // Open revision history for this source
-    const revSummary = card.locator('summary', { hasText: 'Revision history' }).first();
-    await revSummary.click();
-
-    // Click the username badge in the Created column
+    // Click the uploader badge in the source header
     const userBadgeLink = card.locator(`a:has-text("${username}")`).first();
     await expect(userBadgeLink).toBeVisible({ timeout: 15000 });
 
@@ -146,10 +136,18 @@ test.describe('User profile discovery', () => {
     ]);
 
     // Verify user profile page
-    await expect(page.locator(`h1:has-text("@${username}")`)).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(`h1:has-text("${username}")`)).toBeVisible({ timeout: 10000 });
 
-    // The uploaded source should appear in the user's Uploaded sources table
-    const sourceRow = page.locator('table >> text=' + label).first();
-    await expect(sourceRow).toBeVisible({ timeout: 15000 });
+    // The contributed source should appear in the user's list
+    const sourceItem = page.locator(`li:has-text("${label}")`).first();
+    await expect(sourceItem).toBeVisible({ timeout: 15000 });
+
+    // Click contribution link and ensure source opens on work page
+    const contributionLink = sourceItem.locator(`a[href*="/works/${work.workId}"]`).first();
+    await contributionLink.click();
+    await expect(page).toHaveURL(new RegExp(`/works/${work.workId}\\?source=${sourceId}`));
+    const openedCard = page.locator(`#source-${sourceId}`);
+    await expect(openedCard).toBeVisible({ timeout: 15000 });
+    await expect(openedCard.locator('text=Original filename')).toBeVisible({ timeout: 15000 });
   });
 });
