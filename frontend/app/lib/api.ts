@@ -239,12 +239,18 @@ export async function fetchWorks(options?: { limit?: number; offset?: number }):
   }
 }
 
-export async function fetchWorksPaginated(options?: { limit?: number; offset?: number; filter?: string }): Promise<PaginatedWorksResponse> {
+export async function fetchWorksPaginated(options?: {
+  limit?: number;
+  offset?: number;
+  filter?: string;
+  onlyWithSources?: boolean;
+}): Promise<PaginatedWorksResponse> {
   try {
     const params = new URLSearchParams();
     if (options?.limit !== undefined) params.set('limit', String(options.limit));
     if (options?.offset !== undefined) params.set('offset', String(options.offset));
     if (options?.filter) params.set('filter', options.filter);
+    if (options?.onlyWithSources) params.set('onlyWithSources', 'true');
     const url = `${getApiBase()}/works${params.toString() ? `?${params.toString()}` : ''}`;
     return await fetchJson<PaginatedWorksResponse>(url);
   } catch (error) {

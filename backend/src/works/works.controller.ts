@@ -85,6 +85,12 @@ export class WorksController {
     description: 'MeiliSearch filter string (e.g., "hasReferencePdf = true")',
     example: 'hasReferencePdf = true'
   })
+  @ApiQuery({
+    name: 'onlyWithSources',
+    required: false,
+    description: 'Exclude works with no sources',
+    example: true
+  })
   @ApiResponse({
     status: 200,
     description: 'List of works retrieved successfully',
@@ -119,11 +125,18 @@ export class WorksController {
   findAll(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('filter') filter?: string
+    @Query('filter') filter?: string,
+    @Query('onlyWithSources') onlyWithSources?: string
   ) {
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : 20;
     const parsedOffset = offset ? Math.max(parseInt(offset, 10), 0) : 0;
-    return this.worksService.findAll({ limit: parsedLimit, offset: parsedOffset, filter });
+    const parsedOnlyWithSources = onlyWithSources === 'true';
+    return this.worksService.findAll({
+      limit: parsedLimit,
+      offset: parsedOffset,
+      filter,
+      onlyWithSources: parsedOnlyWithSources
+    });
   }
 
   @Post()

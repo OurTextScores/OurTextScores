@@ -146,17 +146,24 @@ export class WorksService {
     private readonly branchesService: BranchesService
   ) { }
 
-  async findAll(options?: { limit?: number; offset?: number; filter?: string }): Promise<PaginatedWorksResponse> {
+  async findAll(options?: {
+    limit?: number;
+    offset?: number;
+    filter?: string;
+    onlyWithSources?: boolean;
+  }): Promise<PaginatedWorksResponse> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     const filter = options?.filter;
+    const onlyWithSources = options?.onlyWithSources ?? false;
 
     // If a filter is provided, use the search service (MeiliSearch)
     if (filter) {
+      const combinedFilter = onlyWithSources ? `${filter} AND sourceCount > 0` : filter;
       const searchResult = await this.searchService.searchWorks('', {
         limit,
         offset,
-        filter
+        filter: combinedFilter
       });
 
       const summaries: WorkSummary[] = searchResult.hits.map((hit: any) => ({
@@ -182,11 +189,12 @@ export class WorksService {
 
     // Otherwise use MongoDB directly (no search/filter)
     // Get total count
-    const total = await this.workModel.countDocuments().exec();
+    const query = onlyWithSources ? { sourceCount: { $gt: 0 } } : {};
+    const total = await this.workModel.countDocuments(query).exec();
 
     // Get paginated documents
     const documents = await this.workModel
-      .find()
+      .find(query)
       .sort({ latestRevisionAt: -1, workId: 1 })
       .skip(offset)
       .limit(limit)

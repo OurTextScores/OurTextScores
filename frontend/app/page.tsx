@@ -19,7 +19,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { fetchWorksPaginated, searchWorks, WorkSummary } from "./lib/api";
+import { useRouter } from "next/navigation";
+import { fetchWorksPaginated, resolveImslpUrl, searchWorks, WorkSummary } from "./lib/api";
 import SearchBox from "./components/SearchBox";
 import Pagination from "./components/Pagination";
 
@@ -31,13 +32,17 @@ function formatDate(date?: string) {
 const ITEMS_PER_PAGE = 20;
 
 export default function WorksPage() {
+  const router = useRouter();
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterReferencePdf, setFilterReferencePdf] = useState(false);
-  const [filterVerified, setFilterVerified] = useState(false);
-  const [filterFlagged, setFilterFlagged] = useState(false);
+  const [filterReferencePdf, setFilterReferencePdf] = useState<"any" | "yes" | "no">("any");
+  const [filterVerified, setFilterVerified] = useState<"any" | "yes" | "no">("any");
+  const [filterFlagged, setFilterFlagged] = useState<"any" | "yes" | "no">("any");
+  const [imslpUrl, setImslpUrl] = useState("");
+  const [imslpError, setImslpError] = useState<string | null>(null);
+  const [isResolvingImslp, setIsResolvingImslp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -45,10 +50,22 @@ export default function WorksPage() {
       setIsLoading(true);
       try {
         const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+        const hasTriStateFilters = [
+          filterReferencePdf,
+          filterVerified,
+          filterFlagged
+        ].some((value) => value !== "any");
+        const shouldUseFilter = hasTriStateFilters || !!searchQuery.trim();
         const filters: string[] = [];
-        if (filterReferencePdf) filters.push('hasReferencePdf = true');
-        if (filterVerified) filters.push('hasVerifiedSources = true');
-        if (filterFlagged) filters.push('hasFlaggedSources = true');
+        if (shouldUseFilter) {
+          filters.push('sourceCount > 0');
+          if (filterReferencePdf === "yes") filters.push('hasReferencePdf = true');
+          if (filterReferencePdf === "no") filters.push('hasReferencePdf = false');
+          if (filterVerified === "yes") filters.push('hasVerifiedSources = true');
+          if (filterVerified === "no") filters.push('hasVerifiedSources = false');
+          if (filterFlagged === "yes") filters.push('hasFlaggedSources = true');
+          if (filterFlagged === "no") filters.push('hasFlaggedSources = false');
+        }
         const filter = filters.length > 0 ? filters.join(' AND ') : undefined;
 
         if (searchQuery.trim()) {
@@ -65,7 +82,8 @@ export default function WorksPage() {
           const result = await fetchWorksPaginated({
             limit: ITEMS_PER_PAGE,
             offset,
-            filter,
+            filter: shouldUseFilter ? filter : undefined,
+            onlyWithSources: !shouldUseFilter,
           });
           setWorks(result.works);
           setTotalItems(result.total);
@@ -93,6 +111,55 @@ export default function WorksPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleImslpSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const url = imslpUrl.trim();
+    if (!url) return;
+    setImslpError(null);
+    setIsResolvingImslp(true);
+    try {
+      const result = await resolveImslpUrl(url);
+      router.push(`/works/${encodeURIComponent(result.work.workId)}`);
+    } catch (error: any) {
+      setImslpError(error?.message ?? "Unable to resolve IMSLP URL.");
+    } finally {
+      setIsResolvingImslp(false);
+    }
+  };
+
+  const renderTriState = (
+    label: string,
+    value: "any" | "yes" | "no",
+    onChange: (next: "any" | "yes" | "no") => void
+  ) => (
+    <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+      <span className="min-w-[140px]">{label}</span>
+      <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        {[
+          { value: "any" as const, label: "Any" },
+          { value: "yes" as const, label: "On" },
+          { value: "no" as const, label: "Off" }
+        ].map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => {
+              onChange(option.value);
+              setCurrentPage(1);
+            }}
+            className={`px-3 py-1 text-xs font-semibold transition ${
+              value === option.value
+                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <main className="min-h-screen bg-slate-50 py-12 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6">
@@ -100,8 +167,7 @@ export default function WorksPage() {
           <div className="max-w-3xl">
             <h1 className="text-4xl font-semibold tracking-tight">🎼 OurTextScores</h1>
             <p className="text-slate-600 dark:text-slate-300">
-              Browse machine-readable music scores, each linked to an IMSLP work, with full revision
-              history and derivative artifacts.
+              Catalogue of editable community transcriptions of public domain works.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -120,53 +186,45 @@ export default function WorksPage() {
           </div>
         </header>
 
-        {/* Search Box */}
-        <div className="w-full md:w-96">
-          <SearchBox
-            onSearch={handleSearch}
-            placeholder="Search by title, composer, or catalogue..."
-            debounceMs={300}
-          />
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="w-full md:w-96">
+            <SearchBox
+              onSearch={handleSearch}
+              placeholder="Search by title, composer, or catalogue..."
+              debounceMs={300}
+            />
+          </div>
+          <form onSubmit={handleImslpSubmit} className="w-full max-w-xl">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              IMSLP URL
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="url"
+                value={imslpUrl}
+                onChange={(event) => setImslpUrl(event.target.value)}
+                placeholder="https://imslp.org/wiki/..."
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-600"
+              />
+              <button
+                type="submit"
+                disabled={!imslpUrl.trim() || isResolvingImslp}
+                className="inline-flex items-center justify-center rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isResolvingImslp ? "Resolving..." : "Go"}
+              </button>
+            </div>
+            {imslpError && (
+              <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{imslpError}</p>
+            )}
+          </form>
         </div>
 
         {/* Filter Controls */}
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filterReferencePdf}
-              onChange={(e) => {
-                setFilterReferencePdf(e.target.checked);
-                setCurrentPage(1); // Reset to first page when filtering
-              }}
-              className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 dark:border-slate-700 dark:bg-slate-900"
-            />
-            <span>Has reference PDF</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filterVerified}
-              onChange={(e) => {
-                setFilterVerified(e.target.checked);
-                setCurrentPage(1); // Reset to first page when filtering
-              }}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900"
-            />
-            <span>Admin verified</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filterFlagged}
-              onChange={(e) => {
-                setFilterFlagged(e.target.checked);
-                setCurrentPage(1); // Reset to first page when filtering
-              }}
-              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-900"
-            />
-            <span>Has flagged sources</span>
-          </label>
+        <div className="flex flex-col gap-3">
+          {renderTriState("Has reference PDF", filterReferencePdf, setFilterReferencePdf)}
+          {renderTriState("Admin verified", filterVerified, setFilterVerified)}
+          {renderTriState("Has flagged sources", filterFlagged, setFilterFlagged)}
         </div>
 
         {/* Loading State */}

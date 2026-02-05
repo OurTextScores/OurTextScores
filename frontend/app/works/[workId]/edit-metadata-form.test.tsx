@@ -33,7 +33,7 @@ describe("EditMetadataForm", () => {
   const initial = {
     title: "Initial Title",
     composer: "Initial Composer",
-    catalogNumber: "Initial Catalog",
+    catalogNumber: "Initial Catalogue",
   };
   const mockRouter = {
     refresh: jest.fn(),
@@ -64,14 +64,14 @@ describe("EditMetadataForm", () => {
 
     fireEvent.change(titleInput, { target: { value: "New Title" } });
     fireEvent.change(composerInput, { target: { value: "New Composer" } });
-    fireEvent.change(catalogInput, { target: { value: "New Catalog" } });
+    fireEvent.change(catalogInput, { target: { value: "New Catalogue" } });
     fireEvent.submit(saveButton);
 
     await waitFor(() => {
       expect(updateWorkMetadata).toHaveBeenCalledWith(workId, {
         title: "New Title",
         composer: "New Composer",
-        catalogNumber: "New Catalog",
+        catalogNumber: "New Catalogue",
       });
     });
 

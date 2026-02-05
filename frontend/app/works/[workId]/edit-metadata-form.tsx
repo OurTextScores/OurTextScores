@@ -63,7 +63,7 @@ export default function EditMetadataForm({
             />
           </div>
           <div>
-            <label htmlFor="catalogNumber" className="mb-1 block text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">Catalog number</label>
+            <label htmlFor="catalogNumber" className="mb-1 block text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">Catalogue number</label>
             <input
               id="catalogNumber"
               type="text"
