@@ -36,7 +36,14 @@ import Providers from "./providers";
 
 export const metadata: Metadata = {
   title: "OurTextScores",
-  description: "Open platform for machine-readable music scores"
+  description: "Open platform for machine-readable music scores",
+  icons: {
+    icon: [
+      {
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%8E%BC%3C/text%3E%3C/svg%3E"
+      }
+    ]
+  }
 };
 
 export default function RootLayout({

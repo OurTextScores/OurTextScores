@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   fetchWorkDetail,
@@ -24,9 +25,7 @@ import RevisionHistory from "./revision-history";
 import DiffPreview from "./diff-preview";
 import CopyDownload from "../../components/copy-download";
 import WatchControls from "./watch-controls";
-import { getPublicApiBase, BackendSessionUser } from "../../lib/api";
 import { fetchBackendSession } from "../../lib/server-session";
-import { prunePendingSourcesAction, deleteAllSourcesAction } from "./admin-actions";
 import DeleteSourceButton from "./delete-source-button";
 import LazyDetails from "../../components/lazy-details";
 import StopPropagation from "../../components/stop-propagation";
@@ -58,8 +57,6 @@ export default async function WorkDetailPage({
     fetchBackendSession()
   ]);
   const currentUser = session.user;
-  const currentRoles = Array.isArray(currentUser?.roles) ? currentUser.roles as string[] : [];
-  const isAdmin = currentRoles.includes("admin");
   const imslpPermalink = imslp?.permalink || (imslp?.workId ? `https://imslp.org/wiki/${imslp.workId}` : undefined);
 
   return (
@@ -96,43 +93,6 @@ export default async function WorkDetailPage({
             </div>
           </div>
         </header>
-
-        {isAdmin && (
-          <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/60 dark:bg-amber-500/10 dark:text-amber-100">
-            <h2 className="mb-1 text-base font-semibold">Admin tools</h2>
-            <p className="mb-3 text-xs text-amber-800 dark:text-amber-200">
-              These actions are destructive and cannot be undone. Are you sure before running them?
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <form
-                action={async () => {
-                  "use server";
-                  await prunePendingSourcesAction(workId);
-                }}
-              >
-                <button
-                  type="submit"
-                  className="rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-200 dark:border-amber-500 dark:bg-amber-500/30 dark:text-amber-50 dark:hover:bg-amber-500/50"
-                >
-                  Prune pending sources
-                </button>
-              </form>
-              <form
-                action={async () => {
-                  "use server";
-                  await deleteAllSourcesAction(workId);
-                }}
-              >
-                <button
-                  type="submit"
-                  className="rounded border border-rose-500 bg-rose-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700"
-                >
-                  Delete all sources for this work
-                </button>
-              </form>
-            </div>
-          </section>
-        )}
 
         <EditMetadataForm
           workId={workId}
@@ -191,6 +151,27 @@ export default async function WorkDetailPage({
       </div>
     </main>
   );
+}
+
+export async function generateMetadata({
+  params
+}: {
+  params: { workId: string };
+}): Promise<Metadata> {
+  const work = await fetchWorkDetail(params.workId).catch(() => undefined);
+  if (!work) {
+    return {
+      title: "Work not found | OurTextScores"
+    };
+  }
+  const title = work.title?.trim() || "Untitled Work";
+  const composer = work.composer?.trim() || "Unknown Composer";
+  const catalogNumber = (work as any).catalogNumber?.trim();
+  const parts = [title, composer];
+  if (catalogNumber) parts.push(catalogNumber);
+  return {
+    title: `${parts.join(" — ")} | OurTextScores`
+  };
 }
 
 function ImslpMetadataCard({

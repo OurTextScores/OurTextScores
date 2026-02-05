@@ -515,13 +515,22 @@ export default function SourceCard({
             >
                 <div className="flex items-start gap-4">
                     {source.derivatives?.thumbnail && (
-                        <div className="relative h-20 w-14 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                                src={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/thumbnail.png`}
-                                alt={`Thumbnail for ${source.label}`}
-                                className="h-full w-full object-cover"
-                            />
+                        <div className="group relative shrink-0">
+                            <div className="h-20 w-14 overflow-hidden rounded border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/thumbnail.png`}
+                                    alt={`Thumbnail for ${source.label}`}
+                                    className="h-full w-full object-cover"
+                                />
+                            </div>
+                            <div className="pointer-events-none absolute left-full top-0 z-30 hidden translate-x-3 rounded-lg border border-slate-200 bg-white p-1 shadow-xl group-hover:block dark:border-slate-700 dark:bg-slate-900">
+                                <img
+                                    src={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/thumbnail.png`}
+                                    alt={`Thumbnail for ${source.label}`}
+                                    className="h-auto w-[300px] max-w-[300px] object-cover"
+                                />
+                            </div>
                         </div>
                     )}
                     <div>
