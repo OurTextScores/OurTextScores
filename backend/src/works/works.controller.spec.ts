@@ -271,7 +271,7 @@ describe('WorksController (unit)', () => {
 
       const result = await controller.findAll(undefined, undefined);
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 20, offset: 0 });
+      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 20, offset: 0, filter: undefined, onlyWithSources: false });
       expect(result).toEqual(mockResponse);
     });
 
@@ -281,7 +281,7 @@ describe('WorksController (unit)', () => {
 
       const result = await controller.findAll('50', '10');
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 50, offset: 10 });
+      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 50, offset: 10, filter: undefined, onlyWithSources: false });
       expect(result).toEqual(mockResponse);
     });
 
@@ -290,7 +290,7 @@ describe('WorksController (unit)', () => {
 
       await controller.findAll('500', '0');
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 100, offset: 0, filter: undefined, onlyWithSources: false });
     });
 
     it('should ensure offset is not negative', async () => {
@@ -298,7 +298,7 @@ describe('WorksController (unit)', () => {
 
       await controller.findAll('20', '-5');
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 20, offset: 0 });
+      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 20, offset: 0, filter: undefined, onlyWithSources: false });
     });
   });
 

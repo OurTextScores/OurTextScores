@@ -193,16 +193,9 @@ describe('SourceCard', () => {
             />
         );
 
-        // Check that thumbnail container is rendered when thumbnail data exists
-        const thumbnailContainer = document.querySelector('.h-20.w-14.shrink-0');
-        expect(thumbnailContainer).toBeInTheDocument();
-
-        if (thumbnailContainer) {
-            const img = thumbnailContainer.querySelector('img');
-            expect(img).toBeInTheDocument();
-            expect(img).toHaveAttribute('alt', `Thumbnail for ${mockSource.label}`);
-            // Should use API URL now
-            expect(img?.src).toContain('/api/works/work-123/sources/source-1/thumbnail.png');
-        }
+        const img = screen.getAllByAltText(`Thumbnail for ${mockSource.label}`)[0];
+        expect(img).toBeInTheDocument();
+        // Should use API URL now
+        expect(img).toHaveAttribute('src', expect.stringContaining('/api/works/work-123/sources/source-1/thumbnail.png'));
     });
 });

@@ -37,6 +37,44 @@ function formatDate(value?: string) {
   return new Date(value).toLocaleString();
 }
 
+function renderJsonWithHighlight(jsonText: string) {
+  const tokens: Array<{ text: string; className?: string }> = [];
+  const regex = /("(?:\\.|[^"\\])*"(?=\\s*:)|"(?:\\.|[^"\\])*")|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(jsonText)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ text: jsonText.slice(lastIndex, match.index) });
+    }
+    const [value] = match;
+    const isKey = value.startsWith('"') && jsonText.slice(match.index + value.length).trimStart().startsWith(":");
+    if (isKey) {
+      tokens.push({ text: value, className: "text-sky-600 dark:text-sky-400" });
+    } else if (value.startsWith('"')) {
+      tokens.push({ text: value, className: "text-emerald-600 dark:text-emerald-400" });
+    } else if (value === "true" || value === "false") {
+      tokens.push({ text: value, className: "text-amber-600 dark:text-amber-400" });
+    } else if (value === "null") {
+      tokens.push({ text: value, className: "text-rose-600 dark:text-rose-400" });
+    } else {
+      tokens.push({ text: value, className: "text-purple-600 dark:text-purple-400" });
+    }
+    lastIndex = match.index + value.length;
+  }
+
+  if (lastIndex < jsonText.length) {
+    tokens.push({ text: jsonText.slice(lastIndex) });
+  }
+
+  return tokens.map((token, index) =>
+    token.className ? (
+      <span key={index} className={token.className}>{token.text}</span>
+    ) : (
+      <span key={index}>{token.text}</span>
+    )
+  );
+}
 
 
 export default async function WorkDetailPage({
@@ -273,14 +311,16 @@ function ImslpMetadataCard({
       {/* Raw full record JSON */}
       <details className="group mt-4">
         <summary className="cursor-pointer text-sm text-slate-700 transition hover:text-slate-900 group-open:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 dark:group-open:text-slate-100">
-          Show full record (JSON)
+          Show full record
         </summary>
         <div className="mt-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950">
           <div className="flex items-center justify-end">
             <CopyDownload text={JSON.stringify(raw ?? { metadata: meta }, null, 2)} filename={`imslp-${workId}.json`} />
           </div>
           <pre className="mt-2 max-h-[32rem] overflow-auto rounded bg-slate-50 p-3 text-xs text-slate-800 dark:bg-slate-950 dark:text-slate-200">
-            {JSON.stringify(raw ?? { metadata: meta }, null, 2)}
+            <code className="font-mono">
+              {renderJsonWithHighlight(JSON.stringify(raw ?? { metadata: meta }, null, 2))}
+            </code>
           </pre>
         </div>
       </details>

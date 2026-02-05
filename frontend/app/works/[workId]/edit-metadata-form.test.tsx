@@ -40,7 +40,7 @@ describe("EditMetadataForm", () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     (useRouter as jest.Mock).mockReturnValue(mockRouter);
   });
 
@@ -49,7 +49,7 @@ describe("EditMetadataForm", () => {
 
     expect(screen.getByLabelText(/title/i)).toHaveValue(initial.title);
     expect(screen.getByLabelText(/composer/i)).toHaveValue(initial.composer);
-    expect(screen.getByLabelText(/catalog number/i)).toHaveValue(initial.catalogNumber);
+    expect(screen.getByLabelText(/catalogue number/i)).toHaveValue(initial.catalogNumber);
   });
 
   it("submits the form and shows a saved message on success", async () => {
@@ -59,7 +59,7 @@ describe("EditMetadataForm", () => {
 
     const titleInput = screen.getByLabelText(/title/i);
     const composerInput = screen.getByLabelText(/composer/i);
-    const catalogInput = screen.getByLabelText(/catalog number/i);
+    const catalogInput = screen.getByLabelText(/catalogue number/i);
     const saveButton = screen.getByRole("button", { name: /save/i });
 
     fireEvent.change(titleInput, { target: { value: "New Title" } });
