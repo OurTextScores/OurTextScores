@@ -101,7 +101,7 @@ export class DerivativePipelineService {
 
       const museCmd = this.getMuseScoreCommand();
 
-      if (this.isMuseScorePackage(extension, format)) {
+      if (this.isMuseScoreFile(extension, format)) {
         normalizedMxlPath = join(workspace, 'export.mxl');
         await this.runCommand(museCmd, ['--export-to', normalizedMxlPath, inputPath], {
           env: {
@@ -117,14 +117,17 @@ export class DerivativePipelineService {
         notes.push('MuseScore conversion to MusicXML completed.');
         publish('MuseScore conversion completed', 'deriv.mscz2mxl');
 
-        // Store the original .mscz file as a derivative artifact
-        derivatives.mscz = await this.storeDerivative(
-          `${derivativesBaseKey}/score.mscz`,
-          input.buffer,
-          'application/vnd.musescore.mscz'
-        );
-        notes.push('Original MuseScore file stored.');
-        publish('Stored MuseScore file', 'store.mscz');
+        // Store the original .mscz file as a derivative artifact.
+        // We do not currently expose a dedicated .mscx derivative endpoint.
+        if (this.isMuseScorePackage(extension, format)) {
+          derivatives.mscz = await this.storeDerivative(
+            `${derivativesBaseKey}/score.mscz`,
+            input.buffer,
+            'application/vnd.musescore.mscz'
+          );
+          notes.push('Original MuseScore file stored.');
+          publish('Stored MuseScore file', 'store.mscz');
+        }
       } else if (this.isCompressedMusicXml(extension, format)) {
         normalizedMxlPath = inputPath;
         normalizedMxlBuffer = input.buffer;
@@ -361,6 +364,9 @@ export class DerivativePipelineService {
     if (this.isMuseScorePackage(extension, format)) {
       return 'score.mscz';
     }
+    if (this.isMuseScoreSource(extension, format)) {
+      return 'score.mscx';
+    }
     return 'upload.bin';
   }
 
@@ -383,6 +389,14 @@ export class DerivativePipelineService {
 
   private isMuseScorePackage(extension: string, format: string): boolean {
     return extension === '.mscz' || format === 'application/vnd.musescore.mscz';
+  }
+
+  private isMuseScoreSource(extension: string, format: string): boolean {
+    return extension === '.mscx' || format === 'application/vnd.musescore.mscx';
+  }
+
+  private isMuseScoreFile(extension: string, format: string): boolean {
+    return this.isMuseScorePackage(extension, format) || this.isMuseScoreSource(extension, format);
   }
 
   private async extractCanonicalXml(

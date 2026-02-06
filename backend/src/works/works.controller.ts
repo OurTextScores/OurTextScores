@@ -650,7 +650,7 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary', description: 'MusicXML file (.musicxml, .mxl, or .xml)' },
+        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, or .xml)' },
         referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source', example: true },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
@@ -704,7 +704,7 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary', description: 'MusicXML file (.musicxml, .mxl, or .xml)' },
+        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, or .xml)' },
         referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source' },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },

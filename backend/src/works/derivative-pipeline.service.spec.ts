@@ -102,6 +102,45 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     delete process.env.MUSESCORE_CLI;
   });
 
+  it('process handles MuseScore source (.mscx) without storing .mscz artifact', async () => {
+    const runSpy = jest.fn(async () => ({ stdout: '', stderr: '' }));
+    (service as any).runCommand = runSpy;
+    const storeDerivativeSpy = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (service as any).storeDerivative = storeDerivativeSpy;
+
+    const input = {
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/vnd.musescore.mscx',
+      originalFilename: 'score.mscx',
+      buffer: Buffer.from('<mscx/>'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 7,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
+    };
+
+    const out = await service.process(input);
+    expect(typeof out.pending).toBe('boolean');
+    expect(runSpy).toHaveBeenCalled();
+    expect(out.derivatives.mscz).toBeFalsy();
+
+    const msczCalls = storeDerivativeSpy.mock.calls.filter((call: any[]) => call[0].includes('.mscz'));
+    expect(msczCalls.length).toBe(0);
+  });
+
   it.skip('stores original .mscz file as derivative artifact when processing MuseScore files', async () => {
     // TODO: This test requires complex mocking of file I/O operations.
     // The mscz storage feature is covered by:

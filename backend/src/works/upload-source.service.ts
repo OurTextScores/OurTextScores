@@ -740,7 +740,7 @@ export class UploadSourceService {
     outcome: DerivativePipelineResult,
     progressId?: string
   ): void {
-    if (format !== 'application/vnd.musescore.mscz') {
+    if (format !== 'application/vnd.musescore.mscz' && format !== 'application/vnd.musescore.mscx') {
       return;
     }
 
@@ -804,6 +804,9 @@ export class UploadSourceService {
       if (normalizedHint.includes('mscz')) {
         return 'application/vnd.musescore.mscz';
       }
+      if (normalizedHint.includes('mscx')) {
+        return 'application/vnd.musescore.mscx';
+      }
       if (normalizedHint.includes('mxl')) {
         return 'application/vnd.recordare.musicxml';
       }
@@ -818,6 +821,8 @@ export class UploadSourceService {
     switch (extension) {
       case '.mscz':
         return 'application/vnd.musescore.mscz';
+      case '.mscx':
+        return 'application/vnd.musescore.mscx';
       case '.mxl':
         return 'application/vnd.recordare.musicxml';
       case '.xml':
@@ -829,6 +834,9 @@ export class UploadSourceService {
 
     const mime = (file.mimetype || '').toLowerCase();
     if (mime.includes('musescore')) {
+      if (name.endsWith('.mscx')) {
+        return 'application/vnd.musescore.mscx';
+      }
       return 'application/vnd.musescore.mscz';
     }
     if (
@@ -842,7 +850,7 @@ export class UploadSourceService {
     }
 
     throw new BadRequestException(
-      'Unsupported file format. Accepted: .mscz, .mxl, .xml.'
+      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml.'
     );
   }
 

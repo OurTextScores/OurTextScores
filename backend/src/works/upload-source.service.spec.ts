@@ -106,6 +106,33 @@ describe('UploadSourceService (unit)', () => {
     expect(fossilService.commitRevision).toHaveBeenCalled();
   });
 
+  it('upload() accepts .mscx and resolves MuseScore source format', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mscx', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: false,
+      notes: ['ok'],
+      manifest: undefined,
+      derivatives: {
+        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+      }
+    });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
+
+    const file = { originalname: 'score.mscx', mimetype: 'application/octet-stream', size: 22, buffer: Buffer.from('<mscx/>') } as any;
+    const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(derivativePipeline.process).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'application/vnd.musescore.mscx',
+        originalFilename: 'score.mscx'
+      })
+    );
+  });
+
   it('uploadRevision() updates an existing source and records revision', async () => {
     sourceModel.findOne.mockReturnValue({ lean: () => ({}) });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });

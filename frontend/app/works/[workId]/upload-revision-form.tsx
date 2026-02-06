@@ -165,7 +165,7 @@ export default function UploadRevisionForm({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".mscz,.mxl,.xml"
+          accept=".mscz,.mscx,.mxl,.xml"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           className="hidden"
           data-testid="file-input"

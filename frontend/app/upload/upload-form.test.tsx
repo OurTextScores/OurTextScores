@@ -250,7 +250,7 @@ describe("UploadForm", () => {
     // Verify the file input has required attribute for HTML5 validation
     const fileInput = screen.getByLabelText(/Score file/i);
     expect(fileInput).toHaveAttribute('required');
-    expect(fileInput).toHaveAttribute('accept', '.mscz,.mxl,.xml');
+    expect(fileInput).toHaveAttribute('accept', '.mscz,.mscx,.mxl,.xml');
   });
 
   it("allows selecting an existing source for revision", async () => {

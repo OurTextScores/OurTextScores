@@ -395,7 +395,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
 
         <div>
           <label className="text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="file">
-            Score file (.mscz, .mxl, .xml)
+            Score file (.mscz, .mscx, .mxl, .xml)
           </label>
           <div className="mt-2 flex justify-center rounded-lg border border-dashed border-slate-900/25 px-6 py-10 dark:border-white/25">
             <div className="text-center">
@@ -409,7 +409,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
                     id="file"
                     name="file"
                     type="file"
-                    accept=".mscz,.mxl,.xml"
+                    accept=".mscz,.mscx,.mxl,.xml"
                     onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                     className="sr-only"
                     required
@@ -421,7 +421,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
                 {file ? (
                   <span className="font-semibold text-primary-600 dark:text-primary-400">{file.name}</span>
                 ) : (
-                  "MusicXML (*.mxl, *.xml) or MuseScore (*.mscz)"
+                  "MusicXML (*.mxl, *.xml) or MuseScore (*.mscz, *.mscx)"
                 )}
               </p>
             </div>
