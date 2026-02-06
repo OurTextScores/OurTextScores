@@ -50,6 +50,7 @@ export default function Header() {
           OurTextScores
         </Link>
         <div className="flex items-center gap-3">
+          <Link href="/catalogue" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Catalogue</Link>
           <Link href="/projects" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Projects</Link>
           <Link href="/score-editor" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Score Editor</Link>
           <ThemeToggle />
@@ -58,7 +59,7 @@ export default function Header() {
               {effectiveUsername ? (
                 <Link
                   href={`/users/${encodeURIComponent(effectiveUsername)}`}
-                  className="text-xs text-slate-700 underline-offset-2 hover:underline dark:text-slate-300"
+                  className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
                 >
                   {userDisplay}
                 </Link>
