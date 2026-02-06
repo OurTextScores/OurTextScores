@@ -7,6 +7,14 @@ import ThemeToggle from "../theme-toggle";
 export default function Header() {
   const { data } = useSession();
   const user = data?.user;
+  const usernameCandidate = (user as any)?.username ?? user?.name;
+  const profileUsername =
+    typeof usernameCandidate === "string" && /^[a-z0-9_]{3,20}$/.test(usernameCandidate)
+      ? usernameCandidate
+      : undefined;
+  const [resolvedUsername, setResolvedUsername] = useState<string | undefined>(undefined);
+  const effectiveUsername = resolvedUsername ?? profileUsername;
+  const userDisplay = effectiveUsername || user?.name || user?.email;
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -16,6 +24,22 @@ export default function Header() {
         .then(res => res.json())
         .then(data => setUnreadCount(data.unreadCount || 0))
         .catch(() => setUnreadCount(0));
+
+      // Resolve profile username when session only has email/name.
+      fetch("/api/proxy/users/me")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((profile) => {
+          const username = profile?.user?.username ?? profile?.username;
+          if (typeof username === "string" && /^[a-z0-9_]{3,20}$/.test(username)) {
+            setResolvedUsername(username);
+          } else {
+            setResolvedUsername(undefined);
+          }
+        })
+        .catch(() => setResolvedUsername(undefined));
+    } else {
+      setResolvedUsername(undefined);
+      setUnreadCount(0);
     }
   }, [user]);
 
@@ -31,7 +55,16 @@ export default function Header() {
           <ThemeToggle />
           {user ? (
             <>
-              <span className="text-xs text-slate-700 dark:text-slate-300">{user.name || user.email}</span>
+              {effectiveUsername ? (
+                <Link
+                  href={`/users/${encodeURIComponent(effectiveUsername)}`}
+                  className="text-xs text-slate-700 underline-offset-2 hover:underline dark:text-slate-300"
+                >
+                  {userDisplay}
+                </Link>
+              ) : (
+                <span className="text-xs text-slate-700 dark:text-slate-300">{userDisplay}</span>
+              )}
               <Link href="/notifications" className="relative text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">
                 Notifications
                 {unreadCount > 0 && (

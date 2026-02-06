@@ -15,6 +15,7 @@ jest.mock("next-auth/react", () => ({
 describe("Header", () => {
   beforeEach(() => {
     globalThis.fetch = jest.fn().mockResolvedValue({
+      ok: true,
       json: async () => ({ unreadCount: 0 }),
     }) as any;
   });
@@ -56,5 +57,37 @@ describe("Header", () => {
     (useSession as jest.Mock).mockReturnValue({ data: session });
     render(<Header />);
     expect(screen.getByText("test@example.com")).toBeInTheDocument();
+  });
+
+  it("links username in toolbar to user profile page", () => {
+    const session = {
+      user: { name: "jhlusko", email: "test@example.com", username: "jhlusko" },
+    };
+    (useSession as jest.Mock).mockReturnValue({ data: session });
+    render(<Header />);
+
+    const profileLink = screen.getByRole("link", { name: "jhlusko" });
+    expect(profileLink).toHaveAttribute("href", "/users/jhlusko");
+  });
+
+  it("loads username from /api/proxy/users/me when session only has email", async () => {
+    const session = {
+      user: { email: "jhlusko@gmail.com" },
+    };
+    (useSession as jest.Mock).mockReturnValue({ data: session });
+    (globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ unreadCount: 0 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ user: { username: "jhlusko" } }),
+      });
+
+    render(<Header />);
+
+    const profileLink = await screen.findByRole("link", { name: "jhlusko" });
+    expect(profileLink).toHaveAttribute("href", "/users/jhlusko");
   });
 });
