@@ -16,7 +16,7 @@ describe("CreateProjectForm", () => {
   it("submits and navigates to created project", async () => {
     const push = jest.fn();
     (useRouter as jest.Mock).mockReturnValue({ push });
-    (createProjectAction as jest.Mock).mockResolvedValue({ projectId: "prj_1" });
+    (createProjectAction as jest.Mock).mockResolvedValue({ ok: true, projectId: "prj_1" });
 
     render(<CreateProjectForm />);
 
@@ -36,7 +36,7 @@ describe("CreateProjectForm", () => {
 
   it("shows API error", async () => {
     (useRouter as jest.Mock).mockReturnValue({ push: jest.fn() });
-    (createProjectAction as jest.Mock).mockRejectedValue(new Error("boom"));
+    (createProjectAction as jest.Mock).mockResolvedValue({ ok: false, error: "boom" });
 
     render(<CreateProjectForm />);
 

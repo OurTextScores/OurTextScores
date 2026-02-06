@@ -26,6 +26,7 @@ describe('ProjectsService (unit, mocked models)', () => {
   let workModel: jest.Mocked<Partial<Model<Work>>> & any;
   let userModel: jest.Mocked<Partial<Model<User>>> & any;
   const imslpService = { ensureByPermalink: jest.fn() } as any;
+  const uploadSourceService = { upload: jest.fn() } as any;
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -53,6 +54,8 @@ describe('ProjectsService (unit, mocked models)', () => {
 
     sourceModel = {
       exists: jest.fn(),
+      countDocuments: jest.fn(),
+      find: jest.fn(),
       findOne: jest.fn(),
       create: jest.fn(),
       updateOne: jest.fn()
@@ -77,7 +80,8 @@ describe('ProjectsService (unit, mocked models)', () => {
       sourceModel as any,
       workModel as any,
       userModel as any,
-      imslpService
+      imslpService,
+      uploadSourceService
     );
   });
 
@@ -116,6 +120,37 @@ describe('ProjectsService (unit, mocked models)', () => {
     );
     expect(out.projectId).toBe('prj_1');
     expect(out.lead.userId).toBe('u1');
+  });
+
+  it('createProject defaults description to empty string when omitted', async () => {
+    projectModel.exists.mockResolvedValue(false);
+    projectModel.create.mockResolvedValue({
+      toObject: () => ({
+        projectId: 'prj_2',
+        slug: 'project-no-description',
+        title: 'Project No Description',
+        description: '',
+        leadUserId: 'u1',
+        memberUserIds: [],
+        visibility: 'public',
+        status: 'active',
+        rowCount: 0,
+        linkedSourceCount: 0,
+        createdBy: 'u1',
+      })
+    } as any);
+
+    const out = await service.createProject(
+      { title: 'Project No Description' },
+      { userId: 'u1', roles: ['user'] }
+    );
+
+    expect(projectModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: ''
+      })
+    );
+    expect(out.projectId).toBe('prj_2');
   });
 
   it('updateRow blocks verified toggle when actor is not source owner/lead/admin', async () => {
@@ -228,6 +263,7 @@ describe('ProjectsService (unit, mocked models)', () => {
     } as any);
     rowModel.findOneAndUpdate.mockReturnValue(leanExec({ rowId: 'row_1', rowVersion: 2 }));
     rowModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(1) } as any);
+    sourceModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(1) } as any);
 
     const out = await service.createInternalSource(
       'prj_1',
@@ -248,5 +284,56 @@ describe('ProjectsService (unit, mocked models)', () => {
       })
     );
     expect(out).toEqual(expect.objectContaining({ ok: true, workId: '5000' }));
+  });
+
+  it('joinProject adds user to members when eligible', async () => {
+    projectModel.findOne.mockReturnValueOnce(leanExec({
+      projectId: 'prj_1',
+      leadUserId: 'lead_1',
+      memberUserIds: ['member_1'],
+      visibility: 'public',
+      status: 'active',
+      title: 'Project',
+      slug: 'project',
+      description: '',
+      rowCount: 0,
+      linkedSourceCount: 0,
+      createdBy: 'lead_1'
+    }));
+    projectModel.findOneAndUpdate.mockReturnValueOnce(leanExec({
+      projectId: 'prj_1',
+      leadUserId: 'lead_1',
+      memberUserIds: ['member_1', 'member_2'],
+      visibility: 'public',
+      status: 'active',
+      title: 'Project',
+      slug: 'project',
+      description: '',
+      rowCount: 0,
+      linkedSourceCount: 0,
+      createdBy: 'lead_1'
+    }));
+
+    const out = await service.joinProject('prj_1', { userId: 'member_2', roles: ['user'] });
+    expect(projectModel.findOneAndUpdate).toHaveBeenCalledWith(
+      { projectId: 'prj_1' },
+      { $addToSet: { memberUserIds: 'member_2' } },
+      { new: true }
+    );
+    expect(out.members.map((m: any) => m.userId)).toContain('member_2');
+  });
+
+  it('removeSource requires project lead', async () => {
+    projectModel.findOne.mockReturnValueOnce(leanExec({
+      projectId: 'prj_1',
+      leadUserId: 'lead_1',
+      memberUserIds: ['member_1'],
+      visibility: 'public',
+      status: 'active'
+    }));
+
+    await expect(
+      service.removeSource('prj_1', 'src_1', { userId: 'member_1', roles: ['user'] })
+    ).rejects.toThrow(ForbiddenException);
   });
 });

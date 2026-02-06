@@ -7,8 +7,12 @@ describe('ProjectsController (unit)', () => {
     createProject: jest.fn(),
     getProject: jest.fn(),
     updateProject: jest.fn(),
+    joinProject: jest.fn(),
     updateMembers: jest.fn(),
     archiveProject: jest.fn(),
+    listSources: jest.fn(),
+    removeSource: jest.fn(),
+    uploadSource: jest.fn(),
     listRows: jest.fn(),
     createRow: jest.fn(),
     updateRow: jest.fn(),
@@ -37,12 +41,29 @@ describe('ProjectsController (unit)', () => {
   it('create passes actor and payload', async () => {
     service.createProject.mockResolvedValue({ projectId: 'prj_1' } as any);
 
-    const out = await controller.create('My Project', undefined, 'desc', undefined, ['u2'], 'public', { userId: 'u1', roles: [] } as any);
+    const out = await controller.create('My Project', undefined, 'desc', undefined, ['u2'], 'public', 'google', 'https://docs.google.com/spreadsheets/d/e/abc/pubhtml', 'https://docs.google.com/spreadsheets/d/abc/edit', { userId: 'u1', roles: [] } as any);
 
     expect(service.createProject).toHaveBeenCalledWith(
-      { title: 'My Project', slug: undefined, description: 'desc', leadUserId: undefined, memberUserIds: ['u2'], visibility: 'public' },
+      {
+        title: 'My Project',
+        slug: undefined,
+        description: 'desc',
+        leadUserId: undefined,
+        memberUserIds: ['u2'],
+        visibility: 'public',
+        spreadsheetProvider: 'google',
+        spreadsheetEmbedUrl: 'https://docs.google.com/spreadsheets/d/e/abc/pubhtml',
+        spreadsheetExternalUrl: 'https://docs.google.com/spreadsheets/d/abc/edit'
+      },
       { userId: 'u1', roles: [] }
     );
+    expect(out).toEqual({ projectId: 'prj_1' });
+  });
+
+  it('join delegates to service', async () => {
+    service.joinProject.mockResolvedValue({ projectId: 'prj_1' } as any);
+    const out = await controller.join('prj_1', { userId: 'u1', roles: ['user'] } as any);
+    expect(service.joinProject).toHaveBeenCalledWith('prj_1', { userId: 'u1', roles: ['user'] });
     expect(out).toEqual({ projectId: 'prj_1' });
   });
 

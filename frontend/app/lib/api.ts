@@ -601,6 +601,9 @@ export interface ProjectSummary {
   status: "active" | "archived";
   rowCount: number;
   linkedSourceCount: number;
+  spreadsheetProvider?: "google";
+  spreadsheetEmbedUrl?: string;
+  spreadsheetExternalUrl?: string;
   createdBy: string;
   createdAt?: string;
   updatedAt?: string;
@@ -637,6 +640,34 @@ export interface ProjectRow {
 
 export interface PaginatedProjectRowsResponse {
   rows: ProjectRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ProjectSourceSummary {
+  workId: string;
+  sourceId: string;
+  label: string;
+  sourceType: "score" | "parts" | "audio" | "metadata" | "other";
+  format: string;
+  description?: string;
+  originalFilename: string;
+  hasReferencePdf: boolean;
+  adminVerified: boolean;
+  projectIds: string[];
+  latestRevisionId?: string;
+  latestRevisionAt?: string;
+  uploadedByUserId?: string;
+  uploadedByUsername?: string;
+  uploadedByDisplayName?: string;
+  title?: string;
+  composer?: string;
+  catalogNumber?: string;
+}
+
+export interface PaginatedProjectSourcesResponse {
+  sources: ProjectSourceSummary[];
   total: number;
   limit: number;
   offset: number;
@@ -694,6 +725,27 @@ export async function fetchProjectRows(
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       return { rows: [], total: 0, limit: options?.limit ?? 50, offset: options?.offset ?? 0 };
+    }
+    throw error;
+  }
+}
+
+export async function fetchProjectSources(
+  projectId: string,
+  options?: { limit?: number; offset?: number }
+): Promise<PaginatedProjectSourcesResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
+    if (options?.offset !== undefined) params.set("offset", String(options.offset));
+    const url = `${getApiBase()}/projects/${encodeURIComponent(projectId)}/sources${params.toString() ? `?${params.toString()}` : ""}`;
+    return await fetchJson<PaginatedProjectSourcesResponse>(url, {
+      cache: "no-store",
+      next: { revalidate: 0 }
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      return { sources: [], total: 0, limit: options?.limit ?? 20, offset: options?.offset ?? 0 };
     }
     throw error;
   }

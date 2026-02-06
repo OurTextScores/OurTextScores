@@ -20,27 +20,35 @@ export async function createProjectAction(payload: {
   description?: string;
   visibility?: "public" | "private";
 }) {
-  const API_BASE = getApiBase();
-  const headers = await getApiAuthHeaders();
-  const res = await fetch(`${API_BASE}/projects`, {
-    method: "POST",
-    headers: {
-      ...headers,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  try {
+    const API_BASE = getApiBase();
+    const headers = await getApiAuthHeaders();
+    const res = await fetch(`${API_BASE}/projects`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
 
-  if (res.status === 401) {
-    redirect("/api/auth/signin");
-  }
-  if (!res.ok) {
-    throw new Error(await parseError(res, "Failed to create project"));
-  }
+    if (res.status === 401) {
+      return { ok: false as const, requiresAuth: true, error: "Please sign in to create a project" };
+    }
+    if (!res.ok) {
+      return { ok: false as const, error: await parseError(res, "Failed to create project") };
+    }
 
-  const project = await res.json();
-  revalidatePath("/projects");
-  return project as { projectId: string };
+    const project = await res.json();
+    revalidatePath("/projects");
+    return { ok: true as const, projectId: String(project?.projectId || "") };
+  } catch (err: any) {
+    const message = String(err?.message || "");
+    if (message.toLowerCase().includes("nextauth_secret")) {
+      return { ok: false as const, error: "Authentication is not configured. Set NEXTAUTH_SECRET and retry." };
+    }
+    return { ok: false as const, error: message || "Failed to create project" };
+  }
 }
 
 export async function updateProjectAction(
@@ -50,6 +58,9 @@ export async function updateProjectAction(
     description?: string;
     status?: "active" | "archived";
     visibility?: "public" | "private";
+    spreadsheetProvider?: "google" | null;
+    spreadsheetEmbedUrl?: string | null;
+    spreadsheetExternalUrl?: string | null;
   }
 ) {
   const API_BASE = getApiBase();
@@ -74,6 +85,44 @@ export async function updateProjectAction(
   revalidatePath("/projects");
   revalidatePath(`/projects/${encodeURIComponent(projectId)}`);
   return project;
+}
+
+export async function joinProjectAction(projectId: string) {
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/join`, {
+    method: "POST",
+    headers
+  });
+
+  if (res.status === 401) {
+    redirect("/api/auth/signin");
+  }
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Failed to join project"));
+  }
+
+  const project = await res.json();
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${encodeURIComponent(projectId)}`);
+  return project;
+}
+
+export async function removeProjectSourceAction(projectId: string, sourceId: string) {
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceId)}`, {
+    method: "DELETE",
+    headers
+  });
+  if (res.status === 401) {
+    redirect("/api/auth/signin");
+  }
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Failed to remove source from project"));
+  }
+  revalidatePath(`/projects/${encodeURIComponent(projectId)}`);
+  return { ok: true };
 }
 
 export async function createProjectRowAction(

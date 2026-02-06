@@ -16,16 +16,20 @@ export default function CreateProjectForm() {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      try {
-        const created = await createProjectAction({
-          title: title.trim(),
-          description: description.trim() || undefined,
-          visibility
-        });
-        router.push(`/projects/${encodeURIComponent(created.projectId)}`);
-      } catch (err: any) {
-        setError(err.message || "Failed to create project");
+      const result = await createProjectAction({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        visibility
+      });
+      if (!result.ok) {
+        if (result.requiresAuth) {
+          router.push("/api/auth/signin");
+          return;
+        }
+        setError(result.error || "Failed to create project");
+        return;
       }
+      router.push(`/projects/${encodeURIComponent(result.projectId)}`);
     });
   };
 

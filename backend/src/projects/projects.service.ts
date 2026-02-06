@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -14,7 +15,10 @@ import { Project, ProjectDocument } from './schemas/project.schema';
 import { ProjectSourceRow, ProjectSourceRowDocument } from './schemas/project-source-row.schema';
 import { Source, SourceDocument } from '../works/schemas/source.schema';
 import { Work, WorkDocument } from '../works/schemas/work.schema';
+import type { UploadSourceRequest, UploadSourceService } from '../works/upload-source.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
+
+export const UPLOAD_SOURCE_SERVICE = 'UPLOAD_SOURCE_SERVICE';
 
 interface Actor {
   userId: string;
@@ -39,6 +43,9 @@ interface ProjectDocLean {
   rowCount: number;
   linkedSourceCount: number;
   createdBy: string;
+  spreadsheetProvider?: 'google';
+  spreadsheetEmbedUrl?: string;
+  spreadsheetExternalUrl?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -56,7 +63,9 @@ export class ProjectsService {
     private readonly workModel: Model<WorkDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
-    private readonly imslpService: ImslpService
+    private readonly imslpService: ImslpService,
+    @Inject(UPLOAD_SOURCE_SERVICE)
+    private readonly uploadSourceService: Pick<UploadSourceService, 'upload'>
   ) {}
 
   async listProjects(
@@ -115,6 +124,9 @@ export class ProjectsService {
       leadUserId?: string;
       memberUserIds?: string[];
       visibility?: 'public' | 'private';
+      spreadsheetProvider?: 'google';
+      spreadsheetEmbedUrl?: string;
+      spreadsheetExternalUrl?: string;
     },
     actor: Actor
   ) {
@@ -132,6 +144,9 @@ export class ProjectsService {
     const projectId = await this.generateUniqueId(this.projectModel, 'projectId', 'prj');
 
     const memberUserIds = this.normalizeUserIds(payload.memberUserIds).filter((id) => id !== leadUserId);
+    const spreadsheetProvider = this.normalizeSpreadsheetProvider(payload.spreadsheetProvider);
+    const spreadsheetEmbedUrl = this.normalizeUrl(payload.spreadsheetEmbedUrl, 'spreadsheetEmbedUrl');
+    const spreadsheetExternalUrl = this.normalizeUrl(payload.spreadsheetExternalUrl, 'spreadsheetExternalUrl');
 
     try {
       const created = await this.projectModel.create({
@@ -145,7 +160,10 @@ export class ProjectsService {
         status: 'active',
         rowCount: 0,
         linkedSourceCount: 0,
-        createdBy: actor.userId
+        createdBy: actor.userId,
+        spreadsheetProvider,
+        spreadsheetEmbedUrl,
+        spreadsheetExternalUrl
       });
       const [view] = await this.withUserRefs([created.toObject() as unknown as ProjectDocLean]);
       return view;
@@ -175,6 +193,9 @@ export class ProjectsService {
       leadUserId?: string;
       status?: 'active' | 'archived';
       visibility?: 'public' | 'private';
+      spreadsheetProvider?: 'google' | null;
+      spreadsheetEmbedUrl?: string | null;
+      spreadsheetExternalUrl?: string | null;
     },
     actor: Actor
   ) {
@@ -208,6 +229,15 @@ export class ProjectsService {
         throw new BadRequestException('invalid visibility');
       }
       set.visibility = payload.visibility;
+    }
+    if (payload.spreadsheetProvider !== undefined) {
+      set.spreadsheetProvider = this.normalizeSpreadsheetProvider(payload.spreadsheetProvider ?? undefined);
+    }
+    if (payload.spreadsheetEmbedUrl !== undefined) {
+      set.spreadsheetEmbedUrl = this.normalizeUrl(payload.spreadsheetEmbedUrl ?? undefined, 'spreadsheetEmbedUrl');
+    }
+    if (payload.spreadsheetExternalUrl !== undefined) {
+      set.spreadsheetExternalUrl = this.normalizeUrl(payload.spreadsheetExternalUrl ?? undefined, 'spreadsheetExternalUrl');
     }
 
     const updated = await this.projectModel.findOneAndUpdate(
@@ -264,6 +294,218 @@ export class ProjectsService {
     if (!updated) throw new NotFoundException('project not found');
     const [view] = await this.withUserRefs([updated as unknown as ProjectDocLean]);
     return view;
+  }
+
+  async joinProject(projectId: string, actor: Actor) {
+    const project = await this.getProjectDoc(projectId);
+    if (project.status !== 'active') {
+      throw new ForbiddenException('Only active projects can be joined');
+    }
+    if (project.visibility === 'private' && !this.isAdmin(actor)) {
+      throw new ForbiddenException('Private projects cannot be joined directly');
+    }
+    if (project.leadUserId === actor.userId || (project.memberUserIds ?? []).includes(actor.userId)) {
+      const [view] = await this.withUserRefs([project]);
+      return view;
+    }
+
+    const updated = await this.projectModel.findOneAndUpdate(
+      { projectId },
+      { $addToSet: { memberUserIds: actor.userId } },
+      { new: true }
+    ).lean().exec();
+
+    if (!updated) throw new NotFoundException('project not found');
+    const [view] = await this.withUserRefs([updated as unknown as ProjectDocLean]);
+    return view;
+  }
+
+  async listSources(
+    projectId: string,
+    options?: { limit?: number; offset?: number },
+    actor?: { userId?: string; roles?: string[] }
+  ) {
+    const project = await this.getProjectDoc(projectId);
+    this.assertCanRead(project, actor);
+
+    const limit = Math.max(1, Math.min(options?.limit ?? 20, 100));
+    const offset = Math.max(0, options?.offset ?? 0);
+
+    const [total, docs] = await Promise.all([
+      this.sourceModel.countDocuments({ projectIds: projectId }).exec(),
+      this.sourceModel
+        .find({ projectIds: projectId })
+        .sort({ latestRevisionAt: -1, sourceId: 1 })
+        .skip(offset)
+        .limit(limit)
+        .lean()
+        .exec()
+    ]);
+
+    const workIds = Array.from(new Set(docs.map((doc: any) => String(doc.workId || '')).filter(Boolean)));
+    const works = workIds.length > 0
+      ? await this.workModel
+          .find({ workId: { $in: workIds } })
+          .select('workId title composer catalogNumber')
+          .lean()
+          .exec()
+      : [];
+    const workById = new Map<string, any>();
+    for (const work of works as any[]) {
+      workById.set(String(work.workId), work);
+    }
+
+    const userIds = Array.from(
+      new Set(
+        docs
+          .map((doc: any) => String(doc?.provenance?.uploadedByUserId || ''))
+          .filter(Boolean)
+      )
+    );
+    const users = userIds.length > 0
+      ? await this.userModel
+          .find({ _id: { $in: userIds } })
+          .select('_id username displayName')
+          .lean()
+          .exec()
+      : [];
+    const userById = new Map<string, { username?: string; displayName?: string }>();
+    for (const user of users as any[]) {
+      userById.set(String(user._id), {
+        username: user.username ?? undefined,
+        displayName: user.displayName ?? undefined
+      });
+    }
+
+    const sources = (docs as any[]).map((source) => {
+      const work = workById.get(String(source.workId));
+      const uploaderUserId = source?.provenance?.uploadedByUserId as string | undefined;
+      const uploader = uploaderUserId ? userById.get(uploaderUserId) : undefined;
+      return {
+        workId: source.workId,
+        sourceId: source.sourceId,
+        label: source.label,
+        sourceType: source.sourceType,
+        format: source.format,
+        description: source.description,
+        originalFilename: source.originalFilename,
+        hasReferencePdf: source.hasReferencePdf === true,
+        adminVerified: source.adminVerified === true,
+        projectIds: Array.isArray(source.projectIds) ? source.projectIds : [],
+        latestRevisionId: source.latestRevisionId,
+        latestRevisionAt: source.latestRevisionAt,
+        uploadedByUserId: uploaderUserId,
+        uploadedByUsername: uploader?.username,
+        uploadedByDisplayName: uploader?.displayName,
+        title: work?.title,
+        composer: work?.composer,
+        catalogNumber: work?.catalogNumber
+      };
+    });
+
+    return { sources, total, limit, offset };
+  }
+
+  async removeSource(projectId: string, sourceId: string, actor: Actor) {
+    const project = await this.getProjectDoc(projectId);
+    this.assertCanManageProjectSources(project, actor);
+
+    const source = await this.sourceModel.findOne({ sourceId }).lean().exec();
+    if (!source) throw new NotFoundException('source not found');
+
+    const currentProjectIds = Array.isArray((source as any).projectIds) ? ((source as any).projectIds as string[]) : [];
+    if (!currentProjectIds.includes(projectId)) {
+      return { ok: true };
+    }
+
+    const nextProjectIds = currentProjectIds.filter((id) => id !== projectId);
+    await this.sourceModel.updateOne(
+      { sourceId },
+      {
+        $set: { projectLinkCount: nextProjectIds.length },
+        $pull: { projectIds: projectId }
+      }
+    ).exec();
+
+    await this.refreshProjectCounts(projectId);
+    return { ok: true };
+  }
+
+  async uploadSource(
+    projectId: string,
+    payload: {
+      workId?: string;
+      imslpUrl?: string;
+      label?: string;
+      sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
+      description?: string;
+      license?: string;
+      licenseUrl?: string;
+      licenseAttribution?: string;
+      commitMessage?: string;
+      isPrimary?: boolean;
+      formatHint?: string;
+      createBranch?: boolean;
+      branchName?: string;
+    },
+    file?: Express.Multer.File,
+    referencePdfFile?: Express.Multer.File,
+    progressId?: string,
+    actor?: { userId?: string; roles?: string[]; name?: string; email?: string }
+  ) {
+    if (!actor?.userId) {
+      throw new BadRequestException('Authentication required');
+    }
+    const project = await this.getProjectDoc(projectId);
+    this.assertCanEditRows(project, { userId: actor.userId, roles: actor.roles });
+
+    const resolvedWorkId = await this.resolveWorkId({
+      workId: payload.workId,
+      imslpUrl: payload.imslpUrl
+    });
+
+    const uploadPayload: UploadSourceRequest = {
+      label: payload.label,
+      sourceType: payload.sourceType,
+      description: payload.description,
+      license: payload.license,
+      licenseUrl: payload.licenseUrl,
+      licenseAttribution: payload.licenseAttribution,
+      isPrimary: payload.isPrimary,
+      formatHint: payload.formatHint,
+      commitMessage: payload.commitMessage,
+      createBranch: payload.createBranch,
+      branchName: payload.branchName
+    };
+
+    const result = await this.uploadSourceService.upload(
+      resolvedWorkId,
+      uploadPayload,
+      file,
+      referencePdfFile,
+      progressId,
+      {
+        userId: actor.userId,
+        roles: actor.roles ?? [],
+        name: actor.name,
+        email: actor.email
+      } as any
+    );
+
+    await this.sourceModel.updateOne(
+      { workId: result.workId, sourceId: result.sourceId },
+      { $addToSet: { projectIds: projectId } }
+    ).exec();
+
+    const linkedSource = await this.sourceModel.findOne({ workId: result.workId, sourceId: result.sourceId }).select('projectIds').lean().exec();
+    const projectIds = Array.isArray((linkedSource as any)?.projectIds) ? (linkedSource as any).projectIds : [];
+    await this.sourceModel.updateOne(
+      { workId: result.workId, sourceId: result.sourceId },
+      { $set: { projectLinkCount: projectIds.length } }
+    ).exec();
+
+    await this.refreshProjectCounts(projectId);
+    return result;
   }
 
   async listRows(projectId: string, options?: { limit?: number; offset?: number }, actor?: { userId?: string; roles?: string[] }) {
@@ -573,14 +815,18 @@ export class ProjectsService {
     payload: { workId?: string; imslpUrl?: string },
     row: Pick<ProjectSourceRow, 'imslpUrl'>
   ): Promise<string> {
+    return this.resolveWorkId({ workId: payload.workId, imslpUrl: payload.imslpUrl ?? row.imslpUrl });
+  }
+
+  private async resolveWorkId(payload: { workId?: string; imslpUrl?: string }): Promise<string> {
     const explicitWorkId = payload.workId?.trim();
     if (explicitWorkId) {
       return explicitWorkId;
     }
 
-    const candidateUrl = payload.imslpUrl?.trim() || row.imslpUrl?.trim();
+    const candidateUrl = payload.imslpUrl?.trim();
     if (!candidateUrl) {
-      throw new UnprocessableEntityException('workId or imslpUrl is required to create an internal source');
+      throw new UnprocessableEntityException('workId or imslpUrl is required');
     }
 
     const ensured = await this.imslpService.ensureByPermalink(candidateUrl);
@@ -630,6 +876,11 @@ export class ProjectsService {
     throw new ForbiddenException('Only project members, lead, or admin can modify rows');
   }
 
+  private assertCanManageProjectSources(project: ProjectDocLean, actor: Actor) {
+    if (project.leadUserId === actor.userId) return;
+    throw new ForbiddenException('Only project lead can remove sources from project');
+  }
+
   private isAdmin(actor?: { roles?: string[] }) {
     return (actor?.roles ?? []).includes('admin');
   }
@@ -655,6 +906,16 @@ export class ProjectsService {
     }
 
     return parsed.toString();
+  }
+
+  private normalizeSpreadsheetProvider(value: string | undefined): 'google' | undefined {
+    if (!value) return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return undefined;
+    if (normalized === 'google') {
+      return normalized;
+    }
+    throw new BadRequestException('spreadsheetProvider must be google');
   }
 
   private safeUrl(value: string): URL | null {
@@ -770,7 +1031,7 @@ export class ProjectsService {
   private async refreshProjectCounts(projectId: string): Promise<void> {
     const [rowCount, linkedSourceCount] = await Promise.all([
       this.rowModel.countDocuments({ projectId }).exec(),
-      this.rowModel.countDocuments({ projectId, linkedSourceId: { $exists: true, $ne: null } }).exec()
+      this.sourceModel.countDocuments({ projectIds: projectId }).exec()
     ]);
 
     await this.projectModel.updateOne(
@@ -819,6 +1080,9 @@ export class ProjectsService {
       status: project.status,
       rowCount: project.rowCount,
       linkedSourceCount: project.linkedSourceCount,
+      spreadsheetProvider: project.spreadsheetProvider,
+      spreadsheetEmbedUrl: project.spreadsheetEmbedUrl,
+      spreadsheetExternalUrl: project.spreadsheetExternalUrl,
       createdBy: project.createdBy,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,

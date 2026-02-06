@@ -15,7 +15,7 @@ export class Project {
   @Prop({ required: true, trim: true })
   title!: string;
 
-  @Prop({ required: true, default: '', trim: true })
+  @Prop({ default: '', trim: true })
   description!: string;
 
   @Prop({ required: true, index: true, trim: true })
@@ -38,6 +38,15 @@ export class Project {
 
   @Prop({ required: true, trim: true })
   createdBy!: string;
+
+  @Prop({ trim: true, enum: ['google'] })
+  spreadsheetProvider?: 'google';
+
+  @Prop({ trim: true })
+  spreadsheetEmbedUrl?: string;
+
+  @Prop({ trim: true })
+  spreadsheetExternalUrl?: string;
 }
 
 export type ProjectDocument = HydratedDocument<Project>;
