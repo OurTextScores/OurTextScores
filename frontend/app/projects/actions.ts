@@ -19,6 +19,9 @@ export async function createProjectAction(payload: {
   title: string;
   description?: string;
   visibility?: "public" | "private";
+  spreadsheetProvider?: "google" | null;
+  spreadsheetEmbedUrl?: string | null;
+  spreadsheetExternalUrl?: string | null;
 }) {
   try {
     const API_BASE = getApiBase();

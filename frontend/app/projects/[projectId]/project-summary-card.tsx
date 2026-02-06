@@ -118,7 +118,7 @@ export default function ProjectSummaryCard({
           <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
             Description
             <textarea
-              rows={3}
+              rows={6}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"

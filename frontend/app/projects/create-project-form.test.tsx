@@ -27,7 +27,10 @@ describe("CreateProjectForm", () => {
       expect(createProjectAction).toHaveBeenCalledWith({
         title: "Bach Project",
         description: undefined,
-        visibility: "public"
+        visibility: "public",
+        spreadsheetProvider: null,
+        spreadsheetEmbedUrl: null,
+        spreadsheetExternalUrl: null,
       });
     });
 

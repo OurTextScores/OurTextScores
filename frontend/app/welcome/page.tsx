@@ -86,7 +86,7 @@ const waysToContribute = [
 ];
 
 const quickLinks = [
-  { href: "/", label: "Browse Catalogue" },
+  { href: "/catalogue", label: "Browse Catalogue" },
   { href: "/works/upload", label: "Save IMSLP Work" },
   { href: "/upload", label: "Upload New Source" },
   { href: "/projects", label: "Explore Projects" },

@@ -10,6 +10,8 @@ export default function CreateProjectForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [spreadsheetEmbedUrl, setSpreadsheetEmbedUrl] = useState("");
+  const [spreadsheetExternalUrl, setSpreadsheetExternalUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const onSubmit = (e: React.FormEvent) => {
@@ -19,7 +21,10 @@ export default function CreateProjectForm() {
       const result = await createProjectAction({
         title: title.trim(),
         description: description.trim() || undefined,
-        visibility
+        visibility,
+        spreadsheetProvider: spreadsheetEmbedUrl.trim() || spreadsheetExternalUrl.trim() ? "google" : null,
+        spreadsheetEmbedUrl: spreadsheetEmbedUrl.trim() || null,
+        spreadsheetExternalUrl: spreadsheetExternalUrl.trim() || null
       });
       if (!result.ok) {
         if (result.requiresAuth) {
@@ -49,13 +54,7 @@ export default function CreateProjectForm() {
           className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           required
         />
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description"
-          className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-        />
-        <div className="flex gap-2">
+        <div className="flex gap-2 md:col-span-2">
           <select
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as "public" | "private")}
@@ -72,6 +71,31 @@ export default function CreateProjectForm() {
             Create
           </button>
         </div>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={6}
+          placeholder="Description"
+          className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 md:col-span-3"
+        />
+        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-3">
+          Spreadsheet Embed URL
+          <input
+            value={spreadsheetEmbedUrl}
+            onChange={(e) => setSpreadsheetEmbedUrl(e.target.value)}
+            placeholder="https://..."
+            className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+        </label>
+        <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 md:col-span-3">
+          Spreadsheet External URL
+          <input
+            value={spreadsheetExternalUrl}
+            onChange={(e) => setSpreadsheetExternalUrl(e.target.value)}
+            placeholder="https://..."
+            className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+        </label>
       </div>
     </form>
   );
