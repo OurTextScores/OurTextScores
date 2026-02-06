@@ -6,6 +6,9 @@ import { FossilService } from '../fossil/fossil.service';
 import { UploadSourceService } from './upload-source.service';
 import { ProgressService } from '../progress/progress.service';
 import { BadRequestException } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
+import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
 
 function createMockResponse() {
   const headers: Record<string, string> = {};
@@ -90,6 +93,12 @@ describe('WorksController (unit)', () => {
 
       expect(worksService.updateWorkMetadata).toHaveBeenCalledWith('123', { title: 'New Title' });
       expect(result).toEqual(work);
+    });
+
+    it('should require auth and admin guards', () => {
+      const guards = Reflect.getMetadata(GUARDS_METADATA, WorksController.prototype.updateMetadata);
+      expect(guards).toEqual(expect.arrayContaining([AuthRequiredGuard, AdminRequiredGuard]));
+      expect(guards).toHaveLength(2);
     });
   });
 
@@ -699,14 +708,18 @@ describe('WorksController (unit)', () => {
       const sourceId = 'source-1';
       const label = 'Piano Score';
       const description = 'Full piano arrangement';
+      const user = { userId: 'owner-1', roles: ['user'] };
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, label, description);
+      const result = await controller.updateSource(workId, sourceId, label, description, user as any);
 
       expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
         label,
         description
+      }, {
+        userId: user.userId,
+        roles: user.roles
       });
       expect(result).toEqual({ ok: true });
     });
@@ -715,14 +728,18 @@ describe('WorksController (unit)', () => {
       const workId = 'work-1';
       const sourceId = 'source-1';
       const label = 'Vocal Parts';
+      const user = { userId: 'owner-1', roles: ['user'] };
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, label, undefined);
+      const result = await controller.updateSource(workId, sourceId, label, undefined, user as any);
 
       expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
         label,
         description: undefined
+      }, {
+        userId: user.userId,
+        roles: user.roles
       });
       expect(result).toEqual({ ok: true });
     });
@@ -731,14 +748,18 @@ describe('WorksController (unit)', () => {
       const workId = 'work-1';
       const sourceId = 'source-1';
       const description = 'Updated description';
+      const user = { userId: 'owner-1', roles: ['user'] };
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, undefined, description);
+      const result = await controller.updateSource(workId, sourceId, undefined, description, user as any);
 
       expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
         label: undefined,
         description
+      }, {
+        userId: user.userId,
+        roles: user.roles
       });
       expect(result).toEqual({ ok: true });
     });
@@ -746,14 +767,18 @@ describe('WorksController (unit)', () => {
     it('should handle empty updates', async () => {
       const workId = 'work-1';
       const sourceId = 'source-1';
+      const user = { userId: 'owner-1', roles: ['user'] };
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, undefined, undefined);
+      const result = await controller.updateSource(workId, sourceId, undefined, undefined, user as any);
 
       expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
         label: undefined,
         description: undefined
+      }, {
+        userId: user.userId,
+        roles: user.roles
       });
       expect(result).toEqual({ ok: true });
     });

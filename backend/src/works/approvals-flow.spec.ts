@@ -9,6 +9,7 @@ describe('WorksService approvals flow', () => {
   let workModel: jest.Mocked<Partial<Model<Work>>> & any;
   let sourceModel: jest.Mocked<Partial<Model<Source>>> & any;
   let sourceRevisionModel: jest.Mocked<Partial<Model<SourceRevision>>> & any;
+  let projectModel: any;
   let revisionRatingModel: any;
   let revisionCommentModel: any;
   let revisionCommentVoteModel: any;
@@ -26,6 +27,7 @@ describe('WorksService approvals flow', () => {
     workModel = { findOneAndUpdate: jest.fn(), findOne: jest.fn() } as any;
     sourceModel = { updateOne: jest.fn() } as any;
     sourceRevisionModel = { findOne: jest.fn() } as any;
+    projectModel = { find: jest.fn() } as any;
     revisionRatingModel = {} as any;
     revisionCommentModel = {} as any;
     revisionCommentVoteModel = {} as any;
@@ -33,6 +35,7 @@ describe('WorksService approvals flow', () => {
       workModel as any,
       sourceModel as any,
       sourceRevisionModel as any,
+      projectModel as any,
       revisionRatingModel as any,
       revisionCommentModel as any,
       revisionCommentVoteModel as any,

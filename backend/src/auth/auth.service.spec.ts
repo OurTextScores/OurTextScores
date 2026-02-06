@@ -54,6 +54,22 @@ describe('AuthService', () => {
     it('should load secret from config', () => {
       expect(configService.get).toHaveBeenCalledWith('NEXTAUTH_SECRET');
     });
+
+    it('should throw when NEXTAUTH_SECRET is missing', async () => {
+      await expect(
+        Test.createTestingModule({
+          providers: [
+            AuthService,
+            {
+              provide: ConfigService,
+              useValue: {
+                get: jest.fn(() => undefined)
+              }
+            }
+          ]
+        }).compile()
+      ).rejects.toThrow('NEXTAUTH_SECRET is required');
+    });
   });
 
   // Helper function to create valid JWT tokens

@@ -288,30 +288,28 @@ export class UploadSourceService {
 
     this.progress.publish(progressId, 'Updating source summary', 'db.source');
     const setLatest = status === 'approved';
-    await this.sourceModel.updateOne(
-      { workId: trimmedWorkId, sourceId: trimmedSourceId },
-      {
-        $set: {
-          description: request.description ?? existing.description,
-          format,
-          originalFilename: file.originalname,
-          hasReferencePdf,
-          storage: storageLocator,
-          validation: validationState,
-          provenance,
-          // Always update derivatives when they're successfully generated, even for pending revisions
-          // This ensures thumbnails and other derivatives are visible immediately
-          derivatives: derivativeOutcome.derivatives,
-          ...(setLatest ? {
+    if (setLatest) {
+      await this.sourceModel.updateOne(
+        { workId: trimmedWorkId, sourceId: trimmedSourceId },
+        {
+          $set: {
+            description: request.description ?? existing.description,
+            format,
+            originalFilename: file.originalname,
+            hasReferencePdf,
+            storage: storageLocator,
+            validation: validationState,
+            provenance,
+            derivatives: derivativeOutcome.derivatives,
             latestRevisionId: revisionId,
             latestRevisionAt: receivedAt,
             license: request.license ?? existing.license,
             licenseUrl: request.licenseUrl ?? existing.licenseUrl,
             licenseAttribution: request.licenseAttribution ?? existing.licenseAttribution
-          } : {})
+          }
         }
-      }
-    );
+      );
+    }
 
     const formatsForWork = new Set<string>([format]);
     if (derivativeOutcome.derivatives.normalizedMxl) formatsForWork.add('application/vnd.recordare.musicxml');
@@ -660,9 +658,7 @@ export class UploadSourceService {
       storage: storageLocator,
       validation: validationState,
       provenance,
-      // Always set derivatives when successfully generated, even for pending approvals
-      // This ensures thumbnails and other derivatives are visible immediately
-      derivatives: derivativeOutcome.derivatives,
+      derivatives: status === 'approved' ? derivativeOutcome.derivatives : undefined,
       latestRevisionId: status === 'approved' ? revisionId : undefined,
       latestRevisionAt: status === 'approved' ? receivedAt : undefined
     });

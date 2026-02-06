@@ -590,11 +590,16 @@ except Exception:
     }
 
     const revisionsBySource = new Map<string, SourceRevisionView[]>();
+    const totalRevisionsBySource = new Map<string, number>();
     for (const source of sources) {
       revisionsBySource.set(source.sourceId, []);
+      totalRevisionsBySource.set(source.sourceId, 0);
     }
 
     for (const revision of revisions) {
+      const revisionCount = totalRevisionsBySource.get(revision.sourceId) ?? 0;
+      totalRevisionsBySource.set(revision.sourceId, revisionCount + 1);
+
       // Enforce visibility: approved always visible; pending/rejected only to owner/uploader/admin
       const canSee = (() => {
         const status = (revision as any).status || 'approved';
@@ -666,35 +671,56 @@ except Exception:
       }
     }
 
-    const sourceViews: SourceView[] = sources.map((source) => ({
-      sourceId: source.sourceId,
-      label: source.label,
-      sourceType: source.sourceType,
-      format: source.format,
-      description: source.description,
-      originalFilename: source.originalFilename,
-      isPrimary: source.isPrimary,
-      hasReferencePdf: source.hasReferencePdf,
-      adminVerified: (source as any).adminVerified,
-      adminVerifiedBy: (source as any).adminVerifiedBy,
-      adminVerifiedAt: (source as any).adminVerifiedAt,
-      adminVerificationNote: (source as any).adminVerificationNote,
-      adminFlagged: (source as any).adminFlagged,
-      adminFlaggedBy: (source as any).adminFlaggedBy,
-      adminFlaggedAt: (source as any).adminFlaggedAt,
-      adminFlagReason: (source as any).adminFlagReason,
-      projectIds: Array.isArray((source as any).projectIds) ? (source as any).projectIds : [],
-      projectBadges: (Array.isArray((source as any).projectIds) ? (source as any).projectIds : [])
-        .filter((projectId: string) => projectTitleById.has(projectId))
-        .map((projectId: string) => ({ projectId, title: projectTitleById.get(projectId) as string })),
-      storage: source.storage,
-      validation: source.validation,
-      provenance: source.provenance,
-      derivatives: source.derivatives,
-      latestRevisionId: source.latestRevisionId,
-      latestRevisionAt: source.latestRevisionAt ?? undefined,
-      revisions: revisionsBySource.get(source.sourceId) ?? []
-    }));
+    const sourceViews: SourceView[] = [];
+    for (const source of sources) {
+      const visibleRevisions = revisionsBySource.get(source.sourceId) ?? [];
+      const totalRevisionCount = totalRevisionsBySource.get(source.sourceId) ?? 0;
+
+      // Hide sources whose revisions are all non-visible to this viewer
+      // (e.g., pending approval revisions for anonymous users).
+      if (totalRevisionCount > 0 && visibleRevisions.length === 0) {
+        continue;
+      }
+
+      const latestVisibleRevision = visibleRevisions[0];
+      const hasVisibleReferencePdf = visibleRevisions.some((revision) => !!revision.derivatives?.referencePdf);
+      const effectiveDerivatives =
+        latestVisibleRevision?.derivatives ?? (totalRevisionCount === 0 ? source.derivatives : undefined);
+      const effectiveLatestRevisionId =
+        latestVisibleRevision?.revisionId ?? (totalRevisionCount === 0 ? source.latestRevisionId : undefined);
+      const effectiveLatestRevisionAt =
+        latestVisibleRevision?.createdAt ?? (totalRevisionCount === 0 ? source.latestRevisionAt : undefined);
+
+      sourceViews.push({
+        sourceId: source.sourceId,
+        label: source.label,
+        sourceType: source.sourceType,
+        format: source.format,
+        description: source.description,
+        originalFilename: source.originalFilename,
+        isPrimary: source.isPrimary,
+        hasReferencePdf: totalRevisionCount > 0 ? hasVisibleReferencePdf : source.hasReferencePdf,
+        adminVerified: (source as any).adminVerified,
+        adminVerifiedBy: (source as any).adminVerifiedBy,
+        adminVerifiedAt: (source as any).adminVerifiedAt,
+        adminVerificationNote: (source as any).adminVerificationNote,
+        adminFlagged: (source as any).adminFlagged,
+        adminFlaggedBy: (source as any).adminFlaggedBy,
+        adminFlaggedAt: (source as any).adminFlaggedAt,
+        adminFlagReason: (source as any).adminFlagReason,
+        projectIds: Array.isArray((source as any).projectIds) ? (source as any).projectIds : [],
+        projectBadges: (Array.isArray((source as any).projectIds) ? (source as any).projectIds : [])
+          .filter((projectId: string) => projectTitleById.has(projectId))
+          .map((projectId: string) => ({ projectId, title: projectTitleById.get(projectId) as string })),
+        storage: source.storage,
+        validation: source.validation,
+        provenance: source.provenance,
+        derivatives: effectiveDerivatives,
+        latestRevisionId: effectiveLatestRevisionId,
+        latestRevisionAt: effectiveLatestRevisionAt ?? undefined,
+        revisions: visibleRevisions
+      });
+    }
 
     const summary = this.toSummary(work);
 
@@ -1055,8 +1081,51 @@ except Exception:
   async updateSource(
     workId: string,
     sourceId: string,
-    updates: { label?: string; description?: string }
+    updates: { label?: string; description?: string },
+    actor: { userId?: string; roles?: string[] }
   ): Promise<{ ok: boolean }> {
+    const source = await this.sourceModel
+      .findOne({ workId, sourceId })
+      .lean()
+      .exec();
+    if (!source) {
+      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
+    }
+
+    const isAdmin = (actor.roles ?? []).includes('admin');
+    if (!isAdmin) {
+      const userId = actor.userId;
+      if (!userId) {
+        throw new ForbiddenException('Only source owner or admin can update source metadata');
+      }
+
+      const revisions = await this.sourceRevisionModel
+        .find({ workId, sourceId })
+        .select('createdBy')
+        .lean()
+        .exec();
+
+      const distinctCreators = Array.from(
+        new Set(
+          revisions
+            .map((revision) => revision.createdBy)
+            .filter((id): id is string => !!id && id !== 'system')
+        )
+      );
+
+      let isOwner = false;
+      if (distinctCreators.length === 0) {
+        const uploadedBy = (source as any).provenance?.uploadedByUserId as string | undefined;
+        isOwner = !!uploadedBy && uploadedBy === userId;
+      } else if (distinctCreators.length === 1) {
+        isOwner = distinctCreators[0] === userId;
+      }
+
+      if (!isOwner) {
+        throw new ForbiddenException('Only source owner or admin can update source metadata');
+      }
+    }
+
     const payload: Record<string, unknown> = {};
     if (updates.label !== undefined) payload['label'] = updates.label?.trim() || undefined;
     if (updates.description !== undefined) payload['description'] = updates.description?.trim() || undefined;
@@ -1069,10 +1138,6 @@ except Exception:
       )
       .lean()
       .exec();
-
-    if (!updated) {
-      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
-    }
 
     return { ok: true };
   }

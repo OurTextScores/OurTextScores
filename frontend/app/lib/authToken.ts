@@ -18,7 +18,10 @@ export async function getApiAuthHeaders(): Promise<Record<string, string>> {
   }
   const email = session.user.email;
   const name = session.user.name;
-  const secret = process.env.NEXTAUTH_SECRET || "dev-secret";
+  const secret = process.env.NEXTAUTH_SECRET?.trim();
+  if (!secret) {
+    throw new Error("NEXTAUTH_SECRET is not configured");
+  }
   const now = Math.floor(Date.now() / 1000);
   const exp = now + 60 * 60; // 1 hour
 

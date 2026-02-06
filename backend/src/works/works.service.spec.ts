@@ -18,6 +18,7 @@ describe('WorksService (unit, mocked models)', () => {
   let workModel: jest.Mocked<Partial<Model<Work>>> & any;
   let sourceModel: jest.Mocked<Partial<Model<Source>>> & any;
   let sourceRevisionModel: jest.Mocked<Partial<Model<SourceRevision>>> & any;
+  let projectModel: any;
   let revisionRatingModel: any;
   let revisionCommentModel: any;
   let revisionCommentVoteModel: any;
@@ -56,6 +57,9 @@ describe('WorksService (unit, mocked models)', () => {
       updateOne: jest.fn(),
       deleteMany: jest.fn(),
     } as any;
+    projectModel = {
+      find: jest.fn(),
+    } as any;
     revisionRatingModel = { find: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
     revisionCommentModel = { find: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
     revisionCommentVoteModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
@@ -64,6 +68,7 @@ describe('WorksService (unit, mocked models)', () => {
       workModel as any,
       sourceModel as any,
       sourceRevisionModel as any,
+      projectModel as any,
       revisionRatingModel as any,
       revisionCommentModel as any,
       revisionCommentVoteModel as any,
@@ -679,6 +684,89 @@ describe('WorksService (unit, mocked models)', () => {
     expect(detail.sources[0].revisions).toHaveLength(2);
   });
 
+  it('getWorkDetail hides sources with no visible revisions for the viewer', async () => {
+    const work = { workId: '300', sourceCount: 1, availableFormats: ['text/plain'], latestRevisionAt: new Date('2024-06-01') };
+    const sources = [{ workId: '300', sourceId: 's1' }];
+    const revisions = [
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r2',
+        sequenceNumber: 2,
+        createdAt: new Date('2024-06-01'),
+        createdBy: 'owner-user',
+        status: 'pending_approval',
+        approval: { ownerUserId: 'owner-user' },
+        rawStorage: { bucket: 'b', objectKey: 'rk', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'aa' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
+        checksum: { algorithm: 'sha256', hexDigest: 'aa' },
+        validationSnapshot: { status: 'passed', issues: [] },
+        derivatives: {},
+      },
+    ];
+    (workModel.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(work) }) });
+    (sourceModel.find as jest.Mock).mockReturnValue(chain(sources as any));
+    (sourceRevisionModel.find as jest.Mock).mockReturnValue(chain(revisions as any));
+
+    const detail = await service.getWorkDetail('300', { userId: 'other-user' });
+    expect(detail.sources).toHaveLength(0);
+  });
+
+  it('getWorkDetail uses latest visible revision derivatives (not pending)', async () => {
+    const work = { workId: '300', sourceCount: 1, availableFormats: ['text/plain'], latestRevisionAt: new Date('2024-06-01') };
+    const sources = [
+      {
+        workId: '300',
+        sourceId: 's1',
+        derivatives: {
+          canonicalXml: { bucket: 'b', objectKey: 'pending-canonical', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'pp' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        }
+      }
+    ];
+    const revisions = [
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r3',
+        sequenceNumber: 3,
+        createdAt: new Date('2024-07-01'),
+        createdBy: 'owner-user',
+        status: 'pending_approval',
+        approval: { ownerUserId: 'owner-user' },
+        rawStorage: { bucket: 'b', objectKey: 'raw-3', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '33' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
+        checksum: { algorithm: 'sha256', hexDigest: '33' },
+        validationSnapshot: { status: 'passed', issues: [] },
+        derivatives: {
+          canonicalXml: { bucket: 'b', objectKey: 'pending-canonical', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'pp' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        },
+      },
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r2',
+        sequenceNumber: 2,
+        createdAt: new Date('2024-06-01'),
+        createdBy: 'owner-user',
+        status: 'approved',
+        rawStorage: { bucket: 'b', objectKey: 'raw-2', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '22' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
+        checksum: { algorithm: 'sha256', hexDigest: '22' },
+        validationSnapshot: { status: 'passed', issues: [] },
+        derivatives: {
+          canonicalXml: { bucket: 'b', objectKey: 'approved-canonical', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'aa' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        },
+      },
+    ];
+
+    (workModel.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(work) }) });
+    (sourceModel.find as jest.Mock).mockReturnValue(chain(sources as any));
+    (sourceRevisionModel.find as jest.Mock).mockReturnValue(chain(revisions as any));
+
+    const detail = await service.getWorkDetail('300', { userId: 'anonymous-viewer' });
+    expect(detail.sources).toHaveLength(1);
+    expect(detail.sources[0].revisions).toHaveLength(1);
+    expect(detail.sources[0].revisions[0].revisionId).toBe('r2');
+    expect(detail.sources[0].derivatives?.canonicalXml?.objectKey).toBe('approved-canonical');
+  });
+
   describe('updateSource', () => {
     it('should update source label and description', async () => {
       const workId = 'work-1';
@@ -686,13 +774,29 @@ describe('WorksService (unit, mocked models)', () => {
       const updates = { label: 'Piano Score', description: 'Full piano arrangement' };
       const updatedSource = { workId, sourceId, label: 'Piano Score', description: 'Full piano arrangement' };
 
+      sourceModel.findOne = jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            workId,
+            sourceId,
+            provenance: { uploadedByUserId: 'owner-1' }
+          })
+        })
+      });
+      sourceRevisionModel.find = jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([{ createdBy: 'owner-1' }])
+          })
+        })
+      });
       sourceModel.findOneAndUpdate = jest.fn().mockReturnValue({
         lean: jest.fn().mockReturnValue({
           exec: jest.fn().mockResolvedValue(updatedSource)
         })
       });
 
-      const result = await service.updateSource(workId, sourceId, updates);
+      const result = await service.updateSource(workId, sourceId, updates, { userId: 'owner-1', roles: ['user'] });
 
       expect(sourceModel.findOneAndUpdate).toHaveBeenCalledWith(
         { workId, sourceId },
@@ -702,19 +806,28 @@ describe('WorksService (unit, mocked models)', () => {
       expect(result).toEqual({ ok: true });
     });
 
-    it('should handle empty strings as undefined', async () => {
+    it('should allow admin updates and handle empty strings as undefined', async () => {
       const workId = 'work-1';
       const sourceId = 'source-1';
       const updates = { label: '  ', description: '' };
       const updatedSource = { workId, sourceId, label: undefined, description: undefined };
 
+      sourceModel.findOne = jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            workId,
+            sourceId,
+            provenance: { uploadedByUserId: 'owner-1' }
+          })
+        })
+      });
       sourceModel.findOneAndUpdate = jest.fn().mockReturnValue({
         lean: jest.fn().mockReturnValue({
           exec: jest.fn().mockResolvedValue(updatedSource)
         })
       });
 
-      const result = await service.updateSource(workId, sourceId, updates);
+      const result = await service.updateSource(workId, sourceId, updates, { userId: 'admin-1', roles: ['admin'] });
 
       expect(sourceModel.findOneAndUpdate).toHaveBeenCalledWith(
         { workId, sourceId },
@@ -729,35 +842,69 @@ describe('WorksService (unit, mocked models)', () => {
       const sourceId = 'nonexistent';
       const updates = { label: 'Test' };
 
-      sourceModel.findOneAndUpdate = jest.fn().mockReturnValue({
+      sourceModel.findOne = jest.fn().mockReturnValue({
         lean: jest.fn().mockReturnValue({
           exec: jest.fn().mockResolvedValue(null)
         })
       });
 
-      await expect(service.updateSource(workId, sourceId, updates)).rejects.toThrow('Source nonexistent not found in work work-1');
+      await expect(
+        service.updateSource(workId, sourceId, updates, { userId: 'owner-1', roles: ['user'] })
+      ).rejects.toThrow('Source nonexistent not found in work work-1');
     });
 
-    it('should update only label when description not provided', async () => {
+    it('should throw forbidden for non-owner non-admin user', async () => {
       const workId = 'work-1';
       const sourceId = 'source-1';
       const updates = { label: 'Vocal Parts' };
-      const updatedSource = { workId, sourceId, label: 'Vocal Parts' };
 
-      sourceModel.findOneAndUpdate = jest.fn().mockReturnValue({
+      sourceModel.findOne = jest.fn().mockReturnValue({
         lean: jest.fn().mockReturnValue({
-          exec: jest.fn().mockResolvedValue(updatedSource)
+          exec: jest.fn().mockResolvedValue({
+            workId,
+            sourceId,
+            provenance: { uploadedByUserId: 'owner-1' }
+          })
+        })
+      });
+      sourceRevisionModel.find = jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([{ createdBy: 'owner-1' }])
+          })
         })
       });
 
-      const result = await service.updateSource(workId, sourceId, updates);
+      await expect(
+        service.updateSource(workId, sourceId, updates, { userId: 'someone-else', roles: ['user'] })
+      ).rejects.toThrow('Only source owner or admin can update source metadata');
+    });
 
-      expect(sourceModel.findOneAndUpdate).toHaveBeenCalledWith(
-        { workId, sourceId },
-        { $set: { label: 'Vocal Parts' } },
-        { new: true }
-      );
-      expect(result).toEqual({ ok: true });
+    it('should throw forbidden for non-admin when source has revisions from multiple users', async () => {
+      const workId = 'work-1';
+      const sourceId = 'source-1';
+      const updates = { label: 'Updated Label' };
+
+      sourceModel.findOne = jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({
+            workId,
+            sourceId,
+            provenance: { uploadedByUserId: 'owner-1' }
+          })
+        })
+      });
+      sourceRevisionModel.find = jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue([{ createdBy: 'user-a' }, { createdBy: 'user-b' }])
+          })
+        })
+      });
+
+      await expect(
+        service.updateSource(workId, sourceId, updates, { userId: 'owner-1', roles: ['user'] })
+      ).rejects.toThrow('Only source owner or admin can update source metadata');
     });
   });
 });

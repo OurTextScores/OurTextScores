@@ -206,6 +206,7 @@ export class WorksController {
   }
 
   @Post(":workId/metadata")
+  @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
   updateMetadata(
     @Param('workId') workId: string,
     @Body('title') title?: string,
@@ -267,7 +268,7 @@ export class WorksController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Update source metadata',
-    description: 'Update the label and/or description of a source. Requires authentication.'
+    description: 'Update the label and/or description of a source. Requires source owner or admin role.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -282,14 +283,16 @@ export class WorksController {
   })
   @ApiResponse({ status: 200, description: 'Source updated successfully', schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } } })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only source owner or admin can update source' })
   @ApiResponse({ status: 404, description: 'Source not found' })
   updateSource(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body('label') label?: string,
-    @Body('description') description?: string
+    @Body('description') description?: string,
+    @CurrentUser() user?: RequestUser
   ) {
-    return this.worksService.updateSource(workId, sourceId, { label, description });
+    return this.worksService.updateSource(workId, sourceId, { label, description }, { userId: user?.userId, roles: user?.roles });
   }
 
   @Get(":workId/sources/:sourceId/normalized.mxl")

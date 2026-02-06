@@ -21,8 +21,11 @@ function base64UrlDecode(input: string): Buffer {
 export class AuthService {
   private readonly secret: string;
   constructor(private readonly config: ConfigService) {
-    const nextAuthSecret = this.config.get<string>('NEXTAUTH_SECRET');
-    this.secret = nextAuthSecret || 'dev-secret';
+    const nextAuthSecret = this.config.get<string>('NEXTAUTH_SECRET')?.trim();
+    if (!nextAuthSecret) {
+      throw new Error('NEXTAUTH_SECRET is required');
+    }
+    this.secret = nextAuthSecret;
   }
 
   extractToken(authHeader?: string): string | null {
