@@ -105,6 +105,12 @@ export class Source {
 
   @Prop({ trim: true })
   adminFlagReason?: string;
+
+  @Prop({ type: [String], default: [] })
+  projectIds?: string[];
+
+  @Prop({ required: true, min: 0, default: 0 })
+  projectLinkCount?: number;
 }
 
 export type SourceDocument = HydratedDocument<Source>;
@@ -113,3 +119,4 @@ export const SourceSchema = SchemaFactory.createForClass(Source);
 SourceSchema.index({ workId: 1, latestRevisionAt: -1 });
 // Lookup sources uploaded by a specific user
 SourceSchema.index({ 'provenance.uploadedByUserId': 1, workId: 1 });
+SourceSchema.index({ projectIds: 1 });

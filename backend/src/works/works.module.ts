@@ -20,6 +20,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { WatchesModule } from '../watches/watches.module';
 import { SearchModule } from '../search/search.module';
 import { UsersModule } from '../users/users.module';
+import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 
 @Module({
   imports: [
@@ -39,7 +40,8 @@ import { UsersModule } from '../users/users.module';
       { name: SourceRevision.name, schema: SourceRevisionSchema },
       { name: RevisionRating.name, schema: RevisionRatingSchema },
       { name: RevisionComment.name, schema: RevisionCommentSchema },
-      { name: RevisionCommentVote.name, schema: RevisionCommentVoteSchema }
+      { name: RevisionCommentVote.name, schema: RevisionCommentVoteSchema },
+      { name: Project.name, schema: ProjectSchema }
     ])
   ],
   controllers: [WorksController],

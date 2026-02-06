@@ -39,6 +39,7 @@ import { SearchService } from '../search/search.service';
 import { UsersService } from '../users/users.service';
 import { ImslpWorkDto } from '../imslp/dto/imslp-work.dto';
 import { BranchesService } from '../branches/branches.service';
+import { Project, ProjectDocument } from '../projects/schemas/project.schema';
 
 export interface WorkSummary {
   workId: string;
@@ -97,6 +98,8 @@ export interface SourceView {
   adminFlaggedBy?: string;
   adminFlaggedAt?: Date;
   adminFlagReason?: string;
+  projectIds?: string[];
+  projectBadges?: Array<{ projectId: string; title: string }>;
   storage: StorageLocator;
   validation: ValidationState;
   provenance: Source['provenance'];
@@ -130,6 +133,8 @@ export class WorksService {
     private readonly sourceModel: Model<SourceDocument>,
     @InjectModel(SourceRevision.name)
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>,
+    @InjectModel(Project.name)
+    private readonly projectModel: Model<ProjectDocument>,
     @InjectModel(RevisionRating.name)
     private readonly revisionRatingModel: Model<RevisionRatingDocument>,
     @InjectModel(RevisionComment.name)
@@ -640,6 +645,27 @@ except Exception:
       }
     }
 
+    const allProjectIds = Array.from(
+      new Set(
+        sources.flatMap((source: any) =>
+          Array.isArray(source.projectIds) ? source.projectIds.filter(Boolean) : []
+        )
+      )
+    );
+    const projectTitleById = new Map<string, string>();
+    if (allProjectIds.length > 0) {
+      const projects = await this.projectModel
+        .find({ projectId: { $in: allProjectIds } })
+        .select('projectId title')
+        .lean()
+        .exec();
+      for (const project of projects as any[]) {
+        if (project?.projectId && project?.title) {
+          projectTitleById.set(String(project.projectId), String(project.title));
+        }
+      }
+    }
+
     const sourceViews: SourceView[] = sources.map((source) => ({
       sourceId: source.sourceId,
       label: source.label,
@@ -657,6 +683,10 @@ except Exception:
       adminFlaggedBy: (source as any).adminFlaggedBy,
       adminFlaggedAt: (source as any).adminFlaggedAt,
       adminFlagReason: (source as any).adminFlagReason,
+      projectIds: Array.isArray((source as any).projectIds) ? (source as any).projectIds : [],
+      projectBadges: (Array.isArray((source as any).projectIds) ? (source as any).projectIds : [])
+        .filter((projectId: string) => projectTitleById.has(projectId))
+        .map((projectId: string) => ({ projectId, title: projectTitleById.get(projectId) as string })),
       storage: source.storage,
       validation: source.validation,
       provenance: source.provenance,

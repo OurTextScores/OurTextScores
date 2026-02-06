@@ -153,6 +153,8 @@ export interface SourceView {
   adminFlaggedBy?: string;
   adminFlaggedAt?: string;
   adminFlagReason?: string;
+  projectIds?: string[];
+  projectBadges?: Array<{ projectId: string; title: string }>;
   storage: StorageLocator;
   validation: ValidationState;
   provenance: {
@@ -579,6 +581,119 @@ export async function searchWorks(
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       return { works: [], total: 0, limit, offset, query: trimmed };
+    }
+    throw error;
+  }
+}
+
+export interface ProjectUserRef {
+  userId: string;
+  username?: string;
+  displayName?: string;
+}
+
+export interface ProjectSummary {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  visibility: "public" | "private";
+  status: "active" | "archived";
+  rowCount: number;
+  linkedSourceCount: number;
+  createdBy: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lead: ProjectUserRef;
+  members: ProjectUserRef[];
+}
+
+export interface PaginatedProjectsResponse {
+  projects: ProjectSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ProjectRow {
+  projectId: string;
+  rowId: string;
+  externalScoreUrl?: string;
+  imslpUrl?: string;
+  linkedWorkId?: string;
+  linkedSourceId?: string;
+  linkedRevisionId?: string;
+  hasReferencePdf: boolean;
+  verified: boolean;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  notes?: string;
+  createdBy: string;
+  updatedBy: string;
+  rowVersion: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaginatedProjectRowsResponse {
+  rows: ProjectRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function fetchProjects(options?: {
+  limit?: number;
+  offset?: number;
+  status?: "active" | "archived";
+  q?: string;
+}): Promise<PaginatedProjectsResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
+    if (options?.offset !== undefined) params.set("offset", String(options.offset));
+    if (options?.status) params.set("status", options.status);
+    if (options?.q) params.set("q", options.q);
+    const url = `${getApiBase()}/projects${params.toString() ? `?${params.toString()}` : ""}`;
+    return await fetchJson<PaginatedProjectsResponse>(url);
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      return { projects: [], total: 0, limit: options?.limit ?? 20, offset: options?.offset ?? 0 };
+    }
+    throw error;
+  }
+}
+
+export async function fetchProjectDetail(projectId: string): Promise<ProjectSummary> {
+  try {
+    return await fetchJson<ProjectSummary>(`${getApiBase()}/projects/${encodeURIComponent(projectId)}`, {
+      cache: "no-store",
+      next: { revalidate: 0 }
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      throw error;
+    }
+    throw error;
+  }
+}
+
+export async function fetchProjectRows(
+  projectId: string,
+  options?: { limit?: number; offset?: number }
+): Promise<PaginatedProjectRowsResponse> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.limit !== undefined) params.set("limit", String(options.limit));
+    if (options?.offset !== undefined) params.set("offset", String(options.offset));
+    const url = `${getApiBase()}/projects/${encodeURIComponent(projectId)}/rows${params.toString() ? `?${params.toString()}` : ""}`;
+    return await fetchJson<PaginatedProjectRowsResponse>(url, {
+      cache: "no-store",
+      next: { revalidate: 0 }
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      return { rows: [], total: 0, limit: options?.limit ?? 50, offset: options?.offset ?? 0 };
     }
     throw error;
   }

@@ -612,6 +612,20 @@ export default function SourceCard({
                             ⚠️ Flagged for Deletion
                         </span>
                     )}
+                    {(source.projectBadges ?? []).slice(0, 2).map((project) => (
+                        <Link
+                            key={project.projectId}
+                            href={`/projects/${encodeURIComponent(project.projectId)}`}
+                            className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200 transition hover:bg-violet-100 dark:bg-violet-500/20 dark:text-violet-200 dark:ring-violet-400/40 dark:hover:bg-violet-500/30"
+                        >
+                            {project.title}
+                        </Link>
+                    ))}
+                    {(source.projectBadges?.length ?? 0) > 2 && (
+                        <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-200 dark:bg-violet-500/20 dark:text-violet-200 dark:ring-violet-400/40">
+                            +{(source.projectBadges?.length ?? 0) - 2}
+                        </span>
+                    )}
                     {source.derivatives?.mscz && (
                         <Link
                             href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.mscz`}
