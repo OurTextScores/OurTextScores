@@ -25,11 +25,18 @@ describe('ProjectsService (unit, mocked models)', () => {
   let sourceModel: jest.Mocked<Partial<Model<Source>>> & any;
   let workModel: jest.Mocked<Partial<Model<Work>>> & any;
   let userModel: jest.Mocked<Partial<Model<User>>> & any;
-  const imslpService = { ensureByPermalink: jest.fn() } as any;
+  const worksService = {
+    ensureWork: jest.fn(),
+    ensureWorkWithMetadata: jest.fn(),
+    saveWorkByImslpUrl: jest.fn()
+  } as any;
   const uploadSourceService = { upload: jest.fn() } as any;
 
   beforeEach(() => {
     jest.resetAllMocks();
+    worksService.ensureWork.mockResolvedValue({});
+    worksService.ensureWorkWithMetadata.mockResolvedValue({ work: { workId: '5000' } });
+    worksService.saveWorkByImslpUrl.mockResolvedValue({ work: { workId: '5000' } });
 
     projectModel = {
       exists: jest.fn(),
@@ -80,7 +87,7 @@ describe('ProjectsService (unit, mocked models)', () => {
       sourceModel as any,
       workModel as any,
       userModel as any,
-      imslpService,
+      worksService,
       uploadSourceService
     );
   });
@@ -272,6 +279,7 @@ describe('ProjectsService (unit, mocked models)', () => {
       { userId: 'member_1', roles: ['user'] }
     );
 
+    expect(worksService.ensureWorkWithMetadata).toHaveBeenCalledWith('5000');
     expect(sourceModel.create).toHaveBeenCalledWith(
       expect.objectContaining({
         label: 'K279-1.mscx',
@@ -284,6 +292,49 @@ describe('ProjectsService (unit, mocked models)', () => {
       })
     );
     expect(out).toEqual(expect.objectContaining({ ok: true, workId: '5000' }));
+  });
+
+  it('createInternalSource resolves workId via IMSLP URL using saveWorkByImslpUrl', async () => {
+    projectModel.findOne.mockReturnValueOnce(leanExec({
+      projectId: 'prj_1',
+      title: 'Proj',
+      leadUserId: 'lead_1',
+      memberUserIds: ['member_1'],
+      visibility: 'public',
+      status: 'active'
+    }));
+    rowModel.findOne.mockReturnValueOnce(leanExec({
+      projectId: 'prj_1',
+      rowId: 'row_1',
+      externalScoreUrl: 'https://example.org/source.mscx',
+      imslpUrl: 'https://imslp.org/wiki/Example_Work',
+      notes: '',
+      hasReferencePdf: false
+    }));
+
+    worksService.saveWorkByImslpUrl.mockResolvedValueOnce({ work: { workId: '81234' } });
+    sourceModel.exists.mockResolvedValue(false);
+    sourceModel.create.mockResolvedValue({} as any);
+    workModel.findOneAndUpdate.mockReturnValue(leanExec({}));
+    workModel.updateOne.mockReturnValue(leanExec({}));
+    sourceModel.updateOne.mockReturnValue(leanExec({}));
+    projectModel.updateOne.mockReturnValue(leanExec({}));
+    sourceModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue(leanExec({ projectIds: ['prj_1'] }))
+    } as any);
+    rowModel.findOneAndUpdate.mockReturnValue(leanExec({ rowId: 'row_1', rowVersion: 2 }));
+    rowModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(1) } as any);
+    sourceModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(1) } as any);
+
+    const out = await service.createInternalSource(
+      'prj_1',
+      'row_1',
+      {},
+      { userId: 'member_1', roles: ['user'] }
+    );
+
+    expect(worksService.saveWorkByImslpUrl).toHaveBeenCalledWith('https://imslp.org/wiki/Example_Work');
+    expect(out).toEqual(expect.objectContaining({ ok: true, workId: '81234' }));
   });
 
   it('joinProject adds user to members when eligible', async () => {

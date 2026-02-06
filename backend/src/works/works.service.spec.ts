@@ -225,16 +225,61 @@ describe('WorksService (unit, mocked models)', () => {
     await expect(service.getWorkDetail('non-existent')).rejects.toThrow('Work non-existent not found');
   });
 
+  it('getWorkDetail hydrates missing work metadata from IMSLP', async () => {
+    const workId = '54321';
+    (workModel.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve({ workId, sourceCount: 0, availableFormats: [] }) })
+    });
+    imslpService.ensureByWorkId.mockResolvedValue({
+      metadata: {
+        workId,
+        title: 'Prelude in C major, BWV 846 (Bach, Johann Sebastian)',
+        composer: undefined,
+        permalink: '',
+        metadata: {}
+      }
+    });
+    workModel.findOneAndUpdate.mockReturnValue({
+      exec: () =>
+        Promise.resolve({
+          workId,
+          sourceCount: 0,
+          availableFormats: [],
+          title: 'Prelude in C major',
+          composer: 'Bach, Johann Sebastian',
+          catalogNumber: 'BWV 846'
+        })
+    });
+    sourceModel.find.mockReturnValue({
+      sort: () => ({ lean: () => ({ exec: () => Promise.resolve([]) }) })
+    });
+    sourceRevisionModel.find.mockReturnValue({
+      sort: () => ({ lean: () => ({ exec: () => Promise.resolve([]) }) })
+    });
+
+    const detail = await service.getWorkDetail(workId);
+
+    expect(imslpService.ensureByWorkId).toHaveBeenCalledWith(workId);
+    expect(detail.title).toBe('Prelude in C major');
+    expect(detail.composer).toBe('Bach, Johann Sebastian');
+    expect(detail.catalogNumber).toBe('BWV 846');
+  });
+
 
   it('ensureWorkWithMetadata returns work and metadata', async () => {
     const workId = '12345';
     const metadata = { workId, title: 'Test Work', composer: 'Test Composer', permalink: '', metadata: {} };
     const workDoc = { workId, sourceCount: 0, availableFormats: [] };
+    const hydratedWorkDoc = { ...workDoc, title: 'Test Work', composer: 'Test Composer' };
 
     imslpService.ensureByWorkId.mockResolvedValue({ metadata });
-    workModel.findOneAndUpdate.mockReturnValue({
-      exec: () => Promise.resolve(workDoc)
-    });
+    workModel.findOneAndUpdate
+      .mockReturnValueOnce({
+        exec: () => Promise.resolve(workDoc)
+      })
+      .mockReturnValueOnce({
+        exec: () => Promise.resolve(hydratedWorkDoc)
+      });
 
     const result = await service.ensureWorkWithMetadata(workId);
 
@@ -244,12 +289,17 @@ describe('WorksService (unit, mocked models)', () => {
       workId,
       sourceCount: 0,
       availableFormats: [],
-      title: undefined,
-      composer: undefined,
+      title: 'Test Work',
+      composer: 'Test Composer',
       catalogNumber: undefined,
       latestRevisionAt: undefined
     });
     expect(result.metadata).toEqual(metadata);
+    expect(searchService.indexWork).toHaveBeenCalledWith(expect.objectContaining({
+      workId,
+      title: 'Test Work',
+      composer: 'Test Composer'
+    }));
   });
 
   it('ensureWorkWithMetadata throws for invalid workId', async () => {
@@ -261,18 +311,78 @@ describe('WorksService (unit, mocked models)', () => {
     const workId = '12345';
     const metadata = { workId, title: 'Test Work', composer: 'Test Composer', permalink: '', metadata: { basic_info: { page_id: workId }, files: [{}] } };
     const workDoc = { workId, sourceCount: 0, availableFormats: [] };
+    const hydratedWorkDoc = { ...workDoc, title: 'Test Work', composer: 'Test Composer' };
 
     jest.spyOn(service as any, 'resolvePageIdStrict').mockResolvedValue(workId);
     imslpService.ensureByPermalink.mockResolvedValue({ metadata });
     imslpService.ensureByWorkId.mockResolvedValue({ metadata });
-    workModel.findOneAndUpdate.mockReturnValue({
-      exec: () => Promise.resolve(workDoc)
-    });
+    workModel.findOneAndUpdate
+      .mockReturnValueOnce({
+        exec: () => Promise.resolve(workDoc)
+      })
+      .mockReturnValueOnce({
+        exec: () => Promise.resolve(hydratedWorkDoc)
+      });
 
     const result = await service.saveWorkByImslpUrl(url);
 
-    expect(result.work.workId).toEqual(workId);
+    expect(result.work).toEqual({
+      workId,
+      sourceCount: 0,
+      availableFormats: [],
+      title: 'Test Work',
+      composer: 'Test Composer',
+      catalogNumber: undefined,
+      latestRevisionAt: undefined,
+      hasReferencePdf: undefined,
+      hasVerifiedSources: undefined,
+      hasFlaggedSources: undefined
+    });
     expect(result.metadata).toEqual(metadata);
+  });
+
+  it('saveWorkByImslpUrl parses standardized IMSLP title into title/catalog/composer', async () => {
+    const url = 'https://imslp.org/wiki/Piano_Sonata_No.1_in_C_major%2C_K.279%2F189d_(Mozart%2C_Wolfgang_Amadeus)';
+    const workId = '177777';
+    const metadata = {
+      workId,
+      title: 'Piano Sonata No.1 in C major, K.279/189d (Mozart, Wolfgang Amadeus)',
+      composer: undefined,
+      permalink: '',
+      metadata: { basic_info: { page_id: workId }, files: [{}] }
+    };
+    const workDoc = { workId, sourceCount: 0, availableFormats: [] };
+    const hydratedWorkDoc = {
+      ...workDoc,
+      title: 'Piano Sonata No.1 in C major',
+      composer: 'Mozart, Wolfgang Amadeus',
+      catalogNumber: 'K.279/189d'
+    };
+
+    jest.spyOn(service as any, 'resolvePageIdStrict').mockResolvedValue(workId);
+    imslpService.ensureByPermalink.mockResolvedValue({ metadata });
+    imslpService.ensureByWorkId.mockResolvedValue({ metadata });
+    workModel.findOneAndUpdate
+      .mockReturnValueOnce({
+        exec: () => Promise.resolve(workDoc)
+      })
+      .mockReturnValueOnce({
+        exec: () => Promise.resolve(hydratedWorkDoc)
+      });
+
+    const result = await service.saveWorkByImslpUrl(url);
+
+    expect(result.work.title).toBe('Piano Sonata No.1 in C major');
+    expect(result.work.catalogNumber).toBe('K.279/189d');
+    expect(result.work.composer).toBe('Mozart, Wolfgang Amadeus');
+    expect(searchService.indexWork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workId,
+        title: 'Piano Sonata No.1 in C major',
+        composer: 'Mozart, Wolfgang Amadeus',
+        catalogNumber: 'K.279/189d'
+      })
+    );
   });
 
   it('saveWorkByImslpUrl throws for unresolvable URL', async () => {

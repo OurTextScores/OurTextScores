@@ -10,13 +10,13 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomUUID } from 'node:crypto';
-import { ImslpService } from '../imslp/imslp.service';
 import { Project, ProjectDocument } from './schemas/project.schema';
 import { ProjectSourceRow, ProjectSourceRowDocument } from './schemas/project-source-row.schema';
 import { Source, SourceDocument } from '../works/schemas/source.schema';
 import { Work, WorkDocument } from '../works/schemas/work.schema';
 import type { UploadSourceRequest, UploadSourceService } from '../works/upload-source.service';
 import { User, UserDocument } from '../users/schemas/user.schema';
+import { WorksService } from '../works/works.service';
 
 export const UPLOAD_SOURCE_SERVICE = 'UPLOAD_SOURCE_SERVICE';
 
@@ -63,7 +63,7 @@ export class ProjectsService {
     private readonly workModel: Model<WorkDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
-    private readonly imslpService: ImslpService,
+    private readonly worksService: WorksService,
     @Inject(UPLOAD_SOURCE_SERVICE)
     private readonly uploadSourceService: Pick<UploadSourceService, 'upload'>
   ) {}
@@ -350,8 +350,26 @@ export class ProjectsService {
           .lean()
           .exec()
       : [];
-    const workById = new Map<string, any>();
+
     for (const work of works as any[]) {
+      if (work?.workId && (!work.title || !work.composer)) {
+        try {
+          await this.worksService.ensureWorkWithMetadata(String(work.workId));
+        } catch {
+          // Best-effort hydration only.
+        }
+      }
+    }
+
+    const hydratedWorks = workIds.length > 0
+      ? await this.workModel
+          .find({ workId: { $in: workIds } })
+          .select('workId title composer catalogNumber')
+          .lean()
+          .exec()
+      : [];
+    const workById = new Map<string, any>();
+    for (const work of hydratedWorks as any[]) {
       workById.set(String(work.workId), work);
     }
 
@@ -821,6 +839,12 @@ export class ProjectsService {
   private async resolveWorkId(payload: { workId?: string; imslpUrl?: string }): Promise<string> {
     const explicitWorkId = payload.workId?.trim();
     if (explicitWorkId) {
+      try {
+        await this.worksService.ensureWorkWithMetadata(explicitWorkId);
+      } catch {
+        // Fallback for legacy/manual records with missing IMSLP metadata.
+        await this.worksService.ensureWork(explicitWorkId);
+      }
       return explicitWorkId;
     }
 
@@ -829,11 +853,11 @@ export class ProjectsService {
       throw new UnprocessableEntityException('workId or imslpUrl is required');
     }
 
-    const ensured = await this.imslpService.ensureByPermalink(candidateUrl);
-    if (!ensured?.workId) {
+    const ensured = await this.worksService.saveWorkByImslpUrl(candidateUrl);
+    if (!ensured?.work?.workId) {
       throw new UnprocessableEntityException('could not resolve workId from imslpUrl');
     }
-    return ensured.workId;
+    return ensured.work.workId;
   }
 
   private async canToggleVerified(project: ProjectDocLean, row: any, actor: Actor): Promise<boolean> {

@@ -265,9 +265,10 @@ export class WorksService {
     }
     const metadataResult = await this.imslpService.ensureByWorkId(workId);
     const workDocument = await this.ensureWork(workId);
+    const hydratedWork = await this.hydrateWorkMetadataFromImslp(workDocument, metadataResult.metadata);
 
     return {
-      work: this.toSummary(workDocument),
+      work: this.toSummary(hydratedWork),
       metadata: metadataResult.metadata
     };
   }
@@ -302,9 +303,10 @@ export class WorksService {
     // Create Work only after successful enrichment
     const workDoc = await this.ensureWork(finalWorkId);
     const metadataResult = await this.imslpService.ensureByWorkId(finalWorkId);
+    const hydratedWork = await this.hydrateWorkMetadataFromImslp(workDoc, metadataResult.metadata);
 
     return {
-      work: this.toSummary(workDoc),
+      work: this.toSummary(hydratedWork),
       metadata: metadataResult.metadata
     };
   }
@@ -542,9 +544,19 @@ except Exception:
   }
 
   async getWorkDetail(workId: string, viewer?: ViewerContext): Promise<WorkDetail> {
-    const work = await this.workModel.findOne({ workId }).lean().exec();
+    let work = await this.workModel.findOne({ workId }).lean().exec();
     if (!work) {
       throw new NotFoundException(`Work ${workId} not found`);
+    }
+
+    if (!work.title || !work.composer) {
+      try {
+        const metadataResult = await this.imslpService.ensureByWorkId(workId);
+        const hydrated = await this.hydrateWorkMetadataFromImslp(work as any, metadataResult.metadata);
+        work = hydrated as any;
+      } catch {
+        // Keep existing work details if metadata enrichment fails.
+      }
     }
 
     const sources = await this.sourceModel
@@ -949,6 +961,95 @@ except Exception:
       composer: (work as any).composer ?? undefined,
       catalogNumber: (work as any).catalogNumber ?? undefined
     };
+  }
+
+  private async hydrateWorkMetadataFromImslp(
+    work: Pick<Work, 'workId' | 'sourceCount' | 'availableFormats'> &
+      Partial<Pick<Work, 'latestRevisionAt' | 'title' | 'composer' | 'catalogNumber'>>,
+    metadata: ImslpWorkDto
+  ): Promise<Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> & Partial<Work>> {
+    const parsed = this.parseImslpMetadata(metadata);
+    const update: Record<string, string> = {};
+
+    if (!work.title?.trim() && parsed.title) {
+      update['title'] = parsed.title;
+    }
+    if (!work.composer?.trim() && parsed.composer) {
+      update['composer'] = parsed.composer;
+    }
+    if (!work.catalogNumber?.trim() && parsed.catalogNumber) {
+      update['catalogNumber'] = parsed.catalogNumber;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return work;
+    }
+
+    const updated = await this.workModel
+      .findOneAndUpdate(
+        { workId: work.workId },
+        { $set: update },
+        { new: true, upsert: false }
+      )
+      .exec();
+
+    if (!updated) {
+      return work;
+    }
+
+    await this.indexWork(this.toSummary(updated));
+    return updated;
+  }
+
+  private parseImslpMetadata(metadata: ImslpWorkDto): {
+    title?: string;
+    composer?: string;
+    catalogNumber?: string;
+  } {
+    const rawTitle = metadata.title?.trim() || undefined;
+    const rawComposer = metadata.composer?.trim() || undefined;
+    if (!rawTitle) {
+      return { composer: rawComposer };
+    }
+
+    const standardized = rawTitle.match(/^(.*)\(([^()]+)\)\s*$/);
+    if (!standardized) {
+      return { title: rawTitle, composer: rawComposer };
+    }
+
+    const titleAndCatalog = standardized[1]?.trim();
+    const composerFromTitle = standardized[2]?.trim() || undefined;
+    if (!titleAndCatalog) {
+      return { title: rawTitle, composer: rawComposer ?? composerFromTitle };
+    }
+
+    const commaIndex = titleAndCatalog.lastIndexOf(',');
+    if (commaIndex < 0) {
+      return {
+        title: titleAndCatalog,
+        composer: rawComposer ?? composerFromTitle
+      };
+    }
+
+    const candidateTitle = titleAndCatalog.slice(0, commaIndex).trim();
+    const candidateCatalog = titleAndCatalog.slice(commaIndex + 1).trim();
+    if (!candidateTitle || !candidateCatalog || !this.looksLikeCatalogNumber(candidateCatalog)) {
+      return {
+        title: titleAndCatalog,
+        composer: rawComposer ?? composerFromTitle
+      };
+    }
+
+    return {
+      title: candidateTitle,
+      composer: rawComposer ?? composerFromTitle,
+      catalogNumber: candidateCatalog
+    };
+  }
+
+  private looksLikeCatalogNumber(value: string): boolean {
+    // Catalog identifiers are usually short and include digits
+    return /\d/.test(value) && value.length <= 48;
   }
 
   /**
