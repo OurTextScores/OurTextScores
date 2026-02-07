@@ -16,7 +16,8 @@
     "test:smoke": "jest --config ./test/jest-e2e.config.ts smoke-simple.e2e-spec.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "reindex:search": "node dist/reindex-search.js",
-    "backfill:thumbnails": "node dist/generate-thumbnails.js"
+    "backfill:thumbnails": "node dist/generate-thumbnails.js",
+    "ops:project-promotion": "node scripts/project-promotion.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
