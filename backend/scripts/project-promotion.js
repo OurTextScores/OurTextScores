@@ -9,6 +9,7 @@
  *   node scripts/project-promotion.js export --projectId prj_123 --dir /tmp/prj_123_bundle
  *   node scripts/project-promotion.js import --dir /tmp/prj_123_bundle
  *   node scripts/project-promotion.js verify --dir /tmp/prj_123_bundle
+ *   node scripts/project-promotion.js import --dir /tmp/prj_123_bundle --bucketMap "scores-raw=ourtextscores-sources,scores-derivatives=ourtextscores-derivatives,scores-aux=ourtextscores-derivatives"
  *
  * Notes:
  * - Requires environment variables for Mongo + MinIO + Fossil root path in both source and target environments.
@@ -29,7 +30,8 @@ function parseArgs(argv) {
     dir: '',
     allowExistingProject: false,
     overwriteFossil: false,
-    overwriteObjects: false
+    overwriteObjects: false,
+    bucketMap: ''
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -58,6 +60,11 @@ function parseArgs(argv) {
     }
     if (token === '--overwriteObjects') {
       out.overwriteObjects = true;
+      continue;
+    }
+    if (token === '--bucketMap') {
+      out.bucketMap = String(argv[i + 1] || '').trim();
+      i += 1;
       continue;
     }
   }
@@ -159,6 +166,114 @@ function uniqueByKey(items, keyFn) {
     map.set(keyFn(item), item);
   }
   return Array.from(map.values());
+}
+
+function parseBucketMap(mapSpec) {
+  const out = {};
+  const spec = String(mapSpec || '').trim();
+  if (!spec) return out;
+
+  const pairs = spec.split(/[,\n;]/).map((x) => x.trim()).filter(Boolean);
+  for (const pair of pairs) {
+    const idx = pair.indexOf('=');
+    if (idx <= 0 || idx === pair.length - 1) {
+      throw new Error(
+        `Invalid bucket map entry: "${pair}". Expected format "source=target"`
+      );
+    }
+    const source = pair.slice(0, idx).trim();
+    const target = pair.slice(idx + 1).trim();
+    if (!source || !target) {
+      throw new Error(
+        `Invalid bucket map entry: "${pair}". Empty source or target bucket`
+      );
+    }
+    out[source] = target;
+  }
+  return out;
+}
+
+function getTargetStorageBucketsFromEnv() {
+  return {
+    raw: process.env.MINIO_RAW_BUCKET || 'scores-raw',
+    derivatives: process.env.MINIO_DERIVATIVES_BUCKET || 'scores-derivatives',
+    aux: process.env.MINIO_AUX_BUCKET || 'scores-aux'
+  };
+}
+
+function resolveBucketMap(args) {
+  if (args.bucketMap) {
+    return { map: parseBucketMap(args.bucketMap), source: 'flag' };
+  }
+  if (process.env.PROJECT_PROMOTION_BUCKET_MAP) {
+    return {
+      map: parseBucketMap(process.env.PROJECT_PROMOTION_BUCKET_MAP),
+      source: 'env'
+    };
+  }
+
+  const targets = getTargetStorageBucketsFromEnv();
+  const auto = {};
+  if (targets.raw !== 'scores-raw') auto['scores-raw'] = targets.raw;
+  if (targets.derivatives !== 'scores-derivatives') {
+    auto['scores-derivatives'] = targets.derivatives;
+  }
+  if (targets.aux !== 'scores-aux') auto['scores-aux'] = targets.aux;
+  return { map: auto, source: 'auto' };
+}
+
+function mapBucketName(bucket, bucketMap) {
+  if (!bucket || !bucketMap) return bucket;
+  return bucketMap[bucket] || bucket;
+}
+
+function applyBucketMapToBundle(bundle, bucketMap) {
+  const entries = Object.entries(bucketMap || {});
+  if (entries.length === 0) return 0;
+
+  let changed = 0;
+  const walk = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (
+      typeof value.bucket === 'string' &&
+      typeof value.objectKey === 'string'
+    ) {
+      const mapped = mapBucketName(value.bucket, bucketMap);
+      if (mapped !== value.bucket) {
+        value.bucket = mapped;
+        changed += 1;
+      }
+    }
+    for (const child of Object.values(value)) walk(child);
+  };
+
+  walk(bundle);
+  return changed;
+}
+
+async function pathExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function logBucketMap(prefix, bucketMap, source) {
+  const entries = Object.entries(bucketMap || {});
+  if (entries.length === 0) {
+    console.log(`${prefix} bucket map: none`);
+    return;
+  }
+  console.log(`${prefix} bucket map (${source}):`);
+  for (const [from, to] of entries) {
+    console.log(`  - ${from} -> ${to}`);
+  }
 }
 
 async function copyMinioObjectToFile(client, bucket, objectKey, destPath) {
@@ -422,29 +537,44 @@ async function checkImportCollisions(db, bundle, allowExistingProject) {
   return collisions;
 }
 
-async function importMinioAssets(client, bundleDir, bundle, overwriteObjects) {
+async function importMinioAssets(client, bundleDir, bundle, overwriteObjects, bucketMap) {
   const objectList = bundle.assets?.minioObjects || [];
   const uploaded = [];
   const skipped = [];
   const missingLocal = [];
 
   for (const item of objectList) {
-    const rel = path.join('minio', item.bucket, item.objectKey);
-    const localPath = path.join(bundleDir, rel);
-    try {
-      await fs.access(localPath);
-    } catch {
-      missingLocal.push({ bucket: item.bucket, objectKey: item.objectKey });
-      continue;
+    const sourceBucket = String(item.bucket);
+    const targetBucket = mapBucketName(sourceBucket, bucketMap);
+    const preferredLocalPath = path.join(bundleDir, 'minio', sourceBucket, item.objectKey);
+    const mappedLocalPath = path.join(bundleDir, 'minio', targetBucket, item.objectKey);
+
+    let localPath = preferredLocalPath;
+    if (!(await pathExists(localPath))) {
+      if (targetBucket !== sourceBucket && await pathExists(mappedLocalPath)) {
+        localPath = mappedLocalPath;
+      } else {
+        missingLocal.push({
+          sourceBucket,
+          targetBucket,
+          objectKey: item.objectKey
+        });
+        continue;
+      }
     }
 
-    const exists = await minioObjectExists(client, item.bucket, item.objectKey);
+    const exists = await minioObjectExists(client, targetBucket, item.objectKey);
     if (exists && !overwriteObjects) {
-      skipped.push({ bucket: item.bucket, objectKey: item.objectKey, reason: 'already_exists' });
+      skipped.push({
+        sourceBucket,
+        bucket: targetBucket,
+        objectKey: item.objectKey,
+        reason: 'already_exists'
+      });
       continue;
     }
-    await putFileToMinio(client, item.bucket, item.objectKey, localPath);
-    uploaded.push({ bucket: item.bucket, objectKey: item.objectKey });
+    await putFileToMinio(client, targetBucket, item.objectKey, localPath);
+    uploaded.push({ sourceBucket, bucket: targetBucket, objectKey: item.objectKey });
   }
 
   return { uploaded, skipped, missingLocal };
@@ -486,6 +616,7 @@ async function runImport(args) {
   if (!args.dir) throw new Error('--dir is required for import');
   const bundleDir = path.resolve(args.dir);
   const bundle = await readBundle(bundleDir);
+  const { map: bucketMap, source: bucketMapSource } = resolveBucketMap(args);
 
   const mongoUri = resolveMongoUri();
   const fossilRoot = resolveFossilRoot();
@@ -494,6 +625,7 @@ async function runImport(args) {
   console.log(`Import start: bundle=${bundleDir}`);
   console.log(`Mongo: ${mongoUri}`);
   console.log(`Fossil root: ${fossilRoot}`);
+  logBucketMap('Import', bucketMap, bucketMapSource);
 
   await mongoose.connect(mongoUri);
   const db = mongoose.connection.db;
@@ -505,13 +637,21 @@ async function runImport(args) {
     throw new Error(`Import aborted: ${collisions.length} collisions`);
   }
 
-  const minioResult = await importMinioAssets(minio, bundleDir, bundle, args.overwriteObjects);
+  const minioResult = await importMinioAssets(
+    minio,
+    bundleDir,
+    bundle,
+    args.overwriteObjects,
+    bucketMap
+  );
   const fossilResult = await importFossilAssets(bundleDir, bundle, fossilRoot, args.overwriteFossil);
   if (minioResult.missingLocal.length > 0) {
     throw new Error(
       `Import aborted: ${minioResult.missingLocal.length} MinIO files are missing from bundle directory`
     );
   }
+
+  const remappedCount = applyBucketMapToBundle(bundle, bucketMap);
 
   const docs = bundle.docs || {};
   const project = docs.project;
@@ -587,6 +727,7 @@ async function runImport(args) {
   console.log(`- minio uploaded: ${minioResult.uploaded.length}`);
   console.log(`- minio skipped: ${minioResult.skipped.length}`);
   console.log(`- minio missing local files: ${minioResult.missingLocal.length}`);
+  console.log(`- bucket locators remapped: ${remappedCount}`);
   console.log(`- fossil copied: ${fossilResult.copied.length}`);
   console.log(`- fossil skipped: ${fossilResult.skipped.length}`);
   console.log(`- fossil missing local files: ${fossilResult.missingLocal.length}`);
@@ -596,6 +737,8 @@ async function runVerify(args) {
   if (!args.dir) throw new Error('--dir is required for verify');
   const bundleDir = path.resolve(args.dir);
   const bundle = await readBundle(bundleDir);
+  const { map: bucketMap, source: bucketMapSource } = resolveBucketMap(args);
+  const remappedCount = applyBucketMapToBundle(bundle, bucketMap);
 
   const mongoUri = resolveMongoUri();
   const fossilRoot = resolveFossilRoot();
@@ -604,6 +747,8 @@ async function runVerify(args) {
   console.log(`Verify start: bundle=${bundleDir}`);
   console.log(`Mongo: ${mongoUri}`);
   console.log(`Fossil root: ${fossilRoot}`);
+  logBucketMap('Verify', bucketMap, bucketMapSource);
+  console.log(`Verify bucket locators remapped: ${remappedCount}`);
 
   await mongoose.connect(mongoUri);
   const db = mongoose.connection.db;
