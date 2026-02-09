@@ -12,6 +12,7 @@ backend/coverage/
 backend/scripts/private/
 docs/private/
 docs/agent/
+scripts/private/
 test-results/
 test_scores/
 smoke-test.log

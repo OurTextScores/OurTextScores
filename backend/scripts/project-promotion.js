@@ -276,6 +276,46 @@ function logBucketMap(prefix, bucketMap, source) {
   }
 }
 
+function createProgressLogger(label, total) {
+  const safeTotal = Number.isFinite(total) && total > 0 ? total : 0;
+  let done = 0;
+  let lastPrintedPercent = -1;
+  const startMs = Date.now();
+  const useTTY = !!process.stdout.isTTY;
+
+  const print = (force = false) => {
+    if (safeTotal === 0) return;
+    const percent = Math.floor((done / safeTotal) * 100);
+    const shouldPrint = force || percent === 100 || percent >= lastPrintedPercent + 5;
+    if (!shouldPrint) return;
+
+    const elapsedSec = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+    const rate = done / elapsedSec;
+    const remaining = Math.max(0, safeTotal - done);
+    const etaSec = rate > 0 ? Math.floor(remaining / rate) : 0;
+    const line = `${label}: ${done}/${safeTotal} (${percent}%) eta=${etaSec}s`;
+
+    if (useTTY) {
+      process.stdout.write(`\r${line}`);
+      if (force || percent === 100) process.stdout.write('\n');
+    } else {
+      console.log(line);
+    }
+    lastPrintedPercent = percent;
+  };
+
+  return {
+    tick() {
+      done += 1;
+      print(false);
+    },
+    done() {
+      done = safeTotal;
+      print(true);
+    }
+  };
+}
+
 async function copyMinioObjectToFile(client, bucket, objectKey, destPath) {
   await ensureDir(path.dirname(destPath));
   const stream = await client.getObject(bucket, objectKey);
@@ -413,6 +453,7 @@ async function runExport(args) {
   }));
 
   const missingObjects = [];
+  const minioProgress = createProgressLogger('Export MinIO objects', locators.length);
   for (const locator of locators) {
     const target = path.join(minioDir, locator.bucket, locator.objectKey);
     try {
@@ -424,9 +465,12 @@ async function runExport(args) {
         error: error?.message || String(error)
       });
     }
+    minioProgress.tick();
   }
+  minioProgress.done();
 
   const missingFossil = [];
+  const fossilProgress = createProgressLogger('Export Fossil repos', fossilEntries.length);
   for (const entry of fossilEntries) {
     const src = path.join(fossilRoot, entry.relativePath);
     const dst = path.join(fossilDir, entry.relativePath);
@@ -438,7 +482,9 @@ async function runExport(args) {
         relativePath: entry.relativePath
       });
     }
+    fossilProgress.tick();
   }
+  fossilProgress.done();
 
   const bundle = {
     bundleVersion: 1,
@@ -542,6 +588,7 @@ async function importMinioAssets(client, bundleDir, bundle, overwriteObjects, bu
   const uploaded = [];
   const skipped = [];
   const missingLocal = [];
+  const progress = createProgressLogger('Import MinIO objects', objectList.length);
 
   for (const item of objectList) {
     const sourceBucket = String(item.bucket);
@@ -559,6 +606,7 @@ async function importMinioAssets(client, bundleDir, bundle, overwriteObjects, bu
           targetBucket,
           objectKey: item.objectKey
         });
+        progress.tick();
         continue;
       }
     }
@@ -571,11 +619,14 @@ async function importMinioAssets(client, bundleDir, bundle, overwriteObjects, bu
         objectKey: item.objectKey,
         reason: 'already_exists'
       });
+      progress.tick();
       continue;
     }
     await putFileToMinio(client, targetBucket, item.objectKey, localPath);
     uploaded.push({ sourceBucket, bucket: targetBucket, objectKey: item.objectKey });
+    progress.tick();
   }
+  progress.done();
 
   return { uploaded, skipped, missingLocal };
 }
@@ -585,6 +636,7 @@ async function importFossilAssets(bundleDir, bundle, fossilRoot, overwriteFossil
   const copied = [];
   const skipped = [];
   const missingLocal = [];
+  const progress = createProgressLogger('Import Fossil repos', fossilList.length);
 
   for (const item of fossilList) {
     const rel = ensureRelativeSafePath(item.relativePath);
@@ -595,19 +647,23 @@ async function importFossilAssets(bundleDir, bundle, fossilRoot, overwriteFossil
       await fs.access(src);
     } catch {
       missingLocal.push({ relativePath: rel });
+      progress.tick();
       continue;
     }
 
     const exists = await fs.access(dst).then(() => true).catch(() => false);
     if (exists && !overwriteFossil) {
       skipped.push({ relativePath: rel, reason: 'already_exists' });
+      progress.tick();
       continue;
     }
 
     await ensureDir(path.dirname(dst));
     await fs.copyFile(src, dst);
     copied.push({ relativePath: rel });
+    progress.tick();
   }
+  progress.done();
 
   return { copied, skipped, missingLocal };
 }
@@ -782,6 +838,7 @@ async function runVerify(args) {
       { projection: { _id: 1 } }
     );
     if (found) checks.rowsFound += 1;
+    // no per-item progress for small metadata loops
   }
 
   for (const source of sources) {
@@ -803,20 +860,26 @@ async function runVerify(args) {
   }
 
   const objectList = bundle.assets?.minioObjects || [];
+  const minioVerifyProgress = createProgressLogger('Verify MinIO objects', objectList.length);
   for (const item of objectList) {
     const exists = await minioObjectExists(minio, item.bucket, item.objectKey);
     if (exists) checks.minioFound += 1;
     else checks.minioMissing += 1;
+    minioVerifyProgress.tick();
   }
+  minioVerifyProgress.done();
 
   const fossilList = bundle.assets?.fossilRepositories || [];
+  const fossilVerifyProgress = createProgressLogger('Verify Fossil repos', fossilList.length);
   for (const item of fossilList) {
     const rel = ensureRelativeSafePath(item.relativePath);
     const dst = path.join(fossilRoot, rel);
     const exists = await fs.access(dst).then(() => true).catch(() => false);
     if (exists) checks.fossilFound += 1;
     else checks.fossilMissing += 1;
+    fossilVerifyProgress.tick();
   }
+  fossilVerifyProgress.done();
 
   console.log('Verify result');
   console.log(`- project found: ${checks.project}`);
