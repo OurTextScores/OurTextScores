@@ -70,6 +70,16 @@ This file orients future agents quickly: what the project does, how it’s wired
 - Local dev (frontend): `cd frontend && npm run dev` (ensure `NEXT_PUBLIC_API_URL` points to running backend).
 - Local dev (backend): `cd backend && npm run start:dev` (Mongo + MinIO must be reachable; easiest via Docker compose).
 
+## Production Deployment Reality (Important)
+- Production VPS at `/opt/ourtextscores` is a Docker Compose runtime directory, not a source checkout.
+- Do **not** assume `.git` or repo files exist on prod host; `git apply`/`git pull` there may fail by design.
+- Backend deploy path is image-based (GitHub Actions builds/pushes GHCR image, VPS pulls image, `docker compose up -d backend`).
+- For production fixes:
+  - Ship code via normal git push/CI deploy.
+  - Run operational scripts inside the backend container (`docker compose exec -T backend node ...`) only after confirming script is included in image.
+  - If script is not in image yet, deploy image first; do not rely on patch files on VPS.
+- `docs/agent/**` may be gitignored locally and is not a reliable source of executable assets on prod.
+
 ## Key Endpoints
 
 **Interactive API Documentation**: Swagger UI available at `http://localhost:4000/api-docs` with complete endpoint documentation, request/response schemas, and try-it-out functionality. OpenAPI JSON spec at `http://localhost:4000/api-docs-json`.
