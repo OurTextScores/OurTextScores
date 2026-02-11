@@ -877,6 +877,59 @@ describe('WorksService (unit, mocked models)', () => {
     expect(detail.sources[0].derivatives?.canonicalXml?.objectKey).toBe('approved-canonical');
   });
 
+  it('getWorkDetail preserves reference PDF from older visible revision when latest visible revision lacks it', async () => {
+    const work = { workId: '300', sourceCount: 1, availableFormats: ['text/plain'], latestRevisionAt: new Date('2024-06-01') };
+    const sources = [
+      {
+        workId: '300',
+        sourceId: 's1',
+        derivatives: {}
+      }
+    ];
+    const revisions = [
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r2',
+        sequenceNumber: 2,
+        createdAt: new Date('2024-06-01'),
+        createdBy: 'owner-user',
+        status: 'approved',
+        rawStorage: { bucket: 'b', objectKey: 'raw-2', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '22' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
+        checksum: { algorithm: 'sha256', hexDigest: '22' },
+        validationSnapshot: { status: 'passed', issues: [] },
+        derivatives: {
+          canonicalXml: { bucket: 'b', objectKey: 'approved-canonical', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'aa' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        },
+      },
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r1',
+        sequenceNumber: 1,
+        createdAt: new Date('2024-05-01'),
+        createdBy: 'owner-user',
+        status: 'approved',
+        rawStorage: { bucket: 'b', objectKey: 'raw-1', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '11' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
+        checksum: { algorithm: 'sha256', hexDigest: '11' },
+        validationSnapshot: { status: 'passed', issues: [] },
+        derivatives: {
+          referencePdf: { bucket: 'aux', objectKey: 'ref.pdf', sizeBytes: 10, checksum: { algorithm: 'sha256', hexDigest: 'ref' }, contentType: 'application/pdf', lastModifiedAt: new Date() }
+        },
+      },
+    ];
+
+    (workModel.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(work) }) });
+    (sourceModel.find as jest.Mock).mockReturnValue(chain(sources as any));
+    (sourceRevisionModel.find as jest.Mock).mockReturnValue(chain(revisions as any));
+
+    const detail = await service.getWorkDetail('300', { userId: 'anonymous-viewer' });
+    expect(detail.sources).toHaveLength(1);
+    expect(detail.sources[0].hasReferencePdf).toBe(true);
+    expect(detail.sources[0].derivatives?.referencePdf?.objectKey).toBe('ref.pdf');
+    expect(detail.sources[0].revisions[0].revisionId).toBe('r2');
+  });
+
   describe('updateSource', () => {
     it('should update source label and description', async () => {
       const workId = 'work-1';

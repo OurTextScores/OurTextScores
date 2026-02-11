@@ -1,6 +1,7 @@
 import { DerivativePipelineService } from './derivative-pipeline.service';
 import { StorageService } from '../storage/storage.service';
 import { ProgressService } from '../progress/progress.service';
+import { promises as fs } from 'node:fs';
 
 describe('DerivativePipelineService (unit, mocked IO)', () => {
   let service: DerivativePipelineService;
@@ -12,14 +13,12 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
+    delete process.env.MUSESCORE_CLI;
     service = new DerivativePipelineService(storage, progress);
     // Stub out calls that hit external tools and file IO complexity
     (service as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({ bucket: 'der', objectKey: key, sizeBytes: buf.length, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: ct, lastModifiedAt: new Date() }));
     (service as any).extractCanonicalXml = jest.fn(async () => ({ path: '/tmp/canonical.xml', buffer: Buffer.from('<xml/>') }));
-    (service as any).runCommand = jest.fn(async (cmd: string, args: string[]) => {
-      if (cmd === 'musescore3') return { stdout: '', stderr: '' };
-      return { stdout: '', stderr: '' };
-    });
+    (service as any).runCommand = jest.fn(async () => ({ stdout: '', stderr: '' }));
   });
 
   it('process handles compressed MusicXML (.mxl) and stores derivatives', async () => {
@@ -40,9 +39,11 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
   });
 
   it('process tolerates failed PDF generation', async () => {
-    // Rewire runCommand to throw for musescore PDF
-    (service as any).runCommand = jest.fn(async (cmd: string, args: string[]) => {
-      if (cmd === 'musescore3') throw new Error('no musescore');
+    // Rewire runCommand to throw for PDF export while still allowing other work
+    (service as any).runCommand = jest.fn(async (_cmd: string, args: string[]) => {
+      if (args.some((part) => String(part).includes('score.pdf'))) {
+        throw new Error('pdf export failed');
+      }
       return { stdout: '', stderr: '' };
     });
     const input = {
@@ -57,6 +58,64 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     const out = await service.process(input);
     expect(out.pending).toBe(false);
     expect(out.derivatives.pdf).toBeFalsy();
+  });
+
+  it('falls back to secondary MuseScore command when primary export fails', async () => {
+    process.env.MUSESCORE_CLI = 'musescore4';
+    const local = new DerivativePipelineService(storage, progress);
+    (local as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).extractCanonicalXml = jest.fn(async () => ({
+      path: '/tmp/canonical.xml',
+      buffer: Buffer.from('<xml/>')
+    }));
+    const runSpy = jest.fn(async (cmd: string, args: string[]) => {
+      if (cmd === 'musescore4' && args[0] === '--export-to') {
+        throw new Error('musescore4 exited with code 40');
+      }
+      if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+        const outPath = args[1];
+        if (outPath.endsWith('.pdf')) {
+          await fs.writeFile(outPath, Buffer.from('%PDF-1.4\nmock\n', 'utf8'));
+        } else {
+          await fs.writeFile(outPath, Buffer.from('mock-mxl', 'utf8'));
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+    (local as any).runCommand = runSpy;
+
+    const input = {
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/xml',
+      originalFilename: 'score.musicxml',
+      buffer: Buffer.from('<score-partwise/>'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 17,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/xml',
+        lastModifiedAt: new Date()
+      }
+    };
+
+    const out = await local.process(input);
+    expect(out.pending).toBe(false);
+    expect(out.derivatives.normalizedMxl).toBeTruthy();
+    expect(
+      runSpy.mock.calls.some(
+        (call: any[]) => call[0] === 'musescore3' && Array.isArray(call[1]) && call[1][0] === '--export-to'
+      )
+    ).toBe(true);
   });
 
   it('uses MUSESCORE_CLI when provided for MuseScore operations', async () => {

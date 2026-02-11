@@ -212,8 +212,22 @@ export class UploadSourceService {
       validationState.status = 'passed';
     }
 
-    // Handle reference PDF if provided
+    // Handle reference PDF if provided. If a source already has a reference PDF,
+    // preserve that locator across revisions unless a new reference is uploaded.
     let hasReferencePdf = (existing as any).hasReferencePdf ?? false;
+    let preservedReferencePdf: StorageLocator | undefined =
+      (existing as any).derivatives?.referencePdf;
+    if (!preservedReferencePdf && hasReferencePdf) {
+      const latestRevisionWithReference = await this.sourceRevisionModel
+        .findOne({
+          workId: trimmedWorkId,
+          sourceId: trimmedSourceId,
+          'derivatives.referencePdf': { $exists: true }
+        })
+        .sort({ sequenceNumber: -1 })
+        .lean();
+      preservedReferencePdf = latestRevisionWithReference?.derivatives?.referencePdf;
+    }
     if (referencePdfFile && referencePdfFile.buffer) {
       try {
         const referencePdfLocator = await this.storeReferencePdf(
@@ -233,6 +247,9 @@ export class UploadSourceService {
         this.progress.publish(progressId, 'Reference PDF storage failed', 'store.refpdf.failed');
         throw error;
       }
+    } else if (preservedReferencePdf) {
+      derivativeOutcome.derivatives.referencePdf = preservedReferencePdf;
+      hasReferencePdf = true;
     }
 
     const existingProvenance = (existing as any).provenance as Provenance | undefined;

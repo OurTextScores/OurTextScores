@@ -12,6 +12,8 @@ import { DerivativeArtifacts } from './schemas/derivatives.schema';
 
 interface ToolVersions {
   musescore3: string;
+  musescoreCommand?: string;
+  musescoreFallbackCommands?: string[];
 }
 
 interface ManifestArtifact {
@@ -69,8 +71,47 @@ export class DerivativePipelineService {
     private readonly progress: ProgressService
   ) { }
 
-  private getMuseScoreCommand(): string {
-    return process.env.MUSESCORE_CLI || 'musescore3';
+  private getMuseScoreCommands(): string[] {
+    const preferred = (process.env.MUSESCORE_CLI || 'musescore3').trim();
+    const commands = [preferred, 'musescore4', 'musescore3']
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+    return [...new Set(commands)];
+  }
+
+  private getMuseScoreEnv(): NodeJS.ProcessEnv {
+    return {
+      ...process.env,
+      QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen'
+    };
+  }
+
+  private async runMuseScoreExport(
+    inputPath: string,
+    outputPath: string,
+    purpose: string,
+    timeoutMs = 60_000
+  ): Promise<{ command: string }> {
+    const commands = this.getMuseScoreCommands();
+    const errors: string[] = [];
+    for (const command of commands) {
+      try {
+        await this.runCommand(command, ['--export-to', outputPath, inputPath], {
+          env: this.getMuseScoreEnv(),
+          timeoutMs
+        });
+        if (command !== commands[0]) {
+          this.logger.warn(
+            `MuseScore fallback succeeded for ${purpose} using ${command}`
+          );
+        }
+        return { command };
+      } catch (error) {
+        errors.push(`${command}: ${this.readableError(error)}`);
+      }
+    }
+
+    throw new Error(`All MuseScore commands failed for ${purpose}: ${errors.join(' | ')}`);
   }
 
   async process(input: DerivativePipelineInput): Promise<DerivativePipelineResult> {
@@ -99,22 +140,18 @@ export class DerivativePipelineService {
       let normalizedMxlBuffer: Buffer | undefined;
       let pdfBuffer: Buffer | undefined;
 
-      const museCmd = this.getMuseScoreCommand();
-
       if (this.isMuseScoreFile(extension, format)) {
         normalizedMxlPath = join(workspace, 'export.mxl');
-        await this.runCommand(museCmd, ['--export-to', normalizedMxlPath, inputPath], {
-          env: {
-            ...process.env,
-            QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen'
-          },
-          timeoutMs: 60_000
-        });
+        const conversion = await this.runMuseScoreExport(
+          inputPath,
+          normalizedMxlPath,
+          'MuseScore source to MXL'
+        );
         normalizedMxlBuffer = await fs.readFile(normalizedMxlPath);
         const canonical = await this.extractCanonicalXml(normalizedMxlPath, workspace);
         canonicalPath = canonical.path;
         canonicalBuffer = canonical.buffer;
-        notes.push('MuseScore conversion to MusicXML completed.');
+        notes.push(`MuseScore conversion to MusicXML completed (${conversion.command}).`);
         publish('MuseScore conversion completed', 'deriv.mscz2mxl');
 
         // Store the original .mscz file as a derivative artifact.
@@ -141,15 +178,15 @@ export class DerivativePipelineService {
         canonicalBuffer = input.buffer;
         normalizedMxlPath = join(workspace, 'converted.mxl');
         try {
-          await this.runCommand(museCmd, ['--export-to', normalizedMxlPath, inputPath], {
-            env: {
-              ...process.env,
-              QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen'
-            },
-            timeoutMs: 60_000
-          });
+          const conversion = await this.runMuseScoreExport(
+            inputPath,
+            normalizedMxlPath,
+            'MusicXML to compressed MXL'
+          );
           normalizedMxlBuffer = await fs.readFile(normalizedMxlPath);
-          notes.push('MuseScore conversion to compressed MusicXML completed.');
+          notes.push(
+            `MuseScore conversion to compressed MusicXML completed (${conversion.command}).`
+          );
           publish('Compressed MXL generated from XML', 'deriv.xml2mxl');
         } catch (err) {
           pending = true;
@@ -167,12 +204,13 @@ export class DerivativePipelineService {
         const pdfSourcePath = normalizedMxlPath ?? canonicalPath;
         if (pdfSourcePath) {
           const outPdf = join(workspace, 'score.pdf');
-          await this.runCommand(museCmd, ['--export-to', outPdf, pdfSourcePath], {
-            env: { ...process.env, QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen' },
-            timeoutMs: 60_000
-          });
+          const conversion = await this.runMuseScoreExport(
+            pdfSourcePath,
+            outPdf,
+            'score PDF export'
+          );
           pdfBuffer = await fs.readFile(outPdf);
-          notes.push('PDF generated.');
+          notes.push(`PDF generated (${conversion.command}).`);
           publish('PDF generated', 'deriv.pdf');
         }
       } catch (err) {
@@ -500,22 +538,22 @@ export class DerivativePipelineService {
   }
 
   private async fetchToolVersions(): Promise<ToolVersions> {
-    const museCmd = this.getMuseScoreCommand();
+    const museCommands = this.getMuseScoreCommands();
+    const museCmd = museCommands[0] || 'musescore3';
     const [musescore] = await Promise.all([
       this.getCommandVersion(museCmd, ['--version']),
     ]);
     return {
-      musescore3: musescore
+      musescore3: musescore,
+      musescoreCommand: museCmd,
+      musescoreFallbackCommands: museCommands.slice(1)
     };
   }
 
   private async getCommandVersion(command: string, args: string[]): Promise<string> {
     try {
       const { stdout } = await this.runCommand(command, args, {
-        env: {
-          ...process.env,
-          QT_QPA_PLATFORM: process.env.QT_QPA_PLATFORM ?? 'offscreen'
-        },
+        env: this.getMuseScoreEnv(),
         timeoutMs: 10_000
       });
       return stdout.split('\n')[0]?.trim() || 'unknown';

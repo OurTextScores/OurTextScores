@@ -420,7 +420,7 @@ function StorageBadge({
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mscz${r}`;
             break;
         case 'referencePdf':
-            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf${r}`;
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`;
             break;
         case 'manifest':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
@@ -636,7 +636,7 @@ export default function SourceCard({
                             Download MSCZ
                         </Link>
                     )}
-                    {source.derivatives?.referencePdf && (
+                    {source.hasReferencePdf && (
                         <Link
                             href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
                             target="_blank"
@@ -740,7 +740,11 @@ export default function SourceCard({
                                     <StorageBadge
                                         label="Reference PDF"
                                         kind="referencePdf"
-                                        locator={latest.derivatives?.referencePdf}
+                                        locator={
+                                            latest.derivatives?.referencePdf ??
+                                            source.derivatives?.referencePdf ??
+                                            source.revisions.find((r) => r.derivatives?.referencePdf)?.derivatives?.referencePdf
+                                        }
                                         workId={workId}
                                         sourceId={source.sourceId}
                                         revisionId={latest.revisionId}
@@ -779,7 +783,7 @@ export default function SourceCard({
                         </div>
                     </details>
 
-                    {source.derivatives?.referencePdf && (
+                    {source.hasReferencePdf && (
                         <LazyDetails
                             className="group border-t border-slate-200 dark:border-slate-800"
                             summary={
@@ -790,14 +794,14 @@ export default function SourceCard({
                         >
                             <div className="px-5 pb-5">
                                 <object
-                                    data={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf${source.latestRevisionId ? `?r=${encodeURIComponent(source.latestRevisionId)}` : ''}`}
+                                    data={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
                                     type="application/pdf"
                                     className="h-[800px] w-full rounded border border-slate-200 dark:border-slate-700"
                                 >
                                     <p className="p-4 text-sm text-slate-600 dark:text-slate-400">
                                         Your browser does not support PDF viewing.{' '}
                                         <a
-                                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf${source.latestRevisionId ? `?r=${encodeURIComponent(source.latestRevisionId)}` : ''}`}
+                                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
                                             className="text-primary-600 hover:underline dark:text-primary-400"
                                             download
                                         >

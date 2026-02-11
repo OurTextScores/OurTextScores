@@ -149,6 +149,70 @@ describe('UploadSourceService (unit)', () => {
     expect(worksService.recordSourceRevision).toHaveBeenCalled();
   });
 
+  it('uploadRevision() preserves existing reference PDF when no new reference is uploaded', async () => {
+    const preservedReference = {
+      bucket: 'aux',
+      objectKey: '10/x/rev-0001/reference.pdf',
+      sizeBytes: 100,
+      checksum: { algorithm: 'sha256', hexDigest: 'ref' },
+      contentType: 'application/pdf',
+      lastModifiedAt: new Date()
+    };
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({
+        label: 'Existing source',
+        sourceType: 'score',
+        description: undefined,
+        format: 'application/xml',
+        hasReferencePdf: true,
+        derivatives: { referencePdf: preservedReference }
+      })
+    });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({ sequenceNumber: 1 }) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: false,
+      notes: [],
+      derivatives: {
+        canonicalXml: {
+          bucket: 'der',
+          objectKey: '10/x/rev-0002/canonical.xml',
+          sizeBytes: 1,
+          checksum: { algorithm: 'sha256', hexDigest: 'aa' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date()
+        }
+      },
+      manifest: {
+        bucket: 'der',
+        objectKey: '10/x/rev-0002/manifest.json',
+        sizeBytes: 1,
+        checksum: { algorithm: 'sha256', hexDigest: 'bb' },
+        contentType: 'application/json',
+        lastModifiedAt: new Date()
+      }
+    });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'trunk' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
+
+    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const res = await service.uploadRevision('10', 'x', {}, file, undefined, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      derivatives: expect.objectContaining({ referencePdf: preservedReference })
+    }));
+    expect(sourceModel.updateOne).toHaveBeenCalledWith(
+      { workId: '10', sourceId: 'x' },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          hasReferencePdf: true,
+          derivatives: expect.objectContaining({ referencePdf: preservedReference })
+        })
+      })
+    );
+  });
+
   it('uploadReferencePdf() stores reference PDF for latest revision when owner', async () => {
     const buffer = Buffer.from('pdf-content');
     const sha1 = createHash('sha1').update(buffer).digest('hex');

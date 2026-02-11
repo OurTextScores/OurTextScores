@@ -455,7 +455,7 @@ export class WorksController {
     const source = detail.sources.find((s) => s.sourceId === sourceId);
     const locator = revisionId
       ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.referencePdf)
-      : source?.derivatives?.referencePdf;
+      : (source?.derivatives?.referencePdf ?? source?.revisions.find(r => r.derivatives?.referencePdf)?.derivatives?.referencePdf);
     if (!source || !locator) {
       throw new NotFoundException('Reference PDF not found for this source');
     }

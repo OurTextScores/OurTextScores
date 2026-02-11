@@ -695,9 +695,13 @@ except Exception:
       }
 
       const latestVisibleRevision = visibleRevisions[0];
-      const hasVisibleReferencePdf = visibleRevisions.some((revision) => !!revision.derivatives?.referencePdf);
-      const effectiveDerivatives =
+      const latestVisibleReferencePdf = visibleRevisions.find((revision) => !!revision.derivatives?.referencePdf)?.derivatives?.referencePdf;
+      const hasVisibleReferencePdf = !!latestVisibleReferencePdf;
+      const baseDerivatives =
         latestVisibleRevision?.derivatives ?? (totalRevisionCount === 0 ? source.derivatives : undefined);
+      const effectiveDerivatives = latestVisibleReferencePdf && !baseDerivatives?.referencePdf
+        ? { ...(baseDerivatives ?? {}), referencePdf: latestVisibleReferencePdf }
+        : baseDerivatives;
       const effectiveLatestRevisionId =
         latestVisibleRevision?.revisionId ?? (totalRevisionCount === 0 ? source.latestRevisionId : undefined);
       const effectiveLatestRevisionAt =
