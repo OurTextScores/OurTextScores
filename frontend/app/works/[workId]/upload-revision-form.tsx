@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getPublicApiBase } from "../../lib/api";
 import { useRouter } from "next/navigation";
+import { getFileExtension, toAnalyticsError, trackUploadOutcomeClient } from "../../lib/analytics";
 import { StepState, initSteps, applyEventToSteps } from "../../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
 
@@ -95,6 +96,8 @@ export default function UploadRevisionForm({
     setEvents([]);
     setSteps(initSteps());
     setStartedAt(Date.now());
+    const fileExt = getFileExtension(file.name);
+    const hasReferencePdf = Boolean(referencePdfFile);
     try {
       // Open progress stream
       const streamUrl = `${API_BASE}/works/progress/${encodeURIComponent(progressId)}/stream`;
@@ -155,6 +158,17 @@ export default function UploadRevisionForm({
         const text = await res.text();
         throw new Error(text || `Upload failed (${res.status})`);
       }
+      trackUploadOutcomeClient({
+        flow: "work_page_revision",
+        outcome: "success",
+        kind: "revision",
+        workId,
+        sourceId,
+        fileExt,
+        branchMode,
+        createBranch: branchMode === "new",
+        hasReferencePdf,
+      });
       setStatus("success");
       setFile(null);
       setReferencePdfFile(null);
@@ -172,6 +186,18 @@ export default function UploadRevisionForm({
         router.refresh();
       }, refreshDelayMs);
     } catch (err) {
+      trackUploadOutcomeClient({
+        flow: "work_page_revision",
+        outcome: "failure",
+        kind: "revision",
+        workId,
+        sourceId,
+        fileExt,
+        branchMode,
+        createBranch: branchMode === "new",
+        hasReferencePdf,
+        error: toAnalyticsError(err),
+      });
       setErrorModal({ open: true, message: err instanceof Error ? err.message : String(err) });
       setStatus("idle");
       setFile(null);

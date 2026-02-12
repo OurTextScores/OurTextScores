@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPublicApiBase } from "../../lib/api";
+import { getFileExtension, toAnalyticsError, trackUploadOutcomeClient } from "../../lib/analytics";
 import { StepState, initSteps, applyEventToSteps } from "../../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
 
@@ -74,6 +75,8 @@ export default function UploadNewSourceForm({
     setEvents([]);
     setSteps(initSteps());
     const startedAt = Date.now();
+    const fileExt = getFileExtension(file.name);
+    const hasReferencePdf = Boolean(referencePdfFile);
     try {
       const streamUrl = `${API_BASE}/works/progress/${encodeURIComponent(progressId)}/stream`;
       const es = new EventSource(streamUrl);
@@ -137,6 +140,14 @@ export default function UploadNewSourceForm({
         const text = await res.text();
         throw new Error(text || `Upload failed (${res.status})`);
       }
+      trackUploadOutcomeClient({
+        flow: "work_page_new_source",
+        outcome: "success",
+        kind: "source",
+        workId,
+        fileExt,
+        hasReferencePdf,
+      });
       setStatus("success");
       setFile(null);
       setReferencePdfFile(null);
@@ -154,6 +165,15 @@ export default function UploadNewSourceForm({
         router.refresh();
       }, refreshDelayMs);
     } catch (err) {
+      trackUploadOutcomeClient({
+        flow: "work_page_new_source",
+        outcome: "failure",
+        kind: "source",
+        workId,
+        fileExt,
+        hasReferencePdf,
+        error: toAnalyticsError(err),
+      });
       setErrorModal({ open: true, message: err instanceof Error ? err.message : String(err) });
       setStatus("idle");
       setFile(null);

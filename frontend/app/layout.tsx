@@ -18,6 +18,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const fontSans = Plus_Jakarta_Sans({
@@ -78,6 +79,7 @@ export default function RootLayout({
           <Header />
           {children}
         </Providers>
+        <Analytics />
       </body>
     </html>
   );

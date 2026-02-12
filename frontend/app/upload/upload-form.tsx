@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { EnsureWorkResponse, ImslpWorkSummary, WorkSummary } from "../lib/api";
 import { ensureWork, resolveImslpUrl, searchImslp, getPublicApiBase } from "../lib/api";
+import { getFileExtension, toAnalyticsError, trackUploadOutcomeClient } from "../lib/analytics";
 import { StepState, initSteps, applyEventToSteps } from "../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../components/upload-progress-stepper";
 
@@ -236,6 +237,15 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
     onStatusChange({ state: "submitting" });
     setEvents([]);
     const startedAt = Date.now();
+    const uploadKind = targetSourceId === "new" ? "source" : "revision";
+    const uploadSourceId = targetSourceId === "new" ? undefined : targetSourceId;
+    const branchMode =
+      targetSourceId === "new"
+        ? undefined
+        : createBranch && branchName.trim()
+          ? "new"
+          : "existing";
+    const fileExt = getFileExtension(file.name);
 
     try {
       // Open SSE progress stream
@@ -305,6 +315,17 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       }
 
       const result = (await response.json()) as { revisionId: string; workId: string };
+      trackUploadOutcomeClient({
+        flow: "upload_page",
+        outcome: "success",
+        kind: uploadKind,
+        workId: work.work.workId,
+        sourceId: uploadSourceId,
+        revisionId: result.revisionId,
+        fileExt,
+        branchMode,
+        createBranch: branchMode === "new",
+      });
       onStatusChange({
         state: "success",
         message: `Uploaded revision ${result.revisionId}`,
@@ -323,6 +344,17 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       onStatusChange({
         state: "error",
         message: error instanceof Error ? error.message : String(error)
+      });
+      trackUploadOutcomeClient({
+        flow: "upload_page",
+        outcome: "failure",
+        kind: uploadKind,
+        workId: work.work.workId,
+        sourceId: uploadSourceId,
+        fileExt,
+        branchMode,
+        createBranch: branchMode === "new",
+        error: toAnalyticsError(error),
       });
     } finally {
       if (esRef.current) {
