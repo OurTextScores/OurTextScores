@@ -50,6 +50,32 @@ describe("UploadRevisionForm", () => {
     expect(uploadButton).toBeEnabled();
   });
 
+  it("requires copyright certification when license is All Rights Reserved", async () => {
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const fileInput = screen.getByTestId("file-input");
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    });
+
+    const licenseSelect = screen.getByDisplayValue("No license specified");
+    fireEvent.change(licenseSelect, { target: { value: "All Rights Reserved" } });
+
+    expect(uploadButton).toBeDisabled();
+    expect(
+      screen.getByText(/I certify that I have permission from the copyright holder to upload this work\./i)
+    ).toBeInTheDocument();
+
+    const certCheckbox = screen.getByRole("checkbox", {
+      name: /I certify that I have permission from the copyright holder to upload this work\./i
+    });
+    fireEvent.click(certCheckbox);
+
+    expect(uploadButton).toBeEnabled();
+  });
+
   it("uploads a file to trunk successfully", async () => {
     jest.useFakeTimers();
     (fetch as jest.Mock).mockResolvedValue({ ok: true });
@@ -65,8 +91,12 @@ describe("UploadRevisionForm", () => {
     fireEvent.click(uploadButton);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
-        `/api/proxy/works/${workId}/sources/${sourceId}/revisions`,
+      const uploadCall = (fetch as jest.Mock).mock.calls.find((call) =>
+        String(call[0]).includes(`/works/${workId}/sources/${sourceId}/revisions`)
+      );
+      expect(uploadCall).toBeTruthy();
+      expect(uploadCall?.[0]).toBe(`http://localhost:4000/api/works/${workId}/sources/${sourceId}/revisions`);
+      expect(uploadCall?.[1]).toEqual(
         expect.objectContaining({
           method: "POST",
           headers: { "X-Progress-Id": "test-uuid" },
@@ -97,7 +127,11 @@ describe("UploadRevisionForm", () => {
     fireEvent.click(uploadButton);
 
     await waitFor(() => {
-      const formData = (fetch as jest.Mock).mock.calls[0][1].body as FormData;
+      const uploadCall = (fetch as jest.Mock).mock.calls.find((call) =>
+        String(call[0]).includes(`/works/${workId}/sources/${sourceId}/revisions`)
+      );
+      expect(uploadCall).toBeTruthy();
+      const formData = uploadCall?.[1]?.body as FormData;
       expect(formData.get("createBranch")).toBe("true");
       expect(formData.get("branchName")).toBe("new-branch");
     });

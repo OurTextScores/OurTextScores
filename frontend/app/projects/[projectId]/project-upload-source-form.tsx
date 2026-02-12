@@ -7,6 +7,20 @@ import { StepState, applyEventToSteps, initSteps } from "../../components/progre
 import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
 
 const API_BASE = getPublicApiBase();
+const COPYRIGHT_LICENSE = "All Rights Reserved";
+const COPYRIGHT_CERTIFICATION_TEXT = "I certify that I have permission from the copyright holder to upload this work.";
+const LICENSE_OPTIONS = [
+  { value: "", label: "No license specified" },
+  { value: "CC0", label: "CC0 - Public Domain Dedication" },
+  { value: "CC-BY-4.0", label: "CC-BY 4.0 - Attribution" },
+  { value: "CC-BY-SA-4.0", label: "CC-BY-SA 4.0 - Attribution-ShareAlike" },
+  { value: "CC-BY-NC-4.0", label: "CC-BY-NC 4.0 - Attribution-NonCommercial" },
+  { value: "CC-BY-NC-SA-4.0", label: "CC-BY-NC-SA 4.0 - Attribution-NonCommercial-ShareAlike" },
+  { value: "CC-BY-ND-4.0", label: "CC-BY-ND 4.0 - Attribution-NoDerivatives" },
+  { value: "Public Domain", label: "Public Domain" },
+  { value: COPYRIGHT_LICENSE, label: "All Rights Reserved (Copyright)" },
+  { value: "Other", label: "Other (specify URL)" }
+];
 
 export default function ProjectUploadSourceForm({ projectId }: { projectId: string }) {
   const router = useRouter();
@@ -19,11 +33,17 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
   const [label, setLabel] = useState("");
   const [description, setDescription] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
+  const [license, setLicense] = useState("");
+  const [licenseUrl, setLicenseUrl] = useState("");
+  const [licenseAttribution, setLicenseAttribution] = useState("");
+  const [copyrightPermissionConfirmed, setCopyrightPermissionConfirmed] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [referencePdfFile, setReferencePdfFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const esRef = useRef<EventSource | null>(null);
+  const requiresCopyrightCertification = license === COPYRIGHT_LICENSE;
+  const canSubmit = !busy && !!file && (!requiresCopyrightCertification || copyrightPermissionConfirmed);
 
   const progressId = useMemo(
     () =>
@@ -41,6 +61,10 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
     }
     if (!imslpUrl.trim()) {
       setError("Provide IMSLP URL.");
+      return;
+    }
+    if (requiresCopyrightCertification && !copyrightPermissionConfirmed) {
+      setError(COPYRIGHT_CERTIFICATION_TEXT);
       return;
     }
 
@@ -77,11 +101,28 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
       if (label.trim()) form.append("label", label.trim());
       if (description.trim()) form.append("description", description.trim());
       if (commitMessage.trim()) form.append("commitMessage", commitMessage.trim());
+      if (license) form.append("license", license);
+      if (licenseUrl.trim()) form.append("licenseUrl", licenseUrl.trim());
+      if (licenseAttribution.trim()) form.append("licenseAttribution", licenseAttribution.trim());
 
-      const res = await fetch(`/api/proxy/projects/${encodeURIComponent(projectId)}/sources`, {
+      const tokenRes = await fetch("/api/auth/api-token", { cache: "no-store" });
+      if (!tokenRes.ok) {
+        throw new Error("Sign in required");
+      }
+      const tokenBody = await tokenRes.json();
+      const token = tokenBody?.token;
+      if (!token) {
+        throw new Error("Sign in required");
+      }
+
+      const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/sources`, {
         method: "POST",
         body: form,
-        headers: { "X-Progress-Id": progressId },
+        headers: {
+          "X-Progress-Id": progressId,
+          Authorization: `Bearer ${token}`
+        },
+        cache: "no-store"
       });
       if (!res.ok) {
         const text = await res.text();
@@ -94,6 +135,10 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
       setLabel("");
       setDescription("");
       setCommitMessage("");
+      setLicense("");
+      setLicenseUrl("");
+      setLicenseAttribution("");
+      setCopyrightPermissionConfirmed(false);
       router.refresh();
       setTimeout(() => {
         setStatus("idle");
@@ -159,6 +204,63 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
           />
         </label>
 
+        <div className="grid gap-2">
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+            License (optional)
+            <select
+              value={license}
+              onChange={(e) => {
+                const next = e.target.value;
+                setLicense(next);
+                if (next !== COPYRIGHT_LICENSE) {
+                  setCopyrightPermissionConfirmed(false);
+                }
+              }}
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            >
+              {LICENSE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {license === "Other" && (
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              License URL
+              <input
+                type="url"
+                value={licenseUrl}
+                onChange={(e) => setLicenseUrl(e.target.value)}
+                placeholder="https://..."
+                className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+          )}
+          {(license.startsWith("CC-BY") || license === "Public Domain") && license !== "" && (
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Attribution (optional)
+              <input
+                value={licenseAttribution}
+                onChange={(e) => setLicenseAttribution(e.target.value)}
+                placeholder="Your name / attribution text"
+                className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+          )}
+          {requiresCopyrightCertification && (
+            <label className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+              <input
+                type="checkbox"
+                checked={copyrightPermissionConfirmed}
+                onChange={(e) => setCopyrightPermissionConfirmed(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>{COPYRIGHT_CERTIFICATION_TEXT}</span>
+            </label>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={fileInputRef}
@@ -198,7 +300,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
         <div>
           <button
             type="submit"
-            disabled={busy || !file}
+            disabled={!canSubmit}
             className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
           >
             {busy ? "Uploading..." : "Upload"}

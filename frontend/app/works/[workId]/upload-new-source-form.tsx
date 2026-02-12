@@ -6,8 +6,10 @@ import { getPublicApiBase } from "../../lib/api";
 import { StepState, initSteps, applyEventToSteps } from "../../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
 
-// uploads go through /api/proxy which attaches auth
+// Use public API base for browser uploads; auth is attached when available.
 const API_BASE = getPublicApiBase();
+const COPYRIGHT_LICENSE = "All Rights Reserved";
+const COPYRIGHT_CERTIFICATION_TEXT = "I certify that I have permission from the copyright holder to upload this work.";
 
 const LICENSE_OPTIONS = [
   { value: '', label: 'No license specified' },
@@ -18,7 +20,7 @@ const LICENSE_OPTIONS = [
   { value: 'CC-BY-NC-SA-4.0', label: 'CC-BY-NC-SA 4.0 - Attribution-NonCommercial-ShareAlike' },
   { value: 'CC-BY-ND-4.0', label: 'CC-BY-ND 4.0 - Attribution-NoDerivatives' },
   { value: 'Public Domain', label: 'Public Domain' },
-  { value: 'All Rights Reserved', label: 'All Rights Reserved (Copyright)' },
+  { value: COPYRIGHT_LICENSE, label: 'All Rights Reserved (Copyright)' },
   { value: 'Other', label: 'Other (specify URL)' }
 ];
 
@@ -39,6 +41,7 @@ export default function UploadNewSourceForm({
   const [license, setLicense] = useState("");
   const [licenseUrl, setLicenseUrl] = useState("");
   const [licenseAttribution, setLicenseAttribution] = useState("");
+  const [copyrightPermissionConfirmed, setCopyrightPermissionConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<UploadProgressStatus>("idle");
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
@@ -53,11 +56,17 @@ export default function UploadNewSourceForm({
     []
   );
   const imslpUrl = imslpPermalink || (workId ? `https://imslp.org/wiki/${workId}` : undefined);
+  const requiresCopyrightCertification = license === COPYRIGHT_LICENSE;
+  const canSubmit = !busy && !!file && (!requiresCopyrightCertification || copyrightPermissionConfirmed);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
       setErrorModal({ open: true, message: "Choose a file first." });
+      return;
+    }
+    if (requiresCopyrightCertification && !copyrightPermissionConfirmed) {
+      setErrorModal({ open: true, message: COPYRIGHT_CERTIFICATION_TEXT });
       return;
     }
     setBusy(true);
@@ -99,10 +108,30 @@ export default function UploadNewSourceForm({
       if (license) form.append("license", license);
       if (licenseUrl.trim()) form.append("licenseUrl", licenseUrl.trim());
       if (licenseAttribution.trim()) form.append("licenseAttribution", licenseAttribution.trim());
-      const res = await fetch(`/api/proxy/works/${encodeURIComponent(workId)}/sources`, {
+
+      let token: string | null = null;
+      try {
+        const tokenRes = await fetch("/api/auth/api-token", { cache: "no-store" });
+        if (tokenRes.ok && typeof (tokenRes as any).json === "function") {
+          const tokenBody = await tokenRes.json();
+          if (typeof tokenBody?.token === "string" && tokenBody.token) {
+            token = tokenBody.token;
+          }
+        }
+      } catch {
+        // Source uploads allow anonymous users; continue without auth.
+      }
+
+      const headers: Record<string, string> = { "X-Progress-Id": progressId };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${API_BASE}/works/${encodeURIComponent(workId)}/sources`, {
         method: "POST",
         body: form,
-        headers: { "X-Progress-Id": progressId }
+        headers,
+        cache: "no-store"
       });
       if (!res.ok) {
         const text = await res.text();
@@ -117,6 +146,7 @@ export default function UploadNewSourceForm({
       setLicense("");
       setLicenseUrl("");
       setLicenseAttribution("");
+      setCopyrightPermissionConfirmed(false);
       setTimeout(() => {
         setStatus("idle");
         setEvents([]);
@@ -220,7 +250,13 @@ export default function UploadNewSourceForm({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={license}
-          onChange={(e) => setLicense(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setLicense(next);
+            if (next !== COPYRIGHT_LICENSE) {
+              setCopyrightPermissionConfirmed(false);
+            }
+          }}
           className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
         >
           {LICENSE_OPTIONS.map((opt) => (
@@ -247,11 +283,22 @@ export default function UploadNewSourceForm({
             className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500"
           />
         )}
+        {requiresCopyrightCertification && (
+          <label className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+            <input
+              type="checkbox"
+              checked={copyrightPermissionConfirmed}
+              onChange={(e) => setCopyrightPermissionConfirmed(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>{COPYRIGHT_CERTIFICATION_TEXT}</span>
+          </label>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
-          disabled={busy || !file}
+          disabled={!canSubmit}
           className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
         >
           {busy ? "Uploading…" : "Upload new source"}

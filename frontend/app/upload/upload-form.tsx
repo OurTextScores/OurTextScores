@@ -17,6 +17,21 @@ type UploadStatus =
   | { state: "success"; message: string; revisionId: string }
   | { state: "error"; message: string };
 
+const COPYRIGHT_LICENSE = "All Rights Reserved";
+const COPYRIGHT_CERTIFICATION_TEXT = "I certify that I have permission from the copyright holder to upload this work.";
+const LICENSE_OPTIONS = [
+  { value: "", label: "No license specified" },
+  { value: "CC0", label: "CC0 - Public Domain Dedication" },
+  { value: "CC-BY-4.0", label: "CC-BY 4.0 - Attribution" },
+  { value: "CC-BY-SA-4.0", label: "CC-BY-SA 4.0 - Attribution-ShareAlike" },
+  { value: "CC-BY-NC-4.0", label: "CC-BY-NC 4.0 - Attribution-NonCommercial" },
+  { value: "CC-BY-NC-SA-4.0", label: "CC-BY-NC-SA 4.0 - Attribution-NonCommercial-ShareAlike" },
+  { value: "CC-BY-ND-4.0", label: "CC-BY-ND 4.0 - Attribution-NoDerivatives" },
+  { value: "Public Domain", label: "Public Domain" },
+  { value: COPYRIGHT_LICENSE, label: "All Rights Reserved (Copyright)" },
+  { value: "Other", label: "Other (specify URL)" }
+];
+
 
 export default function UploadForm({ works }: UploadFormProps) {
   const router = useRouter();
@@ -146,6 +161,10 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
+  const [license, setLicense] = useState("");
+  const [licenseUrl, setLicenseUrl] = useState("");
+  const [licenseAttribution, setLicenseAttribution] = useState("");
+  const [copyrightPermissionConfirmed, setCopyrightPermissionConfirmed] = useState(false);
   const [sources, setSources] = useState<{ sourceId: string; label: string }[]>([]);
   const [targetSourceId, setTargetSourceId] = useState<string>("new");
   const [createBranch, setCreateBranch] = useState(false);
@@ -155,6 +174,8 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
   const [steps, setSteps] = useState<StepState[]>(() => initSteps());
   const esRef = useRef<EventSource | null>(null);
+  const requiresCopyrightCertification = license === COPYRIGHT_LICENSE;
+  const canSubmit = status.state !== "submitting" && !!file && (!requiresCopyrightCertification || copyrightPermissionConfirmed);
   const progressId = useMemo(() => {
     if (typeof window !== "undefined" && (window as any).crypto && typeof (window as any).crypto.randomUUID === 'function') {
       return (window as any).crypto.randomUUID();
@@ -175,7 +196,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       }
     };
     load();
-  }, [work.work.workId]);
+  }, [API_BASE, work.work.workId]);
 
   // Load branches for existing sources
   useEffect(() => {
@@ -198,13 +219,17 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       }
     }
     loadBranches();
-  }, [targetSourceId, work.work.workId]);
+  }, [API_BASE, targetSourceId, work.work.workId]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!file) {
       onStatusChange({ state: "error", message: "Please choose a score file to upload." });
+      return;
+    }
+    if (requiresCopyrightCertification && !copyrightPermissionConfirmed) {
+      onStatusChange({ state: "error", message: COPYRIGHT_CERTIFICATION_TEXT });
       return;
     }
 
@@ -246,13 +271,33 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
           payload.append('branchName', selectedBranch);
         }
       }
+      if (license) payload.append("license", license);
+      if (licenseUrl.trim()) payload.append("licenseUrl", licenseUrl.trim());
+      if (licenseAttribution.trim()) payload.append("licenseAttribution", licenseAttribution.trim());
       payload.append("file", file);
+
+      let token: string | null = null;
+      try {
+        const tokenResponse = await fetch("/api/auth/api-token", { cache: "no-store" });
+        if (tokenResponse.ok && typeof (tokenResponse as any).json === "function") {
+          const tokenBody = await tokenResponse.json();
+          if (typeof tokenBody?.token === "string" && tokenBody.token) {
+            token = tokenBody.token;
+          }
+        }
+      } catch {
+        // Work/source uploads allow anonymous users; continue without auth when token lookup fails.
+      }
 
       const url =
         targetSourceId === "new"
-          ? `/api/proxy/works/${encodeURIComponent(work.work.workId)}/sources`
-          : `/api/proxy/works/${encodeURIComponent(work.work.workId)}/sources/${encodeURIComponent(targetSourceId)}/revisions`;
-      const response = await fetch(url, { method: "POST", body: payload, headers: { 'X-Progress-Id': progressId } });
+          ? `${API_BASE}/works/${encodeURIComponent(work.work.workId)}/sources`
+          : `${API_BASE}/works/${encodeURIComponent(work.work.workId)}/sources/${encodeURIComponent(targetSourceId)}/revisions`;
+      const headers: Record<string, string> = { "X-Progress-Id": progressId };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const response = await fetch(url, { method: "POST", body: payload, headers, cache: "no-store" });
 
       if (!response.ok) {
         const text = await response.text();
@@ -269,6 +314,10 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       setDescription("");
       setFile(null);
       setCommitMessage("");
+      setLicense("");
+      setLicenseUrl("");
+      setLicenseAttribution("");
+      setCopyrightPermissionConfirmed(false);
       router.refresh();
     } catch (error) {
       onStatusChange({
@@ -340,6 +389,59 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
             placeholder="Describe your change"
             className="mt-2 block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
           />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="license">
+            License (optional)
+          </label>
+          <select
+            id="license"
+            value={license}
+            onChange={(event) => {
+              const next = event.target.value;
+              setLicense(next);
+              if (next !== COPYRIGHT_LICENSE) {
+                setCopyrightPermissionConfirmed(false);
+              }
+            }}
+            className="block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
+          >
+            {LICENSE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          {license === "Other" && (
+            <input
+              type="url"
+              value={licenseUrl}
+              onChange={(event) => setLicenseUrl(event.target.value)}
+              placeholder="License URL (required for Other)"
+              className="block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:placeholder:text-slate-500 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
+            />
+          )}
+          {(license.startsWith("CC-BY") || license === "Public Domain") && license !== "" && (
+            <input
+              type="text"
+              value={licenseAttribution}
+              onChange={(event) => setLicenseAttribution(event.target.value)}
+              placeholder="Attribution (optional)"
+              className="block w-full rounded-lg border-0 bg-slate-50 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary-600 dark:bg-white/5 dark:text-white dark:ring-white/10 dark:placeholder:text-slate-500 dark:focus:ring-primary-500 sm:text-sm sm:leading-6"
+            />
+          )}
+          {requiresCopyrightCertification && (
+            <label className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+              <input
+                type="checkbox"
+                checked={copyrightPermissionConfirmed}
+                onChange={(event) => setCopyrightPermissionConfirmed(event.target.checked)}
+                className="mt-1"
+              />
+              <span>{COPYRIGHT_CERTIFICATION_TEXT}</span>
+            </label>
+          )}
         </div>
 
         {targetSourceId !== 'new' && (
@@ -431,7 +533,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <button
             type="submit"
-            disabled={status.state === "submitting"}
+            disabled={!canSubmit}
             className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {status.state === "submitting" ? "Uploading…" : "Upload source"}

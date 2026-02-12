@@ -103,6 +103,31 @@ describe('UploadNewSourceForm', () => {
     expect(submitButton).not.toBeDisabled();
   });
 
+  it('requires copyright certification when license is All Rights Reserved', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<UploadNewSourceForm workId="12345" />);
+
+    const file = createMockFile('test.mxl', 'application/vnd.recordare.musicxml');
+    const fileInput = document.querySelector('input[type="file"]');
+    if (fileInput) {
+      await user.upload(fileInput, file);
+    }
+
+    const licenseSelect = screen.getByRole('combobox');
+    await user.selectOptions(licenseSelect, 'All Rights Reserved');
+
+    const submitButton = screen.getByRole('button', { name: /upload new source/i });
+    expect(submitButton).toBeDisabled();
+    expect(screen.getByText(/I certify that I have permission from the copyright holder to upload this work\./i)).toBeInTheDocument();
+
+    const certCheckbox = screen.getByRole('checkbox', {
+      name: /I certify that I have permission from the copyright holder to upload this work\./i
+    });
+    await user.click(certCheckbox);
+
+    expect(submitButton).not.toBeDisabled();
+  });
+
   it('submits form with file and optional fields', async () => {
     jest.useFakeTimers();
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -133,7 +158,7 @@ describe('UploadNewSourceForm', () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/proxy/works/12345/sources',
+        'http://localhost:4000/api/works/12345/sources',
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),

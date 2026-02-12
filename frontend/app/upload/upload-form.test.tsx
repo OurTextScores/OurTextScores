@@ -253,6 +253,41 @@ describe("UploadForm", () => {
     expect(fileInput).toHaveAttribute('accept', '.mscz,.mscx,.mxl,.xml');
   });
 
+  it("requires copyright certification when license is All Rights Reserved", async () => {
+    (resolveImslpUrl as jest.Mock).mockResolvedValue({
+      work: { workId: "work-url", sourceCount: 0, availableFormats: [] },
+      metadata: { workId: "work-url", title: "Work from URL", composer: "Composer B", permalink: "http://imslp.org/work-url" },
+    });
+
+    render(<UploadForm works={mockExistingWorks} />);
+
+    const urlInput = screen.getByPlaceholderText(/https:\/\/imslp.org\/wiki\//i);
+    const resolveButton = screen.getByRole("button", { name: /Resolve URL/i });
+    fireEvent.change(urlInput, { target: { value: "http://imslp.org/wiki/WorkFromURL" } });
+    fireEvent.click(resolveButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Step 2 — Upload source for Work from URL/i)).toBeInTheDocument();
+    });
+
+    const fileInput = screen.getByLabelText(/Score file/i);
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    const licenseSelect = screen.getByLabelText(/License \(optional\)/i);
+    fireEvent.change(licenseSelect, { target: { value: "All Rights Reserved" } });
+
+    const uploadButton = screen.getByRole("button", { name: /Upload source/i });
+    expect(uploadButton).toBeDisabled();
+
+    const certCheckbox = screen.getByRole("checkbox", {
+      name: /I certify that I have permission from the copyright holder to upload this work\./i
+    });
+    fireEvent.click(certCheckbox);
+
+    expect(uploadButton).not.toBeDisabled();
+  });
+
   it("allows selecting an existing source for revision", async () => {
     (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
@@ -445,7 +480,7 @@ describe("UploadForm", () => {
     expect(updatedIndicators[2]).toHaveClass("text-primary-600");
   });
 
-  it("does not show upload button as disabled when not submitting", async () => {
+  it("enables upload button when a file is selected and submission is idle", async () => {
     (resolveImslpUrl as jest.Mock).mockResolvedValue({
       work: { workId: "work1", sourceCount: 1, availableFormats: [] },
       metadata: { workId: "work1", title: "Work One", composer: "Composer A", permalink: "http://imslp.org/work1" },
@@ -461,6 +496,10 @@ describe("UploadForm", () => {
     await waitFor(() => {
       expect(screen.getByText(/Step 2 — Upload source for Work One/i)).toBeInTheDocument();
     });
+
+    const fileInput = screen.getByLabelText(/Score file/i);
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
 
     const uploadButton = screen.getByRole("button", { name: /Upload source/i });
     expect(uploadButton).not.toBeDisabled();
