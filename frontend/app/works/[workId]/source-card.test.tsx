@@ -18,7 +18,7 @@
 // Mock environment variable BEFORE imports
 // process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL = 'http://localhost:9000';
 
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../../test-utils';
 import SourceCard from './source-card';
 import { SourceView } from '../../lib/api';
@@ -221,5 +221,76 @@ describe('SourceCard', () => {
         const badge = screen.getByRole('link', { name: 'alice' });
         expect(badge).toBeInTheDocument();
         expect(badge).toHaveAttribute('href', '/users/alice');
+    });
+
+    it('uses neutral styling for reference PDF and labels source PDF download button', () => {
+        const sourceWithPdfs: SourceView = {
+            ...mockSource,
+            hasReferencePdf: true,
+            derivatives: {
+                pdf: {
+                    bucket: 'derivs',
+                    objectKey: 'score.pdf',
+                    sizeBytes: 1024,
+                    contentType: 'application/pdf',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z'
+                }
+            }
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithPdfs}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const referenceButton = screen.getByRole('link', { name: 'Download Reference PDF' });
+        expect(referenceButton).toHaveClass('border-slate-300');
+        expect(referenceButton).toHaveClass('bg-white');
+        expect(screen.getByRole('link', { name: 'Download Source PDF' })).toBeInTheDocument();
+    });
+
+    it('auto-opens source PDF panel for deep-linked source cards when PDF exists', async () => {
+        const sourceWithPdfs: SourceView = {
+            ...mockSource,
+            hasReferencePdf: true,
+            derivatives: {
+                pdf: {
+                    bucket: 'derivs',
+                    objectKey: 'score.pdf',
+                    sizeBytes: 1024,
+                    contentType: 'application/pdf',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z'
+                }
+            }
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithPdfs}
+                workId="work-123"
+                currentUser={mockUser}
+                autoOpen
+                autoOpenPanel="source-pdf"
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
+        });
+
+        const sourcePdfDetails = screen.getByText('Browse Source').closest('details');
+        const revisionHistoryDetails = screen.getByText(/Revision history/i).closest('details');
+
+        expect(sourcePdfDetails).toHaveAttribute('open');
+        expect(revisionHistoryDetails).not.toHaveAttribute('open');
     });
 });

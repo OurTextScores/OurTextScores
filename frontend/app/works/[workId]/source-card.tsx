@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense, useTransition, useEffect, useRef } from "react";
+import { useState, Suspense, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SourceView, SourceRevisionView, StorageLocator, BackendSessionUser } from "../../lib/api";
@@ -457,7 +457,8 @@ export default function SourceCard({
     currentUser,
     watchControlsSlot,
     branchesPanelSlot,
-    autoOpen = false
+    autoOpen = false,
+    autoOpenPanel = "revision-history"
 }: {
     source: SourceView;
     workId: string;
@@ -466,22 +467,25 @@ export default function SourceCard({
     watchControlsSlot: React.ReactNode;
     branchesPanelSlot: React.ReactNode;
     autoOpen?: boolean;
+    autoOpenPanel?: "revision-history" | "source-pdf";
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    const revisionHistoryRef = useRef<HTMLDetailsElement>(null);
+    const [isRevisionHistoryOpen, setIsRevisionHistoryOpen] = useState(false);
+    const [isSourcePdfOpen, setIsSourcePdfOpen] = useState(false);
 
-    // Auto-open card and revision history if specified via URL params
+    // Auto-open card and the requested panel when a source deep link is provided.
     useEffect(() => {
         if (autoOpen) {
             setIsOpen(true);
-            // Wait a bit for the card to open, then open revision history
-            setTimeout(() => {
-                if (revisionHistoryRef.current) {
-                    revisionHistoryRef.current.open = true;
-                }
-            }, 100);
+            if (autoOpenPanel === "source-pdf" && source.derivatives?.pdf) {
+                setIsRevisionHistoryOpen(false);
+                setIsSourcePdfOpen(true);
+            } else {
+                setIsRevisionHistoryOpen(true);
+                setIsSourcePdfOpen(false);
+            }
         }
-    }, [autoOpen]);
+    }, [autoOpen, autoOpenPanel, source.derivatives?.pdf]);
     const latest = source.revisions[0];
     const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
     const isOwner =
@@ -641,7 +645,7 @@ export default function SourceCard({
                             href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="rounded border border-rose-300 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200 dark:hover:bg-rose-900"
+                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
                             Download Reference PDF
                         </Link>
@@ -653,7 +657,7 @@ export default function SourceCard({
                             rel="noopener noreferrer"
                             className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
-                            Download PDF
+                            Download Source PDF
                         </Link>
                     )}
                     {source.derivatives?.normalizedMxl && (
@@ -764,7 +768,11 @@ export default function SourceCard({
                         </div>
                     )}
 
-                    <details ref={revisionHistoryRef} className="group">
+                    <details
+                        className="group"
+                        open={isRevisionHistoryOpen}
+                        onToggle={(event) => setIsRevisionHistoryOpen(event.currentTarget.open)}
+                    >
                         <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">Revision history ({source.revisions.length})</summary>
                         <RevisionHistory
                             workId={workId}
@@ -816,6 +824,8 @@ export default function SourceCard({
                     {source.derivatives?.pdf && (
                         <LazyDetails
                             className="group border-t border-slate-200 dark:border-slate-800"
+                            open={isSourcePdfOpen}
+                            onToggle={(event) => setIsSourcePdfOpen(event.currentTarget.open)}
                             summary={
                                 <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
                                     Browse Source

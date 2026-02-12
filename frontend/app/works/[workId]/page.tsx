@@ -88,6 +88,8 @@ export default async function WorkDetailPage({
   const targetSourceId = searchParams.source;
   const targetRevisionId = searchParams.revision;
   const targetCommentId = searchParams.comment;
+  const autoOpenPanel =
+    targetRevisionId || targetCommentId ? "revision-history" : "source-pdf";
   const [work, imslp, raw, session] = await Promise.all([
     fetchWorkDetail(workId).catch(() => notFound()),
     fetchImslpMetadataByWorkId(workId).catch(() => undefined),
@@ -169,6 +171,7 @@ export default async function WorkDetailPage({
                 imslpPermalink={imslpPermalink}
                 currentUser={currentUser}
                 autoOpen={source.sourceId === targetSourceId}
+                autoOpenPanel={autoOpenPanel}
                 watchControlsSlot={
                   <Suspense fallback={<span className="rounded px-3 py-1 text-xs text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">Loading…</span>}>
                     <WatchControls workId={workId} sourceId={source.sourceId} />
