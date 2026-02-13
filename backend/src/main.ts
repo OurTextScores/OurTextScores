@@ -19,6 +19,9 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HttpErrorFilter } from './common/http-error.filter';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { requestIdMiddleware } from './common/middleware/request-id.middleware';
+import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { requestLogMiddleware } from './common/middleware/request-log.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -26,6 +29,13 @@ async function bootstrap() {
   });
   app.enableCors({ origin: true });
   app.setGlobalPrefix('api');
+  app.use(requestIdMiddleware);
+  const jsonRequestLogsEnabled =
+    (process.env.JSON_REQUEST_LOGS || 'true').toLowerCase() !== 'false';
+  if (jsonRequestLogsEnabled) {
+    app.use(requestLogMiddleware);
+  }
+  app.use(rateLimitMiddleware);
   app.useGlobalFilters(new HttpErrorFilter());
 
   // Swagger API Documentation
@@ -61,6 +71,7 @@ async function bootstrap() {
     .addTag('branches', 'Branch management with Fossil VCS')
     .addTag('watches', 'Watch and notification subscriptions')
     .addTag('approvals', 'Branch merge approval workflows')
+    .addTag('legal', 'DMCA notice, counter-notice, and takedown workflow')
     .addTag('users', 'User management')
     .addTag('search', 'Search operations')
     .build();

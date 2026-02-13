@@ -30,6 +30,7 @@ export class UsersController {
             displayName: { type: 'string', example: 'John Doe' },
             username: { type: 'string', example: 'johndoe' },
             roles: { type: 'array', items: { type: 'string' }, example: ['user'] },
+            status: { type: 'string', enum: ['active', 'suspended', 'terminated'], example: 'active' },
             notify: {
               type: 'object',
               properties: {
@@ -48,13 +49,14 @@ export class UsersController {
     return {
       user: {
         id: String(doc._id),
-        email: doc.email,
-        displayName: doc.displayName,
-        username: doc.username,
-        roles: doc.roles,
-        notify: doc.notify ?? { watchPreference: 'immediate' }
-      }
-    };
+            email: doc.email,
+            displayName: doc.displayName,
+            username: doc.username,
+            roles: doc.roles,
+            ...(doc.status ? { status: doc.status } : {}),
+            notify: doc.notify ?? { watchPreference: 'immediate' }
+          }
+        };
   }
 
   @Patch()
@@ -139,4 +141,3 @@ export class UsersController {
     return { ok: true };
   }
 }
-

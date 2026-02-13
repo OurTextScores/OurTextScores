@@ -57,6 +57,18 @@ export default async function SettingsPage() {
               >
                 Flagged Comments Dashboard
               </Link>
+              <Link
+                href="/admin/flagged-sources"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                Flagged Sources Dashboard
+              </Link>
+              <Link
+                href="/admin/dmca-cases"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                DMCA Cases Dashboard
+              </Link>
             </div>
           </section>
         )}

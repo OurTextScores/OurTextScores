@@ -25,6 +25,20 @@ export class User {
   roles!: string[];
 
   @Prop({
+    trim: true,
+    enum: ['active', 'suspended', 'terminated'],
+    default: 'active',
+    index: true
+  })
+  status!: 'active' | 'suspended' | 'terminated';
+
+  @Prop({ required: true, min: 0, default: 0 })
+  enforcementStrikes!: number;
+
+  @Prop({ type: Date })
+  lastEnforcementAt?: Date;
+
+  @Prop({
     type: {
       watchPreference: { type: String, enum: ['immediate', 'daily', 'weekly'], default: 'immediate' }
     },

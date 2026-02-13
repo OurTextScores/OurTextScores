@@ -62,6 +62,30 @@ export class Source {
   @Prop({ required: true, default: false })
   hasReferencePdf!: boolean;
 
+  @Prop({ trim: true, enum: ['public', 'withheld_dmca', 'under_review'], default: 'public', index: true })
+  visibility!: 'public' | 'withheld_dmca' | 'under_review';
+
+  @Prop({ trim: true })
+  withheldReason?: string;
+
+  @Prop({ type: Date })
+  withheldAt?: Date;
+
+  @Prop({ trim: true })
+  withheldBy?: string;
+
+  @Prop({ trim: true })
+  withheldCaseId?: string;
+
+  @Prop({ required: true, default: false })
+  rightsDeclarationAccepted!: boolean;
+
+  @Prop({ type: Date })
+  rightsDeclarationAcceptedAt?: Date;
+
+  @Prop({ trim: true })
+  rightsDeclaredByUserId?: string;
+
   @Prop({ type: StorageLocatorSchema, required: true })
   storage!: StorageLocator;
 

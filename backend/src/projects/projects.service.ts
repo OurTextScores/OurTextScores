@@ -460,6 +460,7 @@ export class ProjectsService {
       license?: string;
       licenseUrl?: string;
       licenseAttribution?: string;
+      rightsDeclarationAccepted?: boolean;
       commitMessage?: string;
       isPrimary?: boolean;
       formatHint?: string;
@@ -490,6 +491,7 @@ export class ProjectsService {
       license: payload.license,
       licenseUrl: payload.licenseUrl,
       licenseAttribution: payload.licenseAttribution,
+      rightsDeclarationAccepted: payload.rightsDeclarationAccepted,
       isPrimary: payload.isPrimary,
       formatHint: payload.formatHint,
       commitMessage: payload.commitMessage,

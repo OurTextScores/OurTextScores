@@ -21,7 +21,8 @@ export class AuthOptionalGuard implements CanActivate {
           userId: String(userDoc._id),
           email: userDoc.email,
           name: userDoc.displayName ?? principal.name,
-          roles: Array.isArray(userDoc.roles) ? userDoc.roles : []
+          roles: Array.isArray(userDoc.roles) ? userDoc.roles : [],
+          ...(userDoc.status ? { status: userDoc.status } : {})
         };
       } else {
         (req as any).user = principal;
@@ -30,4 +31,3 @@ export class AuthOptionalGuard implements CanActivate {
     return true; // allow through regardless
   }
 }
-

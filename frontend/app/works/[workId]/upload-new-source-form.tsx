@@ -117,6 +117,12 @@ export default function UploadNewSourceForm({
       if (license) form.append("license", license);
       if (licenseUrl.trim()) form.append("licenseUrl", licenseUrl.trim());
       if (licenseAttribution.trim()) form.append("licenseAttribution", licenseAttribution.trim());
+      if (requiresCopyrightCertification) {
+        form.append(
+          "rightsDeclarationAccepted",
+          copyrightPermissionConfirmed ? "true" : "false"
+        );
+      }
 
       let token: string | null = null;
       try {

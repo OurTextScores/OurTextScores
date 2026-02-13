@@ -66,12 +66,28 @@ export default async function FlaggedCommentsPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
-          <Link
-            href="/"
-            className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-          >
-            ← Back to Home
-          </Link>
+          <div className="flex items-center justify-between">
+            <Link
+              href="/"
+              className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+            >
+              ← Back to Home
+            </Link>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/admin/flagged-sources"
+                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
+              >
+                Flagged Sources
+              </Link>
+              <Link
+                href="/admin/dmca-cases"
+                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
+              >
+                DMCA Cases
+              </Link>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">

@@ -58,10 +58,14 @@ describe('UploadSourceService (unit)', () => {
   const imslpService = {
     getRawByWorkId: jest.fn()
   } as any;
+  const config = {
+    get: jest.fn((_: string, defaultValue?: string) => defaultValue)
+  } as any;
 
   beforeEach(() => {
     jest.resetAllMocks();
     service = new UploadSourceService(
+      config,
       worksService,
       storageService,
       derivativePipeline,

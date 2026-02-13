@@ -70,6 +70,11 @@ export interface SourceRevisionView {
   changeSummary?: string;
   rawStorage: StorageLocator;
   checksum: { algorithm: string; hexDigest: string };
+  visibility?: 'public' | 'withheld_dmca' | 'under_review';
+  withheldReason?: string;
+  withheldAt?: Date;
+  withheldBy?: string;
+  withheldCaseId?: string;
   derivatives?: DerivativeArtifacts;
   manifest?: StorageLocator;
   validation: ValidationState;
@@ -90,6 +95,11 @@ export interface SourceView {
   originalFilename: string;
   isPrimary: boolean;
   hasReferencePdf?: boolean;
+  visibility?: 'public' | 'withheld_dmca' | 'under_review';
+  withheldReason?: string;
+  withheldAt?: Date;
+  withheldBy?: string;
+  withheldCaseId?: string;
   adminVerified?: boolean;
   adminVerifiedBy?: string;
   adminVerifiedAt?: Date;
@@ -603,6 +613,7 @@ except Exception:
 
     const revisionsBySource = new Map<string, SourceRevisionView[]>();
     const totalRevisionsBySource = new Map<string, number>();
+    const viewerIsAdmin = Boolean((viewer?.roles ?? []).includes('admin'));
     for (const source of sources) {
       revisionsBySource.set(source.sourceId, []);
       totalRevisionsBySource.set(source.sourceId, 0);
@@ -614,10 +625,12 @@ except Exception:
 
       // Enforce visibility: approved always visible; pending/rejected only to owner/uploader/admin
       const canSee = (() => {
+        const visibility = ((revision as any).visibility || 'public') as string;
+        if (visibility !== 'public' && !viewerIsAdmin) return false;
+
         const status = (revision as any).status || 'approved';
         if (status === 'approved') return true;
-        const roles = viewer?.roles ?? [];
-        if (roles.includes('admin')) return true;
+        if (viewerIsAdmin) return true;
         const isUploader = viewer?.userId && viewer.userId === String((revision as any).createdBy);
         if (isUploader) return true;
         const ownerUserId = (revision as any).approval?.ownerUserId as string | undefined;
@@ -642,6 +655,11 @@ except Exception:
         changeSummary: revision.changeSummary,
         rawStorage: revision.rawStorage,
         checksum: revision.checksum,
+        visibility: (revision as any).visibility || 'public',
+        withheldReason: (revision as any).withheldReason,
+        withheldAt: (revision as any).withheldAt,
+        withheldBy: (revision as any).withheldBy,
+        withheldCaseId: (revision as any).withheldCaseId,
         derivatives: revision.derivatives,
         manifest: revision.manifest,
         validation: validationForView,
@@ -685,6 +703,11 @@ except Exception:
 
     const sourceViews: SourceView[] = [];
     for (const source of sources) {
+      const sourceVisibility = ((source as any).visibility || 'public') as string;
+      if (sourceVisibility !== 'public' && !viewerIsAdmin) {
+        continue;
+      }
+
       const visibleRevisions = revisionsBySource.get(source.sourceId) ?? [];
       const totalRevisionCount = totalRevisionsBySource.get(source.sourceId) ?? 0;
 
@@ -716,6 +739,11 @@ except Exception:
         originalFilename: source.originalFilename,
         isPrimary: source.isPrimary,
         hasReferencePdf: totalRevisionCount > 0 ? hasVisibleReferencePdf : source.hasReferencePdf,
+        visibility: sourceVisibility as any,
+        withheldReason: (source as any).withheldReason,
+        withheldAt: (source as any).withheldAt,
+        withheldBy: (source as any).withheldBy,
+        withheldCaseId: (source as any).withheldCaseId,
         adminVerified: (source as any).adminVerified,
         adminVerifiedBy: (source as any).adminVerifiedBy,
         adminVerifiedAt: (source as any).adminVerifiedAt,
@@ -1930,5 +1958,56 @@ except Exception:
         flagReason: c.flagReason
       };
     });
+  }
+
+  /**
+   * Get all flagged sources (admin only)
+   */
+  async getFlaggedSources(): Promise<any[]> {
+    const sources = await this.sourceModel
+      .find({ adminFlagged: true })
+      .sort({ adminFlaggedAt: -1, latestRevisionAt: -1 })
+      .lean()
+      .exec();
+
+    const userIds = [
+      ...new Set(
+        sources.flatMap((s: any) => [
+          s?.provenance?.uploadedByUserId,
+          s?.adminFlaggedBy
+        ]).filter(Boolean)
+      )
+    ] as string[];
+
+    const userMap = new Map<string, string>();
+    for (const uid of userIds) {
+      try {
+        const user = await this.usersService.findById(uid);
+        if (user) {
+          userMap.set(uid, user.username || user.email || 'Unknown');
+        }
+      } catch {
+        // ignore lookup failures in admin dashboard shape
+      }
+    }
+
+    return sources.map((s: any) => ({
+      workId: s.workId,
+      sourceId: s.sourceId,
+      label: s.label,
+      sourceType: s.sourceType,
+      originalFilename: s.originalFilename,
+      latestRevisionId: s.latestRevisionId,
+      latestRevisionAt: s.latestRevisionAt,
+      visibility: s.visibility || 'public',
+      adminFlagReason: s.adminFlagReason,
+      adminFlaggedAt: s.adminFlaggedAt,
+      adminFlaggedBy: s.adminFlaggedBy,
+      adminFlaggedByUsername: s.adminFlaggedBy ? userMap.get(s.adminFlaggedBy) || 'Unknown' : undefined,
+      uploadedByUserId: s?.provenance?.uploadedByUserId,
+      uploadedByUsername: s?.provenance?.uploadedByUserId
+        ? userMap.get(s.provenance.uploadedByUserId) || 'Unknown'
+        : undefined
+    }));
   }
 }

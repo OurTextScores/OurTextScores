@@ -188,6 +188,7 @@ export class ProjectsController {
         license: { type: 'string' },
         licenseUrl: { type: 'string' },
         licenseAttribution: { type: 'string' },
+        rightsDeclarationAccepted: { type: 'boolean' },
         commitMessage: { type: 'string' },
         isPrimary: { type: 'boolean' },
         formatHint: { type: 'string' },
@@ -207,6 +208,7 @@ export class ProjectsController {
       license?: string;
       licenseUrl?: string;
       licenseAttribution?: string;
+      rightsDeclarationAccepted?: boolean | string;
       commitMessage?: string;
       isPrimary?: boolean | string;
       formatHint?: string;
@@ -232,6 +234,7 @@ export class ProjectsController {
         license: body.license,
         licenseUrl: body.licenseUrl,
         licenseAttribution: body.licenseAttribution,
+        rightsDeclarationAccepted: this.toBoolean(body.rightsDeclarationAccepted),
         commitMessage: body.commitMessage,
         isPrimary: this.toBoolean(body.isPrimary),
         formatHint: body.formatHint,

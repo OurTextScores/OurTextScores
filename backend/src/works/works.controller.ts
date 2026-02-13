@@ -660,7 +660,8 @@ export class WorksController {
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source', example: true },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
-        license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' }
+        license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' },
+        rightsDeclarationAccepted: { type: 'boolean', description: 'Whether uploader confirms they have legal rights to upload this content' }
       },
       required: ['file']
     }
@@ -677,7 +678,8 @@ export class WorksController {
     const normalizedBody: UploadSourceRequest = {
       ...body,
       isPrimary: this.toBoolean(body?.isPrimary),
-      formatHint: body?.formatHint
+      formatHint: body?.formatHint,
+      rightsDeclarationAccepted: this.toBoolean((body as any)?.rightsDeclarationAccepted)
     };
     const file = files?.file?.[0];
     const referencePdfFile = files?.referencePdf?.[0];
@@ -720,7 +722,8 @@ export class WorksController {
         createBranch: { type: 'boolean', description: 'Create a new branch for this revision' },
         branchName: { type: 'string', description: 'Name of new branch if createBranch is true' },
         changeSummary: { type: 'string', description: 'Summary of changes in this revision', example: 'Fixed measure 42 dynamics' },
-        license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' }
+        license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' },
+        rightsDeclarationAccepted: { type: 'boolean', description: 'Whether uploader confirms they have legal rights to upload this content' }
       },
       required: ['file']
     }
@@ -741,7 +744,8 @@ export class WorksController {
       isPrimary: this.toBoolean(body?.isPrimary),
       formatHint: body?.formatHint,
       createBranch: this.toBoolean((body as any)?.createBranch),
-      branchName: (body as any)?.branchName
+      branchName: (body as any)?.branchName,
+      rightsDeclarationAccepted: this.toBoolean((body as any)?.rightsDeclarationAccepted)
     };
     const file = files?.file?.[0];
     const referencePdfFile = files?.referencePdf?.[0];
@@ -1125,6 +1129,22 @@ export class WorksController {
       throw new ForbiddenException('Admin role required');
     }
     return this.worksService.getFlaggedComments();
+  }
+
+  @Get('admin/flagged-sources')
+  @UseGuards(AuthRequiredGuard)
+  @ApiTags('works')
+  @ApiOperation({
+    summary: 'Get all flagged sources (admin only)',
+    description: 'Retrieve all flagged sources for moderation and legal review.'
+  })
+  @ApiResponse({ status: 200, description: 'List of flagged sources with context' })
+  @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
+  async getFlaggedSources(@CurrentUser() user?: RequestUser) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.getFlaggedSources();
   }
 
   // Admin verification endpoints

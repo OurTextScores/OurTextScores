@@ -13,5 +13,5 @@ export interface RequestUser {
   email?: string;
   name?: string;
   roles?: string[];
+  status?: 'active' | 'suspended' | 'terminated';
 }
-

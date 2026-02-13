@@ -53,6 +53,9 @@ export default function Header() {
           <Link href="/catalogue" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Catalogue</Link>
           <Link href="/projects" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Projects</Link>
           <Link href="/score-editor" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Score Editor</Link>
+          <Link href="/tos" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Terms</Link>
+          <Link href="/privacy" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Privacy</Link>
+          <Link href="/dmca" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">DMCA</Link>
           <ThemeToggle />
           {user ? (
             <>

@@ -23,6 +23,7 @@ import { BranchesService } from '../branches/branches.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ImslpService } from '../imslp/imslp.service';
 import type { RequestUser } from '../auth/types/auth-user';
+import { ConfigService } from '@nestjs/config';
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100MB
 
@@ -33,6 +34,7 @@ export interface UploadSourceRequest {
   license?: string;
   licenseUrl?: string;
   licenseAttribution?: string;
+  rightsDeclarationAccepted?: boolean;
   isPrimary?: boolean;
   formatHint?: string;
   commitMessage?: string;
@@ -59,6 +61,7 @@ export class UploadSourceService {
   private readonly logger = new Logger(UploadSourceService.name);
 
   constructor(
+    private readonly config: ConfigService,
     private readonly worksService: WorksService,
     private readonly storageService: StorageService,
     private readonly derivativePipeline: DerivativePipelineService,
@@ -72,6 +75,31 @@ export class UploadSourceService {
     @InjectModel(SourceRevision.name)
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>
   ) { }
+
+  private isEnabled(envKey: string, defaultValue: boolean): boolean {
+    const raw = this.config.get<string>(envKey);
+    if (raw == null || raw.trim() === '') return defaultValue;
+    return raw.trim().toLowerCase() === 'true';
+  }
+
+  private assertUploadPolicy(request: UploadSourceRequest, user?: RequestUser): void {
+    const allowAnonymousUploads = this.isEnabled('ALLOW_ANON_UPLOADS', true);
+    if (!allowAnonymousUploads && !user?.userId) {
+      throw new BadRequestException('Authentication required for uploads');
+    }
+
+    if (user?.status && user.status !== 'active') {
+      throw new ForbiddenException('Your account is not permitted to upload content');
+    }
+
+    const requireRightsDeclaration = this.isEnabled('REQUIRE_RIGHTS_DECLARATION', false);
+    const rightsAccepted = request.rightsDeclarationAccepted === true;
+    if ((requireRightsDeclaration || request.license === 'All Rights Reserved') && !rightsAccepted) {
+      throw new BadRequestException(
+        'Rights declaration is required for this upload'
+      );
+    }
+  }
 
   async uploadRevision(
     workId: string,
@@ -96,6 +124,13 @@ export class UploadSourceService {
     if (!existing) {
       throw new BadRequestException('Source not found for this work');
     }
+    this.assertUploadPolicy(
+      {
+        ...request,
+        license: request.license ?? existing.license
+      },
+      user
+    );
 
     const receivedAt = new Date();
     this.progress.publish(progressId, 'Upload received', 'upload.received');
@@ -267,6 +302,8 @@ export class UploadSourceService {
       uploadedByName: existingProvenance?.uploadedByName ?? user?.name,
       notes: Array.isArray(existingProvenance?.notes) ? [...existingProvenance.notes, ...notes] : notes
     };
+    const rightsAccepted = request.rightsDeclarationAccepted === true;
+    const rightsAcceptedAt = rightsAccepted ? receivedAt : undefined;
 
     // Determine branch policy gating
     const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
@@ -294,6 +331,7 @@ export class UploadSourceService {
       fossilBranch: committedBranchName ?? this.commitBranchFromNotes(notes) ?? undefined,
       branchName: sanitizedBranch,
       rawStorage: storageLocator,
+      visibility: 'public',
       checksum: storageLocator.checksum,
       createdBy: user?.userId || 'system',
       createdAt: receivedAt,
@@ -304,6 +342,9 @@ export class UploadSourceService {
       license: request.license ?? existing.license,
       licenseUrl: request.licenseUrl ?? existing.licenseUrl,
       licenseAttribution: request.licenseAttribution ?? existing.licenseAttribution,
+      rightsDeclarationAccepted: rightsAccepted,
+      rightsDeclarationAcceptedAt: rightsAcceptedAt,
+      rightsDeclaredByUserId: rightsAccepted ? user?.userId : undefined,
       status,
       approval
     });
@@ -327,7 +368,14 @@ export class UploadSourceService {
             latestRevisionAt: receivedAt,
             license: request.license ?? existing.license,
             licenseUrl: request.licenseUrl ?? existing.licenseUrl,
-            licenseAttribution: request.licenseAttribution ?? existing.licenseAttribution
+            licenseAttribution: request.licenseAttribution ?? existing.licenseAttribution,
+            rightsDeclarationAccepted:
+              rightsAccepted || Boolean((existing as any).rightsDeclarationAccepted),
+            rightsDeclarationAcceptedAt:
+              rightsAcceptedAt ?? (existing as any).rightsDeclarationAcceptedAt,
+            rightsDeclaredByUserId:
+              (rightsAccepted ? user?.userId : undefined) ??
+              (existing as any).rightsDeclaredByUserId
           }
         }
       );
@@ -387,6 +435,9 @@ export class UploadSourceService {
     }
     if (!user?.userId) {
       throw new BadRequestException('Authentication required');
+    }
+    if (user.status && user.status !== 'active') {
+      throw new ForbiddenException('Your account is not permitted to upload content');
     }
 
     const trimmedWorkId = workId.trim();
@@ -475,6 +526,7 @@ export class UploadSourceService {
     if (file.size > MAX_UPLOAD_BYTES) {
       throw new BadRequestException('File is too large (max 100MB).');
     }
+    this.assertUploadPolicy(request, user);
 
     const trimmedWorkId = workId.trim();
     const work = await this.worksService.ensureWork(trimmedWorkId);
@@ -632,6 +684,8 @@ export class UploadSourceService {
       uploadedByName: user?.name,
       notes
     };
+    const rightsAccepted = request.rightsDeclarationAccepted === true;
+    const rightsAcceptedAt = rightsAccepted ? receivedAt : undefined;
 
     // Determine branch policy gating for new source (default to trunk)
     const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
@@ -662,6 +716,7 @@ export class UploadSourceService {
       fossilBranch: sanitizedBranch,
       branchName: sanitizedBranch,
       rawStorage: storageLocator,
+      visibility: 'public',
       checksum: storageLocator.checksum,
       createdBy: user?.userId || 'system',
       createdAt: receivedAt,
@@ -672,6 +727,9 @@ export class UploadSourceService {
       license: request.license,
       licenseUrl: request.licenseUrl,
       licenseAttribution: request.licenseAttribution,
+      rightsDeclarationAccepted: rightsAccepted,
+      rightsDeclarationAcceptedAt: rightsAcceptedAt,
+      rightsDeclaredByUserId: rightsAccepted ? user?.userId : undefined,
       status,
       approval
     });
@@ -690,9 +748,13 @@ export class UploadSourceService {
       originalFilename: file.originalname,
       isPrimary: request.isPrimary ?? false,
       hasReferencePdf,
+      visibility: 'public',
       storage: storageLocator,
       validation: validationState,
       provenance,
+      rightsDeclarationAccepted: rightsAccepted,
+      rightsDeclarationAcceptedAt: rightsAcceptedAt,
+      rightsDeclaredByUserId: rightsAccepted ? user?.userId : undefined,
       derivatives: status === 'approved' ? derivativeOutcome.derivatives : undefined,
       latestRevisionId: status === 'approved' ? revisionId : undefined,
       latestRevisionAt: status === 'approved' ? receivedAt : undefined

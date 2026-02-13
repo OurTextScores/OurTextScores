@@ -288,6 +288,9 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       if (license) payload.append("license", license);
       if (licenseUrl.trim()) payload.append("licenseUrl", licenseUrl.trim());
       if (licenseAttribution.trim()) payload.append("licenseAttribution", licenseAttribution.trim());
+      if (requiresCopyrightCertification) {
+        payload.append("rightsDeclarationAccepted", copyrightPermissionConfirmed ? "true" : "false");
+      }
       const preparedFile = await prepareUploadScoreFile(file, setClientConversionProgress);
       payload.append("file", preparedFile.file);
       if (preparedFile.originalMsczFile) payload.append("originalMscz", preparedFile.originalMsczFile);

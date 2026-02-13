@@ -42,7 +42,9 @@ export class UsersService {
           $setOnInsert: {
             email: normalized,
             displayName: displayName || undefined,
-            roles: ['user']
+            roles: ['user'],
+            status: 'active',
+            enforcementStrikes: 0
           }
         },
         { new: true, upsert: true }
