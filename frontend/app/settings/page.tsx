@@ -69,6 +69,12 @@ export default async function SettingsPage() {
               >
                 DMCA Cases Dashboard
               </Link>
+              <Link
+                href="/pdmx"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                PDMX Browser
+              </Link>
             </div>
           </section>
         )}

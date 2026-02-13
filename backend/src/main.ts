@@ -72,6 +72,7 @@ async function bootstrap() {
     .addTag('watches', 'Watch and notification subscriptions')
     .addTag('approvals', 'Branch merge approval workflows')
     .addTag('legal', 'DMCA notice, counter-notice, and takedown workflow')
+    .addTag('pdmx', 'PDMX dataset browsing, filtering, and import workflow')
     .addTag('users', 'User management')
     .addTag('search', 'Search operations')
     .build();

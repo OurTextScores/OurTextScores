@@ -17,7 +17,9 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "reindex:search": "node dist/reindex-search.js",
     "backfill:thumbnails": "node dist/generate-thumbnails.js",
-    "ops:project-promotion": "node scripts/project-promotion.js"
+    "ops:project-promotion": "node scripts/project-promotion.js",
+    "ops:pdmx-import": "node scripts/pdmx-import-csv.js",
+    "ops:pdmx-sync-assets": "node scripts/pdmx-sync-assets.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

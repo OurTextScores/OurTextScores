@@ -176,6 +176,8 @@ describe('UsersService', () => {
             email: 'new@example.com',
             displayName: 'New User',
             roles: ['user'],
+            status: 'active',
+            enforcementStrikes: 0,
           },
         },
         { new: true, upsert: true }
@@ -232,6 +234,8 @@ describe('UsersService', () => {
             email: 'nodisplay@example.com',
             displayName: undefined,
             roles: ['user'],
+            status: 'active',
+            enforcementStrikes: 0,
           },
         },
         { new: true, upsert: true }
