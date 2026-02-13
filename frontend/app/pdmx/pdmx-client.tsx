@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   associatePdmxSourceAction,
@@ -92,6 +92,10 @@ export default function PdmxClient({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    setRows(initialItems);
+  }, [initialItems]);
+
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
 
@@ -130,24 +134,6 @@ export default function PdmxClient({
         patchRow(row.pdmxId, { review: updated.review });
       } catch (err: any) {
         setError(err?.message || "Failed to mark record unacceptable");
-      } finally {
-        setActiveRowId(null);
-      }
-    });
-  };
-
-  const markAcceptable = (row: PdmxListItem) => {
-    setError(null);
-    setActiveRowId(row.pdmxId);
-    startTransition(async () => {
-      try {
-        const updated = await updatePdmxReviewAction(row.pdmxId, {
-          qualityStatus: "acceptable",
-          excludedFromSearch: false
-        });
-        patchRow(row.pdmxId, { review: updated.review });
-      } catch (err: any) {
-        setError(err?.message || "Failed to mark record acceptable");
       } finally {
         setActiveRowId(null);
       }
@@ -244,8 +230,8 @@ export default function PdmxClient({
             onChange={(e) => setHasPdf(e.target.value)}
             className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           >
-            <option value="">Any PDF state</option>
             <option value="true">Has PDF</option>
+            <option value="">Any PDF state</option>
             <option value="false">Missing PDF</option>
           </select>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
@@ -417,14 +403,6 @@ export default function PdmxClient({
                           className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-200"
                         >
                           Mark unacceptable
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isPending && activeRowId === row.pdmxId}
-                          onClick={() => markAcceptable(row)}
-                          className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200"
-                        >
-                          Mark acceptable
                         </button>
                         <button
                           type="button"

@@ -66,7 +66,7 @@ export default async function PdmxPage({
   const requireNoLicenseConflict = searchParams?.requireNoLicenseConflict === "false" ? false : true;
   const subset = typeof searchParams?.subset === "string" ? searchParams.subset : "";
   const importStatus = typeof searchParams?.importStatus === "string" ? searchParams.importStatus : "";
-  const hasPdf = typeof searchParams?.hasPdf === "string" ? searchParams.hasPdf : "";
+  const hasPdf = typeof searchParams?.hasPdf === "string" ? searchParams.hasPdf : "true";
 
   const data = await fetchPdmxRecords({
     q,
