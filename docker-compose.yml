@@ -31,6 +31,11 @@ services:
     environment:
       # Optional email server for NextAuth + notifications
       EMAIL_SERVER: ${EMAIL_SERVER:-smtp://mailpit:1025}
+      # For heavy scores, allow MuseScore exports to run without hard timeout in local dev.
+      MUSESCORE_EXPORT_TIMEOUT_MS: ${MUSESCORE_EXPORT_TIMEOUT_MS:-0}
+      MUSESCORE_WRAPPER_TIMEOUT_SECONDS: ${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-0}
+      # PDF can be generated later so upload requests are not blocked by this step.
+      MUSESCORE_PDF_MODE: ${MUSESCORE_PDF_MODE:-async}
     depends_on:
       - mongo
       - meili

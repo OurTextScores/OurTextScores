@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import type { EnsureWorkResponse, ImslpWorkSummary, WorkSummary } from "../lib/api";
 import { ensureWork, resolveImslpUrl, searchImslp, getPublicApiBase } from "../lib/api";
 import { getFileExtension, toAnalyticsError, trackUploadOutcomeClient } from "../lib/analytics";
+import { ClientMsczConversionProgress, prepareUploadScoreFile } from "../lib/client-mscz-conversion";
 import { StepState, initSteps, applyEventToSteps } from "../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../components/upload-progress-stepper";
+import { ClientConversionProgressCard } from "../components/client-conversion-progress";
 
 interface UploadFormProps {
   works: WorkSummary[];
@@ -174,6 +176,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
   const [selectedBranch, setSelectedBranch] = useState<string>("main");
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
   const [steps, setSteps] = useState<StepState[]>(() => initSteps());
+  const [clientConversionProgress, setClientConversionProgress] = useState<ClientMsczConversionProgress | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const requiresCopyrightCertification = license === COPYRIGHT_LICENSE;
   const canSubmit = status.state !== "submitting" && !!file && (!requiresCopyrightCertification || copyrightPermissionConfirmed);
@@ -236,6 +239,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
 
     onStatusChange({ state: "submitting" });
     setEvents([]);
+    setClientConversionProgress(null);
     const startedAt = Date.now();
     const uploadKind = targetSourceId === "new" ? "source" : "revision";
     const uploadSourceId = targetSourceId === "new" ? undefined : targetSourceId;
@@ -284,7 +288,9 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       if (license) payload.append("license", license);
       if (licenseUrl.trim()) payload.append("licenseUrl", licenseUrl.trim());
       if (licenseAttribution.trim()) payload.append("licenseAttribution", licenseAttribution.trim());
-      payload.append("file", file);
+      const preparedFile = await prepareUploadScoreFile(file, setClientConversionProgress);
+      payload.append("file", preparedFile.file);
+      if (preparedFile.originalMsczFile) payload.append("originalMscz", preparedFile.originalMsczFile);
 
       let token: string | null = null;
       try {
@@ -597,6 +603,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
             status={mapUploadStatus(status.state)}
           />
         )}
+        <ClientConversionProgressCard progress={clientConversionProgress} />
       </form>
     </section>
   );

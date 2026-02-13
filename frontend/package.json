@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "prebuild": "node scripts/check_client_api_usage.cjs",
+    "prepare:webmscore": "node scripts/sync_webmscore_assets.cjs",
+    "dev": "npm run prepare:webmscore && next dev",
+    "prebuild": "npm run prepare:webmscore && node scripts/check_client_api_usage.cjs",
     "build": "next build",
     "postbuild": "node scripts/verify_public_links.cjs",
     "start": "next start",
@@ -24,6 +25,7 @@
     "opensheetmusicdisplay": "1.8.8",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "webmscore": "^1.2.1",
     "yallist": "^4.0.0"
   },
   "devDependencies": {

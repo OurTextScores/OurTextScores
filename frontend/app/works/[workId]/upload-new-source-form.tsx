@@ -4,8 +4,10 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPublicApiBase } from "../../lib/api";
 import { getFileExtension, toAnalyticsError, trackUploadOutcomeClient } from "../../lib/analytics";
+import { ClientMsczConversionProgress, prepareUploadScoreFile } from "../../lib/client-mscz-conversion";
 import { StepState, initSteps, applyEventToSteps } from "../../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
+import { ClientConversionProgressCard } from "../../components/client-conversion-progress";
 
 // Use public API base for browser uploads; auth is attached when available.
 const API_BASE = getPublicApiBase();
@@ -47,6 +49,7 @@ export default function UploadNewSourceForm({
   const [status, setStatus] = useState<UploadProgressStatus>("idle");
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
   const [steps, setSteps] = useState<StepState[]>(() => initSteps());
+  const [clientConversionProgress, setClientConversionProgress] = useState<ClientMsczConversionProgress | null>(null);
   const [errorModal, setErrorModal] = useState<{ open: boolean; message: string } | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const progressId = useMemo(
@@ -74,6 +77,7 @@ export default function UploadNewSourceForm({
     setStatus("running");
     setEvents([]);
     setSteps(initSteps());
+    setClientConversionProgress(null);
     const startedAt = Date.now();
     const fileExt = getFileExtension(file.name);
     const hasReferencePdf = Boolean(referencePdfFile);
@@ -103,7 +107,9 @@ export default function UploadNewSourceForm({
       });
 
       const form = new FormData();
-      form.append("file", file);
+      const preparedFile = await prepareUploadScoreFile(file, setClientConversionProgress);
+      form.append("file", preparedFile.file);
+      if (preparedFile.originalMsczFile) form.append("originalMscz", preparedFile.originalMsczFile);
       if (referencePdfFile) form.append("referencePdf", referencePdfFile);
       if (label.trim()) form.append("label", label.trim());
       if (commitMessage.trim()) form.append("commitMessage", commitMessage.trim());
@@ -162,6 +168,7 @@ export default function UploadNewSourceForm({
         setStatus("idle");
         setEvents([]);
         setSteps(initSteps());
+        setClientConversionProgress(null);
         router.refresh();
       }, refreshDelayMs);
     } catch (err) {
@@ -331,6 +338,7 @@ export default function UploadNewSourceForm({
           status={status}
         />
       )}
+      <ClientConversionProgressCard progress={clientConversionProgress} />
       {errorModal?.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div

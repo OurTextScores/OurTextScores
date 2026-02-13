@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Long-running upload+conversion requests can exceed Next's default proxy timeout (30s).
+  // Keep rewrite proxying alive long enough for heavy MuseScore conversions.
+  experimental: {
+    proxyTimeout: 15 * 60 * 1000, // 15 minutes
+  },
   async rewrites() {
     return [
       // MinIO file access

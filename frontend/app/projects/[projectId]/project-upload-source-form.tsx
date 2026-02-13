@@ -3,8 +3,10 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPublicApiBase } from "../../lib/api";
+import { ClientMsczConversionProgress, prepareUploadScoreFile } from "../../lib/client-mscz-conversion";
 import { StepState, applyEventToSteps, initSteps } from "../../components/progress-steps";
 import { UploadProgressStepper, type UploadProgressStatus } from "../../components/upload-progress-stepper";
+import { ClientConversionProgressCard } from "../../components/client-conversion-progress";
 
 const API_BASE = getPublicApiBase();
 const COPYRIGHT_LICENSE = "All Rights Reserved";
@@ -29,6 +31,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<Array<{ message: string; stage?: string; timestamp?: string }>>([]);
   const [steps, setSteps] = useState<StepState[]>(() => initSteps());
+  const [clientConversionProgress, setClientConversionProgress] = useState<ClientMsczConversionProgress | null>(null);
   const [imslpUrl, setImslpUrl] = useState("");
   const [label, setLabel] = useState("");
   const [description, setDescription] = useState("");
@@ -73,6 +76,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
     setStatus("running");
     setEvents([]);
     setSteps(initSteps());
+    setClientConversionProgress(null);
     const startedAt = Date.now();
 
     try {
@@ -95,7 +99,9 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
       });
 
       const form = new FormData();
-      form.append("file", file);
+      const preparedFile = await prepareUploadScoreFile(file, setClientConversionProgress);
+      form.append("file", preparedFile.file);
+      if (preparedFile.originalMsczFile) form.append("originalMscz", preparedFile.originalMsczFile);
       if (referencePdfFile) form.append("referencePdf", referencePdfFile);
       if (imslpUrl.trim()) form.append("imslpUrl", imslpUrl.trim());
       if (label.trim()) form.append("label", label.trim());
@@ -144,6 +150,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
         setStatus("idle");
         setEvents([]);
         setSteps(initSteps());
+        setClientConversionProgress(null);
       }, 2000);
     } catch (err: any) {
       setStatus("idle");
@@ -296,6 +303,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
         </div>
 
         {error && <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p>}
+        <ClientConversionProgressCard progress={clientConversionProgress} />
 
         <div>
           <button

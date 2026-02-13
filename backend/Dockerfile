@@ -6,6 +6,8 @@ ARG MUSESCORE4_APPIMAGE_URL="https://github.com/musescore/MuseScore/releases/dow
 ARG MUSESCORE_CLI=musescore4
 ENV DEBIAN_FRONTEND=noninteractive \
     QT_QPA_PLATFORM=offscreen \
+    MUSESCORE_EXPORT_TIMEOUT_MS=300000 \
+    MUSESCORE_WRAPPER_TIMEOUT_SECONDS=300 \
     MUSESCORE_CLI=${MUSESCORE_CLI}
 WORKDIR /app
 
@@ -40,7 +42,16 @@ RUN if [ -n "$MUSESCORE4_APPIMAGE_URL" ]; then \
       chmod +x /tmp/MuseScore-4.AppImage && \
       /tmp/MuseScore-4.AppImage --appimage-extract && \
       mv squashfs-root /opt/musescore4 && \
-      printf '#!/bin/sh\n# Wrapper for MuseScore 4 with timeout and proper xvfb settings\n# The binary must be called directly (not via AppRun) for CLI to work properly\nexec timeout 60 xvfb-run -s "-screen 0 640x480x24 -ac +extension GLX +render -noreset" /opt/musescore4/bin/mscore4portable "$@"\n' > /usr/local/bin/musescore4 && \
+      printf '%s\n' \
+        '#!/bin/sh' \
+        '# Wrapper for MuseScore 4 with timeout and proper xvfb settings.' \
+        '# The binary must be called directly (not via AppRun) for CLI to work properly.' \
+        'TIMEOUT_SECONDS="${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-300}"' \
+        'if [ "${TIMEOUT_SECONDS}" = "0" ]; then' \
+        '  exec xvfb-run -a -s "-screen 0 640x480x24 -ac +extension GLX +render -noreset" /opt/musescore4/bin/mscore4portable "$@"' \
+        'fi' \
+        'exec timeout "${TIMEOUT_SECONDS}" xvfb-run -a -s "-screen 0 640x480x24 -ac +extension GLX +render -noreset" /opt/musescore4/bin/mscore4portable "$@"' \
+      > /usr/local/bin/musescore4 && \
       chmod +x /usr/local/bin/musescore4 && \
       rm -f /tmp/MuseScore-4.AppImage; \
     fi

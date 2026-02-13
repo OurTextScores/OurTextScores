@@ -6,10 +6,19 @@ export function stepDefs(): StepDef[] {
   return [
     { id: 'upload.received', label: 'Upload received' },
     { id: 'upload.stored', label: 'Stored raw upload' },
-    { id: 'pipeline.start', label: 'Start pipeline' },
+    { id: 'pipeline.start', label: 'Start server pipeline' },
     { id: 'deriv.input', label: 'Saved working copy', optional: true },
-    { id: 'deriv.mscz2mxl', label: 'MuseScore → MXL', variants: ['deriv.mscz2mxl','deriv.canonical','deriv.xml2mxl'] },
-    { id: 'deriv.pdf', label: 'Generated PDF', optional: true },
+    {
+      id: 'deriv.mscz2mxl',
+      label: 'MuseScore CLI -> MXL (server)',
+      variants: ['deriv.mscz2mxl', 'deriv.canonical', 'deriv.xml2mxl']
+    },
+    {
+      id: 'deriv.pdf',
+      label: 'PDF export (MuseScore CLI)',
+      optional: true,
+      variants: ['deriv.pdf', 'deriv.pdf.deferred', 'deriv.pdf.skipped']
+    },
     { id: 'store.normalized', label: 'Stored normalized MXL', optional: true },
     { id: 'store.canonical', label: 'Stored canonical XML' },
     { id: 'store.pdf', label: 'Stored PDF', optional: true },
@@ -60,6 +69,8 @@ export function applyEventToSteps(prev: StepState[], stage: string | undefined, 
       // Treat pipeline error as a failed step so the UI can highlight it
       if (stage === 'pipeline.error') {
         mark(idx, 'failed');
+      } else if (stage === 'deriv.pdf.deferred' || stage === 'deriv.pdf.skipped') {
+        mark(idx, 'skipped');
       } else {
         mark(idx, 'done');
       }

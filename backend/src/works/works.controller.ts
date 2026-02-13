@@ -633,7 +633,8 @@ export class WorksController {
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'file', maxCount: 1 },
-      { name: 'referencePdf', maxCount: 1 }
+      { name: 'referencePdf', maxCount: 1 },
+      { name: 'originalMscz', maxCount: 1 }
     ], {
       storage: memoryStorage(),
       limits: {
@@ -655,6 +656,7 @@ export class WorksController {
       properties: {
         file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, or .xml)' },
         referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
+        originalMscz: { type: 'string', format: 'binary', description: 'Optional original .mscz file when score file is pre-converted to .mxl client-side' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source', example: true },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
@@ -668,7 +670,7 @@ export class WorksController {
   uploadSource(
     @Param('workId') workId: string,
     @Body() body: UploadSourceRequest,
-    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[] },
+    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ) {
@@ -679,14 +681,16 @@ export class WorksController {
     };
     const file = files?.file?.[0];
     const referencePdfFile = files?.referencePdf?.[0];
-    return this.uploadSourceService.upload(workId, normalizedBody, file, referencePdfFile, progressId, user);
+    const originalMsczFile = files?.originalMscz?.[0];
+    return this.uploadSourceService.upload(workId, normalizedBody, file, referencePdfFile, progressId, user, originalMsczFile);
   }
 
   @Post(':workId/sources/:sourceId/revisions')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'file', maxCount: 1 },
-      { name: 'referencePdf', maxCount: 1 }
+      { name: 'referencePdf', maxCount: 1 },
+      { name: 'originalMscz', maxCount: 1 }
     ], {
       storage: memoryStorage(),
       limits: {
@@ -709,6 +713,7 @@ export class WorksController {
       properties: {
         file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, or .xml)' },
         referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
+        originalMscz: { type: 'string', format: 'binary', description: 'Optional original .mscz file when score file is pre-converted to .mxl client-side' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source' },
         formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
@@ -727,7 +732,7 @@ export class WorksController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body() body: UploadSourceRequest,
-    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[] },
+    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ) {
@@ -740,7 +745,8 @@ export class WorksController {
     };
     const file = files?.file?.[0];
     const referencePdfFile = files?.referencePdf?.[0];
-    return this.uploadSourceService.uploadRevision(workId, sourceId, normalizedBody, file, referencePdfFile, progressId, user);
+    const originalMsczFile = files?.originalMscz?.[0];
+    return this.uploadSourceService.uploadRevision(workId, sourceId, normalizedBody, file, referencePdfFile, progressId, user, originalMsczFile);
   }
 
   @Post(':workId/sources/:sourceId/reference.pdf')

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createHash } from 'node:crypto';
@@ -56,6 +56,8 @@ export interface UploadSourceResult {
 
 @Injectable()
 export class UploadSourceService {
+  private readonly logger = new Logger(UploadSourceService.name);
+
   constructor(
     private readonly worksService: WorksService,
     private readonly storageService: StorageService,
@@ -78,7 +80,8 @@ export class UploadSourceService {
     file?: Express.Multer.File,
     referencePdfFile?: Express.Multer.File,
     progressId?: string,
-    user?: RequestUser
+    user?: RequestUser,
+    originalMsczFile?: Express.Multer.File
   ): Promise<UploadSourceResult> {
     if (!file || !file.buffer) {
       throw new BadRequestException('File is required');
@@ -97,6 +100,7 @@ export class UploadSourceService {
     const receivedAt = new Date();
     this.progress.publish(progressId, 'Upload received', 'upload.received');
     const format = this.resolveFormat(file, request.formatHint);
+    const originalMscz = this.normalizeOriginalMsczFile(originalMsczFile);
     const label = existing.label; // keep existing label
     const sourceType = existing.sourceType;
 
@@ -140,6 +144,7 @@ export class UploadSourceService {
       format,
       originalFilename: file.originalname,
       buffer: file.buffer,
+      originalMsczBuffer: originalMscz?.buffer,
       rawStorage: storageLocator,
       previousCanonicalXml: previousRevision?.derivatives?.canonicalXml,
       progressId
@@ -338,6 +343,16 @@ export class UploadSourceService {
     if (status === 'pending_approval') {
       await this.notifications.queuePushRequest({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId, ownerUserId: approval?.ownerUserId });
     }
+    if (setLatest) {
+      this.scheduleDeferredPdfGeneration({
+        workId: trimmedWorkId,
+        sourceId: trimmedSourceId,
+        revisionId,
+        sequenceNumber,
+        derivatives: derivativeOutcome.derivatives,
+        pdfDeferred: Boolean(derivativeOutcome.pdfDeferred)
+      });
+    }
     this.progress.publish(progressId, 'Done', 'done');
 
     // Recompute work stats (including hasReferencePdf aggregation)
@@ -451,7 +466,8 @@ export class UploadSourceService {
     file?: Express.Multer.File,
     referencePdfFile?: Express.Multer.File,
     progressId?: string,
-    user?: RequestUser
+    user?: RequestUser,
+    originalMsczFile?: Express.Multer.File
   ): Promise<UploadSourceResult> {
     if (!file || !file.buffer) {
       throw new BadRequestException('File is required');
@@ -468,6 +484,7 @@ export class UploadSourceService {
     const sourceType = request?.sourceType ?? 'score';
     const label = request.label?.trim() || 'Uploaded source';
     const format = this.resolveFormat(file, request.formatHint);
+    const originalMscz = this.normalizeOriginalMsczFile(originalMsczFile);
 
     const checksumHex = createHash('sha256').update(file.buffer).digest('hex');
     const storageKey = `${work.workId}/${sourceId}/raw/${file.originalname ?? 'upload'}`;
@@ -512,6 +529,7 @@ export class UploadSourceService {
       format,
       originalFilename: file.originalname,
       buffer: file.buffer,
+      originalMsczBuffer: originalMscz?.buffer,
       rawStorage: storageLocator,
       previousCanonicalXml: previousRevision?.derivatives?.canonicalXml,
       progressId
@@ -694,6 +712,14 @@ export class UploadSourceService {
         Array.from(formatsForWork),
         receivedAt
       );
+      this.scheduleDeferredPdfGeneration({
+        workId: work.workId,
+        sourceId,
+        revisionId,
+        sequenceNumber,
+        derivatives: derivativeOutcome.derivatives,
+        pdfDeferred: Boolean(derivativeOutcome.pdfDeferred)
+      });
     }
     if (status === 'pending_approval') {
       await this.notifications.queuePushRequest({ workId: work.workId, sourceId, revisionId, ownerUserId: approval?.ownerUserId });
@@ -746,6 +772,90 @@ export class UploadSourceService {
     await addFile('manifest.json', outcome.manifest);
 
     return files;
+  }
+
+  private scheduleDeferredPdfGeneration(input: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    sequenceNumber: number;
+    derivatives: DerivativePipelineResult['derivatives'];
+    pdfDeferred: boolean;
+  }): void {
+    if (!input.pdfDeferred) {
+      return;
+    }
+
+    const hasScoreSource =
+      Boolean(input.derivatives.normalizedMxl) || Boolean(input.derivatives.canonicalXml);
+    if (!hasScoreSource) {
+      return;
+    }
+
+    setTimeout(() => {
+      void this.completeDeferredPdfGeneration(input).catch((error) => {
+        this.logger.warn(
+          `Deferred PDF generation failed for ${input.workId}/${input.sourceId}/${input.revisionId}: ${this.readableError(error)}`
+        );
+      });
+    }, 0);
+  }
+
+  private async completeDeferredPdfGeneration(input: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    sequenceNumber: number;
+    derivatives: DerivativePipelineResult['derivatives'];
+  }): Promise<void> {
+    const generated = await this.derivativePipeline.generateDeferredPdfArtifacts({
+      workId: input.workId,
+      sourceId: input.sourceId,
+      sequenceNumber: input.sequenceNumber,
+      normalizedMxl: input.derivatives.normalizedMxl,
+      canonicalXml: input.derivatives.canonicalXml
+    });
+
+    if (!generated.pdf && !generated.thumbnail) {
+      return;
+    }
+
+    const revisionSet: Record<string, unknown> = {};
+    const sourceSet: Record<string, unknown> = {};
+    if (generated.pdf) {
+      revisionSet['derivatives.pdf'] = generated.pdf;
+      sourceSet['derivatives.pdf'] = generated.pdf;
+    }
+    if (generated.thumbnail) {
+      revisionSet['derivatives.thumbnail'] = generated.thumbnail;
+      sourceSet['derivatives.thumbnail'] = generated.thumbnail;
+    }
+
+    if (Object.keys(revisionSet).length > 0) {
+      await this.sourceRevisionModel
+        .updateOne(
+          {
+            workId: input.workId,
+            sourceId: input.sourceId,
+            revisionId: input.revisionId
+          },
+          { $set: revisionSet }
+        )
+        .exec();
+    }
+
+    if (Object.keys(sourceSet).length > 0) {
+      await this.sourceModel
+        .updateOne(
+          {
+            workId: input.workId,
+            sourceId: input.sourceId,
+            latestRevisionId: input.revisionId
+          },
+          { $set: sourceSet }
+        )
+        .exec();
+    }
   }
 
   private handleMuseScoreFailure(
@@ -865,6 +975,24 @@ export class UploadSourceService {
     throw new BadRequestException(
       'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml.'
     );
+  }
+
+  private normalizeOriginalMsczFile(
+    originalMsczFile?: Express.Multer.File
+  ): Express.Multer.File | undefined {
+    if (!originalMsczFile || !originalMsczFile.buffer) {
+      return undefined;
+    }
+    if (originalMsczFile.size > MAX_UPLOAD_BYTES) {
+      throw new BadRequestException('Original MuseScore file is too large (max 100MB).');
+    }
+
+    const ext = extname((originalMsczFile.originalname ?? '').toLowerCase());
+    if (ext !== '.mscz') {
+      throw new BadRequestException('originalMscz must be a .mscz file.');
+    }
+
+    return originalMsczFile;
   }
 
   private async storeReferencePdf(

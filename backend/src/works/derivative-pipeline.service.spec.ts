@@ -14,6 +14,8 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     delete process.env.MUSESCORE_CLI;
+    delete process.env.MUSESCORE_EXPORT_TIMEOUT_MS;
+    delete process.env.MUSESCORE_PDF_MODE;
     service = new DerivativePipelineService(storage, progress);
     // Stub out calls that hit external tools and file IO complexity
     (service as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({ bucket: 'der', objectKey: key, sizeBytes: buf.length, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: ct, lastModifiedAt: new Date() }));
@@ -36,6 +38,81 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(out.derivatives.canonicalXml).toBeTruthy();
     expect(out.derivatives.normalizedMxl).toBeTruthy();
     expect(out.manifest).toBeTruthy();
+  });
+
+  it('defers PDF generation in async mode', async () => {
+    process.env.MUSESCORE_PDF_MODE = 'async';
+    const input = {
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/vnd.recordare.musicxml',
+      originalFilename: 'score.mxl',
+      buffer: Buffer.from('zipdata'),
+      rawStorage: { bucket: 'raw', objectKey: '1/s/raw', sizeBytes: 9, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() }
+    };
+    const out = await service.process(input);
+    expect(out.pdfDeferred).toBe(true);
+    expect(out.derivatives.pdf).toBeFalsy();
+    delete process.env.MUSESCORE_PDF_MODE;
+  });
+
+  it('generates PDF synchronously when configured', async () => {
+    process.env.MUSESCORE_PDF_MODE = 'sync';
+    const local = new DerivativePipelineService(storage, progress);
+    (local as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).extractCanonicalXml = jest.fn(async () => ({
+      path: '/tmp/canonical.xml',
+      buffer: Buffer.from('<xml/>')
+    }));
+    (local as any).generateThumbnail = jest.fn(async () => undefined);
+    const runSpy = jest.fn(async (_cmd: string, args: string[]) => {
+      if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+        const outPath = args[1];
+        if (outPath.endsWith('.pdf')) {
+          await fs.writeFile(outPath, Buffer.from('%PDF-1.4\nmock\n', 'utf8'));
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+    (local as any).runCommand = runSpy;
+
+    const out = await local.process({
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/vnd.recordare.musicxml',
+      originalFilename: 'score.mxl',
+      buffer: Buffer.from('zipdata'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
+    });
+
+    expect(out.pdfDeferred).toBe(false);
+    expect(out.derivatives.pdf).toBeTruthy();
+    expect(
+      runSpy.mock.calls.some(
+        (call: any[]) =>
+          Array.isArray(call[1]) &&
+          call[1][0] === '--export-to' &&
+          typeof call[1][1] === 'string' &&
+          call[1][1].endsWith('score.pdf')
+      )
+    ).toBe(true);
+    delete process.env.MUSESCORE_PDF_MODE;
   });
 
   it('process tolerates failed PDF generation', async () => {
@@ -161,6 +238,118 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     delete process.env.MUSESCORE_CLI;
   });
 
+  it('uses MUSESCORE_EXPORT_TIMEOUT_MS for MuseScore exports', async () => {
+    process.env.MUSESCORE_EXPORT_TIMEOUT_MS = '240000';
+    const local = new DerivativePipelineService(storage, progress);
+    (local as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).extractCanonicalXml = jest.fn(async () => ({
+      path: '/tmp/canonical.xml',
+      buffer: Buffer.from('<xml/>')
+    }));
+    const runSpy = jest.fn(async (_cmd: string, args: string[]) => {
+      if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+        const outPath = args[1];
+        if (outPath.endsWith('.pdf')) {
+          await fs.writeFile(outPath, Buffer.from('%PDF-1.4\nmock\n', 'utf8'));
+        } else {
+          await fs.writeFile(outPath, Buffer.from('mock-mxl', 'utf8'));
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+    (local as any).runCommand = runSpy;
+
+    await local.process({
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/vnd.musescore.mscz',
+      originalFilename: 'score.mscz',
+      buffer: Buffer.from('msczdata'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
+    });
+
+    const exportCalls = runSpy.mock.calls.filter(
+      (call: any[]) => Array.isArray(call[1]) && call[1][0] === '--export-to'
+    );
+    expect(exportCalls.length).toBeGreaterThan(0);
+    for (const call of exportCalls) {
+      const options = (call as any[])[2] as { timeoutMs?: number } | undefined;
+      expect(options?.timeoutMs).toBe(240000);
+    }
+    delete process.env.MUSESCORE_EXPORT_TIMEOUT_MS;
+  });
+
+  it('disables Node export timeout when MUSESCORE_EXPORT_TIMEOUT_MS=0', async () => {
+    process.env.MUSESCORE_EXPORT_TIMEOUT_MS = '0';
+    const local = new DerivativePipelineService(storage, progress);
+    (local as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).extractCanonicalXml = jest.fn(async () => ({
+      path: '/tmp/canonical.xml',
+      buffer: Buffer.from('<xml/>')
+    }));
+    const runSpy = jest.fn(async (_cmd: string, args: string[]) => {
+      if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+        const outPath = args[1];
+        if (outPath.endsWith('.pdf')) {
+          await fs.writeFile(outPath, Buffer.from('%PDF-1.4\nmock\n', 'utf8'));
+        } else {
+          await fs.writeFile(outPath, Buffer.from('mock-mxl', 'utf8'));
+        }
+      }
+      return { stdout: '', stderr: '' };
+    });
+    (local as any).runCommand = runSpy;
+
+    await local.process({
+      workId: '1',
+      sourceId: 's',
+      sequenceNumber: 1,
+      format: 'application/vnd.musescore.mscz',
+      originalFilename: 'score.mscz',
+      buffer: Buffer.from('msczdata'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
+    });
+
+    const exportCalls = runSpy.mock.calls.filter(
+      (call: any[]) => Array.isArray(call[1]) && call[1][0] === '--export-to'
+    );
+    expect(exportCalls.length).toBeGreaterThan(0);
+    for (const call of exportCalls) {
+      const options = (call as any[])[2] as { timeoutMs?: number } | undefined;
+      expect(options?.timeoutMs).toBeUndefined();
+    }
+    delete process.env.MUSESCORE_EXPORT_TIMEOUT_MS;
+  });
+
   it('process handles MuseScore source (.mscx) without storing .mscz artifact', async () => {
     const runSpy = jest.fn(async () => ({ stdout: '', stderr: '' }));
     (service as any).runCommand = runSpy;
@@ -250,5 +439,44 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
       call[0].includes('.mscz') || call[2] === 'application/vnd.musescore.mscz'
     );
     expect(msczCalls.length).toBe(0);
+  });
+
+  it('stores original mscz artifact when provided for client-preconverted uploads', async () => {
+    const storeDerivativeSpy = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (service as any).storeDerivative = storeDerivativeSpy;
+
+    const input = {
+      workId: '123',
+      sourceId: 'src-1',
+      sequenceNumber: 1,
+      format: 'application/vnd.recordare.musicxml',
+      originalFilename: 'score.mxl',
+      buffer: Buffer.from('mxl-file-content'),
+      originalMsczBuffer: Buffer.from('original-mscz-content'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '123/src-1/raw',
+        sizeBytes: 16,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/vnd.recordare.musicxml',
+        lastModifiedAt: new Date()
+      }
+    };
+
+    const result = await service.process(input);
+    expect(result.derivatives.mscz).toBeTruthy();
+    expect(result.derivatives.mscz?.objectKey).toContain('score.mscz');
+
+    const msczCalls = storeDerivativeSpy.mock.calls.filter(call =>
+      call[0].includes('score.mscz') && call[2] === 'application/vnd.musescore.mscz'
+    );
+    expect(msczCalls.length).toBe(1);
   });
 });

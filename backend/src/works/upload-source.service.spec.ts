@@ -133,6 +133,46 @@ describe('UploadSourceService (unit)', () => {
     );
   });
 
+  it('upload() forwards original mscz buffer for client-preconverted uploads', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mxl', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: false,
+      notes: ['ok'],
+      manifest: undefined,
+      derivatives: {
+        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+      }
+    });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
+
+    const file = { originalname: 'score.mxl', mimetype: 'application/vnd.recordare.musicxml', size: 22, buffer: Buffer.from('mxl') } as any;
+    const originalMscz = { originalname: 'score.mscz', mimetype: 'application/vnd.musescore.mscz', size: 30, buffer: Buffer.from('mscz') } as any;
+    await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid', undefined, originalMscz);
+
+    expect(derivativePipeline.process).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalMsczBuffer: originalMscz.buffer
+      })
+    );
+  });
+
+  it('upload() rejects invalid originalMscz extension', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+
+    const file = { originalname: 'score.mxl', mimetype: 'application/vnd.recordare.musicxml', size: 22, buffer: Buffer.from('mxl') } as any;
+    const invalidOriginal = { originalname: 'not-mscz.xml', mimetype: 'application/xml', size: 30, buffer: Buffer.from('xml') } as any;
+
+    await expect(
+      service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid', undefined, invalidOriginal)
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(derivativePipeline.process).not.toHaveBeenCalled();
+  });
+
   it('uploadRevision() updates an existing source and records revision', async () => {
     sourceModel.findOne.mockReturnValue({ lean: () => ({}) });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });

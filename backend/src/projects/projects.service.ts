@@ -468,6 +468,7 @@ export class ProjectsService {
     },
     file?: Express.Multer.File,
     referencePdfFile?: Express.Multer.File,
+    originalMsczFile?: Express.Multer.File,
     progressId?: string,
     actor?: { userId?: string; roles?: string[]; name?: string; email?: string }
   ) {
@@ -507,7 +508,8 @@ export class ProjectsService {
         roles: actor.roles ?? [],
         name: actor.name,
         email: actor.email
-      } as any
+      } as any,
+      originalMsczFile
     );
 
     await this.sourceModel.updateOne(

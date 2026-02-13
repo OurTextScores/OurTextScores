@@ -21,6 +21,8 @@ interface ManifestArtifact {
   locator: StorageLocator;
 }
 
+type PdfGenerationMode = 'sync' | 'async' | 'off';
+
 export interface DerivativeManifest {
   version: number;
   generatedAt: string;
@@ -47,6 +49,9 @@ export interface DerivativePipelineInput {
   format: string;
   originalFilename?: string;
   buffer: Buffer;
+  // Optional original MuseScore package buffer when the uploaded score was
+  // pre-converted to MusicXML client-side.
+  originalMsczBuffer?: Buffer;
   rawStorage: StorageLocator;
   previousCanonicalXml?: StorageLocator;
   // Optional progress channel identifier for SSE updates
@@ -59,12 +64,15 @@ export interface DerivativePipelineResult {
   manifestData?: DerivativeManifest;
   notes: string[];
   pending: boolean;
+  pdfDeferred?: boolean;
 }
 
 @Injectable()
 export class DerivativePipelineService {
   private readonly logger = new Logger(DerivativePipelineService.name);
   private toolVersionsPromise?: Promise<ToolVersions>;
+  private static readonly DEFAULT_MUSESCORE_EXPORT_TIMEOUT_MS = 300_000;
+  private static readonly MIN_MUSESCORE_EXPORT_TIMEOUT_MS = 10_000;
 
   constructor(
     private readonly storageService: StorageService,
@@ -86,19 +94,59 @@ export class DerivativePipelineService {
     };
   }
 
+  private getMuseScoreExportTimeoutMs(): number | undefined {
+    const raw = (process.env.MUSESCORE_EXPORT_TIMEOUT_MS ?? '').trim();
+    if (!raw) {
+      return DerivativePipelineService.DEFAULT_MUSESCORE_EXPORT_TIMEOUT_MS;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      this.logger.warn(
+        `Invalid MUSESCORE_EXPORT_TIMEOUT_MS="${raw}", using default ${DerivativePipelineService.DEFAULT_MUSESCORE_EXPORT_TIMEOUT_MS}ms`
+      );
+      return DerivativePipelineService.DEFAULT_MUSESCORE_EXPORT_TIMEOUT_MS;
+    }
+
+    if (parsed === 0) {
+      this.logger.warn('MUSESCORE_EXPORT_TIMEOUT_MS=0, MuseScore exports will run without a Node timeout.');
+      return undefined;
+    }
+
+    const timeoutMs = Math.floor(parsed);
+    if (timeoutMs < DerivativePipelineService.MIN_MUSESCORE_EXPORT_TIMEOUT_MS) {
+      this.logger.warn(
+        `MUSESCORE_EXPORT_TIMEOUT_MS=${timeoutMs} is too low, using minimum ${DerivativePipelineService.MIN_MUSESCORE_EXPORT_TIMEOUT_MS}ms`
+      );
+      return DerivativePipelineService.MIN_MUSESCORE_EXPORT_TIMEOUT_MS;
+    }
+
+    return timeoutMs;
+  }
+
+  private getPdfGenerationMode(): PdfGenerationMode {
+    const raw = (process.env.MUSESCORE_PDF_MODE ?? 'async').trim().toLowerCase();
+    if (raw === 'sync' || raw === 'async' || raw === 'off') {
+      return raw;
+    }
+    this.logger.warn(`Invalid MUSESCORE_PDF_MODE="${raw}", defaulting to "async".`);
+    return 'async';
+  }
+
   private async runMuseScoreExport(
     inputPath: string,
     outputPath: string,
     purpose: string,
-    timeoutMs = 60_000
+    timeoutMs?: number
   ): Promise<{ command: string }> {
+    const effectiveTimeoutMs = timeoutMs ?? this.getMuseScoreExportTimeoutMs();
     const commands = this.getMuseScoreCommands();
     const errors: string[] = [];
     for (const command of commands) {
       try {
         await this.runCommand(command, ['--export-to', outputPath, inputPath], {
           env: this.getMuseScoreEnv(),
-          timeoutMs
+          timeoutMs: effectiveTimeoutMs
         });
         if (command !== commands[0]) {
           this.logger.warn(
@@ -121,9 +169,11 @@ export class DerivativePipelineService {
     const derivatives: DerivativeArtifacts = {};
     const notes: string[] = [];
     let pending = false;
+    let pdfDeferred = false;
     const revisionSegment = `rev-${input.sequenceNumber.toString().padStart(4, '0')}`;
     const derivativesBaseKey = `${input.workId}/${input.sourceId}/${revisionSegment}`;
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-deriv-'));
+    const pdfMode = this.getPdfGenerationMode();
 
     try {
       const inputFileName =
@@ -199,22 +249,49 @@ export class DerivativePipelineService {
         notes.push('Unsupported format for derivative generation.');
       }
 
-      // Attempt PDF generation via MuseScore from the best available source
-      try {
-        const pdfSourcePath = normalizedMxlPath ?? canonicalPath;
-        if (pdfSourcePath) {
-          const outPdf = join(workspace, 'score.pdf');
-          const conversion = await this.runMuseScoreExport(
-            pdfSourcePath,
-            outPdf,
-            'score PDF export'
-          );
-          pdfBuffer = await fs.readFile(outPdf);
-          notes.push(`PDF generated (${conversion.command}).`);
-          publish('PDF generated', 'deriv.pdf');
+      // If the browser pre-converted .mscz to .mxl, keep the original .mscz
+      // as a first-class derivative artifact.
+      if (!derivatives.mscz && input.originalMsczBuffer) {
+        derivatives.mscz = await this.storeDerivative(
+          `${derivativesBaseKey}/score.mscz`,
+          input.originalMsczBuffer,
+          'application/vnd.musescore.mscz'
+        );
+        notes.push('Original MuseScore file stored from client upload.');
+        publish('Stored MuseScore file', 'store.mscz');
+      }
+
+      // Generate PDF synchronously only when explicitly requested.
+      if (pdfMode === 'sync') {
+        try {
+          const pdfSourcePath = normalizedMxlPath ?? canonicalPath;
+          if (pdfSourcePath) {
+            const outPdf = join(workspace, 'score.pdf');
+            const conversion = await this.runMuseScoreExport(
+              pdfSourcePath,
+              outPdf,
+              'score PDF export'
+            );
+            pdfBuffer = await fs.readFile(outPdf);
+            notes.push(`PDF generated (${conversion.command}).`);
+            publish('PDF generated', 'deriv.pdf');
+          }
+        } catch (err) {
+          notes.push(`Could not generate PDF: ${this.readableError(err)}`);
         }
-      } catch (err) {
-        notes.push(`Could not generate PDF: ${this.readableError(err)}`);
+      } else if (pdfMode === 'async') {
+        const hasPdfSource = Boolean(normalizedMxlPath ?? canonicalPath);
+        if (hasPdfSource) {
+          pdfDeferred = true;
+          notes.push('PDF generation deferred to background job.');
+          publish('PDF generation queued for background job', 'deriv.pdf.deferred');
+        } else {
+          notes.push('PDF generation deferred mode enabled, but no exportable score source was produced.');
+          publish('PDF generation skipped (no exportable score source)', 'deriv.pdf.skipped');
+        }
+      } else {
+        notes.push('PDF generation disabled by configuration.');
+        publish('PDF generation disabled', 'deriv.pdf.skipped');
       }
 
       if (normalizedMxlBuffer) {
@@ -320,7 +397,8 @@ export class DerivativePipelineService {
         manifest: manifestLocator,
         manifestData,
         notes,
-        pending
+        pending,
+        pdfDeferred
       };
     } catch (error) {
       const message = this.readableError(error);
@@ -333,7 +411,8 @@ export class DerivativePipelineService {
         manifest: undefined,
         manifestData: undefined,
         notes: [...notes, `Derivative pipeline error: ${message}`],
-        pending: true
+        pending: true,
+        pdfDeferred
       };
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
@@ -364,6 +443,62 @@ export class DerivativePipelineService {
       contentType,
       lastModifiedAt: new Date()
     };
+  }
+
+  async generateDeferredPdfArtifacts(input: {
+    workId: string;
+    sourceId: string;
+    sequenceNumber: number;
+    normalizedMxl?: StorageLocator;
+    canonicalXml?: StorageLocator;
+  }): Promise<{ pdf?: StorageLocator; thumbnail?: StorageLocator }> {
+    const source = input.normalizedMxl ?? input.canonicalXml;
+    if (!source) {
+      return {};
+    }
+
+    const revisionSegment = `rev-${input.sequenceNumber.toString().padStart(4, '0')}`;
+    const derivativesBaseKey = `${input.workId}/${input.sourceId}/${revisionSegment}`;
+    const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-deferred-pdf-'));
+
+    try {
+      const sourceBuffer = await this.storageService.getObjectBuffer(
+        source.bucket,
+        source.objectKey
+      );
+      const sourceExtension =
+        source.contentType === 'application/xml' ? '.xml' : '.mxl';
+      const sourcePath = join(workspace, `deferred-source${sourceExtension}`);
+      await fs.writeFile(sourcePath, sourceBuffer);
+
+      const outPdf = join(workspace, 'score.pdf');
+      await this.runMuseScoreExport(
+        sourcePath,
+        outPdf,
+        'deferred score PDF export'
+      );
+      const pdfBuffer = await fs.readFile(outPdf);
+
+      const pdf = await this.storeDerivative(
+        `${derivativesBaseKey}/score.pdf`,
+        pdfBuffer,
+        'application/pdf'
+      );
+
+      const thumbnailBuffer = await this.generateThumbnail(pdfBuffer, workspace);
+      let thumbnail: StorageLocator | undefined;
+      if (thumbnailBuffer) {
+        thumbnail = await this.storeDerivative(
+          `${derivativesBaseKey}/thumbnail.png`,
+          thumbnailBuffer,
+          'image/png'
+        );
+      }
+
+      return { pdf, thumbnail };
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
   }
 
   private async storeAuxiliary(

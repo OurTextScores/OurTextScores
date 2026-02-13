@@ -206,7 +206,15 @@ describe('WorksController (unit)', () => {
 
       await controller.uploadSource(workId, body, { file: [file] }, progressId, user as any);
 
-      expect(uploadSourceService.upload).toHaveBeenCalledWith(workId, { ...body, formatHint: undefined, isPrimary: true }, file, undefined, progressId, user);
+      expect(uploadSourceService.upload).toHaveBeenCalledWith(
+        workId,
+        { ...body, formatHint: undefined, isPrimary: true },
+        file,
+        undefined,
+        progressId,
+        user,
+        undefined
+      );
     });
   });
 
@@ -222,7 +230,16 @@ describe('WorksController (unit)', () => {
 
       await controller.uploadRevision(workId, sourceId, body, { file: [file] }, progressId, user as any);
 
-      expect(uploadSourceService.uploadRevision).toHaveBeenCalledWith(workId, sourceId, { ...body, formatHint: undefined, createBranch: undefined, branchName: undefined, isPrimary: true }, file, undefined, progressId, user);
+      expect(uploadSourceService.uploadRevision).toHaveBeenCalledWith(
+        workId,
+        sourceId,
+        { ...body, formatHint: undefined, createBranch: undefined, branchName: undefined, isPrimary: true },
+        file,
+        undefined,
+        progressId,
+        user,
+        undefined
+      );
     });
   });
 

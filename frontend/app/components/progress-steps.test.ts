@@ -66,5 +66,13 @@ describe("progress-steps", () => {
       const errorStep = updatedSteps.find(s => s.id === "pipeline.error");
       expect(errorStep?.status).toBe("failed");
     });
+
+    it("marks deferred PDF export as skipped", () => {
+      const initialSteps = initSteps();
+      const now = Date.now();
+      const updatedSteps = applyEventToSteps(initialSteps, "deriv.pdf.deferred", now);
+      const pdfStep = updatedSteps.find(s => s.id === "deriv.pdf");
+      expect(pdfStep?.status).toBe("skipped");
+    });
   });
 });

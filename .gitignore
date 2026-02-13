@@ -22,3 +22,8 @@ data/
 node_modules/
 package-lock.json
 import-logs.txt
+frontend/public/webmscore.lib.js
+frontend/public/webmscore.lib.wasm
+frontend/public/webmscore.lib.data
+frontend/public/webmscore.lib.mem.wasm
+frontend/public/webmscore.lib.symbols

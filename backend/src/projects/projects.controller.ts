@@ -159,7 +159,8 @@ export class ProjectsController {
     FileFieldsInterceptor(
       [
         { name: 'file', maxCount: 1 },
-        { name: 'referencePdf', maxCount: 1 }
+        { name: 'referencePdf', maxCount: 1 },
+        { name: 'originalMscz', maxCount: 1 }
       ],
       {
         storage: memoryStorage(),
@@ -178,6 +179,7 @@ export class ProjectsController {
       properties: {
         file: { type: 'string', format: 'binary' },
         referencePdf: { type: 'string', format: 'binary' },
+        originalMscz: { type: 'string', format: 'binary' },
         workId: { type: 'string' },
         imslpUrl: { type: 'string' },
         label: { type: 'string' },
@@ -211,13 +213,14 @@ export class ProjectsController {
       createBranch?: boolean | string;
       branchName?: string;
     },
-    @UploadedFiles() files: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[] },
+    @UploadedFiles() files: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ): Promise<any> {
     const file = files?.file?.[0];
     if (!file) throw new BadRequestException('file is required');
     const referencePdfFile = files?.referencePdf?.[0];
+    const originalMsczFile = files?.originalMscz?.[0];
     return this.projectsService.uploadSource(
       projectId,
       {
@@ -237,6 +240,7 @@ export class ProjectsController {
       },
       file,
       referencePdfFile,
+      originalMsczFile,
       progressId,
       user
     );
