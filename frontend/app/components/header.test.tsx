@@ -2,13 +2,12 @@
 
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Header from "./header";
 
 // Mock next-auth
 jest.mock("next-auth/react", () => ({
   useSession: jest.fn(),
-  signIn: jest.fn(),
   signOut: jest.fn(),
 }));
 
@@ -24,13 +23,12 @@ describe("Header", () => {
     jest.resetAllMocks();
   });
 
-  it("renders sign-in button when unauthenticated", () => {
+  it("renders join-beta link when unauthenticated", () => {
     (useSession as jest.Mock).mockReturnValue({ data: null });
     render(<Header />);
-    const signInButton = screen.getByRole("button", { name: /Sign in/i });
-    expect(signInButton).toBeInTheDocument();
-    fireEvent.click(signInButton);
-    expect(signIn).toHaveBeenCalled();
+    const betaLink = screen.getByRole("link", { name: /Join beta/i });
+    expect(betaLink).toBeInTheDocument();
+    expect(betaLink).toHaveAttribute("href", "/beta-preview");
   });
 
   it("renders user info and sign-out button when authenticated", () => {

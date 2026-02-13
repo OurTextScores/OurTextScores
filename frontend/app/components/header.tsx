@@ -1,5 +1,5 @@
 "use client";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ThemeToggle from "../theme-toggle";
@@ -84,9 +84,9 @@ export default function Header() {
               </button>
             </>
           ) : (
-            <button onClick={() => signIn()} className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
-              Sign in
-            </button>
+            <Link href="/beta-preview" className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
+              Join beta
+            </Link>
           )}
         </div>
       </div>

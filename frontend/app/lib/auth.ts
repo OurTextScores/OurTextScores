@@ -9,6 +9,9 @@ import * as nodemailer from "nodemailer";
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
+  pages: {
+    signIn: "/beta-preview"
+  },
   // We will sign API-bound tokens with HS256 ourselves; NextAuth secret is for its own JWT/cookies
   secret: process.env.NEXTAUTH_SECRET,
   // Required for Email provider to store verification tokens
@@ -49,6 +52,32 @@ export const authOptions: NextAuthOptions = {
       : [])
   ],
   callbacks: {
+    async signIn({ user, email }) {
+      const emailPayload = email as { email?: string } | undefined;
+      const candidate = String(user?.email || emailPayload?.email || "").trim().toLowerCase();
+      if (!candidate) return false;
+
+      try {
+        const client = await clientPromise;
+        const db = client.db();
+
+        // Existing users can continue to sign in. Enforce TOS acknowledgement only for new signups.
+        const existingUser = await db.collection("users").findOne(
+          { email: candidate },
+          { projection: { _id: 1 } }
+        );
+        if (existingUser) return true;
+
+        const signupRecord = await db.collection("beta_interest_signups").findOne(
+          { email: candidate, tosAcceptedAt: { $exists: true } },
+          { projection: { _id: 1 } }
+        );
+        return Boolean(signupRecord);
+      } catch (error) {
+        console.error("signIn callback lookup failed:", error);
+        return false;
+      }
+    },
     async jwt({ token, account, profile }) {
       if (account && profile) {
         // On sign in, enrich token
