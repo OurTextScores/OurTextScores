@@ -3,6 +3,7 @@ import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PATHS = new Set<string>([
   "/welcome",
+  "/catalogue",
   "/beta-preview",
   "/beta-invite",
   "/signin",
