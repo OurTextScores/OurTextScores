@@ -22,10 +22,6 @@ export default function TermsPage() {
           Repeat infringers may be suspended or terminated. Accounts may also be restricted for abuse, fraud, or
           security reasons.
         </p>
-        <p>
-          This page is a product-level policy summary and should be supplemented with finalized legal text before
-          production launch.
-        </p>
       </div>
     </main>
   );

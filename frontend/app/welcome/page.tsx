@@ -61,15 +61,15 @@ const waysToContribute = [
   },
   {
     title: "Submit a New Revision",
-    body: "Improve an existing source with corrections, clearer engraving, or better musical detail.",
+    body: "Improve an existing source with corrections or an alternative edition.",
   },
   {
     title: "Rate a Source",
     body: "Use ratings to highlight reliable sources and help others choose what to use first.",
   },
   {
-    title: "Leave Constructive Comments",
-    body: "Share specific, actionable feedback so editors can improve quickly.",
+    title: "Leave a Comment",
+    body: "Share feedback about a transcription so users know what to expect, or for editors to know what to improve.",
   },
   {
     title: "Flag Mismatched Sources",
@@ -108,9 +108,7 @@ export default function WelcomePage() {
             Open, Collaborative, Editable Music Scores
           </h1>
           <p className="mt-6 max-w-4xl text-sm leading-7 text-slate-700 dark:text-slate-200">
-            OurTextScores is a community platform for creating, reviewing, and publishing structured score data.
-            We combine source uploads, revision history, visual diffs, and project-level collaboration so contributors
-            can build reliable digital editions with clear provenance.
+            OurTextScores is a platform for collaborative score transcription.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             {quickLinks.map((item) => (
@@ -127,10 +125,6 @@ export default function WelcomePage() {
 
         <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
           <h2 className="font-[var(--font-heading)] text-3xl">Platform Features</h2>
-          <p className="mt-4 text-sm leading-7 text-slate-700 dark:text-slate-200">
-            OurTextScores is designed for practical editorial workflows: ingest source files, generate standardized
-            derivatives, compare revisions, and coordinate contributions across works and projects.
-          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {platformFeatures.map((feature) => (
               <article key={feature.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
@@ -159,9 +153,6 @@ export default function WelcomePage() {
 
         <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
           <h2 className="font-[var(--font-heading)] text-3xl">Why Digitize?</h2>
-          <p className="mt-4 space-y-4 text-sm leading-7 text-slate-700 dark:text-slate-200">
-            Digital scores are more convenient and versatile than PDF scans.
-          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {whyDigitize.map((entry) => (
               <article key={entry.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
@@ -174,9 +165,6 @@ export default function WelcomePage() {
 
         <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
           <h2 className="font-[var(--font-heading)] text-3xl">Ways to Contribute</h2>
-          <p className="mt-4 text-sm leading-7 text-slate-700 dark:text-slate-200">
-            Every contribution helps make this catalogue more accurate, usable, and collaborative.
-          </p>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {waysToContribute.map((entry) => (
               <article key={entry.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">

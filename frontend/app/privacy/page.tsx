@@ -21,10 +21,6 @@ export default function PrivacyPage() {
         <p>
           We may retain compliance and audit records as required for legal and security operations.
         </p>
-        <p>
-          This page is a product-level policy summary and should be supplemented with finalized legal text before
-          production launch.
-        </p>
       </div>
     </main>
   );
