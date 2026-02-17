@@ -42,6 +42,27 @@ type PdmxListItem = {
   };
 };
 
+type AssociateFormState = {
+  imslpUrl: string;
+  projectId: string;
+  sourceLabel: string;
+  license: string;
+  adminVerified: boolean;
+  referencePdfFile: File | null;
+};
+
+const LICENSE_OPTIONS = [
+  "Public Domain",
+  "CC0",
+  "CC-BY-4.0",
+  "CC-BY-SA-4.0",
+  "CC-BY-NC-4.0",
+  "CC-BY-NC-SA-4.0",
+  "CC-BY-ND-4.0",
+  "All Rights Reserved",
+  "Other"
+] as const;
+
 function safe(value?: string | number) {
   if (value === undefined || value === null || value === "") return "-";
   return String(value);
@@ -56,12 +77,16 @@ function statusClass(status?: string) {
 
 export default function PdmxClient({
   initialItems,
+  projectOptions,
+  defaultProjectId,
   total,
   limit,
   offset,
   initialQuery
 }: {
   initialItems: PdmxListItem[];
+  projectOptions: Array<{ projectId: string; title?: string }>;
+  defaultProjectId: string;
   total: number;
   limit: number;
   offset: number;
@@ -87,7 +112,7 @@ export default function PdmxClient({
   const [subset, setSubset] = useState(initialQuery.subset);
   const [importStatus, setImportStatus] = useState(initialQuery.importStatus);
   const [hasPdf, setHasPdf] = useState(initialQuery.hasPdf);
-  const [associateById, setAssociateById] = useState<Record<string, { imslpUrl: string; projectId: string; sourceLabel: string }>>({});
+  const [associateById, setAssociateById] = useState<Record<string, AssociateFormState>>({});
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -120,6 +145,33 @@ export default function PdmxClient({
 
   const patchRow = (pdmxId: string, patch: Partial<PdmxListItem>) => {
     setRows((prev) => prev.map((row) => (row.pdmxId === pdmxId ? { ...row, ...patch } : row)));
+  };
+
+  const defaultProjectFromOptions = projectOptions.find((project) => project.projectId === defaultProjectId)?.projectId
+    || projectOptions[0]?.projectId
+    || defaultProjectId;
+
+  const defaultAssociateFormForRow = (row: PdmxListItem): AssociateFormState => {
+    const rowLicense = String(row.license || "").trim();
+    const license = (LICENSE_OPTIONS as readonly string[]).includes(rowLicense) ? rowLicense : "Public Domain";
+    return {
+      imslpUrl: row.import?.imslpUrl || "",
+      projectId: row.import?.importedProjectId || defaultProjectFromOptions,
+      sourceLabel: row.title || row.songName || "",
+      license,
+      adminVerified: false,
+      referencePdfFile: null
+    };
+  };
+
+  const upsertAssociateForm = (pdmxId: string, patch: Partial<AssociateFormState>, row: PdmxListItem) => {
+    setAssociateById((prev) => {
+      const current = prev[pdmxId] || defaultAssociateFormForRow(row);
+      return {
+        ...prev,
+        [pdmxId]: { ...current, ...patch }
+      };
+    });
   };
 
   const markUnacceptable = (row: PdmxListItem) => {
@@ -159,7 +211,7 @@ export default function PdmxClient({
   };
 
   const submitAssociate = (row: PdmxListItem) => {
-    const form = associateById[row.pdmxId] || { imslpUrl: "", projectId: "", sourceLabel: "" };
+    const form = associateById[row.pdmxId] || defaultAssociateFormForRow(row);
     if (!form.imslpUrl.trim() || !form.projectId.trim()) {
       setError("IMSLP URL and projectId are required");
       return;
@@ -168,11 +220,16 @@ export default function PdmxClient({
     setActiveRowId(row.pdmxId);
     startTransition(async () => {
       try {
-        const result = await associatePdmxSourceAction(row.pdmxId, {
-          imslpUrl: form.imslpUrl.trim(),
-          projectId: form.projectId.trim(),
-          sourceLabel: form.sourceLabel.trim() || undefined
-        });
+        const payload = new FormData();
+        payload.set("pdmxId", row.pdmxId);
+        payload.set("imslpUrl", form.imslpUrl.trim());
+        payload.set("projectId", form.projectId.trim());
+        if (form.sourceLabel.trim()) payload.set("sourceLabel", form.sourceLabel.trim());
+        if (form.license.trim()) payload.set("license", form.license.trim());
+        if (form.adminVerified) payload.set("adminVerified", "true");
+        if (form.referencePdfFile) payload.set("referencePdf", form.referencePdfFile);
+
+        const result = await associatePdmxSourceAction(payload);
         patchRow(row.pdmxId, {
           import: {
             ...(row.import || {}),
@@ -311,11 +368,10 @@ export default function PdmxClient({
             )}
             {rows.map((row) => {
               const expanded = expandedId === row.pdmxId;
-              const form = associateById[row.pdmxId] || {
-                imslpUrl: row.import?.imslpUrl || "",
-                projectId: row.import?.importedProjectId || "",
-                sourceLabel: row.title || row.songName || ""
-              };
+              const form = associateById[row.pdmxId] || defaultAssociateFormForRow(row);
+              const projectSelectOptions = projectOptions.some((project) => project.projectId === form.projectId)
+                ? projectOptions
+                : [{ projectId: form.projectId, title: "Current project" }, ...projectOptions];
               return (
                 <Fragment key={row.pdmxId}>
                   <tr className="hover:bg-slate-50 dark:hover:bg-slate-900/70">
@@ -435,7 +491,7 @@ export default function PdmxClient({
                           </div>
                           <div>
                             <h4 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                              Associate Source with IMSLP URL + projectId
+                              Associate Source with IMSLP URL and project
                             </h4>
                             <div className="space-y-3 rounded border border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
                               <div>
@@ -444,12 +500,7 @@ export default function PdmxClient({
                                 </label>
                                 <input
                                   value={form.imslpUrl}
-                                  onChange={(e) =>
-                                    setAssociateById((prev) => ({
-                                      ...prev,
-                                      [row.pdmxId]: { ...form, imslpUrl: e.target.value }
-                                    }))
-                                  }
+                                  onChange={(e) => upsertAssociateForm(row.pdmxId, { imslpUrl: e.target.value }, row)}
                                   placeholder="https://imslp.org/wiki/..."
                                   className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                                 />
@@ -458,17 +509,17 @@ export default function PdmxClient({
                                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
                                   Project ID
                                 </label>
-                                <input
+                                <select
                                   value={form.projectId}
-                                  onChange={(e) =>
-                                    setAssociateById((prev) => ({
-                                      ...prev,
-                                      [row.pdmxId]: { ...form, projectId: e.target.value }
-                                    }))
-                                  }
-                                  placeholder="prj_..."
+                                  onChange={(e) => upsertAssociateForm(row.pdmxId, { projectId: e.target.value }, row)}
                                   className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                                />
+                                >
+                                  {projectSelectOptions.map((project) => (
+                                    <option key={project.projectId} value={project.projectId}>
+                                      {project.projectId}{project.title ? ` - ${project.title}` : ""}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
                               <div>
                                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
@@ -476,16 +527,44 @@ export default function PdmxClient({
                                 </label>
                                 <input
                                   value={form.sourceLabel}
-                                  onChange={(e) =>
-                                    setAssociateById((prev) => ({
-                                      ...prev,
-                                      [row.pdmxId]: { ...form, sourceLabel: e.target.value }
-                                    }))
-                                  }
+                                  onChange={(e) => upsertAssociateForm(row.pdmxId, { sourceLabel: e.target.value }, row)}
                                   placeholder="Optional label override"
                                   className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                                 />
                               </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                                  License
+                                </label>
+                                <select
+                                  value={form.license}
+                                  onChange={(e) => upsertAssociateForm(row.pdmxId, { license: e.target.value }, row)}
+                                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                >
+                                  {LICENSE_OPTIONS.map((license) => (
+                                    <option key={license} value={license}>{license}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                                  Reference PDF (optional)
+                                </label>
+                                <input
+                                  type="file"
+                                  accept=".pdf,application/pdf"
+                                  onChange={(e) => upsertAssociateForm(row.pdmxId, { referencePdfFile: e.target.files?.[0] || null }, row)}
+                                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:file:bg-slate-700 dark:file:text-slate-100"
+                                />
+                              </div>
+                              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                                <input
+                                  type="checkbox"
+                                  checked={form.adminVerified}
+                                  onChange={(e) => upsertAssociateForm(row.pdmxId, { adminVerified: e.target.checked }, row)}
+                                />
+                                Mark source as admin verified
+                              </label>
                               <button
                                 type="button"
                                 onClick={() => submitAssociate(row)}

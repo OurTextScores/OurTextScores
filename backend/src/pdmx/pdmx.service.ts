@@ -13,13 +13,27 @@ import { ConfigService } from '@nestjs/config';
 import { PdmxRecord, PdmxRecordDocument } from './schemas/pdmx-record.schema';
 import type { RequestUser } from '../auth/types/auth-user';
 import { ProjectsService } from '../projects/projects.service';
+import { WorksService } from '../works/works.service';
 
 @Injectable()
 export class PdmxService {
+  private readonly allowedLicenses = new Set([
+    'CC0',
+    'CC-BY-4.0',
+    'CC-BY-SA-4.0',
+    'CC-BY-NC-4.0',
+    'CC-BY-NC-SA-4.0',
+    'CC-BY-ND-4.0',
+    'Public Domain',
+    'All Rights Reserved',
+    'Other'
+  ]);
+
   constructor(
     @InjectModel(PdmxRecord.name)
     private readonly pdmxModel: Model<PdmxRecordDocument>,
     private readonly projectsService: ProjectsService,
+    private readonly worksService: WorksService,
     private readonly config: ConfigService
   ) {}
 
@@ -319,13 +333,19 @@ export class PdmxService {
       projectId: string;
       sourceLabel?: string;
       sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
+      license?: string;
+      adminVerified?: boolean;
     },
-    actor: RequestUser
+    actor: RequestUser,
+    referencePdfFile?: Express.Multer.File,
+    progressId?: string
   ): Promise<any> {
     const id = (pdmxId || '').trim();
     if (!id) throw new BadRequestException('pdmxId is required');
     const imslpUrl = (payload.imslpUrl || '').trim();
     const projectId = (payload.projectId || '').trim();
+    const license = this.resolveLicense(payload.license);
+    const adminVerified = payload.adminVerified === true;
     if (!imslpUrl) throw new BadRequestException('imslpUrl is required');
     if (!projectId) throw new BadRequestException('projectId is required');
 
@@ -417,14 +437,15 @@ export class PdmxService {
           imslpUrl,
           label: sourceLabel,
           sourceType,
+          license,
           formatHint: 'mxl',
           commitMessage: `Import from PDMX record ${id}`,
           description: this.buildImportDescription(lock as any)
         },
         file,
+        referencePdfFile,
         undefined,
-        undefined,
-        undefined,
+        progressId,
         {
           userId: actor.userId,
           roles: actor.roles,
@@ -432,6 +453,15 @@ export class PdmxService {
           email: actor.email
         }
       );
+
+      if (adminVerified) {
+        await this.worksService.verifySource(
+          upload.workId,
+          upload.sourceId,
+          actor.userId,
+          `Verified during PDMX import (${id})`
+        );
+      }
 
       await this.pdmxModel.updateOne(
         { pdmxId: id },
@@ -544,6 +574,15 @@ export class PdmxService {
       record?.license ? `License: ${record.license}` : ''
     ].filter(Boolean);
     return lines.join('\n');
+  }
+
+  private resolveLicense(license?: string): string {
+    const trimmed = (license || '').trim();
+    if (!trimmed) return 'Public Domain';
+    if (!this.allowedLicenses.has(trimmed)) {
+      throw new BadRequestException('Invalid license value');
+    }
+    return trimmed;
   }
 
   private escapeRegex(input: string): string {

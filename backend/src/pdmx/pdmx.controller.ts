@@ -2,20 +2,25 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
   Query,
   Res,
+  UploadedFiles,
+  UseInterceptors,
   UseGuards
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/types/auth-user';
 import { PdmxService } from './pdmx.service';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @ApiTags('pdmx')
 @Controller('pdmx')
@@ -113,7 +118,34 @@ export class PdmxController {
   }
 
   @Post('records/:pdmxId/associate-source')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [{ name: 'referencePdf', maxCount: 1 }],
+      {
+        storage: memoryStorage(),
+        limits: {
+          fileSize: 100 * 1024 * 1024
+        }
+      }
+    )
+  )
   @ApiOperation({ summary: 'Associate PDMX record with IMSLP and project by importing actual MXL (admin only)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['imslpUrl', 'projectId'],
+      properties: {
+        imslpUrl: { type: 'string' },
+        projectId: { type: 'string' },
+        sourceLabel: { type: 'string' },
+        sourceType: { type: 'string', enum: ['score', 'parts', 'audio', 'metadata', 'other'] },
+        license: { type: 'string' },
+        adminVerified: { type: 'boolean' },
+        referencePdf: { type: 'string', format: 'binary' }
+      }
+    }
+  })
   associateSource(
     @Param('pdmxId') pdmxId: string,
     @Body()
@@ -122,10 +154,23 @@ export class PdmxController {
       projectId: string;
       sourceLabel?: string;
       sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
+      license?: string;
+      adminVerified?: boolean | string;
     },
-    @CurrentUser() user: RequestUser
+    @UploadedFiles() files: { referencePdf?: Express.Multer.File[] },
+    @CurrentUser() user: RequestUser,
+    @Headers('x-progress-id') progressId?: string
   ) {
-    return this.pdmxService.associateSource(pdmxId, body, user);
+    return this.pdmxService.associateSource(
+      pdmxId,
+      {
+        ...body,
+        adminVerified: this.toBoolean(body.adminVerified) === true
+      },
+      user,
+      files?.referencePdf?.[0],
+      progressId
+    );
   }
 
   private toBoolean(value: unknown): boolean | undefined {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { WorksModule } from '../works/works.module';
 import { PdmxController } from './pdmx.controller';
 import { PdmxService } from './pdmx.service';
 import { PdmxRecord, PdmxRecordSchema } from './schemas/pdmx-record.schema';
@@ -10,6 +11,7 @@ import { PdmxRecord, PdmxRecordSchema } from './schemas/pdmx-record.schema';
   imports: [
     AuthModule,
     ProjectsModule,
+    WorksModule,
     MongooseModule.forFeature([{ name: PdmxRecord.name, schema: PdmxRecordSchema }])
   ],
   controllers: [PdmxController],

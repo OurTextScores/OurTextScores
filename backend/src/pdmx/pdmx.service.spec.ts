@@ -28,11 +28,14 @@ describe('PdmxService (unit, mocked model)', () => {
     const projectsService = {
       uploadSource: jest.fn()
     } as any;
+    const worksService = {
+      verifySource: jest.fn()
+    } as any;
     const config = {
       get: jest.fn()
     } as any;
 
-    service = new PdmxService(pdmxModel, projectsService, config);
+    service = new PdmxService(pdmxModel, projectsService, worksService, config);
   });
 
   it('listRecords applies default filters and marks hasPdf/hasMxl', async () => {

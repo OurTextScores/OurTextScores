@@ -5,6 +5,8 @@ import { getApiAuthHeaders } from "../lib/authToken";
 import { fetchBackendSession } from "../lib/server-session";
 import PdmxClient from "./pdmx-client";
 
+const DEFAULT_PDMX_PROJECT_ID = "prj_6282588aac";
+
 async function fetchPdmxRecords(query: {
   q: string;
   sort: string;
@@ -40,6 +42,31 @@ async function fetchPdmxRecords(query: {
     throw new Error(text || "Failed to fetch PDMX records");
   }
   return res.json();
+}
+
+async function fetchProjectOptions(): Promise<Array<{ projectId: string; title: string }>> {
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(`${API_BASE}/projects?limit=100&offset=0&status=active`, {
+    headers,
+    cache: "no-store"
+  });
+  if (!res.ok) {
+    return [{ projectId: DEFAULT_PDMX_PROJECT_ID, title: "PDMX (default)" }];
+  }
+  const data = await res.json();
+  const projects = Array.isArray(data?.projects) ? data.projects : [];
+  const normalized = projects
+    .map((project: any) => ({
+      projectId: String(project?.projectId || "").trim(),
+      title: String(project?.title || "").trim()
+    }))
+    .filter((project: { projectId: string }) => project.projectId.length > 0);
+
+  if (!normalized.some((project: { projectId: string }) => project.projectId === DEFAULT_PDMX_PROJECT_ID)) {
+    normalized.unshift({ projectId: DEFAULT_PDMX_PROJECT_ID, title: "PDMX (default)" });
+  }
+  return normalized;
 }
 
 export default async function PdmxPage({
@@ -80,6 +107,7 @@ export default async function PdmxPage({
     importStatus,
     hasPdf
   }).catch(() => ({ items: [], total: 0, limit, offset }));
+  const projectOptions = await fetchProjectOptions();
 
   return (
     <main className="min-h-screen bg-slate-50 py-8 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -101,6 +129,8 @@ export default async function PdmxPage({
 
         <PdmxClient
           initialItems={Array.isArray(data?.items) ? data.items : []}
+          projectOptions={projectOptions}
+          defaultProjectId={DEFAULT_PDMX_PROJECT_ID}
           total={typeof data?.total === "number" ? data.total : 0}
           limit={typeof data?.limit === "number" ? data.limit : limit}
           offset={typeof data?.offset === "number" ? data.offset : offset}
