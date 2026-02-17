@@ -194,25 +194,12 @@ function ReferencePdfUploadPanel({
         setError(null);
         startTransition(async () => {
             try {
-                const tokenRes = await fetch("/api/auth/api-token", { cache: "no-store" });
-                if (!tokenRes.ok) {
-                    throw new Error("Sign in required");
-                }
-                const tokenBody = await tokenRes.json();
-                const token = tokenBody?.token;
-                if (!token) {
-                    throw new Error("Sign in required");
-                }
-
                 const form = new FormData();
                 form.append("referencePdf", file);
                 const res = await fetch(
-                    `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`,
+                    `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`,
                     {
                         method: "POST",
-                        headers: {
-                            Authorization: `Bearer ${token}`
-                        },
                         body: form,
                         cache: "no-store"
                     }

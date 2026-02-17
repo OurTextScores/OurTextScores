@@ -391,6 +391,31 @@ describe("updateWorkMetadata", () => {
     expect(result).toEqual(mockUpdatedWork);
   });
 
+  it("uses proxy endpoint on client side", async () => {
+    (global as any).window = {};
+    const mockUpdatedWork: WorkSummary = {
+      workId: "test-work",
+      sourceCount: 0,
+      availableFormats: [],
+    };
+
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => mockUpdatedWork,
+    });
+
+    await updateWorkMetadata("test-work", { title: "Updated Title" });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/proxy/works/test-work/metadata",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Updated Title" }),
+      })
+    );
+  });
+
   it("throws error when update fails", async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: false,

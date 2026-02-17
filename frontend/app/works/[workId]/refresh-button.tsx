@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { getPublicApiBase } from "../../lib/api";
 import { useRouter } from "next/navigation";
 
 export default function RefreshImslpButton({ workId }: { workId: string }) {
@@ -13,8 +12,7 @@ export default function RefreshImslpButton({ workId }: { workId: string }) {
     setError(null);
     startTransition(async () => {
       try {
-        const base = getPublicApiBase();
-        const res = await fetch(`${base}/imslp/works/${encodeURIComponent(workId)}/refresh`, {
+        const res = await fetch(`/api/proxy/imslp/works/${encodeURIComponent(workId)}/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });

@@ -3,17 +3,10 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import RefreshImslpButton from "./refresh-button";
 import { useRouter } from "next/navigation";
-import * as api from "../../lib/api";
 import React from "react";
 
 // Mock the fetch function
 global.fetch = jest.fn();
-
-// Mock the getPublicApiBase function
-jest.mock("../../lib/api", () => ({
-  ...jest.requireActual("../../lib/api"),
-  getPublicApiBase: jest.fn(() => "/api"),
-}));
 
 // Mock useTransition to be a simple useState
 jest.mock("react", () => {
@@ -60,7 +53,7 @@ describe("RefreshImslpButton", () => {
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        `/api/imslp/works/${encodeURIComponent(workId)}/refresh`,
+        `/api/proxy/imslp/works/${encodeURIComponent(workId)}/refresh`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

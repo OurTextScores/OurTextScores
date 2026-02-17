@@ -277,7 +277,12 @@ export async function updateWorkMetadata(
   workId: string,
   updates: { title?: string; composer?: string; catalogNumber?: string }
 ): Promise<WorkSummary> {
-  const response = await fetch(`${getApiBase()}/works/${encodeURIComponent(workId)}/metadata`, {
+  const endpoint =
+    typeof window === "undefined"
+      ? `${getApiBase()}/works/${encodeURIComponent(workId)}/metadata`
+      : `/api/proxy/works/${encodeURIComponent(workId)}/metadata`;
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates)
