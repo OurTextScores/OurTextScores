@@ -18,6 +18,7 @@
     "reindex:search": "node dist/reindex-search.js",
     "backfill:thumbnails": "node dist/generate-thumbnails.js",
     "ops:project-promotion": "node scripts/project-promotion.js",
+    "ops:seed-admin-user": "node scripts/seed-admin-user.js",
     "ops:pdmx-import": "node scripts/pdmx-import-csv.js",
     "ops:pdmx-sync-assets": "node scripts/pdmx-sync-assets.js"
   },

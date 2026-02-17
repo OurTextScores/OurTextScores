@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { FormEvent, useState, useTransition } from "react";
-import { signIn } from "next-auth/react";
 
 type SubmitState = "idle" | "submitted";
 
@@ -48,18 +47,6 @@ export default function BetaPreviewForm() {
         return;
       }
 
-      // Trigger email sign-in after successful registration.
-      const signInResult = await signIn("email", {
-        email: email.trim(),
-        callbackUrl: "/welcome",
-        redirect: false
-      });
-
-      if (signInResult?.error) {
-        setError("Request recorded, but sign-in link could not be sent. Please try again.");
-        return;
-      }
-
       setState("submitted");
     });
   };
@@ -67,7 +54,7 @@ export default function BetaPreviewForm() {
   if (state === "submitted") {
     return (
       <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
-        Thanks. Your beta preview request was sent and a sign-in link has been emailed to you.
+        Thanks. Your beta preview request was sent to the admin team. We will follow up if approved.
       </div>
     );
   }

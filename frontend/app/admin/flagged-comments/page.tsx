@@ -86,6 +86,12 @@ export default async function FlaggedCommentsPage() {
               >
                 DMCA Cases
               </Link>
+              <Link
+                href="/admin/beta-requests"
+                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
+              >
+                Beta Requests
+              </Link>
             </div>
           </div>
         </div>

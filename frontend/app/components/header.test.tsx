@@ -23,12 +23,13 @@ describe("Header", () => {
     jest.resetAllMocks();
   });
 
-  it("renders join-beta link when unauthenticated", () => {
+  it("renders only sign-in link when unauthenticated", () => {
     (useSession as jest.Mock).mockReturnValue({ data: null });
     render(<Header />);
-    const betaLink = screen.getByRole("link", { name: /Join beta/i });
-    expect(betaLink).toBeInTheDocument();
-    expect(betaLink).toHaveAttribute("href", "/beta-preview");
+    const signInLink = screen.getByRole("link", { name: /Sign in/i });
+    expect(signInLink).toBeInTheDocument();
+    expect(signInLink).toHaveAttribute("href", "/signin");
+    expect(screen.queryByRole("link", { name: /Join beta/i })).not.toBeInTheDocument();
   });
 
   it("renders user info and sign-out button when authenticated", () => {

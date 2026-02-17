@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   const emailServer = process.env.EMAIL_SERVER;
   const emailFrom = process.env.EMAIL_FROM || "OurTextScores <noreply@ourtextscores.com>";
 
-  // Persist a server-side record so sign-in can require TOS acknowledgement for new users.
+  // Persist beta request details for admin review and invite workflow.
   try {
     const client = await clientPromise;
     const db = client.db();

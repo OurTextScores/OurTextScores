@@ -70,6 +70,12 @@ export default async function SettingsPage() {
                 DMCA Cases Dashboard
               </Link>
               <Link
+                href="/admin/beta-requests"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                Beta Request Inbox
+              </Link>
+              <Link
                 href="/pdmx"
                 className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
               >

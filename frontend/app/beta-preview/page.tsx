@@ -6,7 +6,13 @@ export const metadata = {
   description: "OurTextScores is currently in beta preview. Request access."
 };
 
-export default function BetaPreviewPage() {
+export default function BetaPreviewPage({
+  searchParams
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const initialNext = typeof searchParams?.next === "string" ? searchParams.next : "";
+
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <section className="mx-auto w-full max-w-3xl space-y-6 px-6">
@@ -17,12 +23,20 @@ export default function BetaPreviewPage() {
           <h1 className="mt-2 text-2xl font-semibold">OurTextScores is currently in beta preview</h1>
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
             We are temporarily limiting access while legal and policy pages are finalized.
-            Request access below and tell us how you plan to use the platform.
+            Request access below and tell us how you plan to use the platform. If approved, an admin will email a
+            one-time signup invite link.
           </p>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             You can still read the public overview at{" "}
             <Link href="/welcome" className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
               /welcome
+            </Link>
+            .
+          </p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            If your email is already approved, use the{" "}
+            <Link href={`/signin${initialNext ? `?next=${encodeURIComponent(initialNext)}` : ""}`} className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
+              sign-in page
             </Link>
             .
           </p>

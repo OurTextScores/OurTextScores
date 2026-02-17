@@ -4,6 +4,8 @@ import { getToken } from "next-auth/jwt";
 const PUBLIC_PATHS = new Set<string>([
   "/welcome",
   "/beta-preview",
+  "/beta-invite",
+  "/signin",
   "/tos",
   "/privacy",
   "/dmca",
@@ -15,14 +17,14 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
   if (PUBLIC_PATHS.has(pathname)) {
-    if (pathname === "/beta-preview" && token) {
+    if ((pathname === "/beta-preview" || pathname === "/signin") && token) {
       return NextResponse.redirect(new URL("/", request.url));
     }
     return NextResponse.next();
   }
 
   if (!token) {
-    const redirectUrl = new URL("/beta-preview", request.url);
+    const redirectUrl = new URL("/signin", request.url);
     const target = `${pathname}${search || ""}`;
     if (target && target !== "/") {
       redirectUrl.searchParams.set("next", target);
