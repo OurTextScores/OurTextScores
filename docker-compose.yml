@@ -36,6 +36,8 @@ services:
       MUSESCORE_WRAPPER_TIMEOUT_SECONDS: ${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-0}
       # PDF can be generated later so upload requests are not blocked by this step.
       MUSESCORE_PDF_MODE: ${MUSESCORE_PDF_MODE:-async}
+      # Maintenance switch: disable only IMSLP refresh rate limit when true.
+      DISABLE_IMSLP_REFRESH_RATE_LIMIT: ${DISABLE_IMSLP_REFRESH_RATE_LIMIT:-false}
     depends_on:
       - mongo
       - meili

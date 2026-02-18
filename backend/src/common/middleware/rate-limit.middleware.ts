@@ -15,6 +15,27 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
+function loadDisabledRules(): Set<string> {
+  const disabled = new Set<string>();
+
+  const disabledList = (process.env.RATE_LIMIT_DISABLED_RULES || '')
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  for (const item of disabledList) {
+    disabled.add(item);
+  }
+
+  // Backward-compatible single-rule switch for operational scripts.
+  if ((process.env.DISABLE_IMSLP_REFRESH_RATE_LIMIT || '').trim().toLowerCase() === 'true') {
+    disabled.add('imslp-refresh');
+  }
+
+  return disabled;
+}
+
+const disabledRules = loadDisabledRules();
+
 const rules: RateLimitRule[] = [
   {
     name: 'upload',
@@ -75,6 +96,7 @@ function getClientId(req: Request): { id: string; authenticated: boolean } {
 
 function getMatchingRule(req: Request): RateLimitRule | undefined {
   for (const rule of rules) {
+    if (disabledRules.has(rule.name.toLowerCase())) continue;
     if (rule.match(req)) return rule;
   }
   return undefined;
