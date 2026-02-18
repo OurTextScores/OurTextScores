@@ -66,6 +66,44 @@ export class PdmxController {
     });
   }
 
+  @Get('groups')
+  @ApiOperation({ summary: 'List PDMX groups by size (admin only)' })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'groupQ', required: false, example: 'bach' })
+  @ApiQuery({ name: 'limit', required: false, example: 30 })
+  @ApiQuery({ name: 'offset', required: false, example: 0 })
+  @ApiQuery({ name: 'excludeUnacceptable', required: false, example: 'true' })
+  @ApiQuery({ name: 'requireNoLicenseConflict', required: false, example: 'true' })
+  @ApiQuery({ name: 'importStatus', required: false, example: 'imported' })
+  @ApiQuery({ name: 'hideImported', required: false, example: 'false' })
+  @ApiQuery({ name: 'hasPdf', required: false, example: 'true' })
+  @ApiQuery({ name: 'subset', required: false, example: 'all_valid' })
+  listGroups(
+    @Query('q') q?: string,
+    @Query('groupQ') groupQ?: string,
+    @Query('limit') limit = '30',
+    @Query('offset') offset = '0',
+    @Query('excludeUnacceptable') excludeUnacceptable?: string,
+    @Query('requireNoLicenseConflict') requireNoLicenseConflict?: string,
+    @Query('importStatus') importStatus?: string,
+    @Query('hideImported') hideImported?: string,
+    @Query('hasPdf') hasPdf?: string,
+    @Query('subset') subset?: string | string[]
+  ) {
+    return this.pdmxService.listGroups({
+      q,
+      groupQ,
+      limit: Number(limit),
+      offset: Number(offset),
+      excludeUnacceptable: this.toBoolean(excludeUnacceptable),
+      requireNoLicenseConflict: this.toBoolean(requireNoLicenseConflict),
+      importStatus,
+      hideImported: this.toBoolean(hideImported),
+      hasPdf: this.toBoolean(hasPdf),
+      subset
+    });
+  }
+
   @Get('records/:pdmxId')
   @ApiOperation({ summary: 'Get PDMX record detail (admin only)' })
   getRecord(@Param('pdmxId') pdmxId: string) {
@@ -96,6 +134,20 @@ export class PdmxController {
     @CurrentUser() user: RequestUser
   ) {
     return this.pdmxService.updateReview(pdmxId, body, user);
+  }
+
+  @Patch('groups/:group/review')
+  @ApiOperation({ summary: 'Mark all records in a PDMX group unacceptable (admin only)' })
+  updateGroupReview(
+    @Param('group') group: string,
+    @Body()
+    body: {
+      reason?: string;
+      notes?: string;
+    },
+    @CurrentUser() user: RequestUser
+  ) {
+    return this.pdmxService.markGroupUnacceptable(group, body || {}, user);
   }
 
   @Patch('records/:pdmxId/import')

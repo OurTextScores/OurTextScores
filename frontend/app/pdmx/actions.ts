@@ -45,6 +45,44 @@ export async function updatePdmxReviewAction(
   return updated;
 }
 
+export async function markPdmxGroupUnacceptableAction(
+  group: string,
+  payload?: {
+    reason?: string;
+    notes?: string;
+  }
+) {
+  const token = String(group || "").trim().toLowerCase();
+  if (!token) {
+    throw new Error("group is required");
+  }
+
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(`${API_BASE}/pdmx/groups/${encodeURIComponent(token)}/review`, {
+    method: "PATCH",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload || {})
+  });
+  if (res.status === 401) {
+    redirect("/api/auth/signin");
+  }
+  if (!res.ok) {
+    throw new Error(await parseError(res, "Failed to update PDMX group review"));
+  }
+  const updated = await res.json();
+  revalidatePath("/pdmx");
+  return updated as {
+    ok: boolean;
+    group: string;
+    matchedCount: number;
+    modifiedCount: number;
+  };
+}
+
 export async function updatePdmxImportAction(
   pdmxId: string,
   payload: {

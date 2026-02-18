@@ -37,22 +37,15 @@ export class PdmxService {
     private readonly config: ConfigService
   ) {}
 
-  async listRecords(options?: {
+  private buildRecordQuery(options?: {
     q?: string;
-    limit?: number;
-    offset?: number;
-    sort?: string;
     excludeUnacceptable?: boolean;
     requireNoLicenseConflict?: boolean;
     importStatus?: string;
     hideImported?: boolean;
     hasPdf?: boolean;
     subset?: string | string[];
-  }): Promise<{ items: any[]; total: number; limit: number; offset: number }> {
-    const limit = Math.max(1, Math.min(options?.limit ?? 50, 200));
-    const offset = Math.max(0, options?.offset ?? 0);
-    const sort = this.resolveSort(options?.sort);
-
+  }): Record<string, any> {
     const query: Record<string, any> = {};
     const q = (options?.q || '').trim();
     if (q) {
@@ -106,6 +99,25 @@ export class PdmxService {
         query[key] = true;
       }
     }
+    return query;
+  }
+
+  async listRecords(options?: {
+    q?: string;
+    limit?: number;
+    offset?: number;
+    sort?: string;
+    excludeUnacceptable?: boolean;
+    requireNoLicenseConflict?: boolean;
+    importStatus?: string;
+    hideImported?: boolean;
+    hasPdf?: boolean;
+    subset?: string | string[];
+  }): Promise<{ items: any[]; total: number; limit: number; offset: number }> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 50, 200));
+    const offset = Math.max(0, options?.offset ?? 0);
+    const sort = this.resolveSort(options?.sort);
+    const query = this.buildRecordQuery(options);
 
     const projection = {
       pdmxId: 1,
@@ -145,6 +157,133 @@ export class PdmxService {
         hasMxl: Boolean(item?.assets?.mxlPath)
       })),
       total,
+      limit,
+      offset
+    };
+  }
+
+  async listGroups(options?: {
+    q?: string;
+    limit?: number;
+    offset?: number;
+    excludeUnacceptable?: boolean;
+    requireNoLicenseConflict?: boolean;
+    importStatus?: string;
+    hideImported?: boolean;
+    hasPdf?: boolean;
+    subset?: string | string[];
+    groupQ?: string;
+  }): Promise<{
+    items: Array<{
+      group: string;
+      count: number;
+      unacceptableCount: number;
+      excludedCount: number;
+      importedCount: number;
+      withPdfCount: number;
+      noLicenseConflictCount: number;
+    }>;
+    totalGroups: number;
+    limit: number;
+    offset: number;
+  }> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 30, 200));
+    const offset = Math.max(0, options?.offset ?? 0);
+    const baseQuery = this.buildRecordQuery(options);
+    const groupQ = (options?.groupQ || '').trim().toLowerCase();
+
+    const pipeline: any[] = [
+      { $match: baseQuery },
+      { $match: { groups: { $exists: true, $type: 'string', $nin: ['', 'NA', 'na'] } } },
+      {
+        $project: {
+          tokens: {
+            $setUnion: [
+              {
+                $filter: {
+                  input: {
+                    $map: {
+                      input: { $split: [{ $toLower: '$groups' }, '-'] },
+                      as: 'token',
+                      in: { $trim: { input: '$$token' } }
+                    }
+                  },
+                  as: 'token',
+                  cond: { $gt: [{ $strLenCP: '$$token' }, 2] }
+                }
+              },
+              []
+            ]
+          },
+          review: 1,
+          import: 1,
+          assets: 1,
+          subsets: 1
+        }
+      },
+      { $unwind: '$tokens' }
+    ];
+
+    if (groupQ) {
+      pipeline.push({ $match: { tokens: { $regex: this.escapeRegex(groupQ), $options: 'i' } } });
+    }
+
+    pipeline.push(
+      {
+        $group: {
+          _id: '$tokens',
+          count: { $sum: 1 },
+          unacceptableCount: {
+            $sum: { $cond: [{ $eq: ['$review.qualityStatus', 'unacceptable'] }, 1, 0] }
+          },
+          excludedCount: {
+            $sum: { $cond: [{ $eq: ['$review.excludedFromSearch', true] }, 1, 0] }
+          },
+          importedCount: {
+            $sum: { $cond: [{ $eq: ['$import.status', 'imported'] }, 1, 0] }
+          },
+          withPdfCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$assets.pdfPath', null] },
+                    { $ne: ['$assets.pdfPath', ''] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          noLicenseConflictCount: {
+            $sum: { $cond: [{ $eq: ['$subsets.noLicenseConflict', true] }, 1, 0] }
+          }
+        }
+      },
+      { $sort: { count: -1, _id: 1 } },
+      {
+        $facet: {
+          items: [{ $skip: offset }, { $limit: limit }],
+          meta: [{ $count: 'totalGroups' }]
+        }
+      }
+    );
+
+    const [result] = await this.pdmxModel.aggregate(pipeline).exec();
+    const items = Array.isArray(result?.items) ? result.items : [];
+    const totalGroups = Number(result?.meta?.[0]?.totalGroups || 0);
+    return {
+      items: items.map((item: any) => ({
+        group: String(item?._id || ''),
+        count: Number(item?.count || 0),
+        unacceptableCount: Number(item?.unacceptableCount || 0),
+        excludedCount: Number(item?.excludedCount || 0),
+        importedCount: Number(item?.importedCount || 0),
+        withPdfCount: Number(item?.withPdfCount || 0),
+        noLicenseConflictCount: Number(item?.noLicenseConflictCount || 0)
+      })),
+      totalGroups,
       limit,
       offset
     };
@@ -242,6 +381,55 @@ export class PdmxService {
       .exec();
     if (!updated) throw new NotFoundException('PDMX record not found');
     return updated;
+  }
+
+  async markGroupUnacceptable(
+    group: string,
+    payload: {
+      reason?: string;
+      notes?: string;
+    },
+    actor: RequestUser
+  ): Promise<{
+    ok: boolean;
+    group: string;
+    matchedCount: number;
+    modifiedCount: number;
+  }> {
+    const normalized = this.normalizeGroupToken(group);
+    if (!normalized) {
+      throw new BadRequestException('group is required');
+    }
+
+    const reason = (payload.reason || '').trim() || `Marked unacceptable by group (${normalized})`;
+    const notes = (payload.notes || '').trim();
+    const query = {
+      groups: {
+        $regex: this.buildGroupRegex(normalized)
+      }
+    };
+    const update: Record<string, any> = {
+      $set: {
+        'review.qualityStatus': 'unacceptable',
+        'review.excludedFromSearch': true,
+        'review.reason': reason,
+        'review.updatedBy': actor.userId,
+        'review.updatedAt': new Date()
+      }
+    };
+    if (notes) {
+      update.$set['review.notes'] = notes;
+    } else {
+      update.$unset = { 'review.notes': '' };
+    }
+
+    const result = await this.pdmxModel.updateMany(query, update).exec();
+    return {
+      ok: true,
+      group: normalized,
+      matchedCount: Number((result as any)?.matchedCount || 0),
+      modifiedCount: Number((result as any)?.modifiedCount || 0)
+    };
   }
 
   async updateImportState(
@@ -555,6 +743,17 @@ export class PdmxService {
       default:
         return { updatedAt: -1, pdmxId: 1 };
     }
+  }
+
+  private normalizeGroupToken(group: string): string {
+    return String(group || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '');
+  }
+
+  private buildGroupRegex(group: string): RegExp {
+    return new RegExp(`(^|-)${this.escapeRegex(group)}(-|$)`, 'i');
   }
 
   private buildImportDescription(record: {

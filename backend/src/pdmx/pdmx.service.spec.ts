@@ -22,7 +22,9 @@ describe('PdmxService (unit, mocked model)', () => {
       find: jest.fn(),
       findOne: jest.fn(),
       findOneAndUpdate: jest.fn(),
-      updateOne: jest.fn()
+      updateOne: jest.fn(),
+      updateMany: jest.fn(),
+      aggregate: jest.fn()
     };
 
     const projectsService = {
@@ -184,5 +186,74 @@ describe('PdmxService (unit, mocked model)', () => {
       }),
       { new: true }
     );
+  });
+
+  it('listGroups returns ranked groups from aggregation output', async () => {
+    pdmxModel.aggregate.mockReturnValue({
+      exec: jest.fn().mockResolvedValue([
+        {
+          items: [
+            {
+              _id: 'piano',
+              count: 100,
+              unacceptableCount: 7,
+              excludedCount: 7,
+              importedCount: 11,
+              withPdfCount: 99,
+              noLicenseConflictCount: 97
+            }
+          ],
+          meta: [{ totalGroups: 1 }]
+        }
+      ])
+    });
+
+    const out = await service.listGroups({ limit: 10, offset: 0, subset: 'all_valid' });
+
+    expect(pdmxModel.aggregate).toHaveBeenCalledTimes(1);
+    expect(out.totalGroups).toBe(1);
+    expect(out.items[0]).toEqual({
+      group: 'piano',
+      count: 100,
+      unacceptableCount: 7,
+      excludedCount: 7,
+      importedCount: 11,
+      withPdfCount: 99,
+      noLicenseConflictCount: 97
+    });
+  });
+
+  it('markGroupUnacceptable updates all rows in matching group', async () => {
+    pdmxModel.updateMany.mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ matchedCount: 12, modifiedCount: 12 })
+    });
+
+    const out = await service.markGroupUnacceptable(
+      'youngcomposersgroup',
+      { reason: 'Bulk admin review' },
+      { userId: 'admin_group_1', roles: ['admin'] } as any
+    );
+
+    expect(pdmxModel.updateMany).toHaveBeenCalledWith(
+      {
+        groups: {
+          $regex: expect.any(RegExp)
+        }
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          'review.qualityStatus': 'unacceptable',
+          'review.excludedFromSearch': true,
+          'review.reason': 'Bulk admin review',
+          'review.updatedBy': 'admin_group_1'
+        })
+      })
+    );
+    expect(out).toEqual({
+      ok: true,
+      group: 'youngcomposersgroup',
+      matchedCount: 12,
+      modifiedCount: 12
+    });
   });
 });

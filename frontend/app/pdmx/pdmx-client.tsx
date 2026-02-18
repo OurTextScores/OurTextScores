@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   associatePdmxSourceAction,
+  markPdmxGroupUnacceptableAction,
   updatePdmxImportAction,
   updatePdmxReviewAction
 } from "./actions";
@@ -42,6 +43,16 @@ type PdmxListItem = {
   };
 };
 
+type PdmxGroupItem = {
+  group: string;
+  count: number;
+  unacceptableCount?: number;
+  excludedCount?: number;
+  importedCount?: number;
+  withPdfCount?: number;
+  noLicenseConflictCount?: number;
+};
+
 type AssociateFormState = {
   imslpUrl: string;
   projectId: string;
@@ -77,6 +88,7 @@ function statusClass(status?: string) {
 
 export default function PdmxClient({
   initialItems,
+  initialGroups,
   projectOptions,
   defaultProjectId,
   total,
@@ -85,6 +97,7 @@ export default function PdmxClient({
   initialQuery
 }: {
   initialItems: PdmxListItem[];
+  initialGroups: PdmxGroupItem[];
   projectOptions: Array<{ projectId: string; title?: string }>;
   defaultProjectId: string;
   total: number;
@@ -103,6 +116,7 @@ export default function PdmxClient({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<PdmxListItem[]>(initialItems);
+  const [groups, setGroups] = useState<PdmxGroupItem[]>(initialGroups);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [q, setQ] = useState(initialQuery.q);
   const [sort, setSort] = useState(initialQuery.sort);
@@ -114,12 +128,17 @@ export default function PdmxClient({
   const [hasPdf, setHasPdf] = useState(initialQuery.hasPdf);
   const [associateById, setAssociateById] = useState<Record<string, AssociateFormState>>({});
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setRows(initialItems);
   }, [initialItems]);
+
+  useEffect(() => {
+    setGroups(initialGroups);
+  }, [initialGroups]);
 
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
@@ -206,6 +225,23 @@ export default function PdmxClient({
         setError(err?.message || "Failed to update import status");
       } finally {
         setActiveRowId(null);
+      }
+    });
+  };
+
+  const markGroupUnacceptable = (group: PdmxGroupItem) => {
+    setError(null);
+    setActiveGroup(group.group);
+    startTransition(async () => {
+      try {
+        await markPdmxGroupUnacceptableAction(group.group, {
+          reason: `Marked unacceptable by group (${group.group})`
+        });
+        router.refresh();
+      } catch (err: any) {
+        setError(err?.message || "Failed to mark group unacceptable");
+      } finally {
+        setActiveGroup(null);
       }
     });
   };
@@ -344,6 +380,53 @@ export default function PdmxClient({
           {error}
         </p>
       )}
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/50">
+        <h2 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Largest Groups</h2>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          Group frequencies for the current filters. Use this to identify candidates for separate project imports.
+        </p>
+        <div className="overflow-x-auto rounded border border-slate-200 dark:border-slate-800">
+          <table className="min-w-[760px] w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
+            <thead className="bg-slate-100/80 text-left uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-400">
+              <tr>
+                <th className="px-3 py-2">Group</th>
+                <th className="px-3 py-2">Count</th>
+                <th className="px-3 py-2">Imported</th>
+                <th className="px-3 py-2">Unacceptable</th>
+                <th className="px-3 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {groups.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-3 text-center text-slate-500 dark:text-slate-400">
+                    No groups found for current filters.
+                  </td>
+                </tr>
+              )}
+              {groups.map((group) => (
+                <tr key={group.group}>
+                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">{group.group}</td>
+                  <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.count)}</td>
+                  <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.importedCount)}</td>
+                  <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.unacceptableCount)}</td>
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      disabled={isPending && activeGroup === group.group}
+                      onClick={() => markGroupUnacceptable(group)}
+                      className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-200"
+                    >
+                      Mark group unacceptable
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
         <table className="min-w-[1300px] w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
