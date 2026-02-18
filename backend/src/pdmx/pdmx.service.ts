@@ -39,6 +39,7 @@ export class PdmxService {
 
   private buildRecordQuery(options?: {
     q?: string;
+    group?: string;
     excludeUnacceptable?: boolean;
     requireNoLicenseConflict?: boolean;
     importStatus?: string;
@@ -57,6 +58,11 @@ export class PdmxService {
         { artistName: regex },
         { pdmxId: regex }
       ];
+    }
+
+    const groupToken = this.normalizeGroupToken(options?.group || '');
+    if (groupToken) {
+      query.groups = { $regex: this.buildGroupRegex(groupToken) };
     }
 
     const excludeUnacceptable = options?.excludeUnacceptable !== false;
@@ -104,6 +110,7 @@ export class PdmxService {
 
   async listRecords(options?: {
     q?: string;
+    group?: string;
     limit?: number;
     offset?: number;
     sort?: string;

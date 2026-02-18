@@ -31,6 +31,7 @@ export class PdmxController {
   @Get('records')
   @ApiOperation({ summary: 'List/search PDMX records (admin only)' })
   @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'group', required: false, example: 'openwelltemperedclavier' })
   @ApiQuery({ name: 'limit', required: false, example: 50 })
   @ApiQuery({ name: 'offset', required: false, example: 0 })
   @ApiQuery({ name: 'sort', required: false, example: 'updated_desc' })
@@ -42,6 +43,7 @@ export class PdmxController {
   @ApiQuery({ name: 'subset', required: false, example: 'all_valid' })
   listRecords(
     @Query('q') q?: string,
+    @Query('group') group?: string,
     @Query('limit') limit = '50',
     @Query('offset') offset = '0',
     @Query('sort') sort?: string,
@@ -54,6 +56,7 @@ export class PdmxController {
   ) {
     return this.pdmxService.listRecords({
       q,
+      group,
       limit: Number(limit),
       offset: Number(offset),
       sort,

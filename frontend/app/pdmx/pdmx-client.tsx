@@ -89,6 +89,9 @@ function statusClass(status?: string) {
 export default function PdmxClient({
   initialItems,
   initialGroups,
+  initialGroupsTotal,
+  groupLimit,
+  groupOffset,
   projectOptions,
   defaultProjectId,
   total,
@@ -98,6 +101,9 @@ export default function PdmxClient({
 }: {
   initialItems: PdmxListItem[];
   initialGroups: PdmxGroupItem[];
+  initialGroupsTotal: number;
+  groupLimit: number;
+  groupOffset: number;
   projectOptions: Array<{ projectId: string; title?: string }>;
   defaultProjectId: string;
   total: number;
@@ -105,6 +111,7 @@ export default function PdmxClient({
   offset: number;
   initialQuery: {
     q: string;
+    group: string;
     sort: string;
     includeUnacceptable: boolean;
     hideImported: boolean;
@@ -119,6 +126,7 @@ export default function PdmxClient({
   const [groups, setGroups] = useState<PdmxGroupItem[]>(initialGroups);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [q, setQ] = useState(initialQuery.q);
+  const [groupFilter, setGroupFilter] = useState(initialQuery.group);
   const [sort, setSort] = useState(initialQuery.sort);
   const [includeUnacceptable, setIncludeUnacceptable] = useState(initialQuery.includeUnacceptable);
   const [hideImported, setHideImported] = useState(initialQuery.hideImported);
@@ -142,10 +150,14 @@ export default function PdmxClient({
 
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
+  const hasGroupPrev = groupOffset > 0;
+  const hasGroupNext = groupOffset + groupLimit < initialGroupsTotal;
 
-  const navigateWith = (nextOffset: number) => {
+  const buildParams = (nextOffset: number, nextGroupOffset: number, overrideGroup?: string) => {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
+    const groupValue = (overrideGroup ?? groupFilter).trim();
+    if (groupValue) params.set("group", groupValue);
     if (sort) params.set("sort", sort);
     if (includeUnacceptable) params.set("includeUnacceptable", "true");
     if (hideImported) params.set("hideImported", "true");
@@ -155,11 +167,28 @@ export default function PdmxClient({
     if (hasPdf) params.set("hasPdf", hasPdf);
     params.set("limit", String(limit));
     params.set("offset", String(Math.max(0, nextOffset)));
+    params.set("groupLimit", String(groupLimit));
+    params.set("groupOffset", String(Math.max(0, nextGroupOffset)));
+    return params;
+  };
+
+  const navigateWith = (nextOffset: number, nextGroupOffset: number, overrideGroup?: string) => {
+    const params = buildParams(nextOffset, nextGroupOffset, overrideGroup);
     router.push(`/pdmx?${params.toString()}`);
   };
 
   const applyFilters = () => {
-    navigateWith(0);
+    navigateWith(0, 0);
+  };
+
+  const applyGroupFromTable = (group: string) => {
+    setGroupFilter(group);
+    navigateWith(0, 0, group);
+  };
+
+  const clearGroupFilter = () => {
+    setGroupFilter("");
+    navigateWith(0, 0, "");
   };
 
   const patchRow = (pdmxId: string, patch: Partial<PdmxListItem>) => {
@@ -297,6 +326,12 @@ export default function PdmxClient({
             placeholder="Search title/composer/artist/PDMX id"
             className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
+          <input
+            value={groupFilter}
+            onChange={(e) => setGroupFilter(e.target.value)}
+            placeholder="Filter by group token"
+            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value)}
@@ -371,6 +406,15 @@ export default function PdmxClient({
           >
             Apply Filters
           </button>
+          {groupFilter.trim() && (
+            <button
+              type="button"
+              onClick={clearGroupFilter}
+              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              Clear Group Filter
+            </button>
+          )}
           <span className="text-xs text-slate-500 dark:text-slate-400">{total} records</span>
         </div>
       </div>
@@ -406,8 +450,19 @@ export default function PdmxClient({
                 </tr>
               )}
               {groups.map((group) => (
-                <tr key={group.group}>
-                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">{group.group}</td>
+                <tr
+                  key={group.group}
+                  className={groupFilter.trim().toLowerCase() === group.group.toLowerCase() ? "bg-cyan-50/60 dark:bg-cyan-900/20" : ""}
+                >
+                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => applyGroupFromTable(group.group)}
+                      className="text-left underline-offset-2 hover:underline"
+                    >
+                      {group.group}
+                    </button>
+                  </td>
                   <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.count)}</td>
                   <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.importedCount)}</td>
                   <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.unacceptableCount)}</td>
@@ -425,6 +480,35 @@ export default function PdmxClient({
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+          <span>
+            Showing {groups.length > 0 ? groupOffset + 1 : 0} to {Math.min(groupOffset + groups.length, initialGroupsTotal)} of {initialGroupsTotal} groups
+          </span>
+          <div className="flex gap-2">
+            {hasGroupPrev ? (
+              <button
+                type="button"
+                onClick={() => navigateWith(offset, Math.max(0, groupOffset - groupLimit))}
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                Prev Groups
+              </button>
+            ) : (
+              <span className="rounded border border-slate-200 px-2 py-1 text-slate-400 dark:border-slate-800">Prev Groups</span>
+            )}
+            {hasGroupNext ? (
+              <button
+                type="button"
+                onClick={() => navigateWith(offset, groupOffset + groupLimit)}
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                Next Groups
+              </button>
+            ) : (
+              <span className="rounded border border-slate-200 px-2 py-1 text-slate-400 dark:border-slate-800">Next Groups</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -685,7 +769,7 @@ export default function PdmxClient({
           {hasPrev ? (
             <button
               type="button"
-              onClick={() => navigateWith(Math.max(0, offset - limit))}
+              onClick={() => navigateWith(Math.max(0, offset - limit), groupOffset)}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
               Previous
@@ -696,7 +780,7 @@ export default function PdmxClient({
           {hasNext ? (
             <button
               type="button"
-              onClick={() => navigateWith(offset + limit)}
+              onClick={() => navigateWith(offset + limit, groupOffset)}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
               Next

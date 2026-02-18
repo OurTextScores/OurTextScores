@@ -84,6 +84,20 @@ describe('PdmxService (unit, mocked model)', () => {
     );
   });
 
+  it('listRecords applies group token filter when provided', async () => {
+    pdmxModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
+    pdmxModel.find.mockReturnValue(leanExec([]));
+
+    await service.listRecords({
+      group: 'openwelltemperedclavier',
+      excludeUnacceptable: false,
+      requireNoLicenseConflict: false
+    });
+
+    const query = pdmxModel.countDocuments.mock.calls[0][0];
+    expect(query.groups).toEqual({ $regex: expect.any(RegExp) });
+  });
+
   it('updateReview uses $unset when reason/notes are intentionally cleared', async () => {
     pdmxModel.findOneAndUpdate.mockReturnValue(
       leanExec({
