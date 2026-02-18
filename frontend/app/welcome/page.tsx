@@ -146,7 +146,7 @@ export default function WelcomePage() {
               >
                 International Music Score Library Project (IMSLP)
               </Link>
-              {" "}work. Only reference PDFs from the IMSLP page are allowed which ensures they are public domain/legal in Canada where OurTextScores is hosted. Users may upload engraved scores with a variety of copyright licenses for these public domain works.
+              {" "}work. Only reference PDFs from the IMSLP page are allowed which ensures they are public domain/legal in Canada where OurTextScores is hosted. Please note that does NOT mean they are public domain/legal to download in your country. If you are not in Canada, please check the associated IMSLP page for whether a given work is public domain in your country. Also note that the engraving may have a different copyright license than the underlying work.
             </p>
           </div>
         </section>
