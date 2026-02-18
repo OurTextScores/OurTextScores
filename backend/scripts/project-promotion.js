@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Project promotion utility:
- * - export: package one project + linked sources/revisions/works/branches and required assets
+ * - export: package one project + linked sources/revisions/works/branches/IMSLP cache and required assets
  * - import: restore a package into another environment (e.g. prod) with collision checks
  * - verify: validate package integrity against the current environment
  *
@@ -432,6 +432,9 @@ async function runExport(args) {
   const works = workIdSet.size > 0
     ? await db.collection('works').find({ workId: { $in: Array.from(workIdSet) } }).toArray()
     : [];
+  const imslpWorks = workIdSet.size > 0
+    ? await db.collection('imslp').find({ workId: { $in: Array.from(workIdSet) } }).toArray()
+    : [];
 
   const locatorsRaw = [];
   collectLocators(linkedSources, locatorsRaw);
@@ -498,6 +501,7 @@ async function runExport(args) {
       project,
       projectSourceRows: rows,
       works,
+      imslpWorks,
       sources: linkedSources,
       sourceRevisions: revisions,
       sourceBranches: branches
@@ -518,6 +522,7 @@ async function runExport(args) {
   console.log(`- source_revisions: ${revisions.length}`);
   console.log(`- source_branches: ${branches.length}`);
   console.log(`- works: ${works.length}`);
+  console.log(`- imslp docs: ${imslpWorks.length}`);
   console.log(`- minio objects requested: ${locators.length}`);
   console.log(`- minio objects missing: ${missingObjects.length}`);
   console.log(`- fossil repos requested: ${fossilEntries.length}`);
@@ -713,6 +718,7 @@ async function runImport(args) {
   const project = docs.project;
   const rows = docs.projectSourceRows || [];
   const works = docs.works || [];
+  const imslpWorks = docs.imslpWorks || [];
   const sources = docs.sources || [];
   const revisions = docs.sourceRevisions || [];
   const branches = docs.sourceBranches || [];
@@ -740,6 +746,15 @@ async function runImport(args) {
     await db.collection('works').updateOne(
       { workId: work.workId },
       { $setOnInsert: work },
+      { upsert: true }
+    );
+  }
+  for (const imslp of imslpWorks) {
+    if (!imslp?.workId) continue;
+    const { _id, ...imslpDoc } = imslp;
+    await db.collection('imslp').updateOne(
+      { workId: imslp.workId },
+      { $setOnInsert: imslpDoc },
       { upsert: true }
     );
   }
@@ -780,6 +795,7 @@ async function runImport(args) {
   console.log(`- inserted revisions: ${revisions.length}`);
   console.log(`- inserted branches: ${branches.length}`);
   console.log(`- works upserted (setOnInsert): ${works.length}`);
+  console.log(`- imslp docs upserted (setOnInsert): ${imslpWorks.length}`);
   console.log(`- minio uploaded: ${minioResult.uploaded.length}`);
   console.log(`- minio skipped: ${minioResult.skipped.length}`);
   console.log(`- minio missing local files: ${minioResult.missingLocal.length}`);
@@ -815,6 +831,7 @@ async function runVerify(args) {
   const sources = docs.sources || [];
   const revisions = docs.sourceRevisions || [];
   const branches = docs.sourceBranches || [];
+  const imslpWorks = docs.imslpWorks || [];
 
   if (!project?.projectId) throw new Error('Bundle missing project doc');
 
@@ -824,6 +841,7 @@ async function runVerify(args) {
     sourcesFound: 0,
     revisionsFound: 0,
     branchesFound: 0,
+    imslpFound: 0,
     minioFound: 0,
     minioMissing: 0,
     fossilFound: 0,
@@ -859,6 +877,14 @@ async function runVerify(args) {
     if (found) checks.branchesFound += 1;
   }
 
+  for (const imslp of imslpWorks) {
+    const found = await db.collection('imslp').findOne(
+      { workId: imslp.workId },
+      { projection: { _id: 1 } }
+    );
+    if (found) checks.imslpFound += 1;
+  }
+
   const objectList = bundle.assets?.minioObjects || [];
   const minioVerifyProgress = createProgressLogger('Verify MinIO objects', objectList.length);
   for (const item of objectList) {
@@ -887,6 +913,7 @@ async function runVerify(args) {
   console.log(`- sources found: ${checks.sourcesFound}/${sources.length}`);
   console.log(`- revisions found: ${checks.revisionsFound}/${revisions.length}`);
   console.log(`- branches found: ${checks.branchesFound}/${branches.length}`);
+  console.log(`- imslp docs found: ${checks.imslpFound}/${imslpWorks.length}`);
   console.log(`- minio objects found: ${checks.minioFound}/${objectList.length}`);
   console.log(`- minio objects missing: ${checks.minioMissing}`);
   console.log(`- fossil repos found: ${checks.fossilFound}/${fossilList.length}`);
@@ -898,6 +925,7 @@ async function runVerify(args) {
     checks.sourcesFound === sources.length &&
     checks.revisionsFound === revisions.length &&
     checks.branchesFound === branches.length &&
+    checks.imslpFound === imslpWorks.length &&
     checks.minioMissing === 0 &&
     checks.fossilMissing === 0;
 
