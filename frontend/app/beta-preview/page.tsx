@@ -1,5 +1,4 @@
-import Link from "next/link";
-import BetaPreviewForm from "./beta-preview-form";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Beta Preview | OurTextScores",
@@ -12,41 +11,5 @@ export default function BetaPreviewPage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const initialNext = typeof searchParams?.next === "string" ? searchParams.next : "";
-
-  return (
-    <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <section className="mx-auto w-full max-w-3xl space-y-6 px-6">
-        <header className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">
-            Beta Preview
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold">OurTextScores is currently in beta preview</h1>
-          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-            We are temporarily limiting access while legal and policy pages are finalized.
-            Request access below and tell us how you plan to use the platform. If approved, an admin will email a
-            one-time signup invite link.
-          </p>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            You can still read the public overview at{" "}
-            <Link href="/welcome" className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
-              /welcome
-            </Link>
-            .
-          </p>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            If your email is already approved, use the{" "}
-            <Link href={`/signin${initialNext ? `?next=${encodeURIComponent(initialNext)}` : ""}`} className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
-              sign-in page
-            </Link>
-            .
-          </p>
-        </header>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
-          <h2 className="mb-4 text-lg font-semibold">Request Access</h2>
-          <BetaPreviewForm />
-        </section>
-      </section>
-    </main>
-  );
+  redirect(`/signin${initialNext ? `?next=${encodeURIComponent(initialNext)}` : ""}`);
 }

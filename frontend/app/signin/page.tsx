@@ -1,9 +1,10 @@
 import Link from "next/link";
 import SignInForm from "./signin-form";
+import BetaPreviewForm from "../beta-preview/beta-preview-form";
 
 export const metadata = {
   title: "Sign In | OurTextScores",
-  description: "Sign in to access the OurTextScores beta."
+  description: "Sign in to access the OurTextScores beta, or request beta access."
 };
 
 export default function SignInPage({
@@ -18,28 +19,45 @@ export default function SignInPage({
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <section className="mx-auto w-full max-w-xl space-y-6 px-6">
+      <section className="mx-auto w-full max-w-3xl space-y-6 px-6">
         <header className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
-          <h1 className="text-2xl font-semibold">Sign in</h1>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700 dark:text-cyan-300">
+            Beta Preview
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold">Sign in</h1>
+          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+            OurTextScores is currently in beta preview. We are temporarily limiting access while legal and policy
+            pages are finalized.
+          </p>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Sign in with your approved account. If you were invited, activate your invite link first.
           </p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Need access?{" "}
-            <Link href="/beta-preview" className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
-              Request beta access
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            You can browse a{" "}
+            <Link href="/works/807133" className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
+              demo source page
             </Link>
             .
           </p>
         </header>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
+          <h2 className="mb-4 text-lg font-semibold">Sign In</h2>
           <SignInForm
             initialNext={next}
             googleEnabled={googleEnabled}
             githubEnabled={githubEnabled}
             initialErrorCode={errorCode}
           />
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
+          <h2 className="mb-2 text-lg font-semibold">Request Access</h2>
+          <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
+            If you are not approved yet, request beta access below. If approved, an admin will email a one-time
+            signup invite link.
+          </p>
+          <BetaPreviewForm />
         </section>
       </section>
     </main>

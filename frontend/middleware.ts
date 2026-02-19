@@ -10,7 +10,8 @@ const PUBLIC_PATHS = new Set<string>([
   "/tos",
   "/privacy",
   "/dmca",
-  "/score-editor"
+  "/score-editor",
+  "/works/807133"
 ]);
 
 export async function middleware(request: NextRequest) {
