@@ -38,6 +38,8 @@ services:
       MUSESCORE_PDF_MODE: ${MUSESCORE_PDF_MODE:-async}
       # Maintenance switch: disable only IMSLP refresh rate limit when true.
       DISABLE_IMSLP_REFRESH_RATE_LIMIT: ${DISABLE_IMSLP_REFRESH_RATE_LIMIT:-false}
+      # Disable upload rate limiting for bulk imports (comma-separated rule names).
+      RATE_LIMIT_DISABLED_RULES: ${RATE_LIMIT_DISABLED_RULES:-}
     depends_on:
       - mongo
       - meili

@@ -530,6 +530,70 @@ export class ProjectsService {
     return result;
   }
 
+  async linkExistingSource(
+    projectId: string,
+    payload: {
+      sourceId: string;
+      workId?: string;
+    },
+    actor?: { userId?: string; roles?: string[] }
+  ) {
+    if (!actor?.userId) {
+      throw new BadRequestException('Authentication required');
+    }
+
+    const project = await this.getProjectDoc(projectId);
+    this.assertCanEditRows(project, { userId: actor.userId, roles: actor.roles });
+
+    // Find the source
+    const sourceQuery: Record<string, unknown> = { sourceId: payload.sourceId };
+    if (payload.workId) {
+      sourceQuery.workId = payload.workId;
+    }
+
+    const source = await this.sourceModel.findOne(sourceQuery).lean().exec();
+    if (!source) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const resolvedWorkId = (source as any).workId as string;
+    const sourceId = (source as any).sourceId as string;
+
+    // Check if already linked to this project
+    const currentProjectIds = Array.isArray((source as any).projectIds) ? ((source as any).projectIds as string[]) : [];
+    if (currentProjectIds.includes(projectId)) {
+      return {
+        ok: true,
+        workId: resolvedWorkId,
+        sourceId: sourceId,
+        alreadyLinked: true
+      };
+    }
+
+    // Add project to source's projectIds
+    await this.sourceModel.updateOne(
+      { workId: resolvedWorkId, sourceId },
+      { $addToSet: { projectIds: projectId } }
+    ).exec();
+
+    // Update projectLinkCount
+    const linkedSource = await this.sourceModel.findOne({ workId: resolvedWorkId, sourceId }).select('projectIds').lean().exec();
+    const projectIds = Array.isArray((linkedSource as any)?.projectIds) ? (linkedSource as any).projectIds : [];
+    await this.sourceModel.updateOne(
+      { workId: resolvedWorkId, sourceId },
+      { $set: { projectLinkCount: projectIds.length } }
+    ).exec();
+
+    await this.refreshProjectCounts(projectId);
+
+    return {
+      ok: true,
+      workId: resolvedWorkId,
+      sourceId: sourceId,
+      alreadyLinked: false
+    };
+  }
+
   async listRows(projectId: string, options?: { limit?: number; offset?: number }, actor?: { userId?: string; roles?: string[] }) {
     const project = await this.getProjectDoc(projectId);
     this.assertCanRead(project, actor);

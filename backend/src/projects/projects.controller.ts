@@ -153,6 +153,31 @@ export class ProjectsController {
     return this.projectsService.removeSource(projectId, sourceId, { userId: user.userId, roles: user.roles });
   }
 
+  @Post(':projectId/sources/link')
+  @UseGuards(AuthRequiredGuard)
+  @ApiOperation({ summary: 'Link an existing source to a project' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['sourceId'],
+      properties: {
+        sourceId: { type: 'string', description: 'Existing source ID to link' },
+        workId: { type: 'string', description: 'Optional work ID for verification' }
+      }
+    }
+  })
+  linkExistingSource(
+    @Param('projectId') projectId: string,
+    @Body() body: { sourceId: string; workId?: string },
+    @CurrentUser() user: RequestUser
+  ): Promise<any> {
+    return this.projectsService.linkExistingSource(
+      projectId,
+      { sourceId: body.sourceId, workId: body.workId },
+      { userId: user.userId, roles: user.roles }
+    );
+  }
+
   @Post(':projectId/sources')
   @UseGuards(AuthRequiredGuard)
   @UseInterceptors(
