@@ -20,8 +20,7 @@ export default async function UploadPage() {
             </h1>
             <p className="max-w-2xl text-lg text-slate-600 dark:text-slate-300">
               Provide an IMSLP work identifier, describe the source, and attach a MusicXML (*.mxl or
-              *.xml) or MuseScore (*.mscz) file. The pipeline will store the raw artifact, generate
-              normalized derivatives, run diff tooling, and capture a Fossil revision automatically.
+              *.xml) or MuseScore (*.mscz) file.
             </p>
           </div>
         </header>

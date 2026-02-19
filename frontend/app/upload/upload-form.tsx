@@ -126,7 +126,7 @@ function WorkSelector({
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Step 1 — Select IMSLP work</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Paste an IMSLP work URL to get started. Metadata will be cached locally and the work will be ready for uploads.
+          Paste an IMSLP work URL to get started.
         </p>
       </div>
 
