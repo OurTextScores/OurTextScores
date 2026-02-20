@@ -5,7 +5,6 @@ import { Fragment, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   associatePdmxSourceAction,
-  markPdmxGroupUnacceptableAction,
   updatePdmxImportAction,
   updatePdmxReviewAction
 } from "./actions";
@@ -43,16 +42,6 @@ type PdmxListItem = {
   };
 };
 
-type PdmxGroupItem = {
-  group: string;
-  count: number;
-  unacceptableCount?: number;
-  excludedCount?: number;
-  importedCount?: number;
-  withPdfCount?: number;
-  noLicenseConflictCount?: number;
-};
-
 type AssociateFormState = {
   imslpUrl: string;
   projectId: string;
@@ -63,8 +52,8 @@ type AssociateFormState = {
 };
 
 const LICENSE_OPTIONS = [
-  "Public Domain",
   "CC0",
+  "Public Domain",
   "CC-BY-4.0",
   "CC-BY-SA-4.0",
   "CC-BY-NC-4.0",
@@ -88,10 +77,6 @@ function statusClass(status?: string) {
 
 export default function PdmxClient({
   initialItems,
-  initialGroups,
-  initialGroupsTotal,
-  groupLimit,
-  groupOffset,
   projectOptions,
   defaultProjectId,
   total,
@@ -100,10 +85,6 @@ export default function PdmxClient({
   initialQuery
 }: {
   initialItems: PdmxListItem[];
-  initialGroups: PdmxGroupItem[];
-  initialGroupsTotal: number;
-  groupLimit: number;
-  groupOffset: number;
   projectOptions: Array<{ projectId: string; title?: string }>;
   defaultProjectId: string;
   total: number;
@@ -123,7 +104,6 @@ export default function PdmxClient({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<PdmxListItem[]>(initialItems);
-  const [groups, setGroups] = useState<PdmxGroupItem[]>(initialGroups);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [q, setQ] = useState(initialQuery.q);
   const [groupFilter, setGroupFilter] = useState(initialQuery.group);
@@ -136,7 +116,6 @@ export default function PdmxClient({
   const [hasPdf, setHasPdf] = useState(initialQuery.hasPdf);
   const [associateById, setAssociateById] = useState<Record<string, AssociateFormState>>({});
   const [activeRowId, setActiveRowId] = useState<string | null>(null);
-  const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -144,16 +123,10 @@ export default function PdmxClient({
     setRows(initialItems);
   }, [initialItems]);
 
-  useEffect(() => {
-    setGroups(initialGroups);
-  }, [initialGroups]);
-
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
-  const hasGroupPrev = groupOffset > 0;
-  const hasGroupNext = groupOffset + groupLimit < initialGroupsTotal;
 
-  const buildParams = (nextOffset: number, nextGroupOffset: number, overrideGroup?: string) => {
+  const buildParams = (nextOffset: number, overrideGroup?: string) => {
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     const groupValue = (overrideGroup ?? groupFilter).trim();
@@ -167,28 +140,21 @@ export default function PdmxClient({
     if (hasPdf) params.set("hasPdf", hasPdf);
     params.set("limit", String(limit));
     params.set("offset", String(Math.max(0, nextOffset)));
-    params.set("groupLimit", String(groupLimit));
-    params.set("groupOffset", String(Math.max(0, nextGroupOffset)));
     return params;
   };
 
-  const navigateWith = (nextOffset: number, nextGroupOffset: number, overrideGroup?: string) => {
-    const params = buildParams(nextOffset, nextGroupOffset, overrideGroup);
+  const navigateWith = (nextOffset: number, overrideGroup?: string) => {
+    const params = buildParams(nextOffset, overrideGroup);
     router.push(`/pdmx?${params.toString()}`);
   };
 
   const applyFilters = () => {
-    navigateWith(0, 0);
-  };
-
-  const applyGroupFromTable = (group: string) => {
-    setGroupFilter(group);
-    navigateWith(0, 0, group);
+    navigateWith(0);
   };
 
   const clearGroupFilter = () => {
     setGroupFilter("");
-    navigateWith(0, 0, "");
+    navigateWith(0, "");
   };
 
   const patchRow = (pdmxId: string, patch: Partial<PdmxListItem>) => {
@@ -200,13 +166,11 @@ export default function PdmxClient({
     || defaultProjectId;
 
   const defaultAssociateFormForRow = (row: PdmxListItem): AssociateFormState => {
-    const rowLicense = String(row.license || "").trim();
-    const license = (LICENSE_OPTIONS as readonly string[]).includes(rowLicense) ? rowLicense : "Public Domain";
     return {
       imslpUrl: row.import?.imslpUrl || "",
       projectId: row.import?.importedProjectId || defaultProjectFromOptions,
       sourceLabel: row.title || row.songName || "",
-      license,
+      license: "CC0",
       adminVerified: false,
       referencePdfFile: null
     };
@@ -254,23 +218,6 @@ export default function PdmxClient({
         setError(err?.message || "Failed to update import status");
       } finally {
         setActiveRowId(null);
-      }
-    });
-  };
-
-  const markGroupUnacceptable = (group: PdmxGroupItem) => {
-    setError(null);
-    setActiveGroup(group.group);
-    startTransition(async () => {
-      try {
-        await markPdmxGroupUnacceptableAction(group.group, {
-          reason: `Marked unacceptable by group (${group.group})`
-        });
-        router.refresh();
-      } catch (err: any) {
-        setError(err?.message || "Failed to mark group unacceptable");
-      } finally {
-        setActiveGroup(null);
       }
     });
   };
@@ -424,93 +371,6 @@ export default function PdmxClient({
           {error}
         </p>
       )}
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/50">
-        <h2 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">Largest Groups</h2>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          Group frequencies for the current filters. Use this to identify candidates for separate project imports.
-        </p>
-        <div className="overflow-x-auto rounded border border-slate-200 dark:border-slate-800">
-          <table className="min-w-[760px] w-full divide-y divide-slate-200 text-xs dark:divide-slate-800">
-            <thead className="bg-slate-100/80 text-left uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-400">
-              <tr>
-                <th className="px-3 py-2">Group</th>
-                <th className="px-3 py-2">Count</th>
-                <th className="px-3 py-2">Imported</th>
-                <th className="px-3 py-2">Unacceptable</th>
-                <th className="px-3 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {groups.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-3 py-3 text-center text-slate-500 dark:text-slate-400">
-                    No groups found for current filters.
-                  </td>
-                </tr>
-              )}
-              {groups.map((group) => (
-                <tr
-                  key={group.group}
-                  className={groupFilter.trim().toLowerCase() === group.group.toLowerCase() ? "bg-cyan-50/60 dark:bg-cyan-900/20" : ""}
-                >
-                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => applyGroupFromTable(group.group)}
-                      className="text-left underline-offset-2 hover:underline"
-                    >
-                      {group.group}
-                    </button>
-                  </td>
-                  <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.count)}</td>
-                  <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.importedCount)}</td>
-                  <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{safe(group.unacceptableCount)}</td>
-                  <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      disabled={isPending && activeGroup === group.group}
-                      onClick={() => markGroupUnacceptable(group)}
-                      className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-200"
-                    >
-                      Mark group unacceptable
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-          <span>
-            Showing {groups.length > 0 ? groupOffset + 1 : 0} to {Math.min(groupOffset + groups.length, initialGroupsTotal)} of {initialGroupsTotal} groups
-          </span>
-          <div className="flex gap-2">
-            {hasGroupPrev ? (
-              <button
-                type="button"
-                onClick={() => navigateWith(offset, Math.max(0, groupOffset - groupLimit))}
-                className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              >
-                Prev Groups
-              </button>
-            ) : (
-              <span className="rounded border border-slate-200 px-2 py-1 text-slate-400 dark:border-slate-800">Prev Groups</span>
-            )}
-            {hasGroupNext ? (
-              <button
-                type="button"
-                onClick={() => navigateWith(offset, groupOffset + groupLimit)}
-                className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              >
-                Next Groups
-              </button>
-            ) : (
-              <span className="rounded border border-slate-200 px-2 py-1 text-slate-400 dark:border-slate-800">Next Groups</span>
-            )}
-          </div>
-        </div>
-      </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
         <table className="min-w-[1300px] w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
@@ -769,7 +629,7 @@ export default function PdmxClient({
           {hasPrev ? (
             <button
               type="button"
-              onClick={() => navigateWith(Math.max(0, offset - limit), groupOffset)}
+              onClick={() => navigateWith(Math.max(0, offset - limit))}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
               Previous
@@ -780,7 +640,7 @@ export default function PdmxClient({
           {hasNext ? (
             <button
               type="button"
-              onClick={() => navigateWith(offset + limit, groupOffset)}
+              onClick={() => navigateWith(offset + limit)}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
               Next

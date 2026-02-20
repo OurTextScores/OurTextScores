@@ -46,41 +46,6 @@ async function fetchPdmxRecords(query: {
   return res.json();
 }
 
-async function fetchPdmxGroups(query: {
-  q: string;
-  limit: number;
-  offset: number;
-  includeUnacceptable: boolean;
-  hideImported: boolean;
-  requireNoLicenseConflict: boolean;
-  subset: string;
-  importStatus: string;
-  hasPdf: string;
-}) {
-  const API_BASE = getApiBase();
-  const headers = await getApiAuthHeaders();
-  const params = new URLSearchParams();
-  if (query.q) params.set("q", query.q);
-  params.set("limit", String(query.limit));
-  params.set("offset", String(query.offset));
-  if (query.includeUnacceptable) params.set("excludeUnacceptable", "false");
-  if (!query.requireNoLicenseConflict) params.set("requireNoLicenseConflict", "false");
-  if (query.hideImported) params.set("hideImported", "true");
-  if (query.subset) params.set("subset", query.subset);
-  if (query.importStatus) params.set("importStatus", query.importStatus);
-  if (query.hasPdf === "true" || query.hasPdf === "false") params.set("hasPdf", query.hasPdf);
-
-  const res = await fetch(`${API_BASE}/pdmx/groups?${params.toString()}`, {
-    headers,
-    cache: "no-store"
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Failed to fetch PDMX groups");
-  }
-  return res.json();
-}
-
 async function fetchProjectOptions(): Promise<Array<{ projectId: string; title: string }>> {
   const API_BASE = getApiBase();
   const headers = await getApiAuthHeaders();
@@ -132,10 +97,6 @@ export default async function PdmxPage({
   const subset = typeof searchParams?.subset === "string" ? searchParams.subset : "";
   const importStatus = typeof searchParams?.importStatus === "string" ? searchParams.importStatus : "";
   const hasPdf = typeof searchParams?.hasPdf === "string" ? searchParams.hasPdf : "true";
-  const groupLimitRaw = Number(typeof searchParams?.groupLimit === "string" ? searchParams.groupLimit : "20");
-  const groupOffsetRaw = Number(typeof searchParams?.groupOffset === "string" ? searchParams.groupOffset : "0");
-  const groupLimit = Number.isFinite(groupLimitRaw) ? Math.max(1, Math.min(100, groupLimitRaw)) : 20;
-  const groupOffset = Number.isFinite(groupOffsetRaw) ? Math.max(0, groupOffsetRaw) : 0;
 
   const data = await fetchPdmxRecords({
     q,
@@ -150,17 +111,6 @@ export default async function PdmxPage({
     importStatus,
     hasPdf
   }).catch(() => ({ items: [], total: 0, limit, offset }));
-  const groupsData = await fetchPdmxGroups({
-    q,
-    limit: groupLimit,
-    offset: groupOffset,
-    includeUnacceptable,
-    hideImported,
-    requireNoLicenseConflict,
-    subset,
-    importStatus,
-    hasPdf
-  }).catch(() => ({ items: [], totalGroups: 0, limit: groupLimit, offset: groupOffset }));
   const projectOptions = await fetchProjectOptions();
 
   return (
@@ -183,10 +133,6 @@ export default async function PdmxPage({
 
         <PdmxClient
           initialItems={Array.isArray(data?.items) ? data.items : []}
-          initialGroups={Array.isArray(groupsData?.items) ? groupsData.items : []}
-          initialGroupsTotal={typeof groupsData?.totalGroups === "number" ? groupsData.totalGroups : 0}
-          groupLimit={typeof groupsData?.limit === "number" ? groupsData.limit : groupLimit}
-          groupOffset={typeof groupsData?.offset === "number" ? groupsData.offset : groupOffset}
           projectOptions={projectOptions}
           defaultProjectId={DEFAULT_PDMX_PROJECT_ID}
           total={typeof data?.total === "number" ? data.total : 0}
