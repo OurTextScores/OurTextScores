@@ -74,6 +74,7 @@ export default function ProjectSummaryCard({
               disabled={isPending}
               className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200"
             >
+              <span aria-hidden="true">+ </span>
               Join Project
             </button>
           )}
@@ -84,7 +85,17 @@ export default function ProjectSummaryCard({
               disabled={isPending}
               className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
-              {editing ? "Cancel" : "Edit"}
+              {editing ? (
+                <>
+                  <span aria-hidden="true">× </span>
+                  Cancel
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">✎ </span>
+                  Edit
+                </>
+              )}
             </button>
           )}
         </div>
@@ -176,7 +187,17 @@ export default function ProjectSummaryCard({
               disabled={isPending}
               className="rounded bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
             >
-              {isPending ? "Saving..." : "Save Changes"}
+              {isPending ? (
+                <>
+                  <span aria-hidden="true">… </span>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">✓ </span>
+                  Save Changes
+                </>
+              )}
             </button>
           </div>
         </div>

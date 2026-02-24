@@ -190,6 +190,7 @@ export default function DiffPreview({
             className="ml-auto rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             title="Open in Score Editor in a new tab"
           >
+            <span aria-hidden="true">✎ </span>
             Open in Score Editor
           </button>
         )}

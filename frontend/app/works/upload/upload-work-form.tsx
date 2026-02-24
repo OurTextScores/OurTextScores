@@ -71,7 +71,17 @@ export default function UploadWorkForm() {
           className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           disabled={isLoading}
         >
-          {isLoading ? "Saving…" : "Save work"}
+          {isLoading ? (
+            <>
+              <span aria-hidden="true">… </span>
+              Saving…
+            </>
+          ) : (
+            <>
+              <span aria-hidden="true">+ </span>
+              Save work
+            </>
+          )}
         </button>
       </form>
 
@@ -148,12 +158,14 @@ function ResolvedWorkAlert({
             href={`/works/${encodeURIComponent(work.workId)}`}
             className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
+            <span aria-hidden="true">→ </span>
             View work detail
           </Link>
           <Link
             href={`/upload?workId=${encodeURIComponent(work.workId)}`}
             className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
+            <span aria-hidden="true">↑ </span>
             Upload a source
           </Link>
         </div>
@@ -162,6 +174,7 @@ function ResolvedWorkAlert({
           onClick={onReset}
           className="self-start text-xs font-medium uppercase tracking-wide text-slate-400 transition hover:text-slate-200 md:self-center"
         >
+          <span aria-hidden="true">↺ </span>
           Save another work
         </button>
       </div>

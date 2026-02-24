@@ -104,6 +104,7 @@ export default function ProjectSourcesTable({
                       onClick={() => onRemove(source.sourceId)}
                       className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-200"
                     >
+                      <span aria-hidden="true">× </span>
                       Remove
                     </button>
                   ) : (
@@ -125,6 +126,7 @@ export default function ProjectSourcesTable({
               href={`/projects/${encodeURIComponent(projectId)}?limit=${limit}&offset=${prevOffset}`}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
+              <span aria-hidden="true">‹ </span>
               Previous
             </Link>
           ) : (
@@ -135,6 +137,7 @@ export default function ProjectSourcesTable({
               href={`/projects/${encodeURIComponent(projectId)}?limit=${limit}&offset=${nextOffset}`}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
+              <span aria-hidden="true">› </span>
               Next
             </Link>
           ) : (

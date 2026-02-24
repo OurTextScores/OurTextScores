@@ -172,14 +172,15 @@ export default function WorksPage() {
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             {[
-              { href: '/works/upload', label: 'Save IMSLP work' },
-              { href: '/upload', label: 'Upload source' }
+              { href: '/works/upload', label: 'Save IMSLP work', icon: '+' },
+              { href: '/upload', label: 'Upload source', icon: '↑' }
             ].map((b) => (
               <Link
                 key={b.href}
                 href={b.href}
                 className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
+                <span aria-hidden="true">{b.icon} </span>
                 {b.label}
               </Link>
             ))}
@@ -211,7 +212,17 @@ export default function WorksPage() {
                 disabled={!imslpUrl.trim() || isResolvingImslp}
                 className="inline-flex items-center justify-center rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isResolvingImslp ? "Resolving..." : "Go"}
+                {isResolvingImslp ? (
+                  <>
+                    <span aria-hidden="true">… </span>
+                    Resolving...
+                  </>
+                ) : (
+                  <>
+                    <span aria-hidden="true">⌕ </span>
+                    Go
+                  </>
+                )}
               </button>
             </div>
             {imslpError && (

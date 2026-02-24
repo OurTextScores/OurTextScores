@@ -121,6 +121,7 @@ function AdminActionsPanel({
                             disabled={isPending}
                             className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
+                            <span aria-hidden="true">× </span>
                             Remove Verification
                         </button>
                     </div>
@@ -138,6 +139,7 @@ function AdminActionsPanel({
                             disabled={isPending}
                             className="w-full rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-200 dark:hover:bg-emerald-900"
                         >
+                            <span aria-hidden="true">✓ </span>
                             Verify Source
                         </button>
                     </div>
@@ -167,6 +169,7 @@ function AdminActionsPanel({
                     disabled={isPending}
                     className="w-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
                 >
+                    <span aria-hidden="true">→ </span>
                     Migrate Source
                 </button>
             </div>
@@ -254,6 +257,7 @@ function ReferencePdfUploadPanel({
                     disabled={isPending}
                     className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
+                    <span aria-hidden="true">↑ </span>
                     Upload Reference PDF
                 </button>
             </div>
@@ -333,6 +337,7 @@ function FlagSourcePanel({
                                 disabled={isPending}
                                 className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
+                                <span aria-hidden="true">× </span>
                                 Remove Flag
                             </button>
                         )}
@@ -351,6 +356,7 @@ function FlagSourcePanel({
                             disabled={isPending}
                             className="w-full rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200 dark:hover:bg-rose-900"
                         >
+                            <span aria-hidden="true">! </span>
                             Flag for Review
                         </button>
                     </div>
@@ -624,6 +630,7 @@ export default function SourceCard({
                             rel="noopener noreferrer"
                             className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
+                            <span aria-hidden="true">↓ </span>
                             Download MSCZ
                         </Link>
                     )}
@@ -634,6 +641,7 @@ export default function SourceCard({
                             rel="noopener noreferrer"
                             className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
+                            <span aria-hidden="true">↓ </span>
                             Download Reference PDF
                         </Link>
                     )}
@@ -644,6 +652,7 @@ export default function SourceCard({
                             rel="noopener noreferrer"
                             className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                         >
+                            <span aria-hidden="true">↓ </span>
                             Download Source PDF
                         </Link>
                     )}
@@ -655,6 +664,7 @@ export default function SourceCard({
                                 rel="noopener noreferrer"
                                 className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
+                                <span aria-hidden="true">↓ </span>
                                 Download MXL
                             </Link>
                             <button
@@ -668,6 +678,7 @@ export default function SourceCard({
                                 }}
                                 className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
                             >
+                                <span aria-hidden="true">✎ </span>
                                 Open Score in Editor
                             </button>
                         </>

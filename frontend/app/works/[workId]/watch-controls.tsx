@@ -21,6 +21,7 @@ export default async function WatchControls({ workId, sourceId }: { workId: stri
         className="rounded px-3 py-1 text-xs font-semibold ring-1 bg-slate-100 text-slate-700 ring-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700"
         title="Sign in to watch this source"
       >
+        <span aria-hidden="true">↩ </span>
         Sign in to watch ({count})
       </a>
     );
@@ -29,7 +30,17 @@ export default async function WatchControls({ workId, sourceId }: { workId: stri
   return (
     <form action={subscribed ? async () => { 'use server'; await unwatchSourceAction(workId, sourceId); } : async () => { 'use server'; await watchSourceAction(workId, sourceId); }}>
       <button type="submit" className={`rounded px-3 py-1 text-xs font-semibold ring-1 ${subscribed ? 'bg-slate-200 text-slate-700 ring-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700' : 'bg-cyan-600 text-white ring-cyan-700 hover:bg-cyan-700'}`}>
-        {subscribed ? `Watching (${count})` : `Watch (${count})`}
+        {subscribed ? (
+          <>
+            <span aria-hidden="true">◉ </span>
+            Watching ({count})
+          </>
+        ) : (
+          <>
+            <span aria-hidden="true">+ </span>
+            Watch ({count})
+          </>
+        )}
       </button>
     </form>
   );

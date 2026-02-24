@@ -81,7 +81,17 @@ export default function EditMetadataForm({
             disabled={isPending}
             className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
           >
-            {isPending ? "Saving..." : "Save"}
+            {isPending ? (
+              <>
+                <span aria-hidden="true">… </span>
+                Saving...
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true">✓ </span>
+                Save
+              </>
+            )}
           </button>
           {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
           {error && <span className="text-xs text-rose-600 dark:text-rose-400">{error}</span>}

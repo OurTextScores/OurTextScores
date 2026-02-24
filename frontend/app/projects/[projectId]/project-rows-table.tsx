@@ -134,6 +134,7 @@ export default function ProjectRowsTable({
             disabled={isPending}
             className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200"
           >
+            <span aria-hidden="true">+ </span>
             Add Row
           </button>
         )}
@@ -200,7 +201,17 @@ export default function ProjectRowsTable({
                       disabled={!canEditRows || isPending}
                       className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     >
-                      {activeRowId === row.rowId && isPending ? "Creating..." : "Create Internal Source"}
+                      {activeRowId === row.rowId && isPending ? (
+                        <>
+                          <span aria-hidden="true">… </span>
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <span aria-hidden="true">+ </span>
+                          Create Internal Source
+                        </>
+                      )}
                     </button>
                   )}
                 </td>
@@ -236,6 +247,7 @@ export default function ProjectRowsTable({
                       disabled={!canEditRows || isPending || !row._dirty}
                       className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200"
                     >
+                      <span aria-hidden="true">✓ </span>
                       Save
                     </button>
                     <button
@@ -243,6 +255,7 @@ export default function ProjectRowsTable({
                       disabled={!canEditRows || isPending}
                       className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-900/30 dark:text-rose-200"
                     >
+                      <span aria-hidden="true">× </span>
                       Delete
                     </button>
                   </div>

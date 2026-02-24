@@ -220,6 +220,7 @@ export default function UploadNewSourceForm({
           onClick={() => fileInputRef.current?.click()}
           className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
         >
+          <span aria-hidden="true">↑ </span>
           Upload Source
         </button>
         {file && <span className="text-slate-600 dark:text-slate-400">{file.name}</span>}
@@ -237,6 +238,7 @@ export default function UploadNewSourceForm({
           onClick={() => refPdfInputRef.current?.click()}
           className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
         >
+          <span aria-hidden="true">+ </span>
           Upload IMSLP PDF Reference (optional)
         </button>
         {referencePdfFile && <span className="text-slate-600 dark:text-slate-400">{referencePdfFile.name}</span>}
@@ -334,7 +336,17 @@ export default function UploadNewSourceForm({
           disabled={!canSubmit}
           className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
         >
-          {busy ? "Uploading…" : "Upload new source"}
+          {busy ? (
+            <>
+              <span aria-hidden="true">… </span>
+              Uploading…
+            </>
+          ) : (
+            <>
+              <span aria-hidden="true">↑ </span>
+              Upload new source
+            </>
+          )}
         </button>
       </div>
       {events.length > 0 && (
@@ -369,6 +381,7 @@ export default function UploadNewSourceForm({
                 }}
                 className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
+                <span aria-hidden="true">⎘ </span>
                 Copy error
               </button>
               <button
@@ -377,6 +390,7 @@ export default function UploadNewSourceForm({
                 onClick={() => setErrorModal(null)}
                 className="rounded bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-700"
               >
+                <span aria-hidden="true">× </span>
                 Close
               </button>
             </div>

@@ -67,7 +67,7 @@ export default function PdfViewer({
           <object data={url} type="application/pdf" className="h-[70vh] w-full" data-testid="pdf-object">
             <p className="p-4 text-sm text-slate-600">
               PDF preview is not supported in this browser.{' '}
-              <a href={url} target="_blank" className="text-cyan-700 underline">Open PDF</a>
+              <a href={url} target="_blank" className="text-cyan-700 underline"><span aria-hidden="true">↗ </span>Open PDF</a>
             </p>
           </object>
         ) : (

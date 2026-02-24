@@ -321,6 +321,7 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
                 }}
                 className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
               >
+                <span aria-hidden="true">✎ </span>
                 Open in Editor
               </button>
             )}

@@ -86,11 +86,11 @@ const waysToContribute = [
 ];
 
 const quickLinks = [
-  { href: "/catalogue", label: "Browse Catalogue" },
-  { href: "/works/upload", label: "Save IMSLP Work" },
-  { href: "/upload", label: "Upload New Source" },
-  { href: "/projects", label: "Explore Projects" },
-  { href: "/score-editor", label: "Open Score Editor" },
+  { href: "/catalogue", label: "Browse Catalogue", icon: "≡" },
+  { href: "/works/upload", label: "Save IMSLP Work", icon: "+" },
+  { href: "/upload", label: "Upload New Source", icon: "↑" },
+  { href: "/projects", label: "Explore Projects", icon: "▦" },
+  { href: "/score-editor", label: "Open Score Editor", icon: "✎" },
 ];
 
 export const metadata = {
@@ -117,6 +117,7 @@ export default function WelcomePage() {
                 href={item.href}
                 className="rounded-md border border-cyan-300 bg-white/80 px-4 py-2 text-sm font-semibold text-cyan-800 hover:bg-white dark:border-cyan-700 dark:bg-slate-900 dark:text-cyan-300 dark:hover:bg-slate-800"
               >
+                <span aria-hidden="true">{item.icon} </span>
                 {item.label}
               </Link>
             ))}

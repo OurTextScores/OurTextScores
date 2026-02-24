@@ -119,7 +119,17 @@ export default function RevisionComments({
             disabled={isSubmitting || !newComment.trim()}
             className="rounded border border-cyan-300 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
           >
-            {isSubmitting ? 'Posting...' : 'Post Comment'}
+            {isSubmitting ? (
+              <>
+                <span aria-hidden="true">… </span>
+                Posting...
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true">+ </span>
+                Post Comment
+              </>
+            )}
           </button>
         </div>
       ) : (
@@ -351,6 +361,7 @@ function CommentItem({
                 disabled={isSubmitting}
                 className="rounded bg-cyan-500 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-50"
               >
+                <span aria-hidden="true">✓ </span>
                 Save
               </button>
               <button
@@ -360,6 +371,7 @@ function CommentItem({
                 }}
                 className="rounded bg-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-400"
               >
+                <span aria-hidden="true">× </span>
                 Cancel
               </button>
             </div>
@@ -404,6 +416,7 @@ function CommentItem({
               onClick={() => setIsReplying(!isReplying)}
               className="text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
             >
+              <span aria-hidden="true">↩ </span>
               Reply
             </button>
           )}
@@ -413,6 +426,7 @@ function CommentItem({
               onClick={() => setIsEditing(true)}
               className="text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
             >
+              <span aria-hidden="true">✎ </span>
               Edit
             </button>
           )}
@@ -422,6 +436,7 @@ function CommentItem({
               onClick={handleDelete}
               className="text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200"
             >
+              <span aria-hidden="true">× </span>
               Delete
             </button>
           )}
@@ -431,6 +446,7 @@ function CommentItem({
               onClick={() => setShowFlagForm(!showFlagForm)}
               className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
             >
+              <span aria-hidden="true">! </span>
               Flag
             </button>
           )}
@@ -440,6 +456,7 @@ function CommentItem({
               onClick={handleUnflag}
               className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200"
             >
+              <span aria-hidden="true">× </span>
               Remove Flag
             </button>
           )}
@@ -462,7 +479,17 @@ function CommentItem({
               disabled={isSubmitting || !replyContent.trim()}
               className="rounded bg-cyan-500 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-600 disabled:opacity-50"
             >
-              {isSubmitting ? 'Posting...' : 'Post Reply'}
+              {isSubmitting ? (
+                <>
+                  <span aria-hidden="true">… </span>
+                  Posting...
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">↩ </span>
+                  Post Reply
+                </>
+              )}
             </button>
             <button
               onClick={() => {
@@ -471,6 +498,7 @@ function CommentItem({
               }}
               className="rounded bg-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-400"
             >
+              <span aria-hidden="true">× </span>
               Cancel
             </button>
           </div>
@@ -493,7 +521,17 @@ function CommentItem({
               disabled={isSubmitting || !flagReason.trim()}
               className="rounded bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
             >
-              {isSubmitting ? 'Flagging...' : 'Flag Comment'}
+              {isSubmitting ? (
+                <>
+                  <span aria-hidden="true">… </span>
+                  Flagging...
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">! </span>
+                  Flag Comment
+                </>
+              )}
             </button>
             <button
               onClick={() => {
@@ -502,6 +540,7 @@ function CommentItem({
               }}
               className="rounded bg-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-400"
             >
+              <span aria-hidden="true">× </span>
               Cancel
             </button>
           </div>

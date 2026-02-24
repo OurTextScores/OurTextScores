@@ -282,13 +282,14 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="hidden"
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          >
-            Choose Source File
-          </button>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+        >
+          <span aria-hidden="true">↑ </span>
+          Choose Source File
+        </button>
           {file && <span className="text-xs text-slate-600 dark:text-slate-400">{file.name}</span>}
 
           <input
@@ -298,13 +299,14 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
             onChange={(e) => setReferencePdfFile(e.target.files?.[0] ?? null)}
             className="hidden"
           />
-          <button
-            type="button"
-            onClick={() => referenceInputRef.current?.click()}
-            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          >
-            Add Reference PDF
-          </button>
+        <button
+          type="button"
+          onClick={() => referenceInputRef.current?.click()}
+          className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+        >
+          <span aria-hidden="true">+ </span>
+          Add Reference PDF
+        </button>
           {referencePdfFile && <span className="text-xs text-slate-600 dark:text-slate-400">{referencePdfFile.name}</span>}
         </div>
 
@@ -312,13 +314,23 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
         <ClientConversionProgressCard progress={clientConversionProgress} />
 
         <div>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
-          >
-            {busy ? "Uploading..." : "Upload"}
-          </button>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
+        >
+          {busy ? (
+            <>
+              <span aria-hidden="true">… </span>
+              Uploading...
+            </>
+          ) : (
+            <>
+              <span aria-hidden="true">↑ </span>
+              Upload
+            </>
+          )}
+        </button>
         </div>
       </form>
 

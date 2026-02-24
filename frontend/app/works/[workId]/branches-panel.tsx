@@ -30,7 +30,7 @@ export default async function BranchesPanel({ workId, sourceId, latestRevisionId
         <CreateBranchClient workId={workId} sourceId={sourceId} latestRevisionId={latestRevisionId} />
       ) : (
         <div className="text-xs text-slate-600 dark:text-slate-300">
-          <a href="/api/auth/signin" className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">Sign in</a> to create branches.
+          <a href="/api/auth/signin" className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">↩ </span>Sign in</a> to create branches.
         </div>
       )}
     </section>

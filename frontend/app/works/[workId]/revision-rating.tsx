@@ -219,6 +219,7 @@ export default function RevisionRating({
             onClick={() => loadRatings()}
             className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
+            <span aria-hidden="true">≡ </span>
             Show Ratings
           </button>
         </div>
@@ -254,7 +255,17 @@ export default function RevisionRating({
                 disabled={isSubmitting}
                 className="rounded border border-cyan-300 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
               >
-                {isSubmitting ? 'Submitting...' : 'Submit Rating'}
+                {isSubmitting ? (
+                  <>
+                    <span aria-hidden="true">… </span>
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <span aria-hidden="true">✓ </span>
+                    Submit Rating
+                  </>
+                )}
               </button>
             </div>
           )}
@@ -263,6 +274,7 @@ export default function RevisionRating({
             onClick={() => loadRatings()}
             className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
+            <span aria-hidden="true">≡ </span>
             Show Ratings
           </button>
         </div>

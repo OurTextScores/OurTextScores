@@ -56,6 +56,7 @@ export default function EditSourceForm({
         onClick={() => setIsEditing(true)}
         className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
       >
+        <span aria-hidden="true">✎ </span>
         Edit title/description
       </button>
     );
@@ -98,7 +99,17 @@ export default function EditSourceForm({
           disabled={isPending}
           className="rounded bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
         >
-          {isPending ? "Saving..." : "Save"}
+          {isPending ? (
+            <>
+              <span aria-hidden="true">… </span>
+              Saving...
+            </>
+          ) : (
+            <>
+              <span aria-hidden="true">✓ </span>
+              Save
+            </>
+          )}
         </button>
         <button
           type="button"
@@ -111,6 +122,7 @@ export default function EditSourceForm({
           }}
           className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
         >
+          <span aria-hidden="true">× </span>
           Cancel
         </button>
         {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}

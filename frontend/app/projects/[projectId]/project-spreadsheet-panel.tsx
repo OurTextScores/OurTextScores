@@ -15,6 +15,7 @@ export default function ProjectSpreadsheetPanel({ project }: { project: ProjectS
             rel="noopener noreferrer"
             className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200"
           >
+            <span aria-hidden="true">↗ </span>
             Open Full Sheet
           </a>
         )}

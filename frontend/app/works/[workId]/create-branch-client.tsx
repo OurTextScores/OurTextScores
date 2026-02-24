@@ -30,9 +30,18 @@ export default function CreateBranchClient({ workId, sourceId, latestRevisionId 
         <option value="owner_approval">Owner approval required</option>
       </select>
       <button type="submit" className="rounded bg-cyan-600 px-3 py-1 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50" disabled={busy}>
-        {busy ? 'Creating…' : 'Create'}
+        {busy ? (
+          <>
+            <span aria-hidden="true">… </span>
+            Creating…
+          </>
+        ) : (
+          <>
+            <span aria-hidden="true">+ </span>
+            Create
+          </>
+        )}
       </button>
     </form>
   );
 }
-
