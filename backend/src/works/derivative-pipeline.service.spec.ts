@@ -479,4 +479,56 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     );
     expect(msczCalls.length).toBe(1);
   });
+
+  it('stores original krn artifact and converts to canonical xml when converter is configured', async () => {
+    process.env.KERN_CONVERTER_CLI = 'kern-convert';
+    const local = new DerivativePipelineService(storage, progress);
+    const storeDerivativeSpy = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).storeDerivative = storeDerivativeSpy;
+    (local as any).runCommand = jest.fn(async (cmd: string, args: string[]) => {
+      if (cmd === 'kern-convert') {
+        await fs.writeFile(args[1], Buffer.from('<score-partwise/>', 'utf8'));
+        return { stdout: '', stderr: '' };
+      }
+      if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+        await fs.writeFile(args[1], Buffer.from('mock-mxl', 'utf8'));
+      }
+      return { stdout: '', stderr: '' };
+    });
+
+    const result = await local.process({
+      workId: '123',
+      sourceId: 'src-krn',
+      sequenceNumber: 2,
+      format: 'application/x-kern',
+      originalFilename: 'piece.krn',
+      buffer: Buffer.from('**kern\n*clefG2\n4c\n*-\n', 'utf8'),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '123/src-krn/raw',
+        sizeBytes: 24,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/x-kern',
+        lastModifiedAt: new Date()
+      }
+    });
+
+    expect(result.derivatives.krn).toBeTruthy();
+    expect(result.derivatives.canonicalXml).toBeTruthy();
+    expect(result.derivatives.normalizedMxl).toBeTruthy();
+    expect(result.pending).toBe(false);
+    expect(
+      storeDerivativeSpy.mock.calls.some(
+        (call) => call[0].includes('score.krn') && call[2] === 'application/x-kern'
+      )
+    ).toBe(true);
+    delete process.env.KERN_CONVERTER_CLI;
+  });
 });

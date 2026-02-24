@@ -36,6 +36,9 @@ services:
       MUSESCORE_WRAPPER_TIMEOUT_SECONDS: ${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-0}
       # PDF can be generated later so upload requests are not blocked by this step.
       MUSESCORE_PDF_MODE: ${MUSESCORE_PDF_MODE:-async}
+      # Humdrum/Kern (.krn) converter wrapper; converts to MusicXML for editor/viewers.
+      KERN_CONVERTER_CLI: ${KERN_CONVERTER_CLI:-krn2musicxml}
+      KERN_CONVERTER_TIMEOUT_MS: ${KERN_CONVERTER_TIMEOUT_MS:-60000}
       # Maintenance switch: disable only IMSLP refresh rate limit when true.
       DISABLE_IMSLP_REFRESH_RATE_LIMIT: ${DISABLE_IMSLP_REFRESH_RATE_LIMIT:-false}
       # Disable upload rate limiting for bulk imports (comma-separated rule names).

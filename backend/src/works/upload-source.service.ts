@@ -986,6 +986,9 @@ export class UploadSourceService {
   ): string {
     const normalizedHint = formatHint?.toLowerCase();
     if (normalizedHint) {
+      if (normalizedHint.includes('kern') || normalizedHint.includes('krn')) {
+        return 'application/x-kern';
+      }
       if (normalizedHint.includes('mscz')) {
         return 'application/vnd.musescore.mscz';
       }
@@ -1010,6 +1013,8 @@ export class UploadSourceService {
         return 'application/vnd.musescore.mscx';
       case '.mxl':
         return 'application/vnd.recordare.musicxml';
+      case '.krn':
+        return 'application/x-kern';
       case '.xml':
       case '.musicxml':
         return 'application/xml';
@@ -1033,9 +1038,17 @@ export class UploadSourceService {
     if (mime === 'application/xml' || mime === 'text/xml') {
       return 'application/xml';
     }
+    if (
+      mime === 'application/x-kern' ||
+      mime === 'text/x-kern' ||
+      mime.includes('humdrum') ||
+      mime.includes('kern')
+    ) {
+      return 'application/x-kern';
+    }
 
     throw new BadRequestException(
-      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml.'
+      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn.'
     );
   }
 

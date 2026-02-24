@@ -632,6 +632,49 @@ describe('WorksController (unit)', () => {
     });
   });
 
+  describe('downloadKern', () => {
+    it('should download KRN file and set attachment disposition', async () => {
+      worksService.getWorkDetail.mockResolvedValue({
+        workId: '1',
+        sources: [{
+          sourceId: 's',
+          originalFilename: 'example.krn',
+          derivatives: {
+            krn: {
+              bucket: 'b',
+              objectKey: 'k-krn',
+              sizeBytes: 2048,
+              checksum: { algorithm: 'sha256', hexDigest: 'x' },
+              contentType: 'application/x-kern',
+              lastModifiedAt: new Date()
+            }
+          }
+        }]
+      } as any);
+      storageService.getObjectBuffer.mockResolvedValue(Buffer.from('**kern\n*-\n'));
+      const { res, headers } = createMockResponse();
+
+      await controller.downloadKern('1', 's', undefined, res as any, undefined);
+
+      expect(headers['Content-Type']).toContain('application/x-kern');
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['Content-Disposition']).toContain('example.krn');
+      expect(headers['Cache-Control']).toBe('no-cache');
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should throw not found when KRN is missing', async () => {
+      worksService.getWorkDetail.mockResolvedValue({
+        workId: '1',
+        sources: [{ sourceId: 's', derivatives: {} }]
+      } as any);
+      const { res } = createMockResponse();
+
+      await expect(controller.downloadKern('1', 's', undefined, res as any, undefined))
+        .rejects.toThrow('Kern file not found for this source');
+    });
+  });
+
   describe('downloadManifest', () => {
     it('should download manifest JSON', async () => {
       worksService.getWorkDetail.mockResolvedValue({

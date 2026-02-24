@@ -14,6 +14,8 @@ interface ToolVersions {
   musescore3: string;
   musescoreCommand?: string;
   musescoreFallbackCommands?: string[];
+  kernConverter?: string;
+  kernConverterCommand?: string;
 }
 
 interface ManifestArtifact {
@@ -73,6 +75,8 @@ export class DerivativePipelineService {
   private toolVersionsPromise?: Promise<ToolVersions>;
   private static readonly DEFAULT_MUSESCORE_EXPORT_TIMEOUT_MS = 300_000;
   private static readonly MIN_MUSESCORE_EXPORT_TIMEOUT_MS = 10_000;
+  private static readonly DEFAULT_KERN_CONVERTER_TIMEOUT_MS = 60_000;
+  private static readonly MIN_KERN_CONVERTER_TIMEOUT_MS = 1_000;
 
   constructor(
     private readonly storageService: StorageService,
@@ -131,6 +135,28 @@ export class DerivativePipelineService {
     }
     this.logger.warn(`Invalid MUSESCORE_PDF_MODE="${raw}", defaulting to "async".`);
     return 'async';
+  }
+
+  private getKernConverterCommand(): string | undefined {
+    const raw = (process.env.KERN_CONVERTER_CLI ?? '').trim();
+    return raw || undefined;
+  }
+
+  private getKernConverterTimeoutMs(): number {
+    const raw = (process.env.KERN_CONVERTER_TIMEOUT_MS ?? '').trim();
+    if (!raw) {
+      return DerivativePipelineService.DEFAULT_KERN_CONVERTER_TIMEOUT_MS;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < DerivativePipelineService.MIN_KERN_CONVERTER_TIMEOUT_MS) {
+      this.logger.warn(
+        `Invalid KERN_CONVERTER_TIMEOUT_MS="${raw}", using default ${DerivativePipelineService.DEFAULT_KERN_CONVERTER_TIMEOUT_MS}ms`
+      );
+      return DerivativePipelineService.DEFAULT_KERN_CONVERTER_TIMEOUT_MS;
+    }
+
+    return Math.floor(parsed);
   }
 
   private async runMuseScoreExport(
@@ -214,6 +240,44 @@ export class DerivativePipelineService {
           );
           notes.push('Original MuseScore file stored.');
           publish('Stored MuseScore file', 'store.mscz');
+        }
+      } else if (this.isKernFile(extension, format)) {
+        derivatives.krn = await this.storeDerivative(
+          `${derivativesBaseKey}/score.krn`,
+          input.buffer,
+          'application/x-kern'
+        );
+        notes.push('Original Kern file stored.');
+        publish('Stored Kern file', 'store.krn');
+
+        try {
+          const converted = await this.convertKernToMusicXml(inputPath, workspace);
+          canonicalPath = converted.path;
+          canonicalBuffer = converted.buffer;
+          notes.push(`Kern conversion to MusicXML completed (${converted.command}).`);
+          publish('Kern conversion completed', 'deriv.krn2xml');
+
+          normalizedMxlPath = join(workspace, 'converted.mxl');
+          try {
+            const conversion = await this.runMuseScoreExport(
+              canonicalPath,
+              normalizedMxlPath,
+              'Kern-derived MusicXML to compressed MXL'
+            );
+            normalizedMxlBuffer = await fs.readFile(normalizedMxlPath);
+            notes.push(
+              `MuseScore conversion to compressed MusicXML completed (${conversion.command}).`
+            );
+            publish('Compressed MXL generated from Kern-derived XML', 'deriv.krnxml2mxl');
+          } catch (err) {
+            pending = true;
+            notes.push(
+              `Could not convert Kern-derived MusicXML to compressed MXL: ${this.readableError(err)}`
+            );
+          }
+        } catch (err) {
+          pending = true;
+          notes.push(`Could not convert Kern file to MusicXML: ${this.readableError(err)}`);
         }
       } else if (this.isCompressedMusicXml(extension, format)) {
         normalizedMxlPath = inputPath;
@@ -362,6 +426,9 @@ export class DerivativePipelineService {
       }
       if (derivatives.thumbnail) {
         artifacts.push({ type: 'thumbnail', locator: derivatives.thumbnail });
+      }
+      if (derivatives.krn) {
+        artifacts.push({ type: 'krn', locator: derivatives.krn });
       }
 
       const manifestData: DerivativeManifest = {
@@ -528,6 +595,9 @@ export class DerivativePipelineService {
   }
 
   private fallbackName(extension: string, format: string): string {
+    if (this.isKernFile(extension, format)) {
+      return 'score.krn';
+    }
     if (this.isPlainMusicXml(extension, format)) {
       return 'score.xml';
     }
@@ -570,6 +640,33 @@ export class DerivativePipelineService {
 
   private isMuseScoreFile(extension: string, format: string): boolean {
     return this.isMuseScorePackage(extension, format) || this.isMuseScoreSource(extension, format);
+  }
+
+  private isKernFile(extension: string, format: string): boolean {
+    return (
+      extension === '.krn' ||
+      format === 'application/x-kern' ||
+      format === 'text/x-kern'
+    );
+  }
+
+  private async convertKernToMusicXml(
+    inputPath: string,
+    workspace: string
+  ): Promise<{ path: string; buffer: Buffer; command: string }> {
+    const command = this.getKernConverterCommand();
+    if (!command) {
+      throw new Error(
+        'KERN_CONVERTER_CLI is not configured. Set it to a converter that accepts "<input.krn> <output.xml>".'
+      );
+    }
+
+    const outputPath = join(workspace, 'kern-converted.xml');
+    await this.runCommand(command, [inputPath, outputPath], {
+      timeoutMs: this.getKernConverterTimeoutMs()
+    });
+    const buffer = await fs.readFile(outputPath);
+    return { path: outputPath, buffer, command };
   }
 
   private async extractCanonicalXml(
@@ -675,13 +772,19 @@ export class DerivativePipelineService {
   private async fetchToolVersions(): Promise<ToolVersions> {
     const museCommands = this.getMuseScoreCommands();
     const museCmd = museCommands[0] || 'musescore3';
+    const kernCmd = this.getKernConverterCommand();
     const [musescore] = await Promise.all([
       this.getCommandVersion(museCmd, ['--version']),
     ]);
+    const kernConverter = kernCmd
+      ? await this.getCommandVersion(kernCmd, ['--version'])
+      : undefined;
     return {
       musescore3: musescore,
       musescoreCommand: museCmd,
-      musescoreFallbackCommands: museCommands.slice(1)
+      musescoreFallbackCommands: museCommands.slice(1),
+      kernConverter,
+      kernConverterCommand: kernCmd
     };
   }
 

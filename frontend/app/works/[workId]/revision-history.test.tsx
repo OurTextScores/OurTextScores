@@ -331,4 +331,39 @@ describe('RevisionHistory', () => {
     expect(msczLinks[0].getAttribute('href')).toContain('works/12345/sources/source-1/score.mscz');
     expect(msczLinks[0].getAttribute('href')).toContain('r=rev-3');
   });
+
+  it('displays KRN badge when krn derivative is present', () => {
+    const revisionsWithKrn = [
+      {
+        ...mockRevisions[0],
+        derivatives: {
+          ...mockRevisions[0].derivatives,
+          krn: { bucket: 'scores-derivatives', objectKey: 'work123/rev3.krn', sizeBytes: 24000 }
+        }
+      },
+      {
+        ...mockRevisions[1]
+      }
+    ];
+
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        revisions={revisionsWithKrn}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    const krnBadges = screen.getAllByText('KRN');
+    expect(krnBadges.length).toBeGreaterThan(0);
+
+    const krnLinks = screen.getAllByRole('link').filter(link =>
+      link.getAttribute('href')?.includes('score.krn')
+    );
+    expect(krnLinks.length).toBeGreaterThan(0);
+    expect(krnLinks[0].getAttribute('href')).toContain('works/12345/sources/source-1/score.krn');
+    expect(krnLinks[0].getAttribute('href')).toContain('r=rev-3');
+  });
 });

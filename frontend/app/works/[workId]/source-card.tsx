@@ -377,7 +377,7 @@ function StorageBadge({
     validationStatus
 }: {
     label: string;
-    kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'referencePdf' | 'manifest';
+    kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'krn' | 'referencePdf' | 'manifest';
     locator?: StorageLocator;
     workId: string;
     sourceId: string;
@@ -411,6 +411,9 @@ function StorageBadge({
             break;
         case 'mscz':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mscz${r}`;
+            break;
+        case 'krn':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.krn${r}`;
             break;
         case 'referencePdf':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`;
@@ -634,6 +637,17 @@ export default function SourceCard({
                             Download MSCZ
                         </Link>
                     )}
+                    {source.derivatives?.krn && (
+                        <Link
+                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.krn`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                            <span aria-hidden="true">↓ </span>
+                            Download KRN
+                        </Link>
+                    )}
                     {source.hasReferencePdf && (
                         <Link
                             href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
@@ -733,6 +747,15 @@ export default function SourceCard({
                                     label="MSCZ"
                                     kind="mscz"
                                     locator={latest.derivatives?.mscz}
+                                    workId={workId}
+                                    sourceId={source.sourceId}
+                                    revisionId={latest.revisionId}
+                                    validationStatus={latest.validation.status}
+                                />
+                                <StorageBadge
+                                    label="KRN"
+                                    kind="krn"
+                                    locator={latest.derivatives?.krn}
                                     workId={workId}
                                     sourceId={source.sourceId}
                                     revisionId={latest.revisionId}

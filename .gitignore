@@ -10,6 +10,7 @@ frontend/coverage/
 backend/node_modules/
 backend/coverage/
 backend/scripts/private/
+backend/scripts/__pycache__/
 docs/private/
 docs/agent/
 scripts/private/

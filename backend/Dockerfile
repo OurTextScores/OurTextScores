@@ -8,7 +8,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     QT_QPA_PLATFORM=offscreen \
     MUSESCORE_EXPORT_TIMEOUT_MS=300000 \
     MUSESCORE_WRAPPER_TIMEOUT_SECONDS=300 \
-    MUSESCORE_CLI=${MUSESCORE_CLI}
+    MUSESCORE_CLI=${MUSESCORE_CLI} \
+    KERN_CONVERTER_CLI=krn2musicxml \
+    KERN_CONVERTER_TIMEOUT_MS=60000
 WORKDIR /app
 
 # Install Node.js 20, MuseScore CLI, Python tooling, and helper utilities
@@ -29,9 +31,18 @@ RUN apt-get update && \
         fossil && \
     pip3 install --no-cache-dir \
         imslp \
-        PyPDF2 && \
+        PyPDF2 \
+        music21 && \
     apt-get install -y --no-install-recommends poppler-utils && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Wrapper for Humdrum/Kern (.krn) -> MusicXML conversion used by the derivative pipeline.
+# The Python script itself is copied later into /app/scripts in build/runner stages.
+RUN printf '%s\n' \
+      '#!/bin/sh' \
+      'exec python3 /app/scripts/krn_to_musicxml.py "$@"' \
+    > /usr/local/bin/krn2musicxml && \
+    chmod +x /usr/local/bin/krn2musicxml
 
 # Install MuseScore 4 CLI via AppImage at build time.
 # Solution from: https://markandruth.co.uk/2024/09/08/running-musescore-from-within-a-docker-container
