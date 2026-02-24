@@ -281,7 +281,7 @@ else:
             slug = target
     params['titles'] = unquote(slug)
 
-r = requests.get('https://imslp.org/w/api.php', params=params, headers=headers, timeout=15)
+r = requests.get('https://imslp.org/api.php', params=params, headers=headers, timeout=15)
 if not r.ok:
     sys.exit(1)
 data = r.json()
@@ -326,7 +326,7 @@ headers = {'User-Agent': 'OurTextScores/1.0 (+https://ourtextscores.example)'}
 slug = unquote(sys.argv[1])
 
 url = (
-    "https://imslp.org/w/api.php"
+    "https://imslp.org/api.php"
     "?action=query&format=json&prop=info&inprop=url&titles=" + quote(slug)
 )
 r = requests.get(url, headers=headers)
@@ -508,7 +508,7 @@ def fetch_imageinfo(titles):
     # Limit to 50 to avoid oversized queries
     titles = titles[:50]
     titles_param = '|'.join(titles)
-    r = requests.get('https://imslp.org/w/api.php', params={
+    r = requests.get('https://imslp.org/api.php', params={
         'action': 'query',
         'format': 'json',
         'prop': 'imageinfo',
@@ -557,7 +557,7 @@ if is_numeric:
 else:
     params['titles'] = slug
 
-r = requests.get('https://imslp.org/w/api.php', params=params, headers=headers, timeout=20)
+r = requests.get('https://imslp.org/api.php', params=params, headers=headers, timeout=20)
 if not r.ok:
     sys.exit(1)
 

@@ -11,6 +11,7 @@ except Exception as exc:
     sys.exit(2)
 
 HEADERS = {'User-Agent': 'OurTextScores/1.0 (+https://ourtextscores.example)'}
+IMSLP_API_URL = 'https://imslp.org/api.php'
 
 def get_with_retry(url, params=None, timeout=15, tries=3, backoff=1.5):
     import requests
@@ -35,7 +36,7 @@ def extract_title(target: str) -> str:
     if target.isdigit():
         try:
             r = get_with_retry(
-                'https://imslp.org/w/api.php',
+                IMSLP_API_URL,
                 params={'action': 'query', 'format': 'json', 'prop': 'info', 'pageids': target, 'inprop': 'url'},
                 timeout=15, tries=3
             )
@@ -76,7 +77,7 @@ def resolve_canonical_page(target: str):
         else:
             params['titles'] = extract_title(target)
 
-        r = get_with_retry('https://imslp.org/w/api.php', params=params, timeout=15, tries=3)
+        r = get_with_retry(IMSLP_API_URL, params=params, timeout=15, tries=3)
         if not r.ok:
             return None
         data = r.json()
@@ -99,6 +100,83 @@ def resolve_canonical_page(target: str):
         return None
 
 
+def fetch_imageinfo_by_titles(titles):
+    by_title = {}
+    if not titles:
+        return by_title
+
+    for i in range(0, min(len(titles), 100), 50):
+        chunk = titles[i:i+50]
+        titles_param = '|'.join(chunk)
+        r = get_with_retry(IMSLP_API_URL, params={
+            'action': 'query',
+            'format': 'json',
+            'prop': 'imageinfo',
+            'iiprop': 'url|size|sha1|mime|timestamp|user|comment',
+            'titles': titles_param
+        }, timeout=20, tries=3)
+        if not r.ok:
+            continue
+        data = r.json()
+        pages = data.get('query', {}).get('pages', {})
+        for p in pages.values():
+            ti = p.get('title')
+            ii = p.get('imageinfo') or []
+            if not ti or not ii:
+                continue
+            by_title[ti] = ii[0]
+    return by_title
+
+
+def build_file_entry(title, info=None, name=None):
+    info = info if isinstance(info, dict) else {}
+    url = info.get('url')
+    return {
+        'name': name or title,
+        'title': title,
+        'url': url,
+        'size': info.get('size'),
+        'sha1': info.get('sha1'),
+        'mime_type': info.get('mime'),
+        'timestamp': info.get('timestamp'),
+        'user': info.get('user'),
+        'download_urls': {
+            'original': url,
+            'https': (url.replace('http:', 'https:') if url else None),
+            'direct': (url.replace('//imslp.org/', 'https://imslp.org/') if url and isinstance(url, str) and url.startswith('//') else url)
+        }
+    }
+
+
+def fetch_files_via_pageid(page_id):
+    if page_id in (None, ''):
+        return []
+    r = get_with_retry(IMSLP_API_URL, params={
+        'action': 'query',
+        'format': 'json',
+        'prop': 'images',
+        'pageids': str(page_id),
+        'imlimit': 100
+    }, timeout=20, tries=3)
+    if not r.ok:
+        return []
+    data = r.json()
+    pages = data.get('query', {}).get('pages', {})
+    page = next(iter(pages.values())) if pages else None
+    if not page or page.get('missing'):
+        return []
+    titles = []
+    for img in page.get('images') or []:
+        t = img.get('title')
+        if t:
+            titles.append(t)
+    by_title = fetch_imageinfo_by_titles(titles)
+    files = []
+    for ti in titles:
+        files.append(build_file_entry(ti, by_title.get(ti), name=ti))
+    return files
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write('Usage: imslp_enrich.py <permalink|slug|pageid>\n')
@@ -116,6 +194,15 @@ def main():
         time.sleep(2)
         page = client._site.pages[title]
         attempts += 1
+    try:
+        mwclient_page_id = getattr(page, 'pageid', None)
+    except Exception:
+        mwclient_page_id = None
+    pageid_mismatch = bool(
+        resolved_page_id not in (None, '')
+        and mwclient_page_id not in (None, '')
+        and str(resolved_page_id) != str(mwclient_page_id)
+    )
 
     metadata = {
         'page_title': title,
@@ -132,11 +219,15 @@ def main():
     try:
         metadata['basic_info'] = {
             'page_name': page.name,
-            'page_title': page.page_title,
-            'page_id': getattr(page, 'pageid', None) or resolved_page_id,
+            'page_title': (title if pageid_mismatch else getattr(page, 'page_title', None)) or title,
+            'page_id': resolved_page_id or mwclient_page_id,
             'namespace': getattr(page, 'namespace', None),
             'last_revision': getattr(page, 'revision', None)
         }
+        if pageid_mismatch:
+            metadata['basic_info']['mwclient_page_id'] = mwclient_page_id
+            metadata['basic_info']['canonical_page_id'] = resolved_page_id
+            metadata['basic_info']['page_id_mismatch'] = True
     except Exception as e:
         metadata['basic_info_error'] = str(e)
 
@@ -147,10 +238,11 @@ def main():
 
     try:
         imgs = []
-        try:
-            imgs = list(page.images())[:100]
-        except Exception:
-            imgs = []
+        if not pageid_mismatch:
+            try:
+                imgs = list(page.images())[:100]
+            except Exception:
+                imgs = []
 
         # Build initial file list from mwclient if available
         temp_files = []
@@ -163,47 +255,12 @@ def main():
             use_title = name or title
             if use_title:
                 titles.append(use_title)
-            temp_files.append({
-                'name': name,
-                'title': use_title,
-                'url': url,
-                'size': info.get('size') if isinstance(info, dict) else None,
-                'sha1': info.get('sha1') if isinstance(info, dict) else None,
-                'mime_type': info.get('mime') if isinstance(info, dict) else None,
-                'timestamp': info.get('timestamp') if isinstance(info, dict) else None,
-                'user': info.get('user') if isinstance(info, dict) else None,
-                'download_urls': {
-                    'original': url,
-                    'https': (url.replace('http:', 'https:') if url else None) if url else None,
-                    'direct': (url.replace('//imslp.org/', 'https://imslp.org/') if url and url.startswith('//') else url)
-                }
-            })
+            temp_files.append(build_file_entry(use_title, info, name=name))
 
         # Fallback: fetch imageinfo for titles via MediaWiki API to get direct URLs
         try:
             if titles:
-                by_title = {}
-                # Batch in chunks of 50
-                for i in range(0, min(len(titles), 100), 50):
-                    chunk = titles[i:i+50]
-                    titles_param = '|'.join(chunk)
-                    r = get_with_retry('https://imslp.org/w/api.php', params={
-                        'action': 'query',
-                        'format': 'json',
-                        'prop': 'imageinfo',
-                        'iiprop': 'url|size|sha1|mime|timestamp|user|comment',
-                        'titles': titles_param
-                    }, timeout=20, tries=3)
-                    if r.ok:
-                        data = r.json()
-                        pages = data.get('query', {}).get('pages', {})
-                        for p in pages.values():
-                            ti = p.get('title')
-                            ii = p.get('imageinfo') or []
-                            if not ti or not ii:
-                                continue
-                            info = ii[0]
-                            by_title[ti] = info
+                by_title = fetch_imageinfo_by_titles(titles)
 
                 # Merge API info into temp_files
                 for f in temp_files:
@@ -225,6 +282,18 @@ def main():
                     }
         except Exception:
             pass
+
+        # If MWClient landed on the wrong page variant (or returned no images), fetch files via canonical pageid.
+        if (pageid_mismatch or not temp_files) and (resolved_page_id or mwclient_page_id):
+            api_page_id = resolved_page_id or mwclient_page_id
+            api_files = fetch_files_via_pageid(api_page_id)
+            if api_files:
+                temp_files = api_files
+                metadata['files_source'] = 'mediawiki_api_pageid'
+            elif pageid_mismatch:
+                metadata['files_source'] = 'mediawiki_api_pageid_empty'
+        elif temp_files:
+            metadata['files_source'] = 'mwclient'
 
         metadata['files'] = temp_files
     except Exception as e:
