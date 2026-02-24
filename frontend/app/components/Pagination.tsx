@@ -20,6 +20,8 @@ interface PaginationProps {
     totalItems: number;
     itemsPerPage: number;
     onPageChange: (page: number) => void;
+    itemLabel?: string;
+    afterTotalText?: string;
 }
 
 export default function Pagination({
@@ -27,6 +29,8 @@ export default function Pagination({
     totalItems,
     itemsPerPage,
     onPageChange,
+    itemLabel = "results",
+    afterTotalText,
 }: PaginationProps) {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
 
@@ -67,7 +71,8 @@ export default function Pagination({
                         <span className="font-medium">
                             {Math.min(currentPage * itemsPerPage, totalItems)}
                         </span>{' '}
-                        of <span className="font-medium">{totalItems}</span> results
+                        of <span className="font-medium">{totalItems}</span> {itemLabel}
+                        {afterTotalText}
                     </p>
                 </div>
                 <div>

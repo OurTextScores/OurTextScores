@@ -35,6 +35,7 @@ export default function WorksPage() {
   const router = useRouter();
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [totalItems, setTotalItems] = useState(0);
+  const [totalSourceCount, setTotalSourceCount] = useState<number | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterReferencePdf, setFilterReferencePdf] = useState<"any" | "yes" | "no">("any");
@@ -77,6 +78,7 @@ export default function WorksPage() {
           });
           setWorks(result.works);
           setTotalItems(result.total);
+          setTotalSourceCount(undefined);
         } else {
           // Use regular fetch when no search query
           const result = await fetchWorksPaginated({
@@ -87,11 +89,13 @@ export default function WorksPage() {
           });
           setWorks(result.works);
           setTotalItems(result.total);
+          setTotalSourceCount(result.totalSourceCount);
         }
       } catch (error) {
         console.error("Failed to load works:", error);
         setWorks([]);
         setTotalItems(0);
+        setTotalSourceCount(undefined);
       } finally {
         setIsLoading(false);
       }
@@ -296,7 +300,14 @@ export default function WorksPage() {
               <span>Found {totalItems} {totalItems === 1 ? 'work' : 'works'} matching &ldquo;{searchQuery}&rdquo;</span>
             )}
             {!searchQuery.trim() && (
-              <span>Showing {totalItems} {totalItems === 1 ? 'work' : 'works'}</span>
+              <span>
+                Showing {works.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0} to{" "}
+                {Math.min(currentPage * ITEMS_PER_PAGE, totalItems)} of {totalItems}{" "}
+                {totalItems === 1 ? 'work' : 'works'}
+                {totalSourceCount !== undefined
+                  ? ` with ${totalSourceCount} ${totalSourceCount === 1 ? 'source' : 'sources'}`
+                  : ""}
+              </span>
             )}
           </div>
         )}

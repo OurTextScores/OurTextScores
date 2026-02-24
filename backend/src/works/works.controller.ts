@@ -117,6 +117,7 @@ export class WorksController {
           }
         },
         total: { type: 'number', example: 150 },
+        totalSourceCount: { type: 'number', example: 4821, nullable: true },
         limit: { type: 'number', example: 20 },
         offset: { type: 'number', example: 0 }
       }

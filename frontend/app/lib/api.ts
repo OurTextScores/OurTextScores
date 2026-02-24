@@ -64,6 +64,7 @@ export interface WorkSummary {
 export interface PaginatedWorksResponse {
   works: WorkSummary[];
   total: number;
+  totalSourceCount?: number;
   limit: number;
   offset: number;
 }

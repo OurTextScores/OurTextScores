@@ -47,6 +47,7 @@ describe('WorksService (unit, mocked models)', () => {
     sourceModel = {
       find: jest.fn(),
       findOne: jest.fn(),
+      countDocuments: jest.fn(),
       updateOne: jest.fn(),
       deleteOne: jest.fn(),
     } as any;
@@ -89,6 +90,7 @@ describe('WorksService (unit, mocked models)', () => {
       { workId: '101', sourceCount: 0, availableFormats: [], latestRevisionAt: undefined }
     ];
     (workModel.countDocuments as jest.Mock) = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(2) });
+    (sourceModel.countDocuments as jest.Mock) = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(2) });
     (workModel.find as jest.Mock).mockReturnValue({
       sort: () => ({
         skip: () => ({
@@ -114,6 +116,7 @@ describe('WorksService (unit, mocked models)', () => {
         { workId: '101', title: 'Title 101', composer: 'Comp B' }
       ],
       total: 2,
+      totalSourceCount: 2,
       limit: 20,
       offset: 0
     });
@@ -124,6 +127,7 @@ describe('WorksService (unit, mocked models)', () => {
       { workId: '200', sourceCount: 1, availableFormats: ['application/xml'], latestRevisionAt: new Date('2024-01-01') }
     ];
     (workModel.countDocuments as jest.Mock) = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(50) });
+    (sourceModel.countDocuments as jest.Mock) = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(123) });
     const skipMock = jest.fn().mockReturnValue({
       limit: () => ({
         lean: () => ({
@@ -145,6 +149,7 @@ describe('WorksService (unit, mocked models)', () => {
     expect(out).toMatchObject({
       works: [{ workId: '200', title: 'Test Work', composer: 'Test Composer' }],
       total: 50,
+      totalSourceCount: 123,
       limit: 10,
       offset: 20
     });

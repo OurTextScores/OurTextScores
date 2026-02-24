@@ -57,6 +57,7 @@ export interface WorkSummary {
 export interface PaginatedWorksResponse {
   works: WorkSummary[];
   total: number;
+  totalSourceCount?: number;
   limit: number;
   offset: number;
 }
@@ -206,7 +207,10 @@ export class WorksService {
     // Otherwise use MongoDB directly (no search/filter)
     // Get total count
     const query = onlyWithSources ? { sourceCount: { $gt: 0 } } : {};
-    const total = await this.workModel.countDocuments(query).exec();
+    const [total, totalSourceCount] = await Promise.all([
+      this.workModel.countDocuments(query).exec(),
+      this.sourceModel.countDocuments({}).exec()
+    ]);
 
     // Get paginated documents
     const documents = await this.workModel
@@ -246,6 +250,7 @@ export class WorksService {
     return {
       works: summaries,
       total,
+      totalSourceCount,
       limit,
       offset
     };
