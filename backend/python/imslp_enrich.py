@@ -61,12 +61,53 @@ def extract_title(target: str) -> str:
     return urllib.parse.unquote(target)
 
 
+def resolve_canonical_page(target: str):
+    """Resolve redirects/aliases to the canonical IMSLP page title before MWClient lookup."""
+    try:
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'prop': 'info',
+            'inprop': 'url',
+            'redirects': 1,
+        }
+        if target.isdigit():
+            params['pageids'] = target
+        else:
+            params['titles'] = extract_title(target)
+
+        r = get_with_retry('https://imslp.org/w/api.php', params=params, timeout=15, tries=3)
+        if not r.ok:
+            return None
+        data = r.json()
+        pages = data.get('query', {}).get('pages', {})
+        if not pages:
+            return None
+        page = next(iter(pages.values()))
+        if not page or page.get('missing'):
+            return None
+        title = page.get('title')
+        if not title:
+            return None
+        return {
+            'title': urllib.parse.unquote(title),
+            'page_id': page.get('pageid'),
+            'url': page.get('fullurl') or page.get('canonicalurl'),
+            'redirected': bool((data.get('query') or {}).get('redirects')),
+        }
+    except Exception:
+        return None
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write('Usage: imslp_enrich.py <permalink|slug|pageid>\n')
         sys.exit(1)
     target = sys.argv[1]
-    title = extract_title(target)
+    resolved = resolve_canonical_page(target) or {}
+    title = resolved.get('title') or extract_title(target)
+    resolved_page_id = resolved.get('page_id')
+    resolved_url = resolved.get('url')
 
     client = ImslpClient()
     page = client._site.pages[title]
@@ -78,9 +119,10 @@ def main():
 
     metadata = {
         'page_title': title,
-        'url': f"https://imslp.org/wiki/{urllib.parse.quote(title)}",
+        'url': resolved_url or f"https://imslp.org/wiki/{urllib.parse.quote(title)}",
         'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S'),
         'exists': bool(page.exists),
+        'requested_target': target,
         'basic_info': {},
         'categories': [],
         'files': [],
@@ -91,7 +133,7 @@ def main():
         metadata['basic_info'] = {
             'page_name': page.name,
             'page_title': page.page_title,
-            'page_id': getattr(page, 'pageid', None),
+            'page_id': getattr(page, 'pageid', None) or resolved_page_id,
             'namespace': getattr(page, 'namespace', None),
             'last_revision': getattr(page, 'revision', None)
         }

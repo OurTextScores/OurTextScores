@@ -130,7 +130,22 @@ export class ImslpService {
       const curMeta = (doc.metadata as Record<string, unknown>) ?? {};
       const files = (curMeta['files'] as unknown) as Array<unknown> | undefined;
       if (!Array.isArray(files) || files.length === 0) {
-        const enriched = await this.fetchViaMwClient(normalized).catch(() => null);
+        let enriched = await this.fetchViaMwClient(normalized).catch(() => null);
+        if (enriched) {
+          doc = enriched;
+        }
+
+        const nextMeta = (doc.metadata as Record<string, unknown>) ?? {};
+        const nextFiles = (nextMeta['files'] as unknown) as Array<unknown> | undefined;
+        if (!Array.isArray(nextFiles) || nextFiles.length === 0) {
+          const canonicalPermalink = await this.resolveCanonicalPermalink(normalized).catch(() => null);
+          if (canonicalPermalink && canonicalPermalink !== normalized) {
+            this.logger.warn(
+              `[IMSLP] Empty files from enrichment; retrying via canonical permalink ${canonicalPermalink}`
+            );
+            enriched = await this.fetchViaMwClient(canonicalPermalink).catch(() => null);
+          }
+        }
         if (enriched) {
           doc = enriched;
         }
@@ -237,6 +252,63 @@ export class ImslpService {
 
   private extractSlug(permalink: string): string {
     return permalink.split('/wiki/').pop() ?? permalink;
+  }
+
+  private async resolveCanonicalPermalink(permalinkOrSlugOrId: string): Promise<string | null> {
+    const script = `
+import json
+import sys
+from urllib.parse import unquote
+import requests
+
+headers = {'User-Agent': 'OurTextScores/1.0 (+https://ourtextscores.example)'}
+target = sys.argv[1]
+params = {
+    'action': 'query',
+    'format': 'json',
+    'prop': 'info',
+    'inprop': 'url',
+    'redirects': 1
+}
+if target.isdigit():
+    params['pageids'] = target
+else:
+    slug = target
+    if target.startswith('http://') or target.startswith('https://'):
+        if '/wiki/' in target:
+            slug = target.split('/wiki/', 1)[1]
+        else:
+            slug = target
+    params['titles'] = unquote(slug)
+
+r = requests.get('https://imslp.org/w/api.php', params=params, headers=headers, timeout=15)
+if not r.ok:
+    sys.exit(1)
+data = r.json()
+pages = data.get('query', {}).get('pages', {})
+page = next(iter(pages.values())) if pages else None
+if not page or page.get('missing'):
+    sys.exit(1)
+url = page.get('fullurl') or page.get('canonicalurl')
+if not url:
+    title = page.get('title')
+    if not title:
+        sys.exit(1)
+    from urllib.parse import quote
+    url = 'https://imslp.org/wiki/' + quote(title.replace(' ', '_'))
+print(url)
+`;
+
+    try {
+      const { stdout } = await execFileAsync('python3', ['-c', script, permalinkOrSlugOrId], {
+        maxBuffer: 256 * 1024,
+        timeout: 20_000
+      });
+      const resolved = stdout.trim();
+      return resolved || null;
+    } catch {
+      return null;
+    }
   }
 
   private async fetchFromMediaWiki(

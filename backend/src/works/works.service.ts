@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { InjectModel } from '@nestjs/mongoose';
@@ -136,6 +136,7 @@ export interface EnsureWorkResponse {
 @Injectable()
 export class WorksService {
   private readonly execFileAsync = promisify(execFile);
+  private readonly logger = new Logger(WorksService.name);
   constructor(
     @InjectModel(Work.name)
     private readonly workModel: Model<WorkDocument>,
@@ -304,9 +305,20 @@ export class WorksService {
     const ensuredMeta = ensured?.metadata?.metadata ?? {} as Record<string, unknown>;
     const basic = (ensuredMeta['basic_info'] as Record<string, unknown> | undefined) ?? undefined;
     const hasNumericBasic = basic != null && /^\d+$/.test(String((basic as any)['page_id']));
-    const hasFiles = Array.isArray((ensuredMeta as any)['files']) && ((ensuredMeta as any)['files'] as any[]).length > 0;
+    const files = Array.isArray((ensuredMeta as any)['files']) ? ((ensuredMeta as any)['files'] as any[]) : [];
+    const hasFiles = files.length > 0;
 
     if (!hasNumericBasic || !hasFiles) {
+      this.logger.warn(
+        `[IMSLP] saveWorkByImslpUrl insufficient enrichment ${JSON.stringify({
+          url,
+          resolvedPageId: finalWorkId,
+          ensuredWorkId: ensured?.workId ?? null,
+          basicPageId: basic ? String((basic as any)['page_id'] ?? '') : null,
+          pageTitle: basic ? String((basic as any)['page_title'] ?? '') : null,
+          filesCount: files.length,
+        })}`
+      );
       throw new BadRequestException('Unable to obtain enriched IMSLP metadata; record not created');
     }
 

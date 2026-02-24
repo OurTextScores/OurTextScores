@@ -394,6 +394,32 @@ describe('WorksService (unit, mocked models)', () => {
     await expect(service.saveWorkByImslpUrl(url)).rejects.toThrow('Unable to resolve numeric IMSLP page_id from URL');
   });
 
+  it('saveWorkByImslpUrl logs diagnostic context and throws when enriched metadata lacks files', async () => {
+    const url = 'https://imslp.org/wiki/La_Carnaval_des_Animaux_(Saint-Sa%C3%ABns,_Camille)';
+    const workId = '6099';
+    const metadata = {
+      workId,
+      title: 'Le carnaval des animaux',
+      composer: 'Saint-Saens, Camille',
+      permalink: url,
+      metadata: {
+        basic_info: { page_id: 26970, page_title: 'La Carnaval des Animaux' },
+        files: []
+      }
+    };
+    const warnSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+
+    jest.spyOn(service as any, 'resolvePageIdStrict').mockResolvedValue(workId);
+    imslpService.ensureByPermalink.mockResolvedValue({ workId, metadata });
+
+    await expect(service.saveWorkByImslpUrl(url)).rejects.toThrow(
+      'Unable to obtain enriched IMSLP metadata; record not created'
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('saveWorkByImslpUrl insufficient enrichment'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"filesCount":0'));
+    expect(workModel.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
   describe('approveRevision', () => {
     it('should approve a revision', async () => {
       const workId = 'work-1';

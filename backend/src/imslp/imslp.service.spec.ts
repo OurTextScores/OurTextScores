@@ -152,6 +152,45 @@ describe('ImslpService (unit, mocked model)', () => {
     expect(res.workId).toBe('600');
   });
 
+  it('ensureByPermalink retries MWClient enrichment with canonical permalink when files remain empty', async () => {
+    const canonicalPermalink = 'https://imslp.org/wiki/Le_carnaval_des_animaux_(Saint-Sa%C3%ABns,_Camille)';
+    const docWithoutFiles = {
+      workId: '6099',
+      title: 'Le carnaval des animaux',
+      permalink: 'https://imslp.org/wiki/La_Carnaval_des_Animaux_(Saint-Sa%C3%ABns,_Camille)',
+      metadata: { basic_info: { page_id: 26970, page_title: 'La Carnaval des Animaux' }, files: [] }
+    };
+
+    const stillEmpty = {
+      ...docWithoutFiles,
+      metadata: { basic_info: { page_id: 26970, page_title: 'La Carnaval des Animaux' }, files: [] }
+    };
+
+    const enrichedCanonical = {
+      ...docWithoutFiles,
+      workId: '6099',
+      permalink: canonicalPermalink,
+      metadata: { basic_info: { page_id: 6099, page_title: 'Le carnaval des animaux' }, files: [{ name: 'score.pdf' }] }
+    };
+
+    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(docWithoutFiles) }) });
+    jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(null);
+    jest.spyOn(service as any, 'fetchAndStoreFromExternal').mockResolvedValue(null);
+    const fetchViaSpy = jest
+      .spyOn(service as any, 'fetchViaMwClient')
+      .mockImplementation(async (input: string) => (input === canonicalPermalink ? enrichedCanonical : stillEmpty));
+    const canonicalSpy = jest
+      .spyOn(service as any, 'resolveCanonicalPermalink')
+      .mockResolvedValue(canonicalPermalink);
+
+    const res = await service.ensureByPermalink(docWithoutFiles.permalink);
+    expect(res.workId).toBe('6099');
+    expect(fetchViaSpy).toHaveBeenNthCalledWith(1, docWithoutFiles.permalink);
+    expect(canonicalSpy).toHaveBeenCalledWith(docWithoutFiles.permalink);
+    expect(fetchViaSpy).toHaveBeenCalledWith(canonicalPermalink);
+    expect((res.metadata.metadata as any).files).toHaveLength(1);
+  });
+
   it('ensureByPermalink handles all fetch methods returning null', async () => {
     (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(null) }) });
     jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(null);
