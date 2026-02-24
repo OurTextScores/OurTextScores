@@ -181,7 +181,7 @@ export default function WelcomePage() {
                     </Link>
                     {" "}and{" "}
                     <Link
-                      href="https://github.com/OurTextScores/OurTextScores/"
+                      href="https://github.com/OurTextScores/OTS_WebEditor/"
                       className="font-medium text-cyan-700 underline decoration-cyan-400 underline-offset-2 hover:text-cyan-800 dark:text-cyan-300 dark:decoration-cyan-500 dark:hover:text-cyan-200"
                     >
                       score editor issues and PRs
