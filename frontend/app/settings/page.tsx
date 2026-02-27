@@ -76,6 +76,12 @@ export default async function SettingsPage() {
                 Beta Request Inbox
               </Link>
               <Link
+                href="/admin/analytics"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                Analytics Dashboard
+              </Link>
+              <Link
                 href="/pdmx"
                 className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
               >

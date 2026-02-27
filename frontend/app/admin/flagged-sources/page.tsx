@@ -77,6 +77,12 @@ export default async function FlaggedSourcesPage() {
             >
               Beta Requests
             </Link>
+            <Link
+              href="/admin/analytics"
+              className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
+            >
+              Analytics
+            </Link>
           </div>
         </div>
 
