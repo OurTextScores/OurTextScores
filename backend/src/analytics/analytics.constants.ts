@@ -7,7 +7,10 @@ export const ANALYTICS_EVENT_NAMES = [
   'score_viewed',
   'revision_commented',
   'revision_rated',
-  'score_downloaded'
+  'score_downloaded',
+  'score_editor_session_started',
+  'score_editor_iframe_loaded',
+  'score_editor_session_ended'
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];

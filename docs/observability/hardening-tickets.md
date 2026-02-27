@@ -21,20 +21,31 @@ Last updated: 2026-02-27
   - Externalize rate-limits (Redis/shared store) for multi-instance deploys.
 
 ### OTS-H02 Analytics aggregation scalability
-- Status: `todo`
+- Status: `partial`
 - Why:
-  - Dashboard/funnel/retention are currently computed from raw events on request (`backend/src/analytics/analytics.service.ts`).
+  - Daily materialized rollup collection and backfill API now exist for timeseries path:
+    - `backend/src/analytics/schemas/analytics-daily-rollup.schema.ts`
+    - `backend/src/analytics/analytics.service.ts` (`getTimeseries` uses rollups for day+excludeAdmins)
+    - `POST /api/analytics/metrics/rollups/backfill` (`backend/src/analytics/analytics.controller.ts`)
 - Remaining:
-  - Add daily materialized rollups + scheduled jobs.
+  - Shift overview/funnel/retention heavy paths to rollups or pre-aggregated helper tables.
+  - Add scheduled refresh job (instead of request-time refresh only).
   - Keep raw-query endpoints for debug/audit only.
 
 ### OTS-H03 Score editor telemetry depth
-- Status: `todo`
+- Status: `partial`
 - Why:
-  - No dedicated OTS editor behavioral event feed yet (edit sessions, apply success/failure, abandon points).
+  - Frontend score editor shell now emits session lifecycle events through backend analytics ingest:
+    - `score_editor_session_started`
+    - `score_editor_iframe_loaded`
+    - `score_editor_session_ended`
+  - Files:
+    - `frontend/app/score-editor/page.tsx`
+    - `frontend/app/lib/analytics.ts`
+    - `frontend/app/api/analytics/events/route.ts`
 - Remaining:
-  - Add editor session lifecycle and AI operation telemetry in `OTS_Web`.
-  - Ingest into backend analytics with correlation ids.
+  - Add in-editor action telemetry from `OTS_Web` itself (AI apply success/failure, abandonment points).
+  - Correlate those events with revision outcomes and score_editor_api traces.
 
 ### OTS-H04 Session semantics
 - Status: `partial`

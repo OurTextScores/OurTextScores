@@ -58,6 +58,31 @@ export class AnalyticsController {
     return { ok: true, accepted: result.accepted };
   }
 
+  @Post('metrics/rollups/backfill')
+  @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
+  @ApiOperation({
+    summary: 'Backfill analytics daily rollups',
+    description:
+      'Recomputes daily rollups for a date window (admin-only). Useful for recovering from historical ingest gaps.'
+  })
+  @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
+  @ApiQuery({ name: 'timezone', required: false, description: 'IANA timezone (default America/New_York)' })
+  @ApiResponse({ status: 201, description: 'Rollups backfilled successfully' })
+  async backfillRollups(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('timezone') timezone?: string
+  ) {
+    const parsedFrom = this.parseDateOrUndefined(from, 'from');
+    const parsedTo = this.parseDateOrUndefined(to, 'to');
+    return this.analytics.backfillDailyRollups({
+      from: parsedFrom,
+      to: parsedTo,
+      timezone
+    });
+  }
+
   private estimateEventCount(body: unknown): number {
     const payload = body as Record<string, unknown> | null | undefined;
     if (Array.isArray(payload)) {

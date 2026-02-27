@@ -17,11 +17,45 @@
 
 'use client';
 
+import { useEffect, useRef } from "react";
+import { trackBackendAnalyticsEventClient } from "../lib/analytics";
+
 export default function ScoreEditorPage() {
+  const sessionStartedAtRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    sessionStartedAtRef.current = Date.now();
+    trackBackendAnalyticsEventClient({
+      eventName: "score_editor_session_started",
+      properties: { editor_surface: "embedded" },
+    });
+
+    return () => {
+      const durationMs = Math.max(0, Date.now() - sessionStartedAtRef.current);
+      trackBackendAnalyticsEventClient({
+        eventName: "score_editor_session_ended",
+        properties: {
+          editor_surface: "embedded",
+          duration_ms: durationMs,
+          close_reason: "page_unmount",
+        },
+      });
+    };
+  }, []);
+
+  const handleIframeLoaded = () => {
+    const loadMs = Math.max(0, Date.now() - sessionStartedAtRef.current);
+    trackBackendAnalyticsEventClient({
+      eventName: "score_editor_iframe_loaded",
+      properties: { editor_surface: "embedded", load_ms: loadMs },
+    });
+  };
+
   return (
     <div style={{ width: '100%', height: '100vh', margin: 0, padding: 0 }}>
       <iframe
         src="/score-editor/index.html"
+        onLoad={handleIframeLoaded}
         style={{
           width: '100%',
           height: '100%',

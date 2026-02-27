@@ -8,6 +8,9 @@ describe('AnalyticsService', () => {
   const aggregate = jest.fn(() => ({ exec: aggregateExec }));
   const findExec = jest.fn();
   const find = jest.fn(() => ({ lean: () => ({ exec: findExec }) }));
+  const rollupFindExec = jest.fn();
+  const rollupFind = jest.fn(() => ({ lean: () => ({ exec: rollupFindExec }) }));
+  const rollupUpdateOne = jest.fn();
 
   const analyticsModel = {
     insertMany,
@@ -21,12 +24,17 @@ describe('AnalyticsService', () => {
   const workModel = { countDocuments } as any;
   const sourceModel = { countDocuments } as any;
   const sourceRevisionModel = { countDocuments } as any;
+  const analyticsDailyRollupModel = {
+    find: rollupFind,
+    updateOne: rollupUpdateOne
+  } as any;
 
   const service = new AnalyticsService(
     analyticsModel,
     workModel,
     sourceModel,
-    sourceRevisionModel
+    sourceRevisionModel,
+    analyticsDailyRollupModel
   );
 
   beforeEach(() => {
@@ -169,7 +177,8 @@ describe('AnalyticsService', () => {
       from: new Date('2026-02-01T00:00:00Z'),
       to: new Date('2026-02-03T00:00:00Z'),
       timezone: 'America/New_York',
-      bucket: 'day'
+      bucket: 'day',
+      excludeAdmins: false
     });
 
     expect(result.points.length).toBeGreaterThanOrEqual(2);
@@ -178,6 +187,86 @@ describe('AnalyticsService', () => {
     expect(day.wacu).toBe(1);
     expect(day.weu).toBe(2);
     expect(day.downloads).toBe(1);
+  });
+
+  it('getTimeseries uses daily rollups for default admin-excluded day buckets', async () => {
+    aggregateExec.mockReset();
+    rollupFind.mockReset();
+    rollupFindExec.mockReset();
+    rollupUpdateOne.mockReset();
+
+    const existingRows = [
+      { dateKey: '2026-01-31', computedAt: new Date() },
+      { dateKey: '2026-02-01', computedAt: new Date() },
+      { dateKey: '2026-02-02', computedAt: new Date() }
+    ];
+    const materializedRows = [
+      {
+        dateKey: '2026-01-31',
+        bucketStart: new Date('2026-01-31T00:00:00Z'),
+        wae: 0,
+        wacu: 0,
+        weu: 0,
+        newSignups: 0,
+        uploadsSuccess: 0,
+        revisionsSaved: 0,
+        searches: 0,
+        views: 0,
+        comments: 0,
+        ratings: 0,
+        downloads: 0
+      },
+      {
+        dateKey: '2026-02-01',
+        bucketStart: new Date('2026-02-01T00:00:00Z'),
+        wae: 2,
+        wacu: 1,
+        weu: 2,
+        newSignups: 1,
+        uploadsSuccess: 1,
+        revisionsSaved: 1,
+        searches: 0,
+        views: 3,
+        comments: 0,
+        ratings: 0,
+        downloads: 2
+      },
+      {
+        dateKey: '2026-02-02',
+        bucketStart: new Date('2026-02-02T00:00:00Z'),
+        wae: 0,
+        wacu: 0,
+        weu: 0,
+        newSignups: 0,
+        uploadsSuccess: 0,
+        revisionsSaved: 0,
+        searches: 0,
+        views: 0,
+        comments: 0,
+        ratings: 0,
+        downloads: 0
+      }
+    ];
+
+    rollupFind
+      .mockReturnValueOnce({ lean: () => ({ exec: () => Promise.resolve(existingRows) }) } as any)
+      .mockReturnValueOnce({ lean: () => ({ exec: () => Promise.resolve(materializedRows) }) } as any);
+
+    const result = await service.getTimeseries({
+      from: new Date('2026-02-01T00:00:00Z'),
+      to: new Date('2026-02-03T00:00:00Z'),
+      timezone: 'America/New_York',
+      bucket: 'day',
+      excludeAdmins: true
+    });
+
+    expect(result.points).toHaveLength(3);
+    const feb1 = result.points.find((point) => point.bucketLabel === '2026-02-01');
+    expect(feb1?.uploadsSuccess).toBe(1);
+    expect(feb1?.downloads).toBe(2);
+    expect(feb1?.wae).toBe(2);
+    expect(aggregateExec).not.toHaveBeenCalled();
+    expect(rollupUpdateOne).not.toHaveBeenCalled();
   });
 
   it('getCatalogStats returns totals and range additions', async () => {

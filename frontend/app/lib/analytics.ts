@@ -72,6 +72,33 @@ function trackClientEvent(name: string, properties?: AnalyticsProperties): void 
     });
 }
 
+export function trackBackendAnalyticsEventClient(params: {
+  eventName: string;
+  properties?: AnalyticsProperties;
+}): void {
+  if (shouldSkipTracking() || typeof window === "undefined") {
+    return;
+  }
+
+  const payload: Record<string, unknown> = {
+    eventName: params.eventName,
+  };
+  const safeProps = sanitizeProperties(params.properties);
+  if (safeProps && Object.keys(safeProps).length > 0) {
+    payload.properties = safeProps;
+  }
+
+  void fetch("/api/analytics/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+    cache: "no-store",
+  }).catch(() => {
+    // Non-blocking: analytics should never break product flows.
+  });
+}
+
 export function getFileExtension(filename: string | null | undefined): string | undefined {
   if (!filename) {
     return undefined;

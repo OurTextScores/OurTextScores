@@ -11,7 +11,8 @@ describe('AnalyticsController', () => {
     getTimeseries: jest.fn(),
     getFunnel: jest.fn(),
     getRetention: jest.fn(),
-    getCatalogStats: jest.fn()
+    getCatalogStats: jest.fn(),
+    backfillDailyRollups: jest.fn()
   } as any as jest.Mocked<AnalyticsService>;
 
   const controller = new AnalyticsController(analyticsService);
@@ -77,5 +78,30 @@ describe('AnalyticsController', () => {
     expect(analyticsService.getFunnel).toHaveBeenCalled();
     expect(analyticsService.getRetention).toHaveBeenCalled();
     expect(analyticsService.getCatalogStats).toHaveBeenCalled();
+  });
+
+  it('backfillRollups delegates to analytics service', async () => {
+    analyticsService.backfillDailyRollups.mockResolvedValue({
+      timezone: 'America/New_York',
+      updated: 2,
+      totalDays: 2
+    } as any);
+
+    const result = await controller.backfillRollups(
+      '2026-02-01T00:00:00.000Z',
+      '2026-02-03T00:00:00.000Z',
+      'America/New_York'
+    );
+
+    expect(analyticsService.backfillDailyRollups).toHaveBeenCalledWith({
+      from: new Date('2026-02-01T00:00:00.000Z'),
+      to: new Date('2026-02-03T00:00:00.000Z'),
+      timezone: 'America/New_York'
+    });
+    expect(result).toEqual({
+      timezone: 'America/New_York',
+      updated: 2,
+      totalDays: 2
+    });
   });
 });

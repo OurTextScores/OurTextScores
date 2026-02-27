@@ -16,6 +16,10 @@ import {
   MAX_PROPERTIES_BYTES
 } from './analytics.constants';
 import { AnalyticsEvent, AnalyticsEventDocument } from './schemas/analytics-event.schema';
+import {
+  AnalyticsDailyRollup,
+  AnalyticsDailyRollupDocument
+} from './schemas/analytics-daily-rollup.schema';
 import { Work, WorkDocument } from '../works/schemas/work.schema';
 import { Source, SourceDocument } from '../works/schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from '../works/schemas/source-revision.schema';
@@ -23,6 +27,7 @@ import { SourceRevision, SourceRevisionDocument } from '../works/schemas/source-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_UNTRUSTED_EVENT_AGE_MS = 7 * DAY_MS;
 const MAX_UNTRUSTED_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const DAILY_ROLLUP_REFRESH_MS = 5 * 60 * 1000;
 
 type Bucket = 'day' | 'week';
 
@@ -65,7 +70,10 @@ const UNTRUSTED_INGEST_ALLOWED_EVENTS = new Set<AnalyticsEventName>([
   'editor_revision_saved',
   'catalog_search_performed',
   'score_viewed',
-  'score_downloaded'
+  'score_downloaded',
+  'score_editor_session_started',
+  'score_editor_iframe_loaded',
+  'score_editor_session_ended'
 ]);
 
 interface PersistedAnalyticsEventData {
@@ -107,6 +115,26 @@ interface TimelineEventRecord {
   eventTime: Date;
   userId: string | null;
   properties?: Record<string, unknown>;
+}
+
+interface DailyRollupRow {
+  timezone: string;
+  dateKey: string;
+  includeInBusinessMetrics: boolean;
+  bucketStart: Date;
+  wae: number;
+  wacu: number;
+  weu: number;
+  newSignups: number;
+  uploadsSuccess: number;
+  revisionsSaved: number;
+  searches: number;
+  views: number;
+  comments: number;
+  ratings: number;
+  downloads: number;
+  downloadsByFormat: Record<string, number>;
+  computedAt: Date;
 }
 
 export interface AnalyticsActorContext {
@@ -242,7 +270,10 @@ export class AnalyticsService {
     private readonly sourceModel?: Model<SourceDocument>,
     @Optional()
     @InjectModel(SourceRevision.name)
-    private readonly sourceRevisionModel?: Model<SourceRevisionDocument>
+    private readonly sourceRevisionModel?: Model<SourceRevisionDocument>,
+    @Optional()
+    @InjectModel(AnalyticsDailyRollup.name)
+    private readonly analyticsDailyRollupModel?: Model<AnalyticsDailyRollupDocument>
   ) {}
 
   getRequestContext(req?: Request | RequestWithId, overrides?: Partial<AnalyticsRequestContext>): AnalyticsRequestContext {
@@ -477,6 +508,48 @@ export class AnalyticsService {
     const excludeAdmins = params?.excludeAdmins !== false;
     const timezone = this.validateTimezone(params?.timezone ?? 'America/New_York');
     const bucket = params?.bucket ?? 'day';
+
+    if (
+      bucket === 'day' &&
+      excludeAdmins &&
+      this.analyticsDailyRollupModel
+    ) {
+      return this.getTimeseriesFromRollups({ from, to, excludeAdmins, timezone, bucket });
+    }
+
+    return this.getTimeseriesFromRawEvents({ from, to, excludeAdmins, timezone, bucket });
+  }
+
+  async backfillDailyRollups(params?: {
+    from?: Date;
+    to?: Date;
+    timezone?: string;
+  }): Promise<{ timezone: string; updated: number; totalDays: number }> {
+    const to = params?.to ?? new Date();
+    const from = params?.from ?? new Date(to.getTime() - 28 * DAY_MS);
+    const timezone = this.validateTimezone(params?.timezone ?? 'America/New_York');
+    const result = await this.ensureDailyRollups({
+      from,
+      to,
+      timezone,
+      includeInBusinessMetrics: true,
+      forceRefresh: true
+    });
+    return {
+      timezone,
+      updated: result.refreshed,
+      totalDays: result.totalDays
+    };
+  }
+
+  private async getTimeseriesFromRawEvents(params: {
+    from: Date;
+    to: Date;
+    excludeAdmins: boolean;
+    timezone: string;
+    bucket: Bucket;
+  }): Promise<AnalyticsTimeseries> {
+    const { from, to, excludeAdmins, timezone, bucket } = params;
     const match = this.buildMatch(from, to, excludeAdmins);
     match.eventName = { $in: TIMESERIES_EVENT_NAMES };
 
@@ -627,6 +700,89 @@ export class AnalyticsService {
           downloads: 0
         }
       );
+    });
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      timezone,
+      bucket,
+      excludeAdmins,
+      points
+    };
+  }
+
+  private async getTimeseriesFromRollups(params: {
+    from: Date;
+    to: Date;
+    excludeAdmins: boolean;
+    timezone: string;
+    bucket: Bucket;
+  }): Promise<AnalyticsTimeseries> {
+    const { from, to, excludeAdmins, timezone, bucket } = params;
+    if (!this.analyticsDailyRollupModel) {
+      return this.getTimeseriesFromRawEvents(params);
+    }
+
+    await this.ensureDailyRollups({
+      from,
+      to,
+      timezone,
+      includeInBusinessMetrics: true
+    });
+
+    const bucketStarts = this.buildDenseBucketStarts(from, to, 'day', timezone);
+    const dateKeys = bucketStarts.map((start) => this.toDateKey(start));
+    const rows = await this.analyticsDailyRollupModel
+      .find(
+        {
+          timezone,
+          includeInBusinessMetrics: true,
+          dateKey: { $in: dateKeys }
+        },
+        {
+          _id: 0,
+          dateKey: 1,
+          bucketStart: 1,
+          wae: 1,
+          wacu: 1,
+          weu: 1,
+          newSignups: 1,
+          uploadsSuccess: 1,
+          revisionsSaved: 1,
+          searches: 1,
+          views: 1,
+          comments: 1,
+          ratings: 1,
+          downloads: 1
+        }
+      )
+      .lean()
+      .exec();
+
+    const rowMap = new Map<string, DailyRollupRow>();
+    for (const row of rows as unknown as DailyRollupRow[]) {
+      rowMap.set(row.dateKey, row);
+    }
+
+    const points = bucketStarts.map((start) => {
+      const key = this.toDateKey(start);
+      const row = rowMap.get(key);
+      return {
+        bucketStart: start.toISOString(),
+        bucketLabel: key,
+        wae: row?.wae ?? 0,
+        wacu: row?.wacu ?? 0,
+        weu: row?.weu ?? 0,
+        newSignups: row?.newSignups ?? 0,
+        uploadsSuccess: row?.uploadsSuccess ?? 0,
+        revisionsSaved: row?.revisionsSaved ?? 0,
+        searches: row?.searches ?? 0,
+        views: row?.views ?? 0,
+        comments: row?.comments ?? 0,
+        ratings: row?.ratings ?? 0,
+        downloads: row?.downloads ?? 0
+      };
     });
 
     return {
@@ -904,6 +1060,275 @@ export class AnalyticsService {
         sources: sourcesNew,
         revisions: revisionsNew
       }
+    };
+  }
+
+  private async ensureDailyRollups(params: {
+    from: Date;
+    to: Date;
+    timezone: string;
+    includeInBusinessMetrics: boolean;
+    forceRefresh?: boolean;
+  }): Promise<{ totalDays: number; refreshed: number }> {
+    if (!this.analyticsDailyRollupModel) {
+      return { totalDays: 0, refreshed: 0 };
+    }
+
+    const starts = this.buildDenseBucketStarts(params.from, params.to, 'day', params.timezone);
+    const dateKeys = starts.map((start) => this.toDateKey(start));
+    if (dateKeys.length === 0) {
+      return { totalDays: 0, refreshed: 0 };
+    }
+
+    const existingRows = await this.analyticsDailyRollupModel
+      .find(
+        {
+          timezone: params.timezone,
+          includeInBusinessMetrics: params.includeInBusinessMetrics,
+          dateKey: { $in: dateKeys }
+        },
+        {
+          _id: 0,
+          dateKey: 1,
+          computedAt: 1
+        }
+      )
+      .lean()
+      .exec();
+    const existingByDate = new Map<string, { computedAt?: Date }>();
+    for (const row of existingRows as Array<{ dateKey: string; computedAt?: Date }>) {
+      existingByDate.set(row.dateKey, row);
+    }
+
+    const todayKey = this.toDateKey(this.floorToBucket(new Date(), 'day', params.timezone));
+    let refreshed = 0;
+    for (const dateKey of dateKeys) {
+      const existing = existingByDate.get(dateKey);
+      const stale =
+        dateKey === todayKey &&
+        existing?.computedAt instanceof Date &&
+        Date.now() - existing.computedAt.getTime() > DAILY_ROLLUP_REFRESH_MS;
+      if (!params.forceRefresh && existing && !stale) {
+        continue;
+      }
+
+      const row = await this.computeDailyRollup({
+        dateKey,
+        timezone: params.timezone,
+        includeInBusinessMetrics: params.includeInBusinessMetrics
+      });
+      await this.analyticsDailyRollupModel.updateOne(
+        {
+          timezone: row.timezone,
+          includeInBusinessMetrics: row.includeInBusinessMetrics,
+          dateKey: row.dateKey
+        },
+        { $set: row },
+        { upsert: true }
+      );
+      refreshed += 1;
+    }
+
+    return {
+      totalDays: dateKeys.length,
+      refreshed
+    };
+  }
+
+  private async computeDailyRollup(params: {
+    dateKey: string;
+    timezone: string;
+    includeInBusinessMetrics: boolean;
+  }): Promise<DailyRollupRow> {
+    const { dateKey, timezone, includeInBusinessMetrics } = params;
+    const bucketStart = new Date(`${dateKey}T00:00:00.000Z`);
+    const roughFrom = new Date(bucketStart.getTime() - 36 * 60 * 60 * 1000);
+    const roughTo = new Date(bucketStart.getTime() + 60 * 60 * 60 * 1000);
+
+    const match: Record<string, unknown> = {
+      eventTime: { $gte: roughFrom, $lt: roughTo }
+    };
+    if (includeInBusinessMetrics) {
+      match.includeInBusinessMetrics = true;
+    }
+
+    const [countsRow, uniqueRow, downloadRows] = await Promise.all([
+      this.analyticsEventModel
+        .aggregate<{
+          newSignups: number;
+          uploadsSuccess: number;
+          revisionsSaved: number;
+          searches: number;
+          views: number;
+          comments: number;
+          ratings: number;
+          downloads: number;
+        }>([
+          { $match: match },
+          {
+            $addFields: {
+              _bucketKey: {
+                $dateToString: {
+                  date: '$eventTime',
+                  format: '%Y-%m-%d',
+                  timezone
+                }
+              }
+            }
+          },
+          { $match: { _bucketKey: dateKey } },
+          {
+            $group: {
+              _id: null,
+              newSignups: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'signup_completed'] }, 1, 0] }
+              },
+              uploadsSuccess: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'upload_success'] }, 1, 0] }
+              },
+              revisionsSaved: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'editor_revision_saved'] }, 1, 0] }
+              },
+              searches: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'catalog_search_performed'] }, 1, 0] }
+              },
+              views: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'score_viewed'] }, 1, 0] }
+              },
+              comments: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'revision_commented'] }, 1, 0] }
+              },
+              ratings: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'revision_rated'] }, 1, 0] }
+              },
+              downloads: {
+                $sum: { $cond: [{ $eq: ['$eventName', 'score_downloaded'] }, 1, 0] }
+              }
+            }
+          },
+          { $project: { _id: 0 } }
+        ])
+        .exec()
+        .then((rows) => rows[0]),
+      this.analyticsEventModel
+        .aggregate<{ wae: number; wacu: number; weu: number }>([
+          {
+            $match: {
+              ...match,
+              userId: { $exists: true, $ne: null }
+            }
+          },
+          {
+            $addFields: {
+              _bucketKey: {
+                $dateToString: {
+                  date: '$eventTime',
+                  format: '%Y-%m-%d',
+                  timezone
+                }
+              }
+            }
+          },
+          { $match: { _bucketKey: dateKey } },
+          {
+            $group: {
+              _id: '$userId',
+              wae: {
+                $max: {
+                  $cond: [
+                    { $in: ['$eventName', Array.from(EDITOR_EVENTS)] },
+                    1,
+                    0
+                  ]
+                }
+              },
+              wacu: {
+                $max: {
+                  $cond: [
+                    { $in: ['$eventName', Array.from(CATALOG_EVENTS)] },
+                    1,
+                    0
+                  ]
+                }
+              },
+              weu: {
+                $max: {
+                  $cond: [
+                    { $in: ['$eventName', Array.from(ENGAGEMENT_EVENTS)] },
+                    1,
+                    0
+                  ]
+                }
+              }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              wae: { $sum: '$wae' },
+              wacu: { $sum: '$wacu' },
+              weu: { $sum: '$weu' }
+            }
+          },
+          { $project: { _id: 0 } }
+        ])
+        .exec()
+        .then((rows) => rows[0]),
+      this.analyticsEventModel
+        .aggregate<{ _id: unknown; count: number }>([
+          {
+            $match: {
+              ...match,
+              eventName: 'score_downloaded'
+            }
+          },
+          {
+            $addFields: {
+              _bucketKey: {
+                $dateToString: {
+                  date: '$eventTime',
+                  format: '%Y-%m-%d',
+                  timezone
+                }
+              }
+            }
+          },
+          { $match: { _bucketKey: dateKey } },
+          {
+            $group: {
+              _id: {
+                $ifNull: ['$properties.file_format', 'other']
+              },
+              count: { $sum: 1 }
+            }
+          }
+        ])
+        .exec()
+    ]);
+
+    const downloadsByFormat: Record<string, number> = {};
+    for (const row of downloadRows) {
+      downloadsByFormat[String(row._id)] = row.count;
+    }
+
+    return {
+      timezone,
+      dateKey,
+      includeInBusinessMetrics,
+      bucketStart,
+      wae: uniqueRow?.wae ?? 0,
+      wacu: uniqueRow?.wacu ?? 0,
+      weu: uniqueRow?.weu ?? 0,
+      newSignups: countsRow?.newSignups ?? 0,
+      uploadsSuccess: countsRow?.uploadsSuccess ?? 0,
+      revisionsSaved: countsRow?.revisionsSaved ?? 0,
+      searches: countsRow?.searches ?? 0,
+      views: countsRow?.views ?? 0,
+      comments: countsRow?.comments ?? 0,
+      ratings: countsRow?.ratings ?? 0,
+      downloads: countsRow?.downloads ?? 0,
+      downloadsByFormat,
+      computedAt: new Date()
     };
   }
 
@@ -1306,6 +1731,22 @@ export class AnalyticsService {
           revision_id: this.pickOptionalId(source.revision_id),
           file_format: this.normalizeDownloadFormat(source.file_format),
           download_surface: this.pickOptionalString(source.download_surface, 64) ?? 'api'
+        };
+      case 'score_editor_session_started':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          score_id: this.pickOptionalId(source.score_id)
+        };
+      case 'score_editor_iframe_loaded':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          load_ms: this.pickOptionalInteger(source.load_ms, 0, 300_000)
+        };
+      case 'score_editor_session_ended':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 86_400_000),
+          close_reason: this.pickOptionalString(source.close_reason, 64)
         };
       default:
         return source;

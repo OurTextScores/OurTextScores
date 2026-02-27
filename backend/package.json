@@ -16,6 +16,7 @@
     "test:smoke": "jest --config ./test/jest-e2e.config.ts smoke-simple.e2e-spec.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "reindex:search": "node dist/reindex-search.js",
+    "ops:analytics-rollups": "node dist/backfill-analytics-rollups.js",
     "backfill:thumbnails": "node dist/generate-thumbnails.js",
     "ops:project-promotion": "node scripts/project-promotion.js",
     "ops:seed-admin-user": "node scripts/seed-admin-user.js",
