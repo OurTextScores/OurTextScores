@@ -7,6 +7,7 @@ Last updated: 2026-02-27
 - `done`: implemented
 - `partial`: partly implemented; gaps remain
 - `todo`: not implemented yet
+- `deferred`: intentionally postponed
 
 ## Ticket list
 
@@ -59,6 +60,45 @@ Last updated: 2026-02-27
   - Correlate in-editor telemetry with persisted revision outcomes (work/source/revision ids).
   - Add alert thresholds on AI failure spikes and load-failure spikes.
 
+### OTS-H11 Editor-to-outcome correlation
+- Status: `todo`
+- Why:
+  - Editor metrics are now visible in admin dashboards, but are not yet tied to downstream product outcomes.
+- Scope:
+  - Attach `work_id`, `source_id`, and `revision_id` to editor telemetry events whenever available.
+  - Add dashboard views/queries for:
+    - AI usage -> revision saved
+    - AI usage -> score downloaded
+    - AI usage -> revision rated/commented
+
+### OTS-H12 Editor regression alerting
+- Status: `todo`
+- Why:
+  - We can now compute editor reliability metrics, but we do not alert on regressions.
+- Scope:
+  - Add threshold alerts for:
+    - `score_editor_document_load_failed` spikes
+    - `score_editor_ai_request` failure-rate spikes
+  - Define lookback windows and alert destinations.
+
+### OTS-H13 Trace continuity smoke verification
+- Status: `todo`
+- Why:
+  - Header propagation is implemented, but no automated proof exists for Docker Compose deployments.
+- Scope:
+  - Add a smoke script that exercises `OurTextScores -> OTS_Web -> score_editor_api`.
+  - Assert one shared trace identity (`traceparent` / `x-trace-id`) across service logs.
+
+### OTS-H14 Telemetry contract E2E coverage
+- Status: `todo`
+- Why:
+  - Unit and integration coverage exists, but cross-repo contract behavior is not validated end-to-end.
+- Scope:
+  - Add E2E checks that verify:
+    - OTS_Web emits expected telemetry events for representative flows.
+    - Backend accepts/sanitizes each editor event contract.
+    - Dashboard endpoint reflects ingested editor data.
+
 ### OTS-H04 Session semantics
 - Status: `partial`
 - Why:
@@ -85,6 +125,14 @@ Last updated: 2026-02-27
   - Collector/Grafana local profile and dashboards.
   - Service-level alerting and SLO wiring.
   - Confirm trace continuity across all containerized deployments.
+
+### OTS-H15 Ingest signing / Redis rate-limit (de-scoped for now)
+- Status: `deferred`
+- Why:
+  - Product decision: do not prioritize signed ingest and Redis-backed ingest throttles in the current cycle.
+- Deferred scope:
+  - Signed server-origin analytics ingest (HMAC/server-only ingest).
+  - Redis-backed distributed ingest rate limiting.
 
 ### OTS-H07 Type/test hygiene
 - Status: `partial`
@@ -117,14 +165,13 @@ Last updated: 2026-02-27
   - Shared admin shell now centralizes auth gate and nav links in `frontend/app/admin/layout.tsx`.
   - Admin pages consume shared layout and no longer duplicate top navigation markup.
 
-## Recommended implementation order
+## Recommended implementation order (current)
 
-1. `OTS-H08` (quick hygiene)
-2. `OTS-H05` (user-facing latency/DB load)
-3. `OTS-H01` (data trust hardening)
-4. `OTS-H04` (improves metric quality)
-5. `OTS-H02` (scale path)
-6. `OTS-H10` (UI consistency)
-7. `OTS-H07` (CI quality gates)
-8. `OTS-H03` + `OTS-H06` completion (advanced observability)
-9. `OTS-H09` (larger refactor)
+1. `OTS-H11` Editor-to-outcome correlation
+2. `OTS-H12` Editor regression alerting
+3. `OTS-H13` Trace continuity smoke verification
+4. `OTS-H14` Telemetry contract E2E coverage
+5. `OTS-H02` Analytics aggregation scalability
+6. `OTS-H06` Cross-service tracing/APM completion
+7. `OTS-H09` Works module boundaries
+8. `OTS-H07` Type/test hygiene completion
