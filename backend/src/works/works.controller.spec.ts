@@ -6,7 +6,7 @@ import { FossilService } from '../fossil/fossil.service';
 import { UploadSourceService } from './upload-source.service';
 import { ProgressService } from '../progress/progress.service';
 import { AnalyticsService } from '../analytics/analytics.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
@@ -25,6 +25,7 @@ function createMockResponse() {
 describe('WorksController (unit)', () => {
   const worksService = {
     getWorkDetail: jest.fn(),
+    resolveDownloadAsset: jest.fn(),
     ensureWorkWithMetadata: jest.fn(),
     saveWorkByImslpUrl: jest.fn(),
     updateWorkMetadata: jest.fn(),
@@ -155,25 +156,16 @@ describe('WorksController (unit)', () => {
   });
 
   it('downloadNormalized sets headers and returns buffer', async () => {
-    worksService.getWorkDetail.mockResolvedValue({
-      workId: '1',
-      sourceCount: 1,
-      availableFormats: [],
-      sources: [
-        {
-          sourceId: 's',
-          label: 'Uploaded source',
-          sourceType: 'score',
-          format: 'application/xml',
-          isPrimary: true,
-          originalFilename: 'file.mscz',
-          storage: { bucket: 'raw', objectKey: 'rawk', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
-          validation: { status: 'passed', issues: [] },
-          provenance: { ingestType: 'manual', uploadedAt: new Date(), notes: [] },
-          revisions: [],
-          derivatives: { normalizedMxl: { bucket: 'b', objectKey: 'k', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/vnd.recordare.musicxml', lastModifiedAt: new Date() } }
-        }
-      ]
+    worksService.resolveDownloadAsset.mockResolvedValue({
+      sourceOriginalFilename: 'file.mscz',
+      locator: {
+        bucket: 'b',
+        objectKey: 'k',
+        sizeBytes: 1,
+        checksum: { algorithm: 'sha256', hexDigest: 'x' },
+        contentType: 'application/vnd.recordare.musicxml',
+        lastModifiedAt: new Date(),
+      },
     });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
     analyticsService.toActor.mockReturnValue({});
@@ -195,26 +187,7 @@ describe('WorksController (unit)', () => {
   });
 
   it('download throws not found if derivative is not available', async () => {
-    worksService.getWorkDetail.mockResolvedValue({
-      workId: '1',
-      sourceCount: 1,
-      availableFormats: [],
-      sources: [
-        {
-          sourceId: 's',
-          label: 'Uploaded source',
-          sourceType: 'score',
-          format: 'application/xml',
-          isPrimary: true,
-          originalFilename: 'file.mscz',
-          storage: { bucket: 'raw', objectKey: 'rawk', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() },
-          validation: { status: 'passed', issues: [] },
-          provenance: { ingestType: 'manual', uploadedAt: new Date(), notes: [] },
-          revisions: [],
-          derivatives: {}
-        }
-      ]
-    });
+    worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
     const { res } = createMockResponse();
     await expect(controller.downloadNormalized('1', 's', undefined, res as any, undefined)).rejects.toThrow('Normalized MXL not found for this source');
   });
@@ -498,23 +471,17 @@ describe('WorksController (unit)', () => {
 
   describe('downloadCanonical', () => {
     it('should download canonical XML and set headers', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{
-          sourceId: 's',
-          originalFilename: 'score.mscz',
-          derivatives: {
-            canonicalXml: {
-              bucket: 'b',
-              objectKey: 'k',
-              sizeBytes: 100,
-              checksum: { algorithm: 'sha256', hexDigest: 'x' },
-              contentType: 'application/xml',
-              lastModifiedAt: new Date()
-            }
-          }
-        }]
-      } as any);
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'score.mscz',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k',
+          sizeBytes: 100,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date(),
+        },
+      });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<score/>'));
       const { res, headers } = createMockResponse();
 
@@ -527,10 +494,7 @@ describe('WorksController (unit)', () => {
     });
 
     it('should throw not found when canonical XML is missing', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{ sourceId: 's', derivatives: {} }]
-      } as any);
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
       await expect(controller.downloadCanonical('1', 's', undefined, res as any, undefined))
@@ -540,23 +504,17 @@ describe('WorksController (unit)', () => {
 
   describe('downloadPdf', () => {
     it('should download PDF and set inline disposition', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{
-          sourceId: 's',
-          originalFilename: 'score.mscz',
-          derivatives: {
-            pdf: {
-              bucket: 'b',
-              objectKey: 'k',
-              sizeBytes: 100,
-              checksum: { algorithm: 'sha256', hexDigest: 'x' },
-              contentType: 'application/pdf',
-              lastModifiedAt: new Date()
-            }
-          }
-        }]
-      } as any);
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'score.mscz',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k',
+          sizeBytes: 100,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/pdf',
+          lastModifiedAt: new Date(),
+        },
+      });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('pdf'));
       const { res, headers } = createMockResponse();
 
@@ -570,10 +528,7 @@ describe('WorksController (unit)', () => {
     });
 
     it('should throw not found when PDF is missing', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{ sourceId: 's', derivatives: {} }]
-      } as any);
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
       await expect(controller.downloadPdf('1', 's', undefined, res as any, undefined))
@@ -583,23 +538,17 @@ describe('WorksController (unit)', () => {
 
   describe('downloadMscz', () => {
     it('should download MSCZ file and set attachment disposition', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{
-          sourceId: 's',
-          originalFilename: 'my-composition.mscz',
-          derivatives: {
-            mscz: {
-              bucket: 'b',
-              objectKey: 'k',
-              sizeBytes: 5000,
-              checksum: { algorithm: 'sha256', hexDigest: 'x' },
-              contentType: 'application/vnd.musescore.mscz',
-              lastModifiedAt: new Date()
-            }
-          }
-        }]
-      } as any);
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'my-composition.mscz',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k',
+          sizeBytes: 5000,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/vnd.musescore.mscz',
+          lastModifiedAt: new Date(),
+        },
+      });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-data'));
       const { res, headers } = createMockResponse();
 
@@ -613,10 +562,7 @@ describe('WorksController (unit)', () => {
     });
 
     it('should throw not found when MSCZ is missing', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{ sourceId: 's', derivatives: {} }]
-      } as any);
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
       await expect(controller.downloadMscz('1', 's', undefined, res as any, undefined))
@@ -624,26 +570,17 @@ describe('WorksController (unit)', () => {
     });
 
     it('should download MSCZ for a specific revision when revisionId is provided', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{
-          sourceId: 's',
-          originalFilename: 'score.mscz',
-          revisions: [{
-            revisionId: 'rev-123',
-            derivatives: {
-              mscz: {
-                bucket: 'b',
-                objectKey: 'k-rev',
-                sizeBytes: 4500,
-                checksum: { algorithm: 'sha256', hexDigest: 'y' },
-                contentType: 'application/vnd.musescore.mscz',
-                lastModifiedAt: new Date()
-              }
-            }
-          }]
-        }]
-      } as any);
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'score.mscz',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k-rev',
+          sizeBytes: 4500,
+          checksum: { algorithm: 'sha256', hexDigest: 'y' },
+          contentType: 'application/vnd.musescore.mscz',
+          lastModifiedAt: new Date(),
+        },
+      });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-rev-data'));
       const { res, headers } = createMockResponse();
 
@@ -658,23 +595,17 @@ describe('WorksController (unit)', () => {
 
   describe('downloadKern', () => {
     it('should download KRN file and set attachment disposition', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{
-          sourceId: 's',
-          originalFilename: 'example.krn',
-          derivatives: {
-            krn: {
-              bucket: 'b',
-              objectKey: 'k-krn',
-              sizeBytes: 2048,
-              checksum: { algorithm: 'sha256', hexDigest: 'x' },
-              contentType: 'application/x-kern',
-              lastModifiedAt: new Date()
-            }
-          }
-        }]
-      } as any);
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'example.krn',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k-krn',
+          sizeBytes: 2048,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/x-kern',
+          lastModifiedAt: new Date(),
+        },
+      });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('**kern\n*-\n'));
       const { res, headers } = createMockResponse();
 
@@ -688,10 +619,7 @@ describe('WorksController (unit)', () => {
     });
 
     it('should throw not found when KRN is missing', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{ sourceId: 's', derivatives: {} }]
-      } as any);
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
       await expect(controller.downloadKern('1', 's', undefined, res as any, undefined))
@@ -701,22 +629,17 @@ describe('WorksController (unit)', () => {
 
   describe('downloadManifest', () => {
     it('should download manifest JSON', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{
-          sourceId: 's',
-          derivatives: {
-            manifest: {
-              bucket: 'b',
-              objectKey: 'k',
-              sizeBytes: 100,
-              checksum: { algorithm: 'sha256', hexDigest: 'x' },
-              contentType: 'application/json',
-              lastModifiedAt: new Date()
-            }
-          }
-        }]
-      } as any);
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'score.mscz',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k',
+          sizeBytes: 100,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/json',
+          lastModifiedAt: new Date(),
+        },
+      });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('{}'));
       const { res, headers } = createMockResponse();
 
@@ -729,10 +652,7 @@ describe('WorksController (unit)', () => {
     });
 
     it('should throw not found when manifest is missing', async () => {
-      worksService.getWorkDetail.mockResolvedValue({
-        workId: '1',
-        sources: [{ sourceId: 's', derivatives: {} }]
-      } as any);
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
       await expect(controller.downloadManifest('1', 's', undefined, res as any, undefined))

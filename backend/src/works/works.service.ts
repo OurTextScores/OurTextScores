@@ -129,6 +129,22 @@ export interface ViewerContext {
   roles?: string[];
 }
 
+export type DownloadAssetKind =
+  | 'normalizedMxl'
+  | 'canonicalXml'
+  | 'pdf'
+  | 'mscz'
+  | 'krn'
+  | 'referencePdf'
+  | 'thumbnail'
+  | 'manifest';
+
+export interface DownloadAssetResolution {
+  sourceOriginalFilename: string;
+  locator: StorageLocator;
+  resolvedRevisionId?: string;
+}
+
 export interface EnsureWorkResponse {
   work: WorkSummary;
   metadata: ImslpWorkDto;
@@ -788,6 +804,100 @@ except Exception:
     return {
       ...summary,
       sources: sourceViews
+    };
+  }
+
+  async resolveDownloadAsset(input: {
+    workId: string;
+    sourceId: string;
+    revisionId?: string;
+    viewer?: ViewerContext;
+    kind: DownloadAssetKind;
+  }): Promise<DownloadAssetResolution> {
+    const { workId, sourceId, revisionId, viewer, kind } = input;
+    const viewerIsAdmin = this.isViewerAdmin(viewer);
+
+    const source = await this.sourceModel
+      .findOne({ workId, sourceId })
+      .select('sourceId originalFilename visibility derivatives latestRevisionId')
+      .lean()
+      .exec();
+
+    if (!source) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const sourceVisibility = ((source as any).visibility || 'public') as string;
+    if (sourceVisibility !== 'public' && !viewerIsAdmin) {
+      throw new NotFoundException('Source not found');
+    }
+
+    if (revisionId) {
+      const revision = await this.sourceRevisionModel
+        .findOne({ workId, sourceId, revisionId })
+        .select('revisionId visibility status createdBy approval derivatives manifest')
+        .lean()
+        .exec();
+      if (!revision || !this.canViewerAccessRevision(revision, viewer, viewerIsAdmin)) {
+        throw new NotFoundException('Revision not found');
+      }
+      const locator = this.pickRevisionLocator(revision as any, kind);
+      if (!locator) {
+        throw new NotFoundException('Requested derivative not found');
+      }
+      return {
+        sourceOriginalFilename: String((source as any).originalFilename || 'score'),
+        locator,
+        resolvedRevisionId: String((revision as any).revisionId || revisionId),
+      };
+    }
+
+    const revisions = await this.sourceRevisionModel
+      .find({ workId, sourceId })
+      .sort({ sequenceNumber: -1 })
+      .select('revisionId visibility status createdBy approval derivatives manifest')
+      .lean()
+      .exec();
+
+    const totalRevisionCount = revisions.length;
+    const visibleRevisions = revisions.filter((revision) =>
+      this.canViewerAccessRevision(revision as any, viewer, viewerIsAdmin),
+    );
+
+    if (totalRevisionCount > 0 && visibleRevisions.length === 0) {
+      throw new NotFoundException('Requested derivative not found');
+    }
+
+    const latestVisibleRevision = visibleRevisions[0] as any;
+    const latestVisibleReferencePdf = (visibleRevisions.find(
+      (revision) => Boolean((revision as any)?.derivatives?.referencePdf),
+    ) as any)?.derivatives?.referencePdf;
+
+    let locator: StorageLocator | undefined;
+    if (kind === 'manifest') {
+      locator = latestVisibleRevision?.manifest
+        || (totalRevisionCount === 0 ? (source as any)?.derivatives?.manifest : undefined);
+    } else if (kind === 'referencePdf') {
+      if (totalRevisionCount === 0) {
+        locator = (source as any)?.derivatives?.referencePdf;
+      } else {
+        locator = latestVisibleRevision?.derivatives?.referencePdf || latestVisibleReferencePdf;
+      }
+    } else {
+      locator = latestVisibleRevision?.derivatives?.[kind]
+        || (totalRevisionCount === 0 ? (source as any)?.derivatives?.[kind] : undefined);
+    }
+
+    if (!locator) {
+      throw new NotFoundException('Requested derivative not found');
+    }
+
+    return {
+      sourceOriginalFilename: String((source as any).originalFilename || 'score'),
+      locator,
+      resolvedRevisionId:
+        latestVisibleRevision?.revisionId
+        || (totalRevisionCount === 0 ? String((source as any).latestRevisionId || '') : undefined),
     };
   }
 
@@ -1467,6 +1577,57 @@ except Exception:
 
     const m = /"wgArticleId"\s*:\s*(\d+)/.exec(html);
     return m ? m[1] : null;
+  }
+
+  private isViewerAdmin(viewer?: ViewerContext): boolean {
+    return Boolean((viewer?.roles ?? []).includes('admin'));
+  }
+
+  private canViewerAccessRevision(
+    revision: {
+      visibility?: string;
+      status?: string;
+      createdBy?: string;
+      approval?: { ownerUserId?: string };
+    },
+    viewer?: ViewerContext,
+    viewerIsAdmin?: boolean,
+  ): boolean {
+    const isAdmin = viewerIsAdmin ?? this.isViewerAdmin(viewer);
+    const visibility = (revision.visibility || 'public') as string;
+    if (visibility !== 'public' && !isAdmin) {
+      return false;
+    }
+
+    const status = revision.status || 'approved';
+    if (status === 'approved') {
+      return true;
+    }
+    if (isAdmin) {
+      return true;
+    }
+
+    const isUploader = Boolean(viewer?.userId && viewer.userId === String(revision.createdBy || ''));
+    if (isUploader) {
+      return true;
+    }
+
+    const ownerUserId = revision.approval?.ownerUserId;
+    if (ownerUserId && viewer?.userId === ownerUserId) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private pickRevisionLocator(
+    revision: { derivatives?: DerivativeArtifacts; manifest?: StorageLocator },
+    kind: DownloadAssetKind,
+  ): StorageLocator | undefined {
+    if (kind === 'manifest') {
+      return revision.manifest;
+    }
+    return revision.derivatives?.[kind];
   }
 
   /**

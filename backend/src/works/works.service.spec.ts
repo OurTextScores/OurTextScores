@@ -1101,4 +1101,128 @@ describe('WorksService (unit, mocked models)', () => {
       ).rejects.toThrow('Only source owner or admin can update source metadata');
     });
   });
+
+  describe('resolveDownloadAsset', () => {
+    it('returns source-level derivative when source has no revisions', async () => {
+      sourceModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({
+              workId: 'w1',
+              sourceId: 's1',
+              originalFilename: 'score.mscz',
+              visibility: 'public',
+              derivatives: {
+                canonicalXml: {
+                  bucket: 'derivatives',
+                  objectKey: 'w1/s1/canonical.xml',
+                  sizeBytes: 42,
+                  checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                  contentType: 'application/xml',
+                  lastModifiedAt: new Date(),
+                },
+              },
+            }),
+          }),
+        }),
+      } as any);
+      sourceRevisionModel.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+      } as any);
+
+      const resolved = await service.resolveDownloadAsset({
+        workId: 'w1',
+        sourceId: 's1',
+        kind: 'canonicalXml',
+      });
+
+      expect(resolved.sourceOriginalFilename).toBe('score.mscz');
+      expect(resolved.locator.bucket).toBe('derivatives');
+      expect(resolved.locator.objectKey).toBe('w1/s1/canonical.xml');
+      expect(sourceModel.findOne).toHaveBeenCalledWith({ workId: 'w1', sourceId: 's1' });
+      expect(sourceRevisionModel.find).toHaveBeenCalledWith({ workId: 'w1', sourceId: 's1' });
+    });
+
+    it('returns requested revision derivative when revisionId is provided', async () => {
+      sourceModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({
+              workId: 'w1',
+              sourceId: 's1',
+              originalFilename: 'score.mscz',
+              visibility: 'public',
+            }),
+          }),
+        }),
+      } as any);
+      sourceRevisionModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({
+              revisionId: 'r2',
+              visibility: 'public',
+              status: 'approved',
+              derivatives: {
+                pdf: {
+                  bucket: 'derivatives',
+                  objectKey: 'w1/s1/r2/score.pdf',
+                  sizeBytes: 99,
+                  checksum: { algorithm: 'sha256', hexDigest: 'def' },
+                  contentType: 'application/pdf',
+                  lastModifiedAt: new Date(),
+                },
+              },
+            }),
+          }),
+        }),
+      } as any);
+
+      const resolved = await service.resolveDownloadAsset({
+        workId: 'w1',
+        sourceId: 's1',
+        revisionId: 'r2',
+        kind: 'pdf',
+      });
+
+      expect(resolved.resolvedRevisionId).toBe('r2');
+      expect(resolved.locator.objectKey).toBe('w1/s1/r2/score.pdf');
+      expect(sourceRevisionModel.findOne).toHaveBeenCalledWith({
+        workId: 'w1',
+        sourceId: 's1',
+        revisionId: 'r2',
+      });
+      expect(sourceRevisionModel.find).not.toHaveBeenCalled();
+    });
+
+    it('hides non-public source for non-admin viewers', async () => {
+      sourceModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({
+              workId: 'w1',
+              sourceId: 's1',
+              originalFilename: 'score.mscz',
+              visibility: 'under_review',
+            }),
+          }),
+        }),
+      } as any);
+
+      await expect(
+        service.resolveDownloadAsset({
+          workId: 'w1',
+          sourceId: 's1',
+          kind: 'pdf',
+          viewer: { userId: 'u1', roles: ['user'] },
+        }),
+      ).rejects.toThrow('Source not found');
+    });
+  });
 });

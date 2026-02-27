@@ -24,7 +24,7 @@ import { StorageService } from '../storage/storage.service';
 import { FossilService } from '../fossil/fossil.service';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { EnsureWorkResponse, WorksService } from './works.service';
+import { DownloadAssetKind, EnsureWorkResponse, WorksService } from './works.service';
 import { UseGuards } from '@nestjs/common';
 import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -125,6 +125,43 @@ export class WorksController {
         download_surface: 'api'
       }
     });
+  }
+
+  private async resolveDownloadAsset(params: {
+    workId: string;
+    sourceId: string;
+    revisionId?: string;
+    user?: RequestUser;
+    kind: DownloadAssetKind;
+  }) {
+    const viewer = params.user ? { userId: params.user.userId, roles: params.user.roles } : undefined;
+    return this.worksService.resolveDownloadAsset({
+      workId: params.workId,
+      sourceId: params.sourceId,
+      revisionId: params.revisionId,
+      viewer,
+      kind: params.kind,
+    });
+  }
+
+  private async resolveDownloadAssetOrThrow(
+    params: {
+      workId: string;
+      sourceId: string;
+      revisionId?: string;
+      user?: RequestUser;
+      kind: DownloadAssetKind;
+    },
+    notFoundMessage: string
+  ) {
+    try {
+      return await this.resolveDownloadAsset(params);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new NotFoundException(notFoundMessage);
+      }
+      throw error;
+    }
   }
 
   @Get()
@@ -395,18 +432,15 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.normalizedMxl)
-      : source?.derivatives?.normalizedMxl;
-    if (!source || !locator) {
-      throw new NotFoundException('Normalized MXL not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
-    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.mxl';
+    const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'normalizedMxl',
+    }, 'Normalized MXL not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
+    const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.mxl';
     if (req) {
       this.trackScoreDownloaded(req, user, {
         workId,
@@ -416,7 +450,7 @@ export class WorksController {
         routePath: req.originalUrl ?? req.url
       });
     }
-    this.sendBuffer(res, buffer, baseName, loc.contentType || 'application/vnd.recordare.musicxml', !!revisionId, 'attachment');
+    this.sendBuffer(res, buffer, baseName, locator.contentType || 'application/vnd.recordare.musicxml', !!revisionId, 'attachment');
   }
 
   @Get(":workId/sources/:sourceId/canonical.xml")
@@ -439,18 +473,15 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.canonicalXml)
-      : source?.derivatives?.canonicalXml;
-    if (!source || !locator) {
-      throw new NotFoundException('Canonical XML not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
-    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.xml';
+    const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'canonicalXml',
+    }, 'Canonical XML not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
+    const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.xml';
     if (req) {
       this.trackScoreDownloaded(req, user, {
         workId,
@@ -483,18 +514,15 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.pdf)
-      : source?.derivatives?.pdf;
-    if (!source || !locator) {
-      throw new NotFoundException('PDF not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
-    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.pdf';
+    const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'pdf',
+    }, 'PDF not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
+    const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.pdf';
     if (req) {
       this.trackScoreDownloaded(req, user, {
         workId,
@@ -527,18 +555,15 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.mscz)
-      : source?.derivatives?.mscz;
-    if (!source || !locator) {
-      throw new NotFoundException('MuseScore file not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
-    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.mscz';
+    const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'mscz',
+    }, 'MuseScore file not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
+    const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.mscz';
     if (req) {
       this.trackScoreDownloaded(req, user, {
         workId,
@@ -571,18 +596,15 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.krn)
-      : source?.derivatives?.krn;
-    if (!source || !locator) {
-      throw new NotFoundException('Kern file not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
-    const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.krn';
+    const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'krn',
+    }, 'Kern file not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
+    const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.krn';
     if (req) {
       this.trackScoreDownloaded(req, user, {
         workId,
@@ -592,7 +614,7 @@ export class WorksController {
         routePath: req.originalUrl ?? req.url
       });
     }
-    this.sendBuffer(res, buffer, baseName, loc.contentType || 'application/x-kern; charset=utf-8', !!revisionId, 'attachment');
+    this.sendBuffer(res, buffer, baseName, locator.contentType || 'application/x-kern; charset=utf-8', !!revisionId, 'attachment');
   }
 
   @Get(":workId/sources/:sourceId/reference.pdf")
@@ -615,17 +637,14 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.referencePdf)
-      : (source?.derivatives?.referencePdf ?? source?.revisions.find(r => r.derivatives?.referencePdf)?.derivatives?.referencePdf);
-    if (!source || !locator) {
-      throw new NotFoundException('Reference PDF not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
+    const { locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'referencePdf',
+    }, 'Reference PDF not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = 'reference.pdf';
     if (req) {
       this.trackScoreDownloaded(req, user, {
@@ -659,17 +678,14 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.derivatives?.thumbnail)
-      : source?.derivatives?.thumbnail;
-    if (!source || !locator) {
-      throw new NotFoundException('Thumbnail not found for this source');
-    }
-    const loc = locator;
-    const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
+    const { locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'thumbnail',
+    }, 'Thumbnail not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     if (req) {
       this.trackScoreDownloaded(req, user, {
         workId,
@@ -703,16 +719,14 @@ export class WorksController {
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
   ) {
-    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    const detail = await this.worksService.getWorkDetail(workId, viewer);
-    const source = detail.sources.find((s) => s.sourceId === sourceId);
-    const locator = revisionId
-      ? (source?.revisions.find(r => r.revisionId === revisionId)?.manifest)
-      : source?.derivatives?.manifest;
-    if (!source || !locator) {
-      throw new NotFoundException('Manifest not found for this source');
-    }
-    const buffer = await this.storageService.getObjectBuffer(locator!.bucket, locator!.objectKey);
+    const { locator } = await this.resolveDownloadAssetOrThrow({
+      workId,
+      sourceId,
+      revisionId,
+      user,
+      kind: 'manifest',
+    }, 'Manifest not found for this source');
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = 'manifest.json';
     if (req) {
       this.trackScoreDownloaded(req, user, {
