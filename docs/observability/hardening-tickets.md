@@ -50,10 +50,13 @@ Last updated: 2026-02-27
     - `frontend/app/score-editor/page.tsx`
     - `frontend/app/lib/analytics.ts`
     - `frontend/app/api/analytics/events/route.ts`
+    - `frontend/app/admin/analytics/page.tsx`
+    - `backend/src/analytics/analytics.controller.ts` (`GET /api/analytics/metrics/editor`)
+    - `backend/src/analytics/analytics.service.ts` (`getScoreEditorMetrics`)
     - `OTS_Web/components/ScoreEditor.tsx`
     - `OTS_Web/lib/editor-analytics.ts`
 - Remaining:
-  - Correlate in-editor telemetry with persisted revision outcomes in analytics dashboards.
+  - Correlate in-editor telemetry with persisted revision outcomes (work/source/revision ids).
   - Add alert thresholds on AI failure spikes and load-failure spikes.
 
 ### OTS-H04 Session semantics

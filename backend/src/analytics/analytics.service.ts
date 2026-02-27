@@ -64,6 +64,15 @@ const TIMESERIES_EVENT_NAMES: AnalyticsEventName[] = [
   'score_downloaded'
 ];
 
+const SCORE_EDITOR_METRIC_EVENT_NAMES: AnalyticsEventName[] = [
+  'score_editor_runtime_loaded',
+  'score_editor_document_loaded',
+  'score_editor_document_load_failed',
+  'score_editor_ai_request',
+  'score_editor_patch_applied',
+  'score_editor_session_summary'
+];
+
 const UNTRUSTED_INGEST_ALLOWED_EVENTS = new Set<AnalyticsEventName>([
   'first_score_loaded',
   'upload_success',
@@ -258,6 +267,55 @@ export interface AnalyticsCatalogStats {
     sources: number;
     revisions: number;
   };
+}
+
+export interface AnalyticsEditorMetricsPoint {
+  bucketStart: string;
+  bucketLabel: string;
+  sessions: number;
+  documentsLoaded: number;
+  documentLoadFailures: number;
+  aiRequests: number;
+  aiFailures: number;
+  patchApplyAttempts: number;
+  patchApplyFailures: number;
+  aiDurationAvgMs: number | null;
+  aiDurationP95Ms: number | null;
+}
+
+export interface AnalyticsEditorAiBreakdownRow {
+  channel: string;
+  provider: string;
+  model: string;
+  requests: number;
+  failures: number;
+  failureRate: number;
+  aiDurationAvgMs: number | null;
+  aiDurationP95Ms: number | null;
+}
+
+export interface AnalyticsEditorMetrics {
+  from: string;
+  to: string;
+  timezone: string;
+  bucket: Bucket;
+  excludeAdmins: boolean;
+  summary: {
+    sessions: number;
+    documentsLoaded: number;
+    documentLoadFailures: number;
+    documentLoadFailureRate: number;
+    aiRequests: number;
+    aiFailures: number;
+    aiFailureRate: number;
+    patchApplyAttempts: number;
+    patchApplyFailures: number;
+    patchApplyFailureRate: number;
+    aiDurationAvgMs: number | null;
+    aiDurationP95Ms: number | null;
+  };
+  points: AnalyticsEditorMetricsPoint[];
+  aiBreakdown: AnalyticsEditorAiBreakdownRow[];
 }
 
 @Injectable()
@@ -1069,6 +1127,244 @@ export class AnalyticsService {
     };
   }
 
+  async getScoreEditorMetrics(params?: {
+    from?: Date;
+    to?: Date;
+    excludeAdmins?: boolean;
+    timezone?: string;
+    bucket?: Bucket;
+  }): Promise<AnalyticsEditorMetrics> {
+    const to = params?.to ?? new Date();
+    const from = params?.from ?? new Date(to.getTime() - 28 * DAY_MS);
+    const excludeAdmins = params?.excludeAdmins !== false;
+    const timezone = this.validateTimezone(params?.timezone ?? 'America/New_York');
+    const bucket = params?.bucket ?? 'day';
+
+    const events = await this.listTimelineEvents({
+      from,
+      to,
+      excludeAdmins,
+      eventNames: SCORE_EDITOR_METRIC_EVENT_NAMES,
+      includeProperties: true
+    });
+
+    type MutablePoint = {
+      sessions: number;
+      documentsLoaded: number;
+      documentLoadFailures: number;
+      aiRequests: number;
+      aiFailures: number;
+      patchApplyAttempts: number;
+      patchApplyFailures: number;
+      aiDurations: number[];
+    };
+
+    type MutableBreakdown = {
+      channel: string;
+      provider: string;
+      model: string;
+      requests: number;
+      failures: number;
+      durations: number[];
+    };
+
+    const pointByKey = new Map<string, MutablePoint>();
+    const aiBreakdownByKey = new Map<string, MutableBreakdown>();
+    const summary: MutablePoint = {
+      sessions: 0,
+      documentsLoaded: 0,
+      documentLoadFailures: 0,
+      aiRequests: 0,
+      aiFailures: 0,
+      patchApplyAttempts: 0,
+      patchApplyFailures: 0,
+      aiDurations: []
+    };
+
+    const normalizeText = (value: unknown, fallback: string, maxLength: number): string => {
+      if (typeof value !== 'string') {
+        return fallback;
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return fallback;
+      }
+      return trimmed.slice(0, maxLength);
+    };
+
+    const normalizeNumber = (value: unknown): number | null => {
+      const parsed =
+        typeof value === 'number'
+          ? value
+          : typeof value === 'string'
+            ? Number.parseInt(value, 10)
+            : Number.NaN;
+      if (!Number.isFinite(parsed)) {
+        return null;
+      }
+      if (parsed < 0) {
+        return null;
+      }
+      return parsed;
+    };
+
+    const normalizeOutcome = (value: unknown): 'success' | 'failure' => {
+      return String(value || '').trim().toLowerCase() === 'success' ? 'success' : 'failure';
+    };
+
+    const ensurePoint = (key: string): MutablePoint => {
+      const existing = pointByKey.get(key);
+      if (existing) {
+        return existing;
+      }
+      const next: MutablePoint = {
+        sessions: 0,
+        documentsLoaded: 0,
+        documentLoadFailures: 0,
+        aiRequests: 0,
+        aiFailures: 0,
+        patchApplyAttempts: 0,
+        patchApplyFailures: 0,
+        aiDurations: []
+      };
+      pointByKey.set(key, next);
+      return next;
+    };
+
+    for (const event of events) {
+      const bucketStart = this.floorToBucket(event.eventTime, bucket, timezone);
+      const bucketKey = this.toDateKey(bucketStart);
+      const point = ensurePoint(bucketKey);
+      const properties = event.properties ?? {};
+
+      switch (event.eventName) {
+        case 'score_editor_runtime_loaded':
+          summary.sessions += 1;
+          point.sessions += 1;
+          break;
+        case 'score_editor_document_loaded':
+          summary.documentsLoaded += 1;
+          point.documentsLoaded += 1;
+          break;
+        case 'score_editor_document_load_failed':
+          summary.documentLoadFailures += 1;
+          point.documentLoadFailures += 1;
+          break;
+        case 'score_editor_ai_request': {
+          summary.aiRequests += 1;
+          point.aiRequests += 1;
+          const outcome = normalizeOutcome(properties.outcome);
+          if (outcome === 'failure') {
+            summary.aiFailures += 1;
+            point.aiFailures += 1;
+          }
+
+          const duration = normalizeNumber(properties.duration_ms);
+          if (duration !== null) {
+            summary.aiDurations.push(duration);
+            point.aiDurations.push(duration);
+          }
+
+          const channel = normalizeText(properties.channel, 'unknown', 64);
+          const provider = normalizeText(properties.provider ?? properties.backend, 'unknown', 64);
+          const model = normalizeText(properties.model, 'unknown', 128);
+          const breakdownKey = `${channel}::${provider}::${model}`;
+          const breakdown = aiBreakdownByKey.get(breakdownKey) ?? {
+            channel,
+            provider,
+            model,
+            requests: 0,
+            failures: 0,
+            durations: []
+          };
+          breakdown.requests += 1;
+          if (outcome === 'failure') {
+            breakdown.failures += 1;
+          }
+          if (duration !== null) {
+            breakdown.durations.push(duration);
+          }
+          aiBreakdownByKey.set(breakdownKey, breakdown);
+          break;
+        }
+        case 'score_editor_patch_applied': {
+          summary.patchApplyAttempts += 1;
+          point.patchApplyAttempts += 1;
+          const outcome = normalizeOutcome(properties.outcome);
+          if (outcome === 'failure') {
+            summary.patchApplyFailures += 1;
+            point.patchApplyFailures += 1;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+
+    const points = this.buildDenseBucketStarts(from, to, bucket, timezone).map((start) => {
+      const key = this.toDateKey(start);
+      const point = pointByKey.get(key);
+      const aiDurations = point?.aiDurations ?? [];
+      return {
+        bucketStart: start.toISOString(),
+        bucketLabel: key,
+        sessions: point?.sessions ?? 0,
+        documentsLoaded: point?.documentsLoaded ?? 0,
+        documentLoadFailures: point?.documentLoadFailures ?? 0,
+        aiRequests: point?.aiRequests ?? 0,
+        aiFailures: point?.aiFailures ?? 0,
+        patchApplyAttempts: point?.patchApplyAttempts ?? 0,
+        patchApplyFailures: point?.patchApplyFailures ?? 0,
+        aiDurationAvgMs: this.computeAverage(aiDurations),
+        aiDurationP95Ms: this.computePercentile(aiDurations, 0.95)
+      };
+    });
+
+    const aiBreakdown = Array.from(aiBreakdownByKey.values())
+      .map((row) => ({
+        channel: row.channel,
+        provider: row.provider,
+        model: row.model,
+        requests: row.requests,
+        failures: row.failures,
+        failureRate: row.requests > 0 ? row.failures / row.requests : 0,
+        aiDurationAvgMs: this.computeAverage(row.durations),
+        aiDurationP95Ms: this.computePercentile(row.durations, 0.95)
+      }))
+      .sort((a, b) => {
+        if (b.requests !== a.requests) return b.requests - a.requests;
+        if (b.failures !== a.failures) return b.failures - a.failures;
+        return a.channel.localeCompare(b.channel);
+      });
+
+    const documentLoadAttempts = summary.documentsLoaded + summary.documentLoadFailures;
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      timezone,
+      bucket,
+      excludeAdmins,
+      summary: {
+        sessions: summary.sessions,
+        documentsLoaded: summary.documentsLoaded,
+        documentLoadFailures: summary.documentLoadFailures,
+        documentLoadFailureRate: documentLoadAttempts > 0 ? summary.documentLoadFailures / documentLoadAttempts : 0,
+        aiRequests: summary.aiRequests,
+        aiFailures: summary.aiFailures,
+        aiFailureRate: summary.aiRequests > 0 ? summary.aiFailures / summary.aiRequests : 0,
+        patchApplyAttempts: summary.patchApplyAttempts,
+        patchApplyFailures: summary.patchApplyFailures,
+        patchApplyFailureRate:
+          summary.patchApplyAttempts > 0 ? summary.patchApplyFailures / summary.patchApplyAttempts : 0,
+        aiDurationAvgMs: this.computeAverage(summary.aiDurations),
+        aiDurationP95Ms: this.computePercentile(summary.aiDurations, 0.95)
+      },
+      points,
+      aiBreakdown
+    };
+  }
+
   private async ensureDailyRollups(params: {
     from: Date;
     to: Date;
@@ -1420,6 +1716,27 @@ export class AnalyticsService {
 
   private toDateKey(date: Date): string {
     return date.toISOString().slice(0, 10);
+  }
+
+  private computeAverage(values: number[]): number | null {
+    if (!Array.isArray(values) || values.length === 0) {
+      return null;
+    }
+    const sum = values.reduce((acc, value) => acc + value, 0);
+    return Math.round(sum / values.length);
+  }
+
+  private computePercentile(values: number[], percentile: number): number | null {
+    if (!Array.isArray(values) || values.length === 0) {
+      return null;
+    }
+    if (!Number.isFinite(percentile)) {
+      return null;
+    }
+    const sorted = [...values].sort((a, b) => a - b);
+    const normalized = Math.min(1, Math.max(0, percentile));
+    const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(normalized * sorted.length) - 1));
+    return Math.round(sorted[index]);
   }
 
   private getZonedDateComponents(date: Date, timezone: string): { year: number; month: number; day: number } {

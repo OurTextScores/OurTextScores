@@ -11,6 +11,7 @@ describe('AnalyticsController', () => {
     getTimeseries: jest.fn(),
     getFunnel: jest.fn(),
     getRetention: jest.fn(),
+    getScoreEditorMetrics: jest.fn(),
     getCatalogStats: jest.fn(),
     backfillDailyRollups: jest.fn()
   } as any as jest.Mocked<AnalyticsService>;
@@ -66,17 +67,30 @@ describe('AnalyticsController', () => {
     );
   });
 
+  it('getEditorMetrics normalizes bucket', async () => {
+    analyticsService.getScoreEditorMetrics.mockResolvedValue({ ok: true } as any);
+
+    await controller.getEditorMetrics(undefined, undefined, undefined, 'America/New_York', 'invalid');
+
+    expect(analyticsService.getScoreEditorMetrics).toHaveBeenCalledWith(
+      expect.objectContaining({ bucket: 'day', timezone: 'America/New_York' })
+    );
+  });
+
   it('delegates funnel/retention/catalog endpoints', async () => {
     analyticsService.getFunnel.mockResolvedValue({} as any);
     analyticsService.getRetention.mockResolvedValue({} as any);
+    analyticsService.getScoreEditorMetrics.mockResolvedValue({} as any);
     analyticsService.getCatalogStats.mockResolvedValue({} as any);
 
     await controller.getFunnel();
     await controller.getRetention();
+    await controller.getEditorMetrics();
     await controller.getCatalog();
 
     expect(analyticsService.getFunnel).toHaveBeenCalled();
     expect(analyticsService.getRetention).toHaveBeenCalled();
+    expect(analyticsService.getScoreEditorMetrics).toHaveBeenCalled();
     expect(analyticsService.getCatalogStats).toHaveBeenCalled();
   });
 

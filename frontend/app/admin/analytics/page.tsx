@@ -97,6 +97,54 @@ interface CatalogResponse {
   };
 }
 
+interface EditorMetricsPoint {
+  bucketStart: string;
+  bucketLabel: string;
+  sessions: number;
+  documentsLoaded: number;
+  documentLoadFailures: number;
+  aiRequests: number;
+  aiFailures: number;
+  patchApplyAttempts: number;
+  patchApplyFailures: number;
+  aiDurationAvgMs: number | null;
+  aiDurationP95Ms: number | null;
+}
+
+interface EditorAiBreakdownRow {
+  channel: string;
+  provider: string;
+  model: string;
+  requests: number;
+  failures: number;
+  failureRate: number;
+  aiDurationAvgMs: number | null;
+  aiDurationP95Ms: number | null;
+}
+
+interface EditorMetricsResponse {
+  from: string;
+  to: string;
+  timezone: string;
+  bucket: "day" | "week";
+  summary: {
+    sessions: number;
+    documentsLoaded: number;
+    documentLoadFailures: number;
+    documentLoadFailureRate: number;
+    aiRequests: number;
+    aiFailures: number;
+    aiFailureRate: number;
+    patchApplyAttempts: number;
+    patchApplyFailures: number;
+    patchApplyFailureRate: number;
+    aiDurationAvgMs: number | null;
+    aiDurationP95Ms: number | null;
+  };
+  points: EditorMetricsPoint[];
+  aiBreakdown: EditorAiBreakdownRow[];
+}
+
 function parseInputDate(value?: string, fallback?: Date): Date {
   if (!value) return fallback ?? new Date();
   const parsed = new Date(value);
@@ -116,6 +164,11 @@ function toDateInputValue(date: Date): string {
 function formatPercent(value: number | null): string {
   if (value == null || Number.isNaN(value)) return "-";
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatMillis(value: number | null): string {
+  if (value == null || Number.isNaN(value)) return "-";
+  return `${Math.round(value)} ms`;
 }
 
 async function fetchAdminMetric<T>(path: string): Promise<T | null> {
@@ -151,10 +204,13 @@ export default async function AdminAnalyticsPage({
 
   const commonQuery = `from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}&excludeAdmins=true`;
 
-  const [overview, timeseries, funnel, retention, catalog] = await Promise.all([
+  const [overview, timeseries, editorMetrics, funnel, retention, catalog] = await Promise.all([
     fetchAdminMetric<OverviewResponse>(`/analytics/metrics/overview?${commonQuery}`),
     fetchAdminMetric<TimeseriesResponse>(
       `/analytics/metrics/timeseries?${commonQuery}&timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}&bucket=day`
+    ),
+    fetchAdminMetric<EditorMetricsResponse>(
+      `/analytics/metrics/editor?${commonQuery}&timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}&bucket=day`
     ),
     fetchAdminMetric<FunnelResponse>(`/analytics/metrics/funnel?${commonQuery}`),
     fetchAdminMetric<RetentionResponse>(
@@ -164,6 +220,7 @@ export default async function AdminAnalyticsPage({
   ]);
 
   const weuMax = Math.max(...(timeseries?.points ?? []).map((point) => point.weu), 1);
+  const editorSessionMax = Math.max(...(editorMetrics?.points ?? []).map((point) => point.sessions), 1);
 
   return (
     <>
@@ -242,6 +299,98 @@ export default async function AdminAnalyticsPage({
             </>
           )}
         </section>
+
+      <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
+          <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-slate-100">Score Editor Runtime</h2>
+          {!editorMetrics ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Unable to load score editor metrics.</p>
+          ) : (
+            <>
+              <div className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Window: {new Date(editorMetrics.from).toLocaleDateString()} - {new Date(editorMetrics.to).toLocaleDateString()}
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-700"><div className="text-xs text-slate-500">Sessions</div><div className="text-xl font-semibold">{editorMetrics.summary.sessions}</div></div>
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-700"><div className="text-xs text-slate-500">Load Failure Rate</div><div className="text-xl font-semibold">{formatPercent(editorMetrics.summary.documentLoadFailureRate)}</div></div>
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-700"><div className="text-xs text-slate-500">AI Failure Rate</div><div className="text-xl font-semibold">{formatPercent(editorMetrics.summary.aiFailureRate)}</div></div>
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-700"><div className="text-xs text-slate-500">Patch Failure Rate</div><div className="text-xl font-semibold">{formatPercent(editorMetrics.summary.patchApplyFailureRate)}</div></div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">AI Latency</div>
+                  <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                    Avg: <span className="font-semibold">{formatMillis(editorMetrics.summary.aiDurationAvgMs)}</span> · P95: <span className="font-semibold">{formatMillis(editorMetrics.summary.aiDurationP95Ms)}</span>
+                  </div>
+                </div>
+                <div className="rounded border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">Volume</div>
+                  <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                    Documents loaded: <span className="font-semibold">{editorMetrics.summary.documentsLoaded}</span> · Load failures: <span className="font-semibold">{editorMetrics.summary.documentLoadFailures}</span> · AI requests: <span className="font-semibold">{editorMetrics.summary.aiRequests}</span> · Patch attempts: <span className="font-semibold">{editorMetrics.summary.patchApplyAttempts}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Daily Sessions</div>
+                <div className="space-y-2">
+                  {editorMetrics.points.map((point) => {
+                    const widthPct = Math.max((point.sessions / editorSessionMax) * 100, point.sessions > 0 ? 3 : 0);
+                    return (
+                      <div key={point.bucketStart} className="grid grid-cols-[96px_1fr_180px] items-center gap-3 text-xs">
+                        <div className="text-slate-500 dark:text-slate-400">{point.bucketLabel}</div>
+                        <div className="h-3 rounded bg-slate-200 dark:bg-slate-700">
+                          <div className="h-3 rounded bg-emerald-600" style={{ width: `${widthPct}%` }} />
+                        </div>
+                        <div className="text-right text-slate-700 dark:text-slate-200">
+                          Sessions {point.sessions} · AI {point.aiRequests} · Load Fail {point.documentLoadFailures}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <div className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">AI Breakdown (Top Channels/Models)</div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                    <thead className="bg-slate-50 dark:bg-slate-900">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs uppercase text-slate-500">Channel</th>
+                        <th className="px-3 py-2 text-left text-xs uppercase text-slate-500">Provider</th>
+                        <th className="px-3 py-2 text-left text-xs uppercase text-slate-500">Model</th>
+                        <th className="px-3 py-2 text-right text-xs uppercase text-slate-500">Requests</th>
+                        <th className="px-3 py-2 text-right text-xs uppercase text-slate-500">Failure</th>
+                        <th className="px-3 py-2 text-right text-xs uppercase text-slate-500">Avg</th>
+                        <th className="px-3 py-2 text-right text-xs uppercase text-slate-500">P95</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                      {editorMetrics.aiBreakdown.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-3 text-sm text-slate-500 dark:text-slate-400">No AI requests in this window.</td>
+                        </tr>
+                      ) : (
+                        editorMetrics.aiBreakdown.slice(0, 12).map((row) => (
+                          <tr key={`${row.channel}-${row.provider}-${row.model}`}>
+                            <td className="px-3 py-2 text-sm">{row.channel}</td>
+                            <td className="px-3 py-2 text-sm">{row.provider}</td>
+                            <td className="px-3 py-2 text-sm">{row.model}</td>
+                            <td className="px-3 py-2 text-right text-sm">{row.requests}</td>
+                            <td className="px-3 py-2 text-right text-sm">{formatPercent(row.failureRate)}</td>
+                            <td className="px-3 py-2 text-right text-sm">{formatMillis(row.aiDurationAvgMs)}</td>
+                            <td className="px-3 py-2 text-right text-sm">{formatMillis(row.aiDurationP95Ms)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+      </section>
 
         <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
           <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-slate-100">Timeseries (Daily)</h2>

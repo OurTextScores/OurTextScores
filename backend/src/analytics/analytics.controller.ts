@@ -276,6 +276,38 @@ export class AnalyticsController {
     });
   }
 
+  @Get('metrics/editor')
+  @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
+  @ApiOperation({
+    summary: 'Get score editor runtime metrics',
+    description: 'Returns score-editor usage, AI reliability, and patch apply quality metrics.'
+  })
+  @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
+  @ApiQuery({ name: 'excludeAdmins', required: false, description: 'Exclude admin activity (default true)' })
+  @ApiQuery({ name: 'timezone', required: false, description: 'IANA timezone (default America/New_York)' })
+  @ApiQuery({ name: 'bucket', required: false, description: 'Bucket granularity: day|week (default day)' })
+  @ApiResponse({ status: 200, description: 'Editor runtime metrics returned' })
+  async getEditorMetrics(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('excludeAdmins') excludeAdmins?: string,
+    @Query('timezone') timezone?: string,
+    @Query('bucket') bucket?: string
+  ) {
+    const parsedFrom = this.parseDateOrUndefined(from, 'from');
+    const parsedTo = this.parseDateOrUndefined(to, 'to');
+    const exclude = excludeAdmins == null ? true : excludeAdmins !== 'false';
+    const normalizedBucket = bucket === 'week' ? 'week' : 'day';
+    return this.analytics.getScoreEditorMetrics({
+      from: parsedFrom,
+      to: parsedTo,
+      excludeAdmins: exclude,
+      timezone,
+      bucket: normalizedBucket
+    });
+  }
+
   private parseDateOrUndefined(value: string | undefined, field: string): Date | undefined {
     if (!value) {
       return undefined;

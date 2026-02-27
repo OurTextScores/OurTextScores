@@ -299,6 +299,83 @@ describe('AnalyticsService', () => {
     expect(rollupUpdateOne).not.toHaveBeenCalled();
   });
 
+  it('getScoreEditorMetrics summarizes runtime reliability and AI breakdowns', async () => {
+    findExec.mockResolvedValue([
+      {
+        eventName: 'score_editor_runtime_loaded',
+        eventTime: new Date('2026-02-01T10:00:00Z'),
+        userId: 'u1',
+        properties: { editor_session_id: 'sess_1' }
+      },
+      {
+        eventName: 'score_editor_document_loaded',
+        eventTime: new Date('2026-02-01T10:00:03Z'),
+        userId: 'u1',
+        properties: { load_source: 'file_upload' }
+      },
+      {
+        eventName: 'score_editor_document_load_failed',
+        eventTime: new Date('2026-02-01T10:00:05Z'),
+        userId: 'u1',
+        properties: { load_source: 'file_upload' }
+      },
+      {
+        eventName: 'score_editor_ai_request',
+        eventTime: new Date('2026-02-01T10:01:00Z'),
+        userId: 'u1',
+        properties: {
+          channel: 'assistant_patch',
+          provider: 'openai',
+          model: 'gpt-5.2',
+          outcome: 'success',
+          duration_ms: 1000
+        }
+      },
+      {
+        eventName: 'score_editor_ai_request',
+        eventTime: new Date('2026-02-01T10:02:00Z'),
+        userId: 'u1',
+        properties: {
+          channel: 'assistant_patch',
+          provider: 'openai',
+          model: 'gpt-5.2',
+          outcome: 'failure',
+          duration_ms: 2000
+        }
+      },
+      {
+        eventName: 'score_editor_patch_applied',
+        eventTime: new Date('2026-02-01T10:03:00Z'),
+        userId: 'u1',
+        properties: { source: 'assistant_patch', outcome: 'failure' }
+      }
+    ]);
+
+    const result = await service.getScoreEditorMetrics({
+      from: new Date('2026-02-01T00:00:00Z'),
+      to: new Date('2026-02-03T00:00:00Z'),
+      timezone: 'America/New_York',
+      bucket: 'day'
+    });
+
+    expect(result.summary.sessions).toBe(1);
+    expect(result.summary.documentsLoaded).toBe(1);
+    expect(result.summary.documentLoadFailures).toBe(1);
+    expect(result.summary.aiRequests).toBe(2);
+    expect(result.summary.aiFailures).toBe(1);
+    expect(result.summary.patchApplyAttempts).toBe(1);
+    expect(result.summary.patchApplyFailures).toBe(1);
+    expect(result.summary.aiDurationP95Ms).toBe(2000);
+    expect(result.aiBreakdown).toHaveLength(1);
+    expect(result.aiBreakdown[0]).toMatchObject({
+      channel: 'assistant_patch',
+      provider: 'openai',
+      model: 'gpt-5.2',
+      requests: 2,
+      failures: 1
+    });
+  });
+
   it('getCatalogStats returns totals and range additions', async () => {
     countDocumentsExec
       .mockResolvedValueOnce(10)

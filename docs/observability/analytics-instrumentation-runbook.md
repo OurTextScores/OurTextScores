@@ -27,6 +27,9 @@
 - `GET /api/analytics/metrics/catalog`
   - admin-only catalog size endpoint
   - total and range-added counts for works/sources/revisions
+- `GET /api/analytics/metrics/editor`
+  - admin-only score-editor runtime endpoint
+  - returns session/document/AI/patch reliability summaries, timeseries, and AI channel/model latency breakdowns
 
 ## Implemented (frontend)
 
@@ -135,6 +138,9 @@ curl -sS "http://localhost:4000/api/analytics/metrics/retention?timezone=America
 
 curl -sS "http://localhost:4000/api/analytics/metrics/catalog" \
   -H "Authorization: Bearer $AUTH_TOKEN" | jq .
+
+curl -sS "http://localhost:4000/api/analytics/metrics/editor?timezone=America/New_York&bucket=day" \
+  -H "Authorization: Bearer $AUTH_TOKEN" | jq '.summary'
 ```
 
 ## Current limitations
