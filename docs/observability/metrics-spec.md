@@ -133,6 +133,17 @@ All events MUST include:
 - `score_downloaded`
   - props: `work_id`, `source_id`, `revision_id`, `file_format`, `download_surface`
 
+### Ingest trust model (V1)
+
+- Public/client ingest is treated as untrusted.
+- Server-owned context fields are derived from the request path/headers, not accepted from payload:
+  - `source_app`
+  - `request_id`
+  - `trace_id`
+  - `route`
+- Untrusted events with stale/far-future `event_time` are rejected.
+- Event properties are canonicalized per event schema (unknown/malformed values are dropped or normalized).
+
 ### Download `file_format` enum (initial)
 
 - `pdf`
@@ -184,3 +195,4 @@ Default filters for dashboards:
 
 - If anonymous catalog usage should be included in top-level KPIs, add a parallel `anonymous_*` dashboard section (do not mix with user-level retention).
 - If `editor_sessions` is not yet explicit, derive provisional sessions via inactivity timeout (30 minutes) on editor events.
+- Backend implementation details and local verification steps are tracked in `docs/observability/analytics-instrumentation-runbook.md`.

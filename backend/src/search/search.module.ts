@@ -19,9 +19,11 @@ import { Module } from '@nestjs/common';
 import { SearchService } from './search.service';
 import { SearchController } from './search.controller';
 import { UsersModule } from '../users/users.module';
+import { AuthModule } from '../auth/auth.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, AuthModule, AnalyticsModule],
   providers: [SearchService],
   controllers: [SearchController],
   exports: [SearchService]

@@ -5,6 +5,7 @@ import { WorksService } from './works.service';
 import { FossilService } from '../fossil/fossil.service';
 import { UploadSourceService } from './upload-source.service';
 import { ProgressService } from '../progress/progress.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import { BadRequestException } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
@@ -45,8 +46,21 @@ describe('WorksController (unit)', () => {
   const progressService = {
     stream: jest.fn(),
   } as any as jest.Mocked<ProgressService>;
+  const analyticsService = {
+    toActor: jest.fn(),
+    getRequestContext: jest.fn(),
+    trackBestEffort: jest.fn(),
+    trackFirstScoreLoadedIfNeeded: jest.fn(),
+  } as any as jest.Mocked<AnalyticsService>;
 
-  const controller = new WorksController(worksService, uploadSourceService, storageService, fossilService, progressService);
+  const controller = new WorksController(
+    worksService,
+    uploadSourceService,
+    storageService,
+    fossilService,
+    progressService,
+    analyticsService
+  );
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -162,12 +176,22 @@ describe('WorksController (unit)', () => {
       ]
     });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
+    analyticsService.toActor.mockReturnValue({});
+    analyticsService.getRequestContext.mockReturnValue({ sourceApp: 'backend' });
     const { res, headers } = createMockResponse();
-    await controller.downloadNormalized('1', 's', undefined, res as any, undefined);
+    await controller.downloadNormalized(
+      '1',
+      's',
+      undefined,
+      res as any,
+      undefined,
+      { originalUrl: '/api/works/1/sources/s/normalized.mxl', url: '/api/works/1/sources/s/normalized.mxl', headers: {} } as any
+    );
     expect(headers['Content-Type']).toMatch('application/vnd.recordare.musicxml');
     expect(headers['Content-Disposition']).toMatch('attachment; filename=');
     expect(headers['Cache-Control']).toBe('no-cache');
     expect(res.send).toHaveBeenCalled();
+    expect(analyticsService.trackBestEffort).toHaveBeenCalled();
   });
 
   it('download throws not found if derivative is not available', async () => {

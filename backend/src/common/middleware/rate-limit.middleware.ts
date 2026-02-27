@@ -56,6 +56,13 @@ const rules: RateLimitRule[] = [
     match: (req) => /^\/api\/auth\//.test(req.path)
   },
   {
+    name: 'analytics-ingest',
+    windowMs: 60 * 1000,
+    maxAnonymous: 180,
+    maxAuthenticated: 900,
+    match: (req) => req.method === 'POST' && /^\/api\/analytics\/events$/.test(req.path)
+  },
+  {
     name: 'expensive',
     windowMs: 15 * 60 * 1000,
     maxAnonymous: 40,

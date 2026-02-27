@@ -9,6 +9,7 @@ import { SearchModule } from './search/search.module';
 import { StorageModule } from './storage/storage.module';
 import { ImslpModule } from './imslp/imslp.module';
 import { AuthModule } from './auth/auth.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { BranchesModule } from './branches/branches.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ApprovalsModule } from './approvals/approvals.module';
@@ -39,6 +40,7 @@ import { PdmxModule } from './pdmx/pdmx.module';
     StorageModule,
     ImslpModule,
     AuthModule,
+    AnalyticsModule,
     BranchesModule,
     NotificationsModule,
     WorksModule,

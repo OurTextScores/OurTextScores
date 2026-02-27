@@ -15,20 +15,27 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { SearchService } from './search.service';
 import { UsersService } from '../users/users.service';
+import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { RequestUser } from '../auth/types/auth-user';
+import type { Request } from 'express';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 @ApiTags('search')
 @Controller('search')
 export class SearchController {
   constructor(
     private readonly searchService: SearchService,
-    private readonly usersService: UsersService
+    private readonly usersService: UsersService,
+    private readonly analyticsService: AnalyticsService
   ) {}
 
   @Get('works')
+  @UseGuards(AuthOptionalGuard)
   @ApiOperation({
     summary: 'Search for works',
     description: 'Search for music works using MeiliSearch full-text search. Searches across title, composer, catalog number, and work ID.'
@@ -92,17 +99,37 @@ export class SearchController {
     @Query('q') query: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
-    @Query('sort') sort?: string
+    @Query('sort') sort?: string,
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 100) : 20;
     const parsedOffset = offset ? parseInt(offset, 10) : 0;
     const sortArray = sort ? [sort] : undefined;
 
-    return this.searchService.searchWorks(query || '', {
+    const result = await this.searchService.searchWorks(query || '', {
       limit: parsedLimit,
       offset: parsedOffset,
       sort: sortArray
     });
+
+    if (req) {
+      void this.analyticsService.trackBestEffort({
+        eventName: 'catalog_search_performed',
+        actor: this.analyticsService.toActor(user),
+        requestContext: this.analyticsService.getRequestContext(req, {
+          sourceApp: 'backend',
+          route: req.originalUrl ?? req.url
+        }),
+        properties: {
+          query_length: (query || '').length,
+          result_count: result.estimatedTotalHits,
+          search_scope: 'works'
+        }
+      });
+    }
+
+    return result;
   }
 
   @Get('users')

@@ -45,6 +45,11 @@ services:
       DISABLE_IMSLP_REFRESH_RATE_LIMIT: ${DISABLE_IMSLP_REFRESH_RATE_LIMIT:-false}
       # Disable upload rate limiting for bulk imports (comma-separated rule names).
       RATE_LIMIT_DISABLED_RULES: ${RATE_LIMIT_DISABLED_RULES:-}
+      # OpenTelemetry (optional)
+      OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-ourtextscores-backend}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
     depends_on:
       - mongo
       - meili
@@ -75,6 +80,11 @@ services:
       MUSIC_NOTAGEN_DEFAULT_SPACE_ID: ${MUSIC_NOTAGEN_DEFAULT_SPACE_ID:-jhlusko/NotaGen-Space}
       NEXT_PUBLIC_SCORE_EDITOR_API_BASE: ${NEXT_PUBLIC_SCORE_EDITOR_API_BASE:-/api/score-editor}
       NEXT_PUBLIC_SOUNDFONT_CDN_URL: ${NEXT_PUBLIC_SOUNDFONT_CDN_URL:-https://cdn.ourtextscores.com/soundfonts/default.sf2}
+      # OpenTelemetry pass-through for score editor API runtime (when enabled there)
+      OTEL_ENABLED: ${SCORE_EDITOR_OTEL_ENABLED:-false}
+      OTEL_SERVICE_NAME: ${SCORE_EDITOR_OTEL_SERVICE_NAME:-ots-web-score-editor-api}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
     volumes:
       - ../OTS_Web:/app
       - ../NotaGen:/opt/notagen:ro

@@ -1,14 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { UsersService } from '../users/users.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 describe('SearchController', () => {
   let controller: SearchController;
   let searchService: jest.Mocked<SearchService>;
   let usersService: jest.Mocked<UsersService>;
+  let analyticsService: jest.Mocked<AnalyticsService>;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     searchService = {
       searchWorks: jest.fn(),
       getHealth: jest.fn(),
@@ -19,15 +20,13 @@ describe('SearchController', () => {
       searchUsersByUsername: jest.fn()
     } as any;
 
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [SearchController],
-      providers: [
-        { provide: SearchService, useValue: searchService },
-        { provide: UsersService, useValue: usersService }
-      ]
-    }).compile();
+    analyticsService = {
+      toActor: jest.fn().mockReturnValue({}),
+      getRequestContext: jest.fn().mockReturnValue({ sourceApp: 'backend' }),
+      trackBestEffort: jest.fn()
+    } as any;
 
-    controller = module.get<SearchController>(SearchController);
+    controller = new SearchController(searchService, usersService, analyticsService);
   });
 
   describe('searchWorks', () => {
@@ -50,13 +49,17 @@ describe('SearchController', () => {
 
       searchService.searchWorks.mockResolvedValue(mockResults);
 
-      const result = await controller.searchWorks('test');
+      const result = await controller.searchWorks('test', undefined, undefined, undefined, undefined, {
+        originalUrl: '/api/search/works',
+        url: '/api/search/works'
+      } as any);
 
       expect(searchService.searchWorks).toHaveBeenCalledWith('test', {
         limit: 20,
         offset: 0,
         sort: undefined
       });
+      expect(analyticsService.trackBestEffort).toHaveBeenCalled();
       expect(result).toEqual(mockResults);
     });
 

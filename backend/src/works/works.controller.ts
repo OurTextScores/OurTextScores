@@ -15,9 +15,11 @@ import {
   Res,
   Query,
   Sse,
-  Headers
+  Headers,
+  Req
 } from '@nestjs/common';
 import type { Response } from 'express';
+import type { Request } from 'express';
 import { StorageService } from '../storage/storage.service';
 import { FossilService } from '../fossil/fossil.service';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -31,6 +33,7 @@ import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
 import { UploadSourceService, UploadSourceRequest } from './upload-source.service';
 import { ProgressService } from '../progress/progress.service';
+import { AnalyticsService } from '../analytics/analytics.service';
 import type { Observable } from 'rxjs';
 import type { MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiConsumes, ApiQuery } from '@nestjs/swagger';
@@ -43,7 +46,8 @@ export class WorksController {
     private readonly uploadSourceService: UploadSourceService,
     private readonly storageService: StorageService,
     private readonly fossilService: FossilService,
-    private readonly progressService: ProgressService
+    private readonly progressService: ProgressService,
+    private readonly analyticsService: AnalyticsService
   ) { }
 
   private sendBuffer(
@@ -60,6 +64,67 @@ export class WorksController {
       res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
     }
     res.send(buffer);
+  }
+
+  private trackScoreViewed(
+    req: Request,
+    user: RequestUser | undefined,
+    payload: { workId: string; sourceId?: string; revisionId?: string }
+  ): void {
+    const actor = this.analyticsService.toActor(user);
+    const requestContext = this.analyticsService.getRequestContext(req, {
+      sourceApp: 'backend',
+      route: req.originalUrl ?? req.url
+    });
+
+    void this.analyticsService.trackBestEffort({
+      eventName: 'score_viewed',
+      actor,
+      requestContext,
+      properties: {
+        work_id: payload.workId,
+        source_id: payload.sourceId ?? null,
+        revision_id: payload.revisionId ?? null,
+        view_surface: 'api_work_detail'
+      }
+    });
+
+    void this.analyticsService.trackFirstScoreLoadedIfNeeded({
+      actor,
+      requestContext,
+      entryType: 'existing',
+      workId: payload.workId,
+      sourceId: payload.sourceId,
+      revisionId: payload.revisionId
+    }).catch(() => undefined);
+  }
+
+  private trackScoreDownloaded(
+    req: Request,
+    user: RequestUser | undefined,
+    payload: {
+      workId: string;
+      sourceId: string;
+      revisionId?: string;
+      fileFormat: string;
+      routePath: string;
+    }
+  ): void {
+    void this.analyticsService.trackBestEffort({
+      eventName: 'score_downloaded',
+      actor: this.analyticsService.toActor(user),
+      requestContext: this.analyticsService.getRequestContext(req, {
+        sourceApp: 'backend',
+        route: payload.routePath
+      }),
+      properties: {
+        work_id: payload.workId,
+        source_id: payload.sourceId,
+        revision_id: payload.revisionId ?? null,
+        file_format: payload.fileFormat,
+        download_surface: 'api'
+      }
+    });
   }
 
   @Get()
@@ -201,9 +266,23 @@ export class WorksController {
 
   @Get(':workId')
   @UseGuards(AuthOptionalGuard)
-  findOne(@Param('workId') workId: string, @CurrentUser() user?: RequestUser) {
+  async findOne(
+    @Param('workId') workId: string,
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
+  ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
-    return this.worksService.getWorkDetail(workId, viewer);
+    const detail = await this.worksService.getWorkDetail(workId, viewer);
+    const sources = Array.isArray(detail.sources) ? detail.sources : [];
+    const primarySource = sources.find((source) => source.isPrimary) ?? sources[0];
+    if (req) {
+      this.trackScoreViewed(req, user, {
+        workId: detail.workId,
+        sourceId: primarySource?.sourceId,
+        revisionId: primarySource?.latestRevisionId
+      });
+    }
+    return detail;
   }
 
   @Post(":workId/metadata")
@@ -313,7 +392,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -327,6 +407,15 @@ export class WorksController {
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.mxl';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'mxl',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, loc.contentType || 'application/vnd.recordare.musicxml', !!revisionId, 'attachment');
   }
 
@@ -347,7 +436,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -361,6 +451,15 @@ export class WorksController {
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.xml';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'musicxml',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, 'application/xml; charset=utf-8', !!revisionId, 'attachment');
   }
 
@@ -381,7 +480,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -395,6 +495,15 @@ export class WorksController {
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.pdf';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'pdf',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, 'application/pdf', !!revisionId, 'inline');
   }
 
@@ -415,7 +524,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -429,6 +539,15 @@ export class WorksController {
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.mscz';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'mscz',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, 'application/vnd.musescore.mscz', !!revisionId, 'attachment');
   }
 
@@ -449,7 +568,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -463,6 +583,15 @@ export class WorksController {
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = (source.originalFilename || 'score').replace(/\.[^.]+$/, '') + '.krn';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'other',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, loc.contentType || 'application/x-kern; charset=utf-8', !!revisionId, 'attachment');
   }
 
@@ -483,7 +612,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -497,6 +627,15 @@ export class WorksController {
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
     const baseName = 'reference.pdf';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'pdf',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, 'application/pdf', !!revisionId, 'inline');
   }
 
@@ -517,7 +656,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -530,6 +670,15 @@ export class WorksController {
     }
     const loc = locator;
     const buffer = await this.storageService.getObjectBuffer(loc!.bucket, loc!.objectKey);
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'png',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     // Thumbnails are always inline images
     this.sendBuffer(res, buffer, '', 'image/png', !!revisionId, 'inline');
   }
@@ -551,7 +700,8 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
     const detail = await this.worksService.getWorkDetail(workId, viewer);
@@ -564,6 +714,15 @@ export class WorksController {
     }
     const buffer = await this.storageService.getObjectBuffer(locator!.bucket, locator!.objectKey);
     const baseName = 'manifest.json';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'other',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
     this.sendBuffer(res, buffer, baseName, 'application/json; charset=utf-8', !!revisionId, 'attachment');
   }
 
@@ -703,12 +862,13 @@ export class WorksController {
   })
   @ApiResponse({ status: 201, description: 'Source uploaded successfully, derivatives being generated' })
   @ApiResponse({ status: 400, description: 'Invalid file or parameters' })
-  uploadSource(
+  async uploadSource(
     @Param('workId') workId: string,
     @Body() body: UploadSourceRequest,
     @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const normalizedBody: UploadSourceRequest = {
       ...body,
@@ -719,7 +879,46 @@ export class WorksController {
     const file = files?.file?.[0];
     const referencePdfFile = files?.referencePdf?.[0];
     const originalMsczFile = files?.originalMscz?.[0];
-    return this.uploadSourceService.upload(workId, normalizedBody, file, referencePdfFile, progressId, user, originalMsczFile);
+    const result = await this.uploadSourceService.upload(
+      workId,
+      normalizedBody,
+      file,
+      referencePdfFile,
+      progressId,
+      user,
+      originalMsczFile
+    );
+    if (req) {
+      const actor = this.analyticsService.toActor(user);
+      const requestContext = this.analyticsService.getRequestContext(req, {
+        sourceApp: 'backend',
+        route: req.originalUrl ?? req.url
+      });
+      await this.analyticsService.trackBestEffort({
+        eventName: 'upload_success',
+        actor,
+        requestContext,
+        properties: {
+          work_id: result.workId,
+          source_id: result.sourceId,
+          revision_id: result.revisionId,
+          file_ext: file?.originalname?.split('.').pop()?.toLowerCase() ?? 'unknown',
+          file_size_bytes: file?.size ?? 0
+        }
+      });
+      await this.analyticsService.trackBestEffort({
+        eventName: 'editor_revision_saved',
+        actor,
+        requestContext,
+        properties: {
+          work_id: result.workId,
+          source_id: result.sourceId,
+          revision_id: result.revisionId,
+          save_mode: 'manual'
+        }
+      });
+    }
+    return result;
   }
 
   @Post(':workId/sources/:sourceId/revisions')
@@ -766,13 +965,14 @@ export class WorksController {
   @ApiResponse({ status: 201, description: 'Revision uploaded successfully, derivatives and diff being generated' })
   @ApiResponse({ status: 400, description: 'Invalid file or parameters' })
   @ApiResponse({ status: 404, description: 'Source not found' })
-  uploadRevision(
+  async uploadRevision(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body() body: UploadSourceRequest,
     @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
     @Headers('x-progress-id') progressId?: string,
-    @CurrentUser() user?: RequestUser
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
   ) {
     const normalizedBody: UploadSourceRequest = {
       ...body,
@@ -785,7 +985,47 @@ export class WorksController {
     const file = files?.file?.[0];
     const referencePdfFile = files?.referencePdf?.[0];
     const originalMsczFile = files?.originalMscz?.[0];
-    return this.uploadSourceService.uploadRevision(workId, sourceId, normalizedBody, file, referencePdfFile, progressId, user, originalMsczFile);
+    const result = await this.uploadSourceService.uploadRevision(
+      workId,
+      sourceId,
+      normalizedBody,
+      file,
+      referencePdfFile,
+      progressId,
+      user,
+      originalMsczFile
+    );
+    if (req) {
+      const actor = this.analyticsService.toActor(user);
+      const requestContext = this.analyticsService.getRequestContext(req, {
+        sourceApp: 'backend',
+        route: req.originalUrl ?? req.url
+      });
+      await this.analyticsService.trackBestEffort({
+        eventName: 'upload_success',
+        actor,
+        requestContext,
+        properties: {
+          work_id: result.workId,
+          source_id: result.sourceId,
+          revision_id: result.revisionId,
+          file_ext: file?.originalname?.split('.').pop()?.toLowerCase() ?? 'unknown',
+          file_size_bytes: file?.size ?? 0
+        }
+      });
+      await this.analyticsService.trackBestEffort({
+        eventName: 'editor_revision_saved',
+        actor,
+        requestContext,
+        properties: {
+          work_id: result.workId,
+          source_id: result.sourceId,
+          revision_id: result.revisionId,
+          save_mode: 'manual'
+        }
+      });
+    }
+    return result;
   }
 
   @Post(':workId/sources/:sourceId/reference.pdf')
@@ -930,10 +1170,11 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Param('revisionId') revisionId: string,
     @Body() body: { rating: number },
-    @CurrentUser() user: RequestUser
+    @CurrentUser() user: RequestUser,
+    @Req() req?: Request
   ) {
     const isAdmin = user?.roles?.includes('admin') ?? false;
-    return this.worksService.rateRevision(
+    const result = await this.worksService.rateRevision(
       workId,
       sourceId,
       revisionId,
@@ -941,6 +1182,23 @@ export class WorksController {
       body.rating,
       isAdmin
     );
+    if (req) {
+      await this.analyticsService.trackBestEffort({
+        eventName: 'revision_rated',
+        actor: this.analyticsService.toActor(user),
+        requestContext: this.analyticsService.getRequestContext(req, {
+          sourceApp: 'backend',
+          route: req.originalUrl ?? req.url
+        }),
+        properties: {
+          work_id: workId,
+          source_id: sourceId,
+          revision_id: revisionId,
+          rating_value: body.rating
+        }
+      });
+    }
+    return result;
   }
 
   @Get(':workId/sources/:sourceId/revisions/:revisionId/ratings')
@@ -1002,9 +1260,10 @@ export class WorksController {
     @Param('sourceId') sourceId: string,
     @Param('revisionId') revisionId: string,
     @Body() body: { content: string; parentCommentId?: string },
-    @CurrentUser() user: RequestUser
+    @CurrentUser() user: RequestUser,
+    @Req() req?: Request
   ) {
-    return this.worksService.createComment(
+    const result = await this.worksService.createComment(
       workId,
       sourceId,
       revisionId,
@@ -1012,6 +1271,23 @@ export class WorksController {
       body.content,
       body.parentCommentId
     );
+    if (req) {
+      await this.analyticsService.trackBestEffort({
+        eventName: 'revision_commented',
+        actor: this.analyticsService.toActor(user),
+        requestContext: this.analyticsService.getRequestContext(req, {
+          sourceApp: 'backend',
+          route: req.originalUrl ?? req.url
+        }),
+        properties: {
+          work_id: workId,
+          source_id: sourceId,
+          revision_id: revisionId,
+          is_reply: Boolean(body.parentCommentId)
+        }
+      });
+    }
+    return result;
   }
 
   @Get(':workId/sources/:sourceId/revisions/:revisionId/comments')

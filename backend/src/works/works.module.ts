@@ -21,6 +21,7 @@ import { WatchesModule } from '../watches/watches.module';
 import { SearchModule } from '../search/search.module';
 import { UsersModule } from '../users/users.module';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { Project, ProjectSchema } from '../projects/schemas/project.schema';
     WatchesModule,
     SearchModule,
     UsersModule,
+    AnalyticsModule,
     MongooseModule.forFeature([
       { name: Work.name, schema: WorkSchema },
       { name: Source.name, schema: SourceSchema },

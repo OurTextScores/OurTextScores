@@ -18,6 +18,7 @@ export function requestLogMiddleware(req: Request, res: Response, next: NextFunc
     const durationMs = Number(durationNs) / 1_000_000;
     const enrichedReq = req as Request & {
       requestId?: string;
+      traceId?: string;
       user?: { userId?: string; roles?: string[] };
     };
 
@@ -29,6 +30,11 @@ export function requestLogMiddleware(req: Request, res: Response, next: NextFunc
         enrichedReq.requestId ||
         (typeof req.headers['x-request-id'] === 'string'
           ? req.headers['x-request-id']
+          : undefined),
+      traceId:
+        enrichedReq.traceId ||
+        (typeof req.headers['x-trace-id'] === 'string'
+          ? req.headers['x-trace-id']
           : undefined),
       method: req.method,
       path: req.originalUrl || req.url,

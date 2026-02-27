@@ -132,6 +132,18 @@ Allow only bounded metadata in spans/logs:
   - error rates
   - dependency timings
 
+Current status (2026-02):
+
+- Implemented in backend:
+  - optional OTel bootstrap (`OTEL_ENABLED=true`)
+  - auto-instrumentation via Node SDK
+  - OTLP trace export support (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`)
+  - response header correlation (`x-trace-id`) when trace context exists
+- Pending:
+  - collector/grafana local profile
+  - frontend + score editor API trace propagation completion
+  - alert definitions
+
 ### Phase 2: Frontend + OTS_Web server traces (2-4 days)
 
 - Add OTel Node instrumentation to Next server runtimes.

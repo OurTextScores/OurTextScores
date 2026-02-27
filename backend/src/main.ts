@@ -22,14 +22,18 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
 import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 import { requestLogMiddleware } from './common/middleware/request-log.middleware';
+import { traceContextMiddleware } from './common/middleware/trace-context.middleware';
+import { startOpenTelemetry, stopOpenTelemetry } from './observability/otel';
 
 async function bootstrap() {
+  await startOpenTelemetry();
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn']
   });
   app.enableCors({ origin: true });
   app.setGlobalPrefix('api');
   app.use(requestIdMiddleware);
+  app.use(traceContextMiddleware);
   const jsonRequestLogsEnabled =
     (process.env.JSON_REQUEST_LOGS || 'true').toLowerCase() !== 'false';
   if (jsonRequestLogsEnabled) {
@@ -86,5 +90,7 @@ async function bootstrap() {
 bootstrap().catch((error) => {
   // eslint-disable-next-line no-console
   console.error('Failed to bootstrap Nest application', error);
-  process.exit(1);
+  stopOpenTelemetry()
+    .catch(() => undefined)
+    .finally(() => process.exit(1));
 });
