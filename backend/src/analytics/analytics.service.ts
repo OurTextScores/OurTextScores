@@ -73,7 +73,13 @@ const UNTRUSTED_INGEST_ALLOWED_EVENTS = new Set<AnalyticsEventName>([
   'score_downloaded',
   'score_editor_session_started',
   'score_editor_iframe_loaded',
-  'score_editor_session_ended'
+  'score_editor_session_ended',
+  'score_editor_runtime_loaded',
+  'score_editor_document_loaded',
+  'score_editor_document_load_failed',
+  'score_editor_ai_request',
+  'score_editor_patch_applied',
+  'score_editor_session_summary'
 ]);
 
 interface PersistedAnalyticsEventData {
@@ -1747,6 +1753,87 @@ export class AnalyticsService {
           editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
           duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 86_400_000),
           close_reason: this.pickOptionalString(source.close_reason, 64)
+        };
+      case 'score_editor_runtime_loaded':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          editor_session_id: this.pickOptionalId(source.editor_session_id),
+          api_request_id: this.pickOptionalId(source.api_request_id),
+          api_trace_id: this.pickOptionalId(source.api_trace_id)
+        };
+      case 'score_editor_document_loaded':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          editor_session_id: this.pickOptionalId(source.editor_session_id),
+          load_source: this.pickOptionalString(source.load_source, 64),
+          input_format: this.pickOptionalString(source.input_format, 32),
+          input_bytes: this.pickOptionalInteger(source.input_bytes, 0, 500_000_000),
+          duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 300_000),
+          progressive_paging: this.pickBoolean(source.progressive_paging, false),
+          has_more_pages: this.pickBoolean(source.has_more_pages, false),
+          engine_mode: this.pickOptionalString(source.engine_mode, 64),
+          api_request_id: this.pickOptionalId(source.api_request_id),
+          api_trace_id: this.pickOptionalId(source.api_trace_id)
+        };
+      case 'score_editor_document_load_failed':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          editor_session_id: this.pickOptionalId(source.editor_session_id),
+          load_source: this.pickOptionalString(source.load_source, 64),
+          input_format: this.pickOptionalString(source.input_format, 32),
+          input_bytes: this.pickOptionalInteger(source.input_bytes, 0, 500_000_000),
+          duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 300_000),
+          engine_mode: this.pickOptionalString(source.engine_mode, 64),
+          error: this.pickOptionalString(source.error, 160),
+          api_request_id: this.pickOptionalId(source.api_request_id),
+          api_trace_id: this.pickOptionalId(source.api_trace_id)
+        };
+      case 'score_editor_ai_request':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          editor_session_id: this.pickOptionalId(source.editor_session_id),
+          channel: this.pickOptionalString(source.channel, 64),
+          provider: this.pickOptionalString(source.provider, 64),
+          backend: this.pickOptionalString(source.backend, 64),
+          model: this.pickOptionalString(source.model, 128),
+          selected_tool: this.pickOptionalString(source.selected_tool, 64),
+          fallback_only: this.pickBoolean(source.fallback_only, false),
+          include_xml: this.pickBoolean(source.include_xml, false),
+          outcome: this.pickEnum(source.outcome, ['success', 'failure'], 'failure'),
+          duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 900_000),
+          error: this.pickOptionalString(source.error, 160),
+          space_id: this.pickOptionalString(source.space_id, 128),
+          period: this.pickOptionalString(source.period, 64),
+          composer: this.pickOptionalString(source.composer, 128),
+          instrumentation: this.pickOptionalString(source.instrumentation, 128),
+          api_request_id: this.pickOptionalId(source.api_request_id),
+          api_trace_id: this.pickOptionalId(source.api_trace_id)
+        };
+      case 'score_editor_patch_applied':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          editor_session_id: this.pickOptionalId(source.editor_session_id),
+          source: this.pickOptionalString(source.source, 64),
+          input_format: this.pickOptionalString(source.input_format, 32),
+          outcome: this.pickEnum(source.outcome, ['success', 'failure'], 'failure'),
+          duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 300_000),
+          error: this.pickOptionalString(source.error, 160),
+          api_request_id: this.pickOptionalId(source.api_request_id),
+          api_trace_id: this.pickOptionalId(source.api_trace_id)
+        };
+      case 'score_editor_session_summary':
+        return {
+          editor_surface: this.pickOptionalString(source.editor_surface, 64) ?? 'embedded',
+          editor_session_id: this.pickOptionalId(source.editor_session_id),
+          duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 86_400_000),
+          documents_loaded: this.pickOptionalInteger(source.documents_loaded, 0, 10_000),
+          document_load_failures: this.pickOptionalInteger(source.document_load_failures, 0, 10_000),
+          ai_requests: this.pickOptionalInteger(source.ai_requests, 0, 50_000),
+          ai_failures: this.pickOptionalInteger(source.ai_failures, 0, 50_000),
+          patch_applies: this.pickOptionalInteger(source.patch_applies, 0, 50_000),
+          patch_apply_failures: this.pickOptionalInteger(source.patch_apply_failures, 0, 50_000),
+          api_request_id: this.pickOptionalId(source.api_request_id),
+          api_trace_id: this.pickOptionalId(source.api_trace_id)
         };
       default:
         return source;

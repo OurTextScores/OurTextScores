@@ -132,6 +132,36 @@ describe('AnalyticsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('ingest accepts score editor runtime events for untrusted payloads', async () => {
+    insertMany.mockResolvedValue([]);
+
+    await service.ingest(
+      {
+        eventName: 'score_editor_ai_request',
+        properties: {
+          editor_session_id: 'sess_1',
+          channel: 'assistant_patch',
+          model: 'gpt-5.2',
+          outcome: 'success',
+          duration_ms: 812
+        }
+      },
+      { userId: 'u1', roles: ['user'] },
+      { sourceApp: 'frontend' },
+      { trustedIngest: false }
+    );
+
+    const inserted = insertMany.mock.calls[0][0][0];
+    expect(inserted.eventName).toBe('score_editor_ai_request');
+    expect(inserted.properties).toMatchObject({
+      editor_session_id: 'sess_1',
+      channel: 'assistant_patch',
+      model: 'gpt-5.2',
+      outcome: 'success',
+      duration_ms: 812
+    });
+  });
+
   it('trackFirstScoreLoadedIfNeeded returns false on duplicate-key and true on first write', async () => {
     create.mockResolvedValueOnce({});
     create.mockRejectedValueOnce({ code: 11000 });

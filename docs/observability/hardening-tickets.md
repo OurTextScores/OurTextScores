@@ -39,13 +39,22 @@ Last updated: 2026-02-27
     - `score_editor_session_started`
     - `score_editor_iframe_loaded`
     - `score_editor_session_ended`
+  - OTS editor runtime now emits in-editor action telemetry through the same ingest path:
+    - `score_editor_runtime_loaded`
+    - `score_editor_document_loaded`
+    - `score_editor_document_load_failed`
+    - `score_editor_ai_request`
+    - `score_editor_patch_applied`
+    - `score_editor_session_summary`
   - Files:
     - `frontend/app/score-editor/page.tsx`
     - `frontend/app/lib/analytics.ts`
     - `frontend/app/api/analytics/events/route.ts`
+    - `OTS_Web/components/ScoreEditor.tsx`
+    - `OTS_Web/lib/editor-analytics.ts`
 - Remaining:
-  - Add in-editor action telemetry from `OTS_Web` itself (AI apply success/failure, abandonment points).
-  - Correlate those events with revision outcomes and score_editor_api traces.
+  - Correlate in-editor telemetry with persisted revision outcomes in analytics dashboards.
+  - Add alert thresholds on AI failure spikes and load-failure spikes.
 
 ### OTS-H04 Session semantics
 - Status: `partial`

@@ -61,6 +61,22 @@ Events emitted server-side from existing API flows:
 - `catalog_search_performed`
   - on works search endpoint
 
+## Score editor runtime events
+
+Events emitted directly from `OTS_Web` (iframe runtime), forwarded through `frontend/app/api/analytics/events/route.ts`:
+
+- `score_editor_runtime_loaded`
+- `score_editor_document_loaded`
+- `score_editor_document_load_failed`
+- `score_editor_ai_request`
+- `score_editor_patch_applied`
+- `score_editor_session_summary`
+
+Notes:
+
+- Runtime events include `editor_session_id` for per-editor correlation.
+- When available, runtime events include `api_request_id` / `api_trace_id` copied from score-editor API response headers.
+
 ## Data model
 
 Mongo collection: `analytics_events`
