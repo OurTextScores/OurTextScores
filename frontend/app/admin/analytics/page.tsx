@@ -1,7 +1,4 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getApiAuthHeaders } from "../../lib/authToken";
-import { fetchBackendSession } from "../../lib/server-session";
 
 const DEFAULT_TIMEZONE = "America/New_York";
 
@@ -144,11 +141,6 @@ export default async function AdminAnalyticsPage({
 }: {
   searchParams?: { from?: string; to?: string };
 }) {
-  const session = await fetchBackendSession();
-  if (!session?.user?.roles?.includes("admin")) {
-    redirect("/");
-  }
-
   const now = new Date();
   const defaultFrom = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
   const fromDate = parseInputDate(searchParams?.from, defaultFrom);
@@ -174,32 +166,8 @@ export default async function AdminAnalyticsPage({
   const weuMax = Math.max(...(timeseries?.points ?? []).map((point) => point.weu), 1);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 px-4 py-8 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="mb-2 flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-          >
-            ← Back to Home
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/admin/flagged-comments" className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100">
-              Flagged Comments
-            </Link>
-            <Link href="/admin/flagged-sources" className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100">
-              Flagged Sources
-            </Link>
-            <Link href="/admin/dmca-cases" className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100">
-              DMCA Cases
-            </Link>
-            <Link href="/admin/beta-requests" className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100">
-              Beta Requests
-            </Link>
-          </div>
-        </div>
-
-        <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
+    <>
+      <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
           <h1 className="mb-2 text-3xl font-bold text-slate-900 dark:text-slate-100">Analytics Dashboard</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">Growth, engagement, retention, and catalog metrics (admins excluded by default).</p>
 
@@ -229,9 +197,9 @@ export default async function AdminAnalyticsPage({
               Apply Range
             </button>
           </form>
-        </section>
+      </section>
 
-        <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
+      <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
           <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-slate-100">Overview</h2>
           {!overview ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Unable to load overview metrics.</p>
@@ -297,9 +265,9 @@ export default async function AdminAnalyticsPage({
               })}
             </div>
           )}
-        </section>
+      </section>
 
-        <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
             <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-slate-100">Funnel</h2>
             {!funnel ? (
@@ -338,9 +306,9 @@ export default async function AdminAnalyticsPage({
               </div>
             )}
           </div>
-        </section>
+      </section>
 
-        <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
+      <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
           <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-slate-100">Retention Cohorts</h2>
           {!retention ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Unable to load retention metrics.</p>
@@ -372,8 +340,7 @@ export default async function AdminAnalyticsPage({
               </table>
             </div>
           )}
-        </section>
-      </div>
-    </div>
+      </section>
+    </>
   );
 }

@@ -1,7 +1,4 @@
-import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getApiAuthHeaders } from "../../lib/authToken";
-import { fetchBackendSession } from "../../lib/server-session";
 import FlaggedCommentsClient from "./flagged-comments-client";
 
 function getBackendApiBase(): string {
@@ -53,75 +50,27 @@ async function fetchFlaggedComments(): Promise<FlaggedComment[]> {
 }
 
 export default async function FlaggedCommentsPage() {
-  const session = await fetchBackendSession();
-
-  // Check if user is admin
-  if (!session?.user?.roles?.includes("admin")) {
-    redirect("/");
-  }
-
   const comments = await fetchFlaggedComments();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/"
-              className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-            >
-              ← Back to Home
-            </Link>
-            <div className="flex items-center gap-4">
-              <Link
-                href="/admin/flagged-sources"
-                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-              >
-                Flagged Sources
-              </Link>
-              <Link
-                href="/admin/dmca-cases"
-                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-              >
-                DMCA Cases
-              </Link>
-              <Link
-                href="/admin/beta-requests"
-                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-              >
-                Beta Requests
-              </Link>
-              <Link
-                href="/admin/analytics"
-                className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-              >
-                Analytics
-              </Link>
-            </div>
+    <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
+      <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-6">
+        Flagged Comments Dashboard
+      </h1>
+
+      {comments.length === 0 ? (
+        <div className="text-center py-12 text-slate-500 dark:text-slate-400">
+          No flagged comments at this time.
+        </div>
+      ) : (
+        <>
+          <div className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+            Total flagged comments: <strong>{comments.length}</strong>
           </div>
-        </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-6">
-            Flagged Comments Dashboard
-          </h1>
-
-          {comments.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-              No flagged comments at this time.
-            </div>
-          ) : (
-            <>
-              <div className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-                Total flagged comments: <strong>{comments.length}</strong>
-              </div>
-
-              <FlaggedCommentsClient initialComments={comments} />
-            </>
-          )}
-        </div>
-      </div>
+          <FlaggedCommentsClient initialComments={comments} />
+        </>
+      )}
     </div>
   );
 }

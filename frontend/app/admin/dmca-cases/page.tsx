@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getApiAuthHeaders } from "../../lib/authToken";
-import { fetchBackendSession } from "../../lib/server-session";
 
 function getBackendApiBase(): string {
   const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
@@ -79,61 +77,20 @@ function formatRatio(value: number | null): string {
 }
 
 export default async function DmcaCasesPage() {
-  const session = await fetchBackendSession();
-  if (!session?.user?.roles?.includes("admin")) {
-    redirect("/");
-  }
-
   const [cases, metrics] = await Promise.all([fetchDmcaCases(), fetchDmcaMetrics()]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 py-8 px-4">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="mb-2 flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-          >
-            ← Back to Home
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/admin/flagged-comments"
-              className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-            >
-              Flagged Comments
-            </Link>
-            <Link
-              href="/admin/flagged-sources"
-              className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-            >
-              Flagged Sources
-            </Link>
-            <Link
-              href="/admin/beta-requests"
-              className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-            >
-              Beta Requests
-            </Link>
-            <Link
-              href="/admin/analytics"
-              className="text-sm text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 dark:hover:text-cyan-100"
-            >
-              Analytics
-            </Link>
-          </div>
-        </div>
-
-        <section className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
+    <>
+      <section className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-2">
             DMCA Cases Dashboard
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Case workflow metrics and recent notices.
           </p>
-        </section>
+      </section>
 
-        <section className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
+      <section className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4">
             90-Day Metrics
           </h2>
@@ -194,9 +151,9 @@ export default async function DmcaCasesPage() {
               Unable to load metrics.
             </div>
           )}
-        </section>
+      </section>
 
-        <section className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
+      <section className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-4">
             Recent Cases
           </h2>
@@ -259,8 +216,7 @@ export default async function DmcaCasesPage() {
               </table>
             </div>
           )}
-        </section>
-      </div>
-    </div>
+      </section>
+    </>
   );
 }
