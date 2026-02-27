@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const SCORE_EDITOR_API_ORIGIN = process.env.SCORE_EDITOR_API_ORIGIN?.trim();
+
 const nextConfig = {
   reactStrictMode: true,
   // Long-running upload+conversion requests can exceed Next's default proxy timeout (30s).
@@ -7,7 +9,20 @@ const nextConfig = {
     proxyTimeout: 15 * 60 * 1000, // 15 minutes
   },
   async rewrites() {
-    return [
+    const rewrites = [
+      // Optional local proxy to OTS editor API for embedded score-editor testing.
+      ...(SCORE_EDITOR_API_ORIGIN
+        ? [
+            {
+              source: '/api/score-editor/music/:path*',
+              destination: `${SCORE_EDITOR_API_ORIGIN}/api/music/:path*`,
+            },
+            {
+              source: '/api/score-editor/llm/:path*',
+              destination: `${SCORE_EDITOR_API_ORIGIN}/api/llm/:path*`,
+            },
+          ]
+        : []),
       // MinIO file access
       {
         source: '/files/:bucket/:path*',
@@ -20,6 +35,7 @@ const nextConfig = {
         destination: 'http://backend:4000/api/:path*',
       },
     ];
+    return rewrites;
   },
 };
 
