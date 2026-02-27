@@ -135,17 +135,18 @@ Last updated: 2026-02-27
   - Redis-backed distributed ingest rate limiting.
 
 ### OTS-H07 Type/test hygiene
-- Status: `partial`
+- Status: `done`
 - Why:
   - Frontend app and test type-check configs are now split:
     - `frontend/tsconfig.json` excludes test files for strict app checks.
     - `frontend/tsconfig.test.json` validates test files with dedicated settings.
+  - Test type-check strictness is now enforced:
+    - `frontend/tsconfig.test.json` sets `strict: true` and `noImplicitAny: true`.
+  - CI gate now runs both frontend type checks:
+    - `.github/workflows/frontend-typecheck.yml`
   - New scripts:
     - `npm run typecheck`
     - `npm run typecheck:test`
-- Remaining:
-  - Tighten `tsconfig.test.json` strictness and gradually fix test typing debt.
-  - Add CI gates for both scripts.
 
 ### OTS-H08 User model index hygiene
 - Status: `done`
@@ -153,11 +154,15 @@ Last updated: 2026-02-27
   - Duplicate email index declaration removed from `backend/src/users/schemas/user.schema.ts`.
 
 ### OTS-H09 Works module boundaries
-- Status: `todo`
+- Status: `partial`
 - Why:
-  - `works.controller.ts` still spans uploads/moderation/downloads/analytics hooks.
+  - Download + diff endpoints have been extracted into a dedicated controller:
+    - `backend/src/works/works-downloads.controller.ts`
+    - `backend/src/works/works.module.ts` (separate controller registration)
+  - `works.controller.ts` now focuses on work/source CRUD, uploads, moderation, and engagement flows.
 - Remaining:
-  - Split into focused modules/services (downloads, moderation, revisions, analytics emitters).
+  - Continue extracting non-download concerns (moderation, revisions, analytics emitters) into focused controllers/services.
+  - Add dedicated unit coverage for `works-downloads.controller.ts`.
 
 ### OTS-H10 Admin navigation consistency
 - Status: `done`
@@ -173,5 +178,4 @@ Last updated: 2026-02-27
 4. `OTS-H14` Telemetry contract E2E coverage
 5. `OTS-H02` Analytics aggregation scalability
 6. `OTS-H06` Cross-service tracing/APM completion
-7. `OTS-H09` Works module boundaries
-8. `OTS-H07` Type/test hygiene completion
+7. `OTS-H09` Works module boundaries completion

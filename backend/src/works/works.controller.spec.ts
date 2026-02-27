@@ -1,5 +1,6 @@
 jest.mock('uuid', () => ({ v4: () => '00000000-0000-0000-0000-000000000000' }));
 import { WorksController } from './works.controller';
+import { WorksDownloadsController } from './works-downloads.controller';
 import { StorageService } from '../storage/storage.service';
 import { WorksService } from './works.service';
 import { FossilService } from '../fossil/fossil.service';
@@ -57,9 +58,13 @@ describe('WorksController (unit)', () => {
   const controller = new WorksController(
     worksService,
     uploadSourceService,
+    progressService,
+    analyticsService
+  );
+  const downloadsController = new WorksDownloadsController(
+    worksService,
     storageService,
     fossilService,
-    progressService,
     analyticsService
   );
 
@@ -171,7 +176,7 @@ describe('WorksController (unit)', () => {
     analyticsService.toActor.mockReturnValue({});
     analyticsService.getRequestContext.mockReturnValue({ sourceApp: 'backend' });
     const { res, headers } = createMockResponse();
-    await controller.downloadNormalized(
+    await downloadsController.downloadNormalized(
       '1',
       's',
       undefined,
@@ -189,7 +194,7 @@ describe('WorksController (unit)', () => {
   it('download throws not found if derivative is not available', async () => {
     worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
     const { res } = createMockResponse();
-    await expect(controller.downloadNormalized('1', 's', undefined, res as any, undefined)).rejects.toThrow('Normalized MXL not found for this source');
+    await expect(downloadsController.downloadNormalized('1', 's', undefined, res as any, undefined)).rejects.toThrow('Normalized MXL not found for this source');
   });
 
   describe('uploadSource', () => {
@@ -485,7 +490,7 @@ describe('WorksController (unit)', () => {
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<score/>'));
       const { res, headers } = createMockResponse();
 
-      await controller.downloadCanonical('1', 's', undefined, res as any, undefined);
+      await downloadsController.downloadCanonical('1', 's', undefined, res as any, undefined);
 
       expect(headers['Content-Type']).toContain('application/xml');
       expect(headers['Content-Disposition']).toContain('score.xml');
@@ -497,7 +502,7 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(controller.downloadCanonical('1', 's', undefined, res as any, undefined))
+      await expect(downloadsController.downloadCanonical('1', 's', undefined, res as any, undefined))
         .rejects.toThrow('Canonical XML not found for this source');
     });
   });
@@ -518,7 +523,7 @@ describe('WorksController (unit)', () => {
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('pdf'));
       const { res, headers } = createMockResponse();
 
-      await controller.downloadPdf('1', 's', undefined, res as any, undefined);
+      await downloadsController.downloadPdf('1', 's', undefined, res as any, undefined);
 
       expect(headers['Content-Type']).toContain('application/pdf');
       expect(headers['Content-Disposition']).toContain('inline');
@@ -531,7 +536,7 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(controller.downloadPdf('1', 's', undefined, res as any, undefined))
+      await expect(downloadsController.downloadPdf('1', 's', undefined, res as any, undefined))
         .rejects.toThrow('PDF not found for this source');
     });
   });
@@ -552,7 +557,7 @@ describe('WorksController (unit)', () => {
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-data'));
       const { res, headers } = createMockResponse();
 
-      await controller.downloadMscz('1', 's', undefined, res as any, undefined);
+      await downloadsController.downloadMscz('1', 's', undefined, res as any, undefined);
 
       expect(headers['Content-Type']).toContain('application/vnd.musescore.mscz');
       expect(headers['Content-Disposition']).toContain('attachment');
@@ -565,7 +570,7 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(controller.downloadMscz('1', 's', undefined, res as any, undefined))
+      await expect(downloadsController.downloadMscz('1', 's', undefined, res as any, undefined))
         .rejects.toThrow('MuseScore file not found for this source');
     });
 
@@ -584,7 +589,7 @@ describe('WorksController (unit)', () => {
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-rev-data'));
       const { res, headers } = createMockResponse();
 
-      await controller.downloadMscz('1', 's', 'rev-123', res as any, undefined);
+      await downloadsController.downloadMscz('1', 's', 'rev-123', res as any, undefined);
 
       expect(storageService.getObjectBuffer).toHaveBeenCalledWith('b', 'k-rev');
       expect(headers['Content-Disposition']).toContain('attachment');
@@ -609,7 +614,7 @@ describe('WorksController (unit)', () => {
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('**kern\n*-\n'));
       const { res, headers } = createMockResponse();
 
-      await controller.downloadKern('1', 's', undefined, res as any, undefined);
+      await downloadsController.downloadKern('1', 's', undefined, res as any, undefined);
 
       expect(headers['Content-Type']).toContain('application/x-kern');
       expect(headers['Content-Disposition']).toContain('attachment');
@@ -622,7 +627,7 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(controller.downloadKern('1', 's', undefined, res as any, undefined))
+      await expect(downloadsController.downloadKern('1', 's', undefined, res as any, undefined))
         .rejects.toThrow('Kern file not found for this source');
     });
   });
@@ -643,7 +648,7 @@ describe('WorksController (unit)', () => {
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('{}'));
       const { res, headers } = createMockResponse();
 
-      await controller.downloadManifest('1', 's', undefined, res as any, undefined);
+      await downloadsController.downloadManifest('1', 's', undefined, res as any, undefined);
 
       expect(headers['Content-Type']).toContain('application/json');
       expect(headers['Content-Disposition']).toContain('manifest.json');
@@ -655,7 +660,7 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(controller.downloadManifest('1', 's', undefined, res as any, undefined))
+      await expect(downloadsController.downloadManifest('1', 's', undefined, res as any, undefined))
         .rejects.toThrow('Manifest not found for this source');
     });
   });

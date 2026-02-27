@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WorksController } from './works.controller';
+import { WorksDownloadsController } from './works-downloads.controller';
 import { WorksService } from './works.service';
 import { Work, WorkSchema } from './schemas/work.schema';
 import { Source, SourceSchema } from './schemas/source.schema';
@@ -46,7 +47,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
       { name: Project.name, schema: ProjectSchema }
     ])
   ],
-  controllers: [WorksController],
+  controllers: [WorksController, WorksDownloadsController],
   providers: [WorksService, UploadSourceService, DerivativePipelineService],
   exports: [WorksService, UploadSourceService]
 })
