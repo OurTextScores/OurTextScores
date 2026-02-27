@@ -139,9 +139,16 @@ Current status (2026-02):
   - auto-instrumentation via Node SDK
   - OTLP trace export support (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`)
   - response header correlation (`x-trace-id`) when trace context exists
+- Implemented in frontend proxy/runtime:
+  - API middleware (`frontend/middleware.ts`) now ensures `x-request-id`, `traceparent`, and `x-trace-id` on inbound `/api/*` requests.
+  - All `/api/proxy/*` route handlers forward trace headers to backend upstream calls.
+  - `/api/score-editor/*` rewritten calls inherit trace headers from middleware, so score-editor API receives the same request/trace context.
+- Implemented in score-editor API runtime (`OTS_Web`):
+  - `music/*` and `llm/*` routes now normalize and return `x-request-id`, `traceparent`, and `x-trace-id` response headers.
+  - Outbound calls to OpenAI, Anthropic, Gemini, Hugging Face Inference API, and Hugging Face Space APIs now forward trace headers.
+  - NotaGen Space Gradio client calls now include trace headers through `Client.connect(..., { headers })`.
 - Pending:
   - collector/grafana local profile
-  - frontend + score editor API trace propagation completion
   - alert definitions
 
 ### Phase 2: Frontend + OTS_Web server traces (2-4 days)

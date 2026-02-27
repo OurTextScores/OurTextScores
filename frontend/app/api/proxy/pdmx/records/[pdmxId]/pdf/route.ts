@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
 import { getApiAuthHeaders } from "../../../../../../lib/authToken";
-
-function getBackendApiBase(): string {
-  const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
-  const trimmed = raw.replace(/\/+$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
-}
+import { getBackendApiBase, proxyFetch } from "../../../../_lib/upstream";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: { pdmxId: string } }
 ) {
   const API = getBackendApiBase();
@@ -18,7 +13,7 @@ export async function GET(
     const headers = new Headers();
     if (auth.Authorization) headers.set("authorization", auth.Authorization);
 
-    const upstream = await fetch(
+    const upstream = await proxyFetch(request, 
       `${API}/pdmx/records/${encodeURIComponent(pdmxId)}/pdf`,
       {
         method: "GET",

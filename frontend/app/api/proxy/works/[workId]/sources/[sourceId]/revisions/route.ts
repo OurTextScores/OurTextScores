@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiAuthHeaders } from "../../../../../../../lib/authToken";
-
-function getBackendApiBase(): string {
-  const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
-  const trimmed = raw.replace(/\/+$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
-}
+import { getBackendApiBase, proxyFetch } from "../../../../../_lib/upstream";
 
 export async function POST(request: Request, { params }: { params: { workId: string; sourceId: string } }) {
   const API = getBackendApiBase();
@@ -28,7 +23,7 @@ export async function POST(request: Request, { params }: { params: { workId: str
       // Required by Node fetch when passing a ReadableStream body in Node runtimes
       duplex: 'half'
     };
-    const upstream = await fetch(`${API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/revisions`, init as any);
+    const upstream = await proxyFetch(request, `${API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/revisions`, init as any);
     const buf = await upstream.arrayBuffer();
     return new NextResponse(buf, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json" } });
   } catch (err: any) {

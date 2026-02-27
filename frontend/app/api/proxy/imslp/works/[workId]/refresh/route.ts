@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiAuthHeaders } from "../../../../../../lib/authToken";
-
-function getBackendApiBase(): string {
-  const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
-  const trimmed = raw.replace(/\/+$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
-}
+import { getBackendApiBase, proxyFetch } from "../../../../_lib/upstream";
 
 export async function POST(
   request: Request,
@@ -16,7 +11,7 @@ export async function POST(
 
   try {
     const auth = await getApiAuthHeaders();
-    const upstream = await fetch(
+    const upstream = await proxyFetch(request, 
       `${API}/imslp/works/${encodeURIComponent(workId)}/refresh`,
       {
         method: "POST",

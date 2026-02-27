@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 import { getApiAuthHeaders } from "../../../../lib/authToken";
+import { getBackendApiBase, proxyFetch } from "../../_lib/upstream";
 
-function getBackendApiBase(): string {
-  const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
-  const trimmed = raw.replace(/\/+$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
-}
-
-export async function GET() {
+export async function GET(request: Request) {
   const API = getBackendApiBase();
 
   try {
     const auth = await getApiAuthHeaders();
 
-    const res = await fetch(`${API}/users/me`, {
+    const res = await proxyFetch(request, `${API}/users/me`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

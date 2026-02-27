@@ -136,3 +136,14 @@ curl -sS "http://localhost:4000/api/analytics/metrics/catalog" \
     - `OTEL_EXPORTER_OTLP_ENDPOINT` (collector base URL, e.g. `http://otel-collector:4318`)
     - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (full traces endpoint, takes precedence)
 - Backend now emits `x-trace-id` response header when trace context is present.
+
+## Cross-service trace propagation (frontend/runtime)
+
+- Frontend middleware (`frontend/middleware.ts`) stamps/propagates:
+  - `x-request-id`
+  - `traceparent`
+  - `x-trace-id`
+  for all `/api/*` requests.
+- Frontend proxy routes (`frontend/app/api/proxy/**/route.ts`) forward trace headers to backend upstream fetches.
+- Score editor rewritten API traffic (`/api/score-editor/*`) now carries the same headers through Next rewrite proxying, enabling frontend -> score_editor_api correlation.
+- Score editor API runtime (`OTS_Web`) now propagates and returns trace headers on `music/*` and `llm/*` routes, and forwards the same headers to upstream provider calls (OpenAI/Anthropic/Gemini/Hugging Face/Space).

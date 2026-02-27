@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiAuthHeaders } from "../../../../lib/authToken";
-
-function getBackendApiBase(): string {
-  const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
-  const trimmed = raw.replace(/\/+$/, "");
-  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
-}
+import { getBackendApiBase, proxyFetch } from "../../_lib/upstream";
 
 export async function POST(request: Request) {
   const API = getBackendApiBase();
@@ -13,7 +8,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getApiAuthHeaders();
 
-    const res = await fetch(
+    const res = await proxyFetch(request, 
       `${API}/notifications/mark-all-read`,
       {
         method: "POST",
