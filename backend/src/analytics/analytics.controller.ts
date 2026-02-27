@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
+  HttpStatus,
   Post,
   Query,
   Req,
@@ -20,6 +22,9 @@ import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 @ApiTags('analytics')
 @Controller('analytics')
 export class AnalyticsController {
+  private readonly ingestRateWindowMs = 60_000;
+  private readonly ingestRateBuckets = new Map<string, { windowStartMs: number; events: number }>();
+
   constructor(private readonly analytics: AnalyticsService) {}
 
   @Post('events')
@@ -35,6 +40,13 @@ export class AnalyticsController {
     @CurrentUser() user: RequestUser | undefined,
     @Req() req: Request
   ) {
+    const eventCount = this.estimateEventCount(body);
+    const rateKey = this.buildRateLimitKey(req, user);
+    const maxEvents = user?.userId ? 600 : 120;
+    if (!this.consumeIngestBudget(rateKey, eventCount, maxEvents)) {
+      throw new HttpException('Analytics ingest rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
     const actor = this.analytics.toActor(user);
     const requestContext = this.analytics.getRequestContext(req, {
       sourceApp: 'frontend',
@@ -44,6 +56,66 @@ export class AnalyticsController {
       trustedIngest: false
     });
     return { ok: true, accepted: result.accepted };
+  }
+
+  private estimateEventCount(body: unknown): number {
+    const payload = body as Record<string, unknown> | null | undefined;
+    if (Array.isArray(payload)) {
+      return Math.max(1, payload.length);
+    }
+    const maybeEvents = payload?.events;
+    if (Array.isArray(maybeEvents)) {
+      return Math.max(1, maybeEvents.length);
+    }
+    return 1;
+  }
+
+  private buildRateLimitKey(req: Request, user?: RequestUser): string {
+    if (user?.userId) {
+      return `user:${user.userId}`;
+    }
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip =
+      typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : Array.isArray(forwarded)
+          ? forwarded[0]
+          : req.ip;
+    return `ip:${ip || 'unknown'}`;
+  }
+
+  private consumeIngestBudget(rateKey: string, events: number, maxEventsPerWindow: number): boolean {
+    const now = Date.now();
+    if (events > maxEventsPerWindow) {
+      return false;
+    }
+    const current = this.ingestRateBuckets.get(rateKey);
+    if (!current || now - current.windowStartMs >= this.ingestRateWindowMs) {
+      this.ingestRateBuckets.set(rateKey, {
+        windowStartMs: now,
+        events
+      });
+      this.pruneExpiredRateBuckets(now);
+      return true;
+    }
+
+    const nextEvents = current.events + events;
+    if (nextEvents > maxEventsPerWindow) {
+      return false;
+    }
+
+    current.events = nextEvents;
+    this.ingestRateBuckets.set(rateKey, current);
+    this.pruneExpiredRateBuckets(now);
+    return true;
+  }
+
+  private pruneExpiredRateBuckets(nowMs: number): void {
+    for (const [key, bucket] of this.ingestRateBuckets.entries()) {
+      if (nowMs - bucket.windowStartMs > this.ingestRateWindowMs * 2) {
+        this.ingestRateBuckets.delete(key);
+      }
+    }
   }
 
   @Get('metrics/overview')

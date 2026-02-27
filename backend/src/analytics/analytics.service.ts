@@ -59,6 +59,15 @@ const TIMESERIES_EVENT_NAMES: AnalyticsEventName[] = [
   'score_downloaded'
 ];
 
+const UNTRUSTED_INGEST_ALLOWED_EVENTS = new Set<AnalyticsEventName>([
+  'first_score_loaded',
+  'upload_success',
+  'editor_revision_saved',
+  'catalog_search_performed',
+  'score_viewed',
+  'score_downloaded'
+]);
+
 interface PersistedAnalyticsEventData {
   eventName: AnalyticsEventName;
   eventTime: Date;
@@ -1118,7 +1127,13 @@ export class AnalyticsService {
     trustedIngest?: boolean;
   }): PersistedAnalyticsEventData {
     const eventName = this.coerceEventName(input.eventName);
-    const eventTime = this.coerceEventTime(input.eventTime, input.trustedIngest !== false);
+    const isTrustedIngest = input.trustedIngest !== false;
+    if (!isTrustedIngest && !UNTRUSTED_INGEST_ALLOWED_EVENTS.has(eventName)) {
+      throw new BadRequestException(
+        `eventName "${eventName}" is not allowed for public analytics ingest`
+      );
+    }
+    const eventTime = this.coerceEventTime(input.eventTime, isTrustedIngest);
     const actor = input.actor ?? {};
     const userRole = this.resolveUserRole(actor);
     const sourceApp =

@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 
@@ -30,6 +30,23 @@ describe('AnalyticsController', () => {
 
     expect(analyticsService.ingest).toHaveBeenCalled();
     expect(result).toEqual({ ok: true, accepted: 1 });
+  });
+
+  it('ingestEvents applies anonymous rate limiting by event count', async () => {
+    analyticsService.toActor.mockReturnValue({});
+    analyticsService.getRequestContext.mockReturnValue({ sourceApp: 'frontend', route: '/api/analytics/events' });
+
+    const req = { originalUrl: '/api/analytics/events', headers: { 'x-forwarded-for': '203.0.113.9' } } as any;
+    const events = Array.from({ length: 121 }, () => ({ eventName: 'score_viewed' }));
+
+    try {
+      await controller.ingestEvents({ events }, undefined, req);
+      fail('Expected ingestEvents to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpException);
+      expect((error as HttpException).getStatus()).toBe(429);
+    }
+    expect(analyticsService.ingest).not.toHaveBeenCalled();
   });
 
   it('getOverview rejects invalid from date', async () => {

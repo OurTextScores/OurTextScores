@@ -113,6 +113,17 @@ describe('AnalyticsService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('ingest rejects disallowed event names for untrusted payloads', async () => {
+    await expect(
+      service.ingest(
+        { eventName: 'revision_rated', properties: { revision_id: 'r1', rating_value: 5 } },
+        { userId: 'u1', roles: ['user'] },
+        { sourceApp: 'frontend' },
+        { trustedIngest: false }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('trackFirstScoreLoadedIfNeeded returns false on duplicate-key and true on first write', async () => {
     create.mockResolvedValueOnce({});
     create.mockRejectedValueOnce({ code: 11000 });

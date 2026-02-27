@@ -13,12 +13,12 @@ Last updated: 2026-02-27
 ### OTS-H01 Analytics ingest integrity
 - Status: `partial`
 - Why:
-  - `POST /api/analytics/events` is still auth-optional (`backend/src/analytics/analytics.controller.ts`).
-  - Event name/source/property validation is already in place (`backend/src/analytics/analytics.service.ts`).
+  - `POST /api/analytics/events` remains auth-optional by design.
+  - Public ingest now has event-level allowlist and request-rate limiting (`backend/src/analytics/analytics.service.ts`, `backend/src/analytics/analytics.controller.ts`).
+  - Event name/source/property validation is enforced server-side (`backend/src/analytics/analytics.service.ts`).
 - Remaining:
-  - Add source-level allowlist policy (trusted vs untrusted events).
-  - Add per-IP/per-user rate limiting.
   - Add signed ingest or server-only KPI ingestion path.
+  - Externalize rate-limits (Redis/shared store) for multi-instance deploys.
 
 ### OTS-H02 Analytics aggregation scalability
 - Status: `todo`
