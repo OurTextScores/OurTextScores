@@ -158,11 +158,15 @@ Last updated: 2026-02-27
 - Why:
   - Download + diff endpoints have been extracted into a dedicated controller:
     - `backend/src/works/works-downloads.controller.ts`
+  - Engagement/revision feedback endpoints have been extracted:
+    - `backend/src/works/works-engagement.controller.ts`
+  - Moderation/admin endpoints have been extracted:
+    - `backend/src/works/works-moderation.controller.ts`
     - `backend/src/works/works.module.ts` (separate controller registration)
-  - `works.controller.ts` now focuses on work/source CRUD, uploads, moderation, and engagement flows.
+  - `works.controller.ts` now focuses on work/source CRUD, listing/detail, uploads, and progress stream.
 - Remaining:
-  - Continue extracting non-download concerns (moderation, revisions, analytics emitters) into focused controllers/services.
-  - Add dedicated unit coverage for `works-downloads.controller.ts`.
+  - Add dedicated unit coverage for `works-downloads.controller.ts`, `works-engagement.controller.ts`, and `works-moderation.controller.ts`.
+  - Optionally split large `WorksService` by domain once controller boundaries stabilize.
 
 ### OTS-H10 Admin navigation consistency
 - Status: `done`

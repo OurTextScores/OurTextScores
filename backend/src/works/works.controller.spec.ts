@@ -1,6 +1,7 @@
 jest.mock('uuid', () => ({ v4: () => '00000000-0000-0000-0000-000000000000' }));
 import { WorksController } from './works.controller';
 import { WorksDownloadsController } from './works-downloads.controller';
+import { WorksEngagementController } from './works-engagement.controller';
 import { StorageService } from '../storage/storage.service';
 import { WorksService } from './works.service';
 import { FossilService } from '../fossil/fossil.service';
@@ -65,6 +66,10 @@ describe('WorksController (unit)', () => {
     worksService,
     storageService,
     fossilService,
+    analyticsService
+  );
+  const engagementController = new WorksEngagementController(
+    worksService,
     analyticsService
   );
 
@@ -253,7 +258,7 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1', roles: ['admin'] };
       worksService.approveRevision.mockResolvedValue({ status: 'approved' });
 
-      const result = await controller.approveRevision(workId, sourceId, revisionId, user as any);
+      const result = await engagementController.approveRevision(workId, sourceId, revisionId, user as any);
 
       expect(worksService.approveRevision).toHaveBeenCalledWith(workId, sourceId, revisionId, { userId: user.userId, roles: user.roles });
       expect(result).toEqual({ status: 'approved' });
@@ -268,7 +273,7 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1', roles: ['admin'] };
       worksService.rejectRevision.mockResolvedValue({ status: 'rejected' });
 
-      const result = await controller.rejectRevision(workId, sourceId, revisionId, user as any);
+      const result = await engagementController.rejectRevision(workId, sourceId, revisionId, user as any);
 
       expect(worksService.rejectRevision).toHaveBeenCalledWith(workId, sourceId, revisionId, { userId: user.userId, roles: user.roles });
       expect(result).toEqual({ status: 'rejected' });
