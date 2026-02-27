@@ -75,11 +75,17 @@ Last updated: 2026-02-27
   - Confirm trace continuity across all containerized deployments.
 
 ### OTS-H07 Type/test hygiene
-- Status: `todo`
+- Status: `partial`
 - Why:
-  - Frontend test typing debt remains (separate from app build pass).
+  - Frontend app and test type-check configs are now split:
+    - `frontend/tsconfig.json` excludes test files for strict app checks.
+    - `frontend/tsconfig.test.json` validates test files with dedicated settings.
+  - New scripts:
+    - `npm run typecheck`
+    - `npm run typecheck:test`
 - Remaining:
-  - Add test tsconfig split and enforce in CI, or fix test type errors directly.
+  - Tighten `tsconfig.test.json` strictness and gradually fix test typing debt.
+  - Add CI gates for both scripts.
 
 ### OTS-H08 User model index hygiene
 - Status: `done`

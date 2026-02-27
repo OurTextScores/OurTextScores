@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "types": ["jest", "node", "@testing-library/jest-dom"]
+  },
+  "include": [
+    "next-env.d.ts",
+    "jest.setup.js",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**/*.ts",
+    "**/__tests__/**/*.tsx"
+  ]
+}
