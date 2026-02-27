@@ -76,6 +76,19 @@ export function middleware(request: NextRequest) {
   if (traceId) {
     response.headers.set("x-trace-id", traceId);
   }
+
+  const traceSmokeRequested = requestHeaders.get("x-ots-trace-smoke") === "1";
+  if (traceSmokeRequested && request.nextUrl.pathname.startsWith("/api/score-editor/")) {
+    console.info(JSON.stringify({
+      event: "frontend.score_editor_proxy.trace",
+      route: request.nextUrl.pathname,
+      method: request.method,
+      requestId,
+      traceId: traceId || null,
+      sessionId,
+    }));
+  }
+
   response.cookies.set({
     name: SESSION_COOKIE_NAME,
     value: sessionId,

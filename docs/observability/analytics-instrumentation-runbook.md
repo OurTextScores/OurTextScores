@@ -169,3 +169,16 @@ curl -sS "http://localhost:4000/api/analytics/metrics/editor?timezone=America/Ne
 - Frontend proxy routes (`frontend/app/api/proxy/**/route.ts`) forward trace headers to backend upstream fetches.
 - Score editor rewritten API traffic (`/api/score-editor/*`) now carries the same headers through Next rewrite proxying, enabling frontend -> score_editor_api correlation.
 - Score editor API runtime (`OTS_Web`) now propagates and returns trace headers on `music/*` and `llm/*` routes, and forwards the same headers to upstream provider calls (OpenAI/Anthropic/Gemini/Hugging Face/Space).
+
+### Trace continuity smoke check (Docker Compose)
+
+Run from repository root after `docker compose up -d --build`:
+
+```bash
+npm run smoke:trace
+```
+
+What it validates:
+- frontend middleware sees and logs request/trace/session IDs for `/api/score-editor/*`
+- score-editor API logs the same request/trace/session IDs on `scoreops.session.open.summary`
+- response headers preserve the same `x-request-id` and `x-trace-id`

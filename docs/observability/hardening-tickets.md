@@ -82,12 +82,14 @@ Last updated: 2026-02-27
   - Define lookback windows and alert destinations.
 
 ### OTS-H13 Trace continuity smoke verification
-- Status: `todo`
+- Status: `done`
 - Why:
-  - Header propagation is implemented, but no automated proof exists for Docker Compose deployments.
-- Scope:
-  - Add a smoke script that exercises `OurTextScores -> OTS_Web -> score_editor_api`.
-  - Assert one shared trace identity (`traceparent` / `x-trace-id`) across service logs.
+  - Added `scripts/smoke-trace-continuity.cjs` and `npm run smoke:trace` to verify trace/request/session continuity across:
+    - `frontend` middleware ingress
+    - score-editor API route execution (`scoreops.session.open.summary`)
+  - Smoke run asserts:
+    - response `x-request-id` and `x-trace-id` match injected values
+    - matching structured log events exist in both `frontend` and `score_editor_api` docker service logs.
 
 ### OTS-H14 Telemetry contract E2E coverage
 - Status: `todo`
@@ -106,6 +108,7 @@ Last updated: 2026-02-27
   - Frontend middleware now injects/propagates `x-client-session-id` and `x-session-id` for `/api/*` traffic (`frontend/middleware.ts`).
   - Proxy forwarding now includes session headers (`frontend/app/api/proxy/_lib/upstream.ts`).
   - Backend analytics request context now falls back to `ots_session_id` cookie when headers are missing (`backend/src/analytics/analytics.service.ts`).
+  - Score-editor API trace context now normalizes and forwards `x-client-session-id` / `x-session-id`, and returns them on responses (`OTS_Web/lib/trace-http.ts`).
 - Remaining:
   - Propagate this session id into any non-proxy cross-service calls that bypass frontend `/api/*` middleware.
 
@@ -120,11 +123,12 @@ Last updated: 2026-02-27
 - Why:
   - Backend OTel bootstrap exists (`backend/src/observability/otel.ts`).
   - Frontend middleware + proxy header propagation is implemented.
-  - Score-editor runtime now propagates/returns trace headers and forwards to upstream providers.
+  - Score-editor runtime now propagates/returns trace + session headers and forwards them to upstream providers.
+  - Scoreops routes now emit request-summary logs with request/trace/session correlation IDs.
 - Remaining:
   - Collector/Grafana local profile and dashboards.
   - Service-level alerting and SLO wiring.
-  - Confirm trace continuity across all containerized deployments.
+  - Confirm trace continuity across backend-including paths in all containerized deployments.
 
 ### OTS-H15 Ingest signing / Redis rate-limit (de-scoped for now)
 - Status: `deferred`
@@ -178,8 +182,7 @@ Last updated: 2026-02-27
 
 1. `OTS-H11` Editor-to-outcome correlation
 2. `OTS-H12` Editor regression alerting
-3. `OTS-H13` Trace continuity smoke verification
-4. `OTS-H14` Telemetry contract E2E coverage
-5. `OTS-H02` Analytics aggregation scalability
-6. `OTS-H06` Cross-service tracing/APM completion
-7. `OTS-H09` Works module boundaries completion
+3. `OTS-H14` Telemetry contract E2E coverage
+4. `OTS-H02` Analytics aggregation scalability
+5. `OTS-H06` Cross-service tracing/APM completion
+6. `OTS-H09` Works module boundaries completion
