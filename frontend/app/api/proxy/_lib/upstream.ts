@@ -7,6 +7,8 @@ export function getBackendApiBase(): string {
 const TRACE_HEADER_NAMES = [
   "x-request-id",
   "x-trace-id",
+  "x-client-session-id",
+  "x-session-id",
   "traceparent",
   "tracestate",
   "baggage"

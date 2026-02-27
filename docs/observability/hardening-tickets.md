@@ -37,19 +37,20 @@ Last updated: 2026-02-27
   - Ingest into backend analytics with correlation ids.
 
 ### OTS-H04 Session semantics
-- Status: `todo`
+- Status: `partial`
 - Why:
-  - Session id can still be null in analytics flows (documented in runbook).
+  - Stable client session bootstrap now writes `ots_session_id` (`frontend/app/components/client-session-bootstrap.tsx`).
+  - Frontend middleware now injects/propagates `x-client-session-id` and `x-session-id` for `/api/*` traffic (`frontend/middleware.ts`).
+  - Proxy forwarding now includes session headers (`frontend/app/api/proxy/_lib/upstream.ts`).
+  - Backend analytics request context now falls back to `ots_session_id` cookie when headers are missing (`backend/src/analytics/analytics.service.ts`).
 - Remaining:
-  - Add frontend stable session-id generator.
-  - Propagate via `x-client-session-id` to backend and score-editor runtime.
+  - Propagate this session id into any non-proxy cross-service calls that bypass frontend `/api/*` middleware.
 
 ### OTS-H05 Download path performance
-- Status: `todo`
+- Status: `done`
 - Why:
-  - Download endpoints still call `getWorkDetail(...)` and then in-memory find (`backend/src/works/works.controller.ts`).
-- Remaining:
-  - Add targeted source/revision lookup queries for download routes.
+  - Download routes now resolve artifacts through targeted lookup path (`resolveDownloadAsset`) instead of full `getWorkDetail(...)` fan-out.
+  - Covered by unit tests in `backend/src/works/works.controller.spec.ts` and `backend/src/works/works.service.spec.ts`.
 
 ### OTS-H06 Cross-service tracing/APM
 - Status: `partial`
@@ -70,11 +71,9 @@ Last updated: 2026-02-27
   - Add test tsconfig split and enforce in CI, or fix test type errors directly.
 
 ### OTS-H08 User model index hygiene
-- Status: `todo`
+- Status: `done`
 - Why:
-  - Email index is still declared twice (`@Prop(... index: true)` and `UserSchema.index({ email: 1 }, { unique: true })`) in `backend/src/users/schemas/user.schema.ts`.
-- Remaining:
-  - Keep one canonical index declaration.
+  - Duplicate email index declaration removed from `backend/src/users/schemas/user.schema.ts`.
 
 ### OTS-H09 Works module boundaries
 - Status: `todo`
@@ -84,11 +83,10 @@ Last updated: 2026-02-27
   - Split into focused modules/services (downloads, moderation, revisions, analytics emitters).
 
 ### OTS-H10 Admin navigation consistency
-- Status: `todo`
+- Status: `done`
 - Why:
-  - Admin nav links are duplicated across pages under `frontend/app/admin/*`.
-- Remaining:
-  - Create shared admin layout/nav component.
+  - Shared admin shell now centralizes auth gate and nav links in `frontend/app/admin/layout.tsx`.
+  - Admin pages consume shared layout and no longer duplicate top navigation markup.
 
 ## Recommended implementation order
 

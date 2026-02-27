@@ -244,6 +244,33 @@ export class AnalyticsService {
       if (Array.isArray(value) && value[0]?.trim()) return value[0].trim();
       return undefined;
     };
+    const cookieHeader = header('cookie');
+    const cookie = (name: string): string | undefined => {
+      if (!cookieHeader) {
+        return undefined;
+      }
+      const encodedPrefix = `${encodeURIComponent(name)}=`;
+      for (const segment of cookieHeader.split(';')) {
+        const trimmed = segment.trim();
+        if (!trimmed) {
+          continue;
+        }
+        if (!trimmed.startsWith(encodedPrefix)) {
+          continue;
+        }
+        const rawValue = trimmed.slice(encodedPrefix.length);
+        if (!rawValue) {
+          return undefined;
+        }
+        try {
+          const decoded = decodeURIComponent(rawValue).trim();
+          return decoded || undefined;
+        } catch {
+          return rawValue.trim() || undefined;
+        }
+      }
+      return undefined;
+    };
 
     return {
       sourceApp: overrides?.sourceApp ?? 'backend',
@@ -256,7 +283,8 @@ export class AnalyticsService {
       sessionId:
         overrides?.sessionId ??
         header('x-session-id') ??
-        header('x-client-session-id'),
+        header('x-client-session-id') ??
+        cookie('ots_session_id'),
       route: overrides?.route ?? req?.originalUrl ?? req?.url
     };
   }

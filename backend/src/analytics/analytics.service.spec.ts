@@ -206,4 +206,34 @@ describe('AnalyticsService', () => {
     expect(result.steps[2].count).toBe(1);
     expect(result.steps[3].count).toBe(1);
   });
+
+  it('getRequestContext prefers explicit session headers', () => {
+    const request = {
+      headers: {
+        'x-client-session-id': 'session-header-123',
+        'x-request-id': 'req-1'
+      },
+      originalUrl: '/api/works/1'
+    } as any;
+
+    const context = service.getRequestContext(request, { sourceApp: 'frontend' });
+
+    expect(context.sessionId).toBe('session-header-123');
+    expect(context.requestId).toBe('req-1');
+    expect(context.route).toBe('/api/works/1');
+  });
+
+  it('getRequestContext falls back to ots_session_id cookie when session headers are missing', () => {
+    const request = {
+      headers: {
+        cookie: 'foo=bar; ots_session_id=session-cookie-abc; another=value'
+      },
+      url: '/api/analytics/events'
+    } as any;
+
+    const context = service.getRequestContext(request, { sourceApp: 'frontend' });
+
+    expect(context.sessionId).toBe('session-cookie-abc');
+    expect(context.route).toBe('/api/analytics/events');
+  });
 });

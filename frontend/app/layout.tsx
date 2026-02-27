@@ -33,6 +33,7 @@ const fontHeading = Playfair_Display({
   display: "swap",
 });
 import Header from "./components/header";
+import ClientSessionBootstrap from "./components/client-session-bootstrap";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
@@ -74,6 +75,7 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
+          <ClientSessionBootstrap />
           <Header />
           {children}
         </Providers>
