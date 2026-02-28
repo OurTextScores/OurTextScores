@@ -12,6 +12,7 @@
     "smoke:up": "docker compose build backend frontend && docker compose up -d && node smoke/utils/wait.cjs",
     "smoke:run": "npx playwright test -c smoke/playwright.config.cjs --project=chromium",
     "smoke:trace": "node scripts/smoke-trace-continuity.cjs",
+    "smoke:telemetry": "node scripts/smoke-editor-telemetry.cjs",
     "docker:clean": "docker compose down -v --remove-orphans",
     "smoke:status": "docker compose ps && docker stats --no-stream",
     "smoke": "npm run docker:clean && npm run smoke:up && npm run smoke:install && npm run smoke:run && npm run docker:clean",

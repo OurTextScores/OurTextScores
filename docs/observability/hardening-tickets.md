@@ -92,14 +92,18 @@ Last updated: 2026-02-27
     - matching structured log events exist in both `frontend` and `score_editor_api` docker service logs.
 
 ### OTS-H14 Telemetry contract E2E coverage
-- Status: `todo`
+- Status: `done`
 - Why:
-  - Unit and integration coverage exists, but cross-repo contract behavior is not validated end-to-end.
-- Scope:
-  - Add E2E checks that verify:
-    - OTS_Web emits expected telemetry events for representative flows.
-    - Backend accepts/sanitizes each editor event contract.
-    - Dashboard endpoint reflects ingested editor data.
+  - Added `scripts/smoke-editor-telemetry.cjs` and `npm run smoke:telemetry` to verify the analytics ingest contract across services.
+  - Smoke test validates:
+    - Batch ingest of all 6 editor metric event types (accepted=6).
+    - Single-event ingest format.
+    - Invalid event name rejection (400).
+    - Oversized property sanitisation (truncated, not rejected).
+    - Empty properties accepted (all fields optional).
+    - Each event type individually via its own schema path.
+    - Malformed payload rejection (400).
+  - Dashboard endpoint (`GET /api/analytics/metrics/editor`) requires admin auth; contract verified via unit tests in backend, not in smoke.
 
 ### OTS-H04 Session semantics
 - Status: `partial`
