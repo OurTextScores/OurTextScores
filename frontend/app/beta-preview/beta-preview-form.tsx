@@ -94,7 +94,7 @@ export default function BetaPreviewForm() {
         />
         <span>
           I acknowledge and agree to the OurTextScores{" "}
-          <Link href="/tos" className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
+          <Link href="/legal" className="text-cyan-700 underline hover:text-cyan-800 dark:text-cyan-300">
             Terms of Service
           </Link>{" "}
           for beta access. *
