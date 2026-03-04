@@ -4,6 +4,7 @@ services:
   #   docker compose -f docker-compose.yml -f docker-compose.score-editor-image.yml up -d score_editor_api
   # Requires Docker Compose v2 with !reset merge support.
   score_editor_api:
+    container_name: ourtextscores_score_editor_api
     image: ${OTS_EDITOR_API_IMAGE:-ghcr.io/ourtextscores/ots-web-editor-api}:${OTS_EDITOR_API_IMAGE_TAG:-latest}
     command:
       - npm
@@ -29,6 +30,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
     volumes: !reset []
+    ports:
+      - "127.0.0.1:4010:3000"
     healthcheck:
       test:
         - CMD
