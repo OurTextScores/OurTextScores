@@ -366,4 +366,39 @@ describe('RevisionHistory', () => {
     expect(krnLinks[0].getAttribute('href')).toContain('works/12345/sources/source-1/score.krn');
     expect(krnLinks[0].getAttribute('href')).toContain('r=rev-3');
   });
+
+  it('displays ABC badge when abc derivative is present', () => {
+    const revisionsWithAbc = [
+      {
+        ...mockRevisions[0],
+        derivatives: {
+          ...mockRevisions[0].derivatives,
+          abc: { bucket: 'scores-derivatives', objectKey: 'work123/rev3.abc', sizeBytes: 4096 }
+        }
+      },
+      {
+        ...mockRevisions[1]
+      }
+    ];
+
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        revisions={revisionsWithAbc}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    const abcBadges = screen.getAllByText('ABC');
+    expect(abcBadges.length).toBeGreaterThan(0);
+
+    const abcLinks = screen.getAllByRole('link').filter(link =>
+      link.getAttribute('href')?.includes('score.abc')
+    );
+    expect(abcLinks.length).toBeGreaterThan(0);
+    expect(abcLinks[0].getAttribute('href')).toContain('works/12345/sources/source-1/score.abc');
+    expect(abcLinks[0].getAttribute('href')).toContain('r=rev-3');
+  });
 });

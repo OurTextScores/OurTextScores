@@ -531,4 +531,68 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     ).toBe(true);
     delete process.env.KERN_CONVERTER_CLI;
   });
+
+  it('stores original abc artifact and converts to canonical xml via score editor API', async () => {
+    const local = new DerivativePipelineService(storage, progress);
+    const storeDerivativeSpy = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (local as any).storeDerivative = storeDerivativeSpy;
+    (local as any).runCommand = jest.fn(async (_cmd: string, args: string[]) => {
+      if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+        await fs.writeFile(args[1], Buffer.from('mock-mxl', 'utf8'));
+      }
+      return { stdout: '', stderr: '' };
+    });
+
+    const originalFetch = (global as any).fetch;
+    (global as any).fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        content: '<score-partwise><part-list><score-part id="P1"/></part-list><part id="P1"><measure number="1"/></part></score-partwise>',
+        conversion: {
+          validation: {
+            checks: []
+          }
+        }
+      })
+    }));
+
+    try {
+      const result = await local.process({
+        workId: '123',
+        sourceId: 'src-abc',
+        sequenceNumber: 3,
+        format: 'text/vnd.abc',
+        originalFilename: 'piece.abc',
+        buffer: Buffer.from('X:1\nT:Piece\nK:C\nC D E F|\n', 'utf8'),
+        rawStorage: {
+          bucket: 'raw',
+          objectKey: '123/src-abc/raw',
+          sizeBytes: 27,
+          checksum: { algorithm: 'sha256', hexDigest: 'r' },
+          contentType: 'text/vnd.abc',
+          lastModifiedAt: new Date()
+        }
+      });
+
+      expect(result.derivatives.abc).toBeTruthy();
+      expect(result.derivatives.canonicalXml).toBeTruthy();
+      expect(result.derivatives.normalizedMxl).toBeTruthy();
+      expect(result.pending).toBe(false);
+      expect(
+        storeDerivativeSpy.mock.calls.some(
+          (call) => call[0].includes('score.abc') && call[2] === 'text/vnd.abc'
+        )
+      ).toBe(true);
+    } finally {
+      (global as any).fetch = originalFetch;
+    }
+  });
 });

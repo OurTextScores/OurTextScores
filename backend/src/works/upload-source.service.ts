@@ -185,6 +185,7 @@ export class UploadSourceService {
       progressId
     });
     this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
+    this.handleAbcFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -587,6 +588,7 @@ export class UploadSourceService {
       progressId
     });
     this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
+    this.handleAbcFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -955,6 +957,33 @@ export class UploadSourceService {
     throw new BadRequestException(message);
   }
 
+  private handleAbcFailure(
+    format: string,
+    outcome: DerivativePipelineResult,
+    progressId?: string
+  ): void {
+    if (format !== 'text/vnd.abc' && format !== 'text/x-abc' && format !== 'application/x-abc') {
+      return;
+    }
+
+    const missingCore = !outcome.derivatives?.canonicalXml;
+    if (!missingCore) {
+      return;
+    }
+
+    this.progress.publish(
+      progressId,
+      'Derivative pipeline failed for ABC file',
+      'pipeline.error'
+    );
+    this.progress.publish(progressId, 'Done', 'done');
+    this.progress.complete(progressId);
+
+    throw new BadRequestException(
+      'Could not process ABC file. Please verify the ABC syntax and try again.'
+    );
+  }
+
   private readableError(error: unknown): string {
     if (error instanceof Error) {
       return error.message;
@@ -986,6 +1015,9 @@ export class UploadSourceService {
   ): string {
     const normalizedHint = formatHint?.toLowerCase();
     if (normalizedHint) {
+      if (normalizedHint.includes('abc')) {
+        return 'text/vnd.abc';
+      }
       if (normalizedHint.includes('kern') || normalizedHint.includes('krn')) {
         return 'application/x-kern';
       }
@@ -1013,6 +1045,8 @@ export class UploadSourceService {
         return 'application/vnd.musescore.mscx';
       case '.mxl':
         return 'application/vnd.recordare.musicxml';
+      case '.abc':
+        return 'text/vnd.abc';
       case '.krn':
         return 'application/x-kern';
       case '.xml':
@@ -1046,9 +1080,17 @@ export class UploadSourceService {
     ) {
       return 'application/x-kern';
     }
+    if (
+      mime === 'text/vnd.abc' ||
+      mime === 'text/x-abc' ||
+      mime === 'application/x-abc' ||
+      mime.includes('vnd.abc')
+    ) {
+      return 'text/vnd.abc';
+    }
 
     throw new BadRequestException(
-      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn.'
+      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn, .abc.'
     );
   }
 

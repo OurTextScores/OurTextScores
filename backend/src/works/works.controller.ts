@@ -340,7 +340,7 @@ export class WorksController {
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload a new source',
-    description: 'Upload a MusicXML file as a new source for a work. Optionally include a reference PDF. Generates derivatives (PDF, canonical XML, etc.) asynchronously.'
+    description: 'Upload a score file as a new source for a work. Optionally include a reference PDF. Generates derivatives (PDF, canonical XML, etc.) asynchronously.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
@@ -348,7 +348,7 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, or .xml)' },
+        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, or .abc)' },
         referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
         originalMscz: { type: 'string', format: 'binary', description: 'Optional original .mscz file when score file is pre-converted to .mxl client-side' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source', example: true },
@@ -447,7 +447,7 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, or .xml)' },
+        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, or .abc)' },
         referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
         originalMscz: { type: 'string', format: 'binary', description: 'Optional original .mscz file when score file is pre-converted to .mxl client-side' },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source' },

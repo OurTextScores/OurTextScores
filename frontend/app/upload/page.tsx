@@ -20,7 +20,7 @@ export default async function UploadPage() {
             </h1>
             <p className="max-w-2xl text-lg text-slate-600 dark:text-slate-300">
               Provide an IMSLP work identifier, describe the source, and attach a MusicXML (*.mxl or
-              *.xml), MuseScore (*.mscz), or Humdrum Kern (*.krn) file.
+              *.xml), MuseScore (*.mscz or *.mscx), Humdrum Kern (*.krn), or ABC (*.abc) file.
             </p>
           </div>
         </header>

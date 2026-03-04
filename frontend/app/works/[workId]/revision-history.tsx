@@ -20,6 +20,7 @@ type SourceRevisionView = {
     pdf?: StorageLocator;
     mscz?: StorageLocator;
     krn?: StorageLocator;
+    abc?: StorageLocator;
   };
   manifest?: StorageLocator;
   fossilArtifactId?: string;
@@ -128,7 +129,7 @@ function StorageBadge({
   validationStatus
 }: {
   label: string;
-  kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'krn' | 'manifest';
+  kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'krn' | 'abc' | 'manifest';
   locator?: StorageLocator;
   workId: string;
   sourceId: string;
@@ -165,6 +166,9 @@ function StorageBadge({
       break;
     case 'krn':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.krn${r}`;
+      break;
+    case 'abc':
+      href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.abc${r}`;
       break;
     case 'manifest':
       href = `${publicApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/manifest.json${r}`;
@@ -228,6 +232,7 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
     revision.derivatives?.pdf,
     revision.derivatives?.mscz,
     revision.derivatives?.krn,
+    revision.derivatives?.abc,
     revision.manifest
   ].some(Boolean);
 
@@ -308,6 +313,16 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
               label="KRN"
               kind="krn"
               locator={revision.derivatives?.krn}
+              workId={workId}
+              sourceId={sourceId}
+              revisionId={revision.revisionId}
+              publicApiBase={publicApiBase}
+              validationStatus={revision.validation.status}
+            />
+            <StorageBadge
+              label="ABC"
+              kind="abc"
+              locator={revision.derivatives?.abc}
               workId={workId}
               sourceId={sourceId}
               revisionId={revision.revisionId}

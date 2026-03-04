@@ -10,8 +10,8 @@ export function stepDefs(): StepDef[] {
     { id: 'deriv.input', label: 'Saved working copy', optional: true },
     {
       id: 'deriv.mscz2mxl',
-      label: 'MuseScore CLI -> MXL (server)',
-      variants: ['deriv.mscz2mxl', 'deriv.canonical', 'deriv.xml2mxl']
+      label: 'Server conversion',
+      variants: ['deriv.mscz2mxl', 'deriv.canonical', 'deriv.xml2mxl', 'deriv.krn2xml', 'deriv.abc2xml']
     },
     {
       id: 'deriv.pdf',

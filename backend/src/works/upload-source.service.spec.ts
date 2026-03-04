@@ -137,6 +137,33 @@ describe('UploadSourceService (unit)', () => {
     );
   });
 
+  it('upload() accepts .abc and resolves ABC source format', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.abc', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: false,
+      notes: ['ok'],
+      manifest: undefined,
+      derivatives: {
+        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+      }
+    });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
+
+    const file = { originalname: 'score.abc', mimetype: 'text/plain', size: 22, buffer: Buffer.from('X:1\nK:C\nC D E F|\n') } as any;
+    const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(derivativePipeline.process).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'text/vnd.abc',
+        originalFilename: 'score.abc'
+      })
+    );
+  });
+
   it('upload() forwards original mscz buffer for client-preconverted uploads', async () => {
     worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
@@ -408,6 +435,35 @@ describe('UploadSourceService (unit)', () => {
     });
     expect(sourceRevisionModel.create).not.toHaveBeenCalled();
     expect(sourceModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('upload() fails for ABC files when pipeline cannot produce core derivatives', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.abc', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: true,
+      notes: ['Canonical MusicXML could not be produced.'],
+      derivatives: {},
+      manifest: undefined,
+      manifestData: undefined
+    });
+
+    const file = {
+      originalname: 'score.abc',
+      mimetype: 'text/plain',
+      size: 120,
+      buffer: Buffer.from('X:1\nK:C\nC D E F|\n')
+    } as any;
+
+    await expect(
+      service.upload('10', { label: 'Uploaded ABC' }, file, undefined, 'pid')
+    ).rejects.toMatchObject({
+      constructor: BadRequestException,
+      message: expect.stringContaining('Could not process ABC file')
+    });
+    expect(sourceModel.create).not.toHaveBeenCalled();
+    expect(sourceRevisionModel.create).not.toHaveBeenCalled();
   });
 
   it('upload() saves license to revision', async () => {

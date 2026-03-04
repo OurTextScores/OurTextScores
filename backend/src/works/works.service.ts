@@ -135,6 +135,7 @@ export type DownloadAssetKind =
   | 'pdf'
   | 'mscz'
   | 'krn'
+  | 'abc'
   | 'referencePdf'
   | 'thumbnail'
   | 'manifest';
@@ -928,12 +929,24 @@ except Exception:
       add(src.storage);
       add(src.derivatives?.normalizedMxl);
       add(src.derivatives?.canonicalXml);
+      add(src.derivatives?.pdf);
+      add(src.derivatives?.thumbnail);
+      add(src.derivatives?.mscz);
+      add(src.derivatives?.krn);
+      add(src.derivatives?.abc);
+      add(src.derivatives?.referencePdf);
       add((src as any).derivatives?.linearizedXml);
       add(src.derivatives?.manifest);
       for (const rev of revisions) {
         add(rev.rawStorage);
         add(rev.derivatives?.normalizedMxl);
         add(rev.derivatives?.canonicalXml);
+        add(rev.derivatives?.pdf);
+        add(rev.derivatives?.thumbnail);
+        add(rev.derivatives?.mscz);
+        add(rev.derivatives?.krn);
+        add(rev.derivatives?.abc);
+        add(rev.derivatives?.referencePdf);
         add((rev as any).derivatives?.linearizedXml);
         add((rev as any).derivatives?.musicDiffReport);
         add(rev.manifest);
@@ -1006,12 +1019,24 @@ except Exception:
       add(src.storage);
       add(src.derivatives?.normalizedMxl);
       add(src.derivatives?.canonicalXml);
+      add(src.derivatives?.pdf);
+      add(src.derivatives?.thumbnail);
+      add(src.derivatives?.mscz);
+      add(src.derivatives?.krn);
+      add(src.derivatives?.abc);
+      add(src.derivatives?.referencePdf);
       add((src as any).derivatives?.linearizedXml);
       add(src.derivatives?.manifest);
       for (const rev of revisions) {
         add(rev.rawStorage);
         add(rev.derivatives?.normalizedMxl);
         add(rev.derivatives?.canonicalXml);
+        add(rev.derivatives?.pdf);
+        add(rev.derivatives?.thumbnail);
+        add(rev.derivatives?.mscz);
+        add(rev.derivatives?.krn);
+        add(rev.derivatives?.abc);
+        add(rev.derivatives?.referencePdf);
         add((rev as any).derivatives?.linearizedXml);
         add((rev as any).derivatives?.musicDiffReport);
         add(rev.manifest);
@@ -1083,12 +1108,24 @@ except Exception:
     add(src.storage);
     add(src.derivatives?.normalizedMxl);
     add(src.derivatives?.canonicalXml);
+    add(src.derivatives?.pdf);
+    add(src.derivatives?.thumbnail);
+    add(src.derivatives?.mscz);
+    add(src.derivatives?.krn);
+    add(src.derivatives?.abc);
+    add(src.derivatives?.referencePdf);
     add((src as any).derivatives?.linearizedXml);
     add(src.derivatives?.manifest);
     for (const rev of revisions) {
       add(rev.rawStorage);
       add(rev.derivatives?.normalizedMxl);
       add(rev.derivatives?.canonicalXml);
+      add(rev.derivatives?.pdf);
+      add(rev.derivatives?.thumbnail);
+      add(rev.derivatives?.mscz);
+      add(rev.derivatives?.krn);
+      add(rev.derivatives?.abc);
+      add(rev.derivatives?.referencePdf);
       add((rev as any).derivatives?.linearizedXml);
       add((rev as any).derivatives?.musicDiffReport);
       add((rev as any).derivatives?.musicDiffHtml);

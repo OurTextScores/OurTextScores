@@ -637,6 +637,40 @@ describe('WorksController (unit)', () => {
     });
   });
 
+  describe('downloadAbc', () => {
+    it('should download ABC file and set attachment disposition', async () => {
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'example.abc',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k-abc',
+          sizeBytes: 1024,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'text/vnd.abc',
+          lastModifiedAt: new Date(),
+        },
+      });
+      storageService.getObjectBuffer.mockResolvedValue(Buffer.from('X:1\nT:Example\nK:C\nC D E F|\n'));
+      const { res, headers } = createMockResponse();
+
+      await downloadsController.downloadAbc('1', 's', undefined, res as any, undefined);
+
+      expect(headers['Content-Type']).toContain('text/vnd.abc');
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['Content-Disposition']).toContain('example.abc');
+      expect(headers['Cache-Control']).toBe('no-cache');
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should throw not found when ABC is missing', async () => {
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
+      const { res } = createMockResponse();
+
+      await expect(downloadsController.downloadAbc('1', 's', undefined, res as any, undefined))
+        .rejects.toThrow('ABC file not found for this source');
+    });
+  });
+
   describe('downloadManifest', () => {
     it('should download manifest JSON', async () => {
       worksService.resolveDownloadAsset.mockResolvedValue({

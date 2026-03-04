@@ -16,6 +16,8 @@ interface ToolVersions {
   musescoreFallbackCommands?: string[];
   kernConverter?: string;
   kernConverterCommand?: string;
+  abcConverter?: string;
+  abcConverterEndpoint?: string;
 }
 
 interface ManifestArtifact {
@@ -77,6 +79,8 @@ export class DerivativePipelineService {
   private static readonly MIN_MUSESCORE_EXPORT_TIMEOUT_MS = 10_000;
   private static readonly DEFAULT_KERN_CONVERTER_TIMEOUT_MS = 60_000;
   private static readonly MIN_KERN_CONVERTER_TIMEOUT_MS = 1_000;
+  private static readonly DEFAULT_ABC_CONVERTER_TIMEOUT_MS = 60_000;
+  private static readonly MIN_ABC_CONVERTER_TIMEOUT_MS = 1_000;
 
   constructor(
     private readonly storageService: StorageService,
@@ -157,6 +161,29 @@ export class DerivativePipelineService {
     }
 
     return Math.floor(parsed);
+  }
+
+  private getAbcConverterTimeoutMs(): number {
+    const raw = (process.env.ABC_CONVERTER_TIMEOUT_MS ?? '').trim();
+    if (!raw) {
+      return DerivativePipelineService.DEFAULT_ABC_CONVERTER_TIMEOUT_MS;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < DerivativePipelineService.MIN_ABC_CONVERTER_TIMEOUT_MS) {
+      this.logger.warn(
+        `Invalid ABC_CONVERTER_TIMEOUT_MS="${raw}", using default ${DerivativePipelineService.DEFAULT_ABC_CONVERTER_TIMEOUT_MS}ms`
+      );
+      return DerivativePipelineService.DEFAULT_ABC_CONVERTER_TIMEOUT_MS;
+    }
+
+    return Math.floor(parsed);
+  }
+
+  private getAbcConverterEndpoint(): string {
+    const raw = (process.env.SCORE_EDITOR_API_ORIGIN ?? 'http://score_editor_api:3000').trim();
+    const origin = (raw || 'http://score_editor_api:3000').replace(/\/+$/, '');
+    return `${origin}/api/music/convert`;
   }
 
   private async runMuseScoreExport(
@@ -278,6 +305,45 @@ export class DerivativePipelineService {
         } catch (err) {
           pending = true;
           notes.push(`Could not convert Kern file to MusicXML: ${this.readableError(err)}`);
+        }
+      } else if (this.isAbcFile(extension, format)) {
+        derivatives.abc = await this.storeDerivative(
+          `${derivativesBaseKey}/score.abc`,
+          input.buffer,
+          'text/vnd.abc'
+        );
+        notes.push('Original ABC file stored.');
+        publish('Stored ABC file', 'store.abc');
+
+        try {
+          const converted = await this.convertAbcToMusicXml(input.buffer, inputFileName, workspace);
+          canonicalPath = converted.path;
+          canonicalBuffer = converted.buffer;
+          notes.push(`ABC conversion to MusicXML completed (${converted.engine}).`);
+          notes.push(...converted.warnings.map((warning) => `ABC conversion warning: ${warning}`));
+          publish('ABC conversion completed', 'deriv.abc2xml');
+
+          normalizedMxlPath = join(workspace, 'abc-converted.mxl');
+          try {
+            const conversion = await this.runMuseScoreExport(
+              canonicalPath,
+              normalizedMxlPath,
+              'ABC-derived MusicXML to compressed MXL'
+            );
+            normalizedMxlBuffer = await fs.readFile(normalizedMxlPath);
+            notes.push(
+              `MuseScore conversion to compressed MusicXML completed (${conversion.command}).`
+            );
+            publish('Compressed MXL generated from ABC-derived XML', 'deriv.xml2mxl');
+          } catch (err) {
+            pending = true;
+            notes.push(
+              `Could not convert ABC-derived MusicXML to compressed MXL: ${this.readableError(err)}`
+            );
+          }
+        } catch (err) {
+          pending = true;
+          notes.push(`Could not convert ABC file to MusicXML: ${this.readableError(err)}`);
         }
       } else if (this.isCompressedMusicXml(extension, format)) {
         normalizedMxlPath = inputPath;
@@ -429,6 +495,9 @@ export class DerivativePipelineService {
       }
       if (derivatives.krn) {
         artifacts.push({ type: 'krn', locator: derivatives.krn });
+      }
+      if (derivatives.abc) {
+        artifacts.push({ type: 'abc', locator: derivatives.abc });
       }
 
       const manifestData: DerivativeManifest = {
@@ -595,6 +664,9 @@ export class DerivativePipelineService {
   }
 
   private fallbackName(extension: string, format: string): string {
+    if (this.isAbcFile(extension, format)) {
+      return 'score.abc';
+    }
     if (this.isKernFile(extension, format)) {
       return 'score.krn';
     }
@@ -650,6 +722,15 @@ export class DerivativePipelineService {
     );
   }
 
+  private isAbcFile(extension: string, format: string): boolean {
+    return (
+      extension === '.abc' ||
+      format === 'text/vnd.abc' ||
+      format === 'text/x-abc' ||
+      format === 'application/x-abc'
+    );
+  }
+
   private async convertKernToMusicXml(
     inputPath: string,
     workspace: string
@@ -667,6 +748,109 @@ export class DerivativePipelineService {
     });
     const buffer = await fs.readFile(outputPath);
     return { path: outputPath, buffer, command };
+  }
+
+  private async convertAbcToMusicXml(
+    inputBuffer: Buffer,
+    filename: string,
+    workspace: string
+  ): Promise<{ path: string; buffer: Buffer; engine: string; warnings: string[] }> {
+    const endpoint = this.getAbcConverterEndpoint();
+    const timeoutMs = this.getAbcConverterTimeoutMs();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          inputFormat: 'abc',
+          outputFormat: 'musicxml',
+          content: inputBuffer.toString('utf8'),
+          filename,
+          includeContent: true,
+          validate: true,
+          deepValidate: false,
+          timeoutMs
+        }),
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`ABC converter request timed out after ${timeoutMs}ms.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    let payload: any;
+    const raw = await response.text();
+    try {
+      payload = raw ? JSON.parse(raw) : {};
+    } catch {
+      payload = { error: raw };
+    }
+
+    if (!response.ok) {
+      const detail = typeof payload?.error === 'string' && payload.error.trim()
+        ? payload.error.trim()
+        : `HTTP ${response.status}`;
+      throw new Error(`ABC converter failed: ${detail}`);
+    }
+
+    const xmlContent = typeof payload?.content === 'string' ? payload.content : '';
+    this.assertCanonicalMusicXmlSanity(xmlContent);
+
+    const outputPath = join(workspace, 'abc-converted.xml');
+    const buffer = Buffer.from(xmlContent, 'utf8');
+    await fs.writeFile(outputPath, buffer);
+
+    const warnings = this.extractAbcConversionWarnings(payload);
+    return { path: outputPath, buffer, engine: 'score_editor_api', warnings };
+  }
+
+  private assertCanonicalMusicXmlSanity(xmlContent: string): void {
+    const trimmed = xmlContent.trim();
+    if (!trimmed) {
+      throw new Error('ABC converter produced empty MusicXML content.');
+    }
+    if (!/(<score-partwise\b|<score-timewise\b)/.test(trimmed)) {
+      throw new Error('ABC converter output is not a MusicXML score document.');
+    }
+    if (!/(<\/score-partwise>|<\/score-timewise>)/.test(trimmed)) {
+      throw new Error('ABC converter output appears malformed (missing MusicXML root closure).');
+    }
+    if (!/<(score-part|part)\b/.test(trimmed)) {
+      throw new Error('ABC converter output does not contain a MusicXML part.');
+    }
+    if (!/<measure\b/.test(trimmed)) {
+      throw new Error('ABC converter output does not contain any MusicXML measures.');
+    }
+  }
+
+  private extractAbcConversionWarnings(payload: any): string[] {
+    const warnings: string[] = [];
+    const checks = Array.isArray(payload?.conversion?.validation?.checks)
+      ? payload.conversion.validation.checks
+      : [];
+    for (const check of checks) {
+      if (check?.severity === 'warning' && check?.ok === false) {
+        const message = typeof check?.message === 'string' ? check.message.trim() : '';
+        if (message) {
+          warnings.push(message);
+        }
+      }
+      if (warnings.length >= 3) {
+        break;
+      }
+    }
+    return warnings;
   }
 
   private async extractCanonicalXml(
@@ -773,6 +957,7 @@ export class DerivativePipelineService {
     const museCommands = this.getMuseScoreCommands();
     const museCmd = museCommands[0] || 'musescore3';
     const kernCmd = this.getKernConverterCommand();
+    const abcEndpoint = this.getAbcConverterEndpoint();
     const [musescore] = await Promise.all([
       this.getCommandVersion(museCmd, ['--version']),
     ]);
@@ -784,7 +969,9 @@ export class DerivativePipelineService {
       musescoreCommand: museCmd,
       musescoreFallbackCommands: museCommands.slice(1),
       kernConverter,
-      kernConverterCommand: kernCmd
+      kernConverterCommand: kernCmd,
+      abcConverter: 'score_editor_api /api/music/convert',
+      abcConverterEndpoint: abcEndpoint
     };
   }
 
