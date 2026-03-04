@@ -89,7 +89,7 @@ services:
       - ../OTS_Web:/app
       - ../NotaGen:/opt/notagen:ro
     ports:
-      - "4010:3000"
+      - "127.0.0.1:4010:3000"
     networks:
       - appnet
 
