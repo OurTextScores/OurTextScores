@@ -70,23 +70,30 @@ services:
       - |
         set -eu
         apt-get update
-        apt-get install -y --no-install-recommends python3 python3-pyparsing musescore3 xvfb xauth libopengl0 libpipewire-0.3-0 ca-certificates curl
+        apt-get install -y --no-install-recommends python3 python3-pyparsing musescore3 mma xvfb xauth libopengl0 libpipewire-0.3-0 ca-certificates curl
         if [ ! -x /usr/local/bin/musescore4 ] && [ -n "$$MUSESCORE4_APPIMAGE_URL" ]; then
           echo "Installing MuseScore 4 from AppImage: $$MUSESCORE4_APPIMAGE_URL"
-          curl -fsSL "$$MUSESCORE4_APPIMAGE_URL" -o /tmp/MuseScore-4.AppImage
-          chmod +x /tmp/MuseScore-4.AppImage
-          /tmp/MuseScore-4.AppImage --appimage-extract
-          rm -rf /opt/musescore4
-          mv squashfs-root /opt/musescore4
-          echo '#!/bin/sh' > /usr/local/bin/musescore4
-          echo 'TIMEOUT_SECONDS="$${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-300}"' >> /usr/local/bin/musescore4
-          echo 'XVFB_ARGS="-screen 0 640x480x24 -ac +extension GLX +render -noreset"' >> /usr/local/bin/musescore4
-          echo 'if [ "$${TIMEOUT_SECONDS}" = "0" ]; then' >> /usr/local/bin/musescore4
-          echo '  exec xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
-          echo 'fi' >> /usr/local/bin/musescore4
-          echo 'exec timeout "$${TIMEOUT_SECONDS}" xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
-          chmod +x /usr/local/bin/musescore4
+          if curl -fL --retry 3 --retry-delay 2 --retry-all-errors "$$MUSESCORE4_APPIMAGE_URL" -o /tmp/MuseScore-4.AppImage; then
+            chmod +x /tmp/MuseScore-4.AppImage
+            if /tmp/MuseScore-4.AppImage --appimage-extract; then
+              rm -rf /opt/musescore4
+              mv squashfs-root /opt/musescore4
+              echo '#!/bin/sh' > /usr/local/bin/musescore4
+              echo 'TIMEOUT_SECONDS="$${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-300}"' >> /usr/local/bin/musescore4
+              echo 'XVFB_ARGS="-screen 0 640x480x24 -ac +extension GLX +render -noreset"' >> /usr/local/bin/musescore4
+              echo 'if [ "$${TIMEOUT_SECONDS}" = "0" ]; then' >> /usr/local/bin/musescore4
+              echo '  exec xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
+              echo 'fi' >> /usr/local/bin/musescore4
+              echo 'exec timeout "$${TIMEOUT_SECONDS}" xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
+              chmod +x /usr/local/bin/musescore4
+            else
+              echo "WARNING: MuseScore 4 AppImage extraction failed; continuing with musescore3 fallback." >&2
+            fi
+          else
+            echo "WARNING: Failed to download MuseScore 4 AppImage; continuing with musescore3 fallback." >&2
+          fi
           rm -f /tmp/MuseScore-4.AppImage
+          rm -rf squashfs-root
         fi
         npm install
         npm run dev -- --hostname 0.0.0.0 --port 3000
@@ -101,6 +108,11 @@ services:
       MUSIC_MUSESCORE_BIN: ${MUSIC_MUSESCORE_BIN:-musescore4}
       MUSIC_MUSESCORE_BIN_CANDIDATES: ${MUSIC_MUSESCORE_BIN_CANDIDATES:-musescore4,mscore4portable,musescore3,musescore}
       MUSIC_MUSESCORE_USE_XVFB: ${MUSIC_MUSESCORE_USE_XVFB:-true}
+      MUSIC_MMA_BIN: ${MUSIC_MMA_BIN:-mma}
+      MUSIC_MMA_BIN_CANDIDATES: ${MUSIC_MMA_BIN_CANDIDATES:-mma}
+      MUSIC_MMA_TIMEOUT_MS: ${MUSIC_MMA_TIMEOUT_MS:-60000}
+      MUSIC_MMA_MAX_SCRIPT_BYTES: ${MUSIC_MMA_MAX_SCRIPT_BYTES:-262144}
+      MUSIC_MMA_MAX_STDERR_CHARS: ${MUSIC_MMA_MAX_STDERR_CHARS:-8000}
       MUSIC_NOTAGEN_SPACE_TOKEN: ${MUSIC_NOTAGEN_SPACE_TOKEN:-}
       MUSIC_NOTAGEN_DEFAULT_SPACE_ID: ${MUSIC_NOTAGEN_DEFAULT_SPACE_ID:-jhlusko/NotaGen-Space}
       NEXT_PUBLIC_SCORE_EDITOR_API_BASE: ${NEXT_PUBLIC_SCORE_EDITOR_API_BASE:-/api/score-editor}
