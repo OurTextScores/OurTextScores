@@ -70,7 +70,8 @@ services:
       - |
         set -eu
         apt-get update
-        apt-get install -y --no-install-recommends python3 python3-pyparsing musescore3 mma xvfb xauth libopengl0 libpipewire-0.3-0 ca-certificates curl
+        apt-get install -y --no-install-recommends python3 python3-pip python3-pyparsing musescore3 mma xvfb xauth libopengl0 libpipewire-0.3-0 ca-certificates curl
+        python3 -c "import music21" >/dev/null 2>&1 || python3 -m pip install --break-system-packages --no-cache-dir "music21>=9,<10"
         if [ ! -x /usr/local/bin/musescore4 ] && [ -n "$$MUSESCORE4_APPIMAGE_URL" ]; then
           echo "Installing MuseScore 4 from AppImage: $$MUSESCORE4_APPIMAGE_URL"
           if curl -fL --retry 3 --retry-delay 2 --retry-all-errors "$$MUSESCORE4_APPIMAGE_URL" -o /tmp/MuseScore-4.AppImage; then
@@ -113,6 +114,9 @@ services:
       MUSIC_MMA_TIMEOUT_MS: ${MUSIC_MMA_TIMEOUT_MS:-60000}
       MUSIC_MMA_MAX_SCRIPT_BYTES: ${MUSIC_MMA_MAX_SCRIPT_BYTES:-262144}
       MUSIC_MMA_MAX_STDERR_CHARS: ${MUSIC_MMA_MAX_STDERR_CHARS:-8000}
+      MUSIC_HARMONY_PYTHON: ${MUSIC_HARMONY_PYTHON:-python3}
+      MUSIC_HARMONY_SCRIPT: ${MUSIC_HARMONY_SCRIPT:-/app/tools/music21_harmony/analyze_harmony.py}
+      MUSIC_HARMONY_TIMEOUT_MS: ${MUSIC_HARMONY_TIMEOUT_MS:-60000}
       MUSIC_NOTAGEN_SPACE_TOKEN: ${MUSIC_NOTAGEN_SPACE_TOKEN:-}
       MUSIC_NOTAGEN_DEFAULT_SPACE_ID: ${MUSIC_NOTAGEN_DEFAULT_SPACE_ID:-jhlusko/NotaGen-Space}
       NEXT_PUBLIC_SCORE_EDITOR_API_BASE: ${NEXT_PUBLIC_SCORE_EDITOR_API_BASE:-/api/score-editor}
