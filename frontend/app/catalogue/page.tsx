@@ -223,15 +223,9 @@ export default function WorksPage() {
                 className="inline-flex items-center justify-center rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isResolvingImslp ? (
-                  <>
-                    <span aria-hidden="true">… </span>
-                    Resolving...
-                  </>
+                  "Resolving..."
                 ) : (
-                  <>
-                    <span aria-hidden="true">⌕ </span>
-                    Go
-                  </>
+                  "Go"
                 )}
               </button>
             </div>
