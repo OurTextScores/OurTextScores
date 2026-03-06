@@ -143,8 +143,8 @@ export default function WorksPage() {
     value: "any" | "yes" | "no",
     onChange: (next: "any" | "yes" | "no") => void
   ) => (
-    <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-      <span className="min-w-[140px]">{label}</span>
+    <div className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-300 sm:flex-row sm:items-center sm:gap-3">
+      <span className="min-w-[140px] font-medium text-slate-700 dark:text-slate-200">{label}</span>
       <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
         {[
           { value: "any" as const, label: "Any" },
@@ -173,15 +173,15 @@ export default function WorksPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 py-12 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6">
+        <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div className="max-w-3xl">
             <h1 className="text-4xl font-semibold tracking-tight">🎼 OurTextScores</h1>
-            <p className="text-slate-600 dark:text-slate-300">
+            <p className="mt-1 text-slate-600 dark:text-slate-300">
               Catalogue of editable community transcriptions of public domain works.
             </p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {[
               { href: '/works/upload', label: 'Save IMSLP work' },
               { href: '/upload', label: 'Upload source' }
@@ -189,7 +189,7 @@ export default function WorksPage() {
               <Link
                 key={b.href}
                 href={b.href}
-                className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-700"
               >
                 {b.label}
               </Link>
@@ -197,8 +197,11 @@ export default function WorksPage() {
           </div>
         </header>
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60 md:flex-row md:items-end md:justify-between">
           <div className="w-full md:w-96">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Search catalogue
+            </label>
             <SearchBox
               onSearch={handleSearch}
               placeholder="Search by title, composer, or catalogue..."
@@ -215,12 +218,12 @@ export default function WorksPage() {
                 value={imslpUrl}
                 onChange={(event) => setImslpUrl(event.target.value)}
                 placeholder="https://imslp.org/wiki/..."
-                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-600"
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-600 dark:focus:border-cyan-400"
               />
               <button
                 type="submit"
                 disabled={!imslpUrl.trim() || isResolvingImslp}
-                className="inline-flex items-center justify-center rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-w-24 items-center justify-center rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isResolvingImslp ? (
                   "Resolving..."
@@ -237,10 +240,15 @@ export default function WorksPage() {
 
         {/* Filter Controls */}
         {isAdmin && (
-          <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Admin filters
+            </div>
+            <div className="flex flex-col gap-3">
             {renderTriState("Has reference PDF", filterReferencePdf, setFilterReferencePdf)}
             {renderTriState("Admin verified", filterVerified, setFilterVerified)}
             {renderTriState("Has flagged sources", filterFlagged, setFilterFlagged)}
+            </div>
           </div>
         )}
 
@@ -259,8 +267,18 @@ export default function WorksPage() {
         {/* Works Table */}
         {!isLoading && (
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {searchQuery.trim()
+                  ? `Results for “${searchQuery}”`
+                  : "Catalogue results"}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {works.length} shown
+              </div>
+            </div>
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-              <thead className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
+              <thead className="bg-slate-100/90 text-left text-[11px] uppercase tracking-[0.14em] text-slate-600 dark:bg-slate-900/80 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Title</th>
                   <th className="px-4 py-3">Composer</th>
@@ -320,16 +338,16 @@ export default function WorksPage() {
 
 function WorkRow({ work }: { work: WorkSummary }) {
   return (
-    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
-      <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">
-        <Link href={`/works/${encodeURIComponent(work.workId)}`} className="hover:text-primary-600 hover:underline dark:hover:text-primary-400">
+    <tr className="transition-colors hover:bg-slate-50/90 dark:hover:bg-slate-800/40">
+      <td className="px-4 py-4 font-semibold text-slate-900 dark:text-slate-100">
+        <Link href={`/works/${encodeURIComponent(work.workId)}`} className="underline-offset-2 hover:text-primary-600 hover:underline dark:hover:text-primary-400">
           {work.title ?? "—"}
         </Link>
       </td>
-      <td className="px-4 py-4">{work.composer ?? "—"}</td>
-      <td className="px-4 py-4">{work.catalogNumber ?? "—"}</td>
-      <td className="px-4 py-4">{formatDate(work.latestRevisionAt)}</td>
-      <td className="px-4 py-4">{work.sourceCount}</td>
+      <td className="px-4 py-4 text-slate-700 dark:text-slate-300">{work.composer ?? "—"}</td>
+      <td className="px-4 py-4 text-slate-700 dark:text-slate-300">{work.catalogNumber ?? "—"}</td>
+      <td className="px-4 py-4 text-slate-600 dark:text-slate-400">{formatDate(work.latestRevisionAt)}</td>
+      <td className="px-4 py-4 font-medium text-slate-800 dark:text-slate-200">{work.sourceCount}</td>
 
     </tr>
   );
