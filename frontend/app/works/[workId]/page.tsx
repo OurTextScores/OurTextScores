@@ -168,6 +168,8 @@ export default async function WorkDetailPage({
                 key={source.sourceId}
                 source={source}
                 workId={workId}
+                workTitle={work.title ?? imslp?.title}
+                composer={work.composer ?? imslp?.composer}
                 imslpPermalink={imslpPermalink}
                 currentUser={currentUser}
                 autoOpen={source.sourceId === targetSourceId}

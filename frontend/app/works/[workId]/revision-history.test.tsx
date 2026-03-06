@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { renderWithProviders, userEvent } from '../../test-utils';
 import RevisionHistory from './revision-history';
 
@@ -400,5 +400,43 @@ describe('RevisionHistory', () => {
     expect(abcLinks.length).toBeGreaterThan(0);
     expect(abcLinks[0].getAttribute('href')).toContain('works/12345/sources/source-1/score.abc');
     expect(abcLinks[0].getAttribute('href')).toContain('r=rev-3');
+  });
+
+  it('passes launch context when opening a revision in the editor', async () => {
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        sourceLabel="Full Score"
+        sourceType="score"
+        workTitle="Prelude in C"
+        composer="J.S. Bach"
+        imslpPermalink="https://imslp.org/wiki/Test_Work"
+        revisions={mockRevisions}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Open in Editor/i }));
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const [editorUrl] = openSpy.mock.calls[0];
+    const launchContextRaw = new URL(String(editorUrl), 'http://localhost').searchParams.get('launchContext');
+    expect(launchContextRaw).toBeTruthy();
+    expect(JSON.parse(launchContextRaw || '')).toMatchObject({
+      source: 'ourtextscores',
+      workId: '12345',
+      sourceId: 'source-1',
+      revisionId: 'rev-3',
+      sourceLabel: 'Full Score',
+      sourceType: 'score',
+      workTitle: 'Prelude in C',
+      composer: 'J.S. Bach',
+      imslpUrl: 'https://imslp.org/wiki/Test_Work',
+    });
+
+    openSpy.mockRestore();
   });
 });

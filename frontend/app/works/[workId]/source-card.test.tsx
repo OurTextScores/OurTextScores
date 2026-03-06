@@ -293,4 +293,64 @@ describe('SourceCard', () => {
         expect(sourcePdfDetails).toHaveAttribute('open');
         expect(revisionHistoryDetails).not.toHaveAttribute('open');
     });
+
+    it('passes launch context when opening the score editor', async () => {
+        const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+        const sourceWithCanonicalXml: SourceView = {
+            ...mockSource,
+            revisions: [
+                {
+                    ...mockSource.revisions[0],
+                    revisionId: 'rev-99',
+                    derivatives: {
+                        canonicalXml: {
+                            bucket: 'derivs',
+                            objectKey: 'score.xml',
+                            sizeBytes: 1024,
+                            contentType: 'application/xml',
+                            checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                            lastModifiedAt: '2025-11-01T10:00:00Z',
+                        },
+                    },
+                },
+            ],
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithCanonicalXml}
+                workId="work-123"
+                workTitle="Prelude in C"
+                composer="J.S. Bach"
+                imslpPermalink="https://imslp.org/wiki/Test_Work"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (!header) {
+            throw new Error('Header not found');
+        }
+        fireEvent.click(header);
+        fireEvent.click(screen.getByRole('button', { name: /^Open in Editor$/i }));
+
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const [editorUrl] = openSpy.mock.calls[0];
+        expect(String(editorUrl)).toContain('/score-editor/index.html?');
+        const launchContextRaw = new URL(String(editorUrl), 'http://localhost').searchParams.get('launchContext');
+        expect(launchContextRaw).toBeTruthy();
+        expect(JSON.parse(launchContextRaw || '')).toMatchObject({
+            source: 'ourtextscores',
+            workId: 'work-123',
+            sourceId: 'source-1',
+            revisionId: 'rev-99',
+            workTitle: 'Prelude in C',
+            composer: 'J.S. Bach',
+            imslpUrl: 'https://imslp.org/wiki/Test_Work',
+        });
+
+        openSpy.mockRestore();
+    });
 });

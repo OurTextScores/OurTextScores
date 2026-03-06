@@ -13,6 +13,7 @@ import DiffPreview from "./diff-preview";
 import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
 import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction, migrateSourceAction } from "./admin-actions";
+import { buildScoreEditorLaunchUrl } from "./score-editor-launch";
 
 const PUBLIC_API_BASE = getPublicApiBase();
 
@@ -452,6 +453,8 @@ function StorageBadge({
 export default function SourceCard({
     source,
     workId,
+    workTitle,
+    composer,
     imslpPermalink,
     currentUser,
     watchControlsSlot,
@@ -461,6 +464,8 @@ export default function SourceCard({
 }: {
     source: SourceView;
     workId: string;
+    workTitle?: string;
+    composer?: string;
     imslpPermalink?: string;
     currentUser: BackendSessionUser | null;
     watchControlsSlot: React.ReactNode;
@@ -701,7 +706,21 @@ export default function SourceCard({
                                         ? PUBLIC_API_BASE
                                         : `${window.location.protocol}//${window.location.hostname}:4000${PUBLIC_API_BASE}`;
                                     const canonicalUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/canonical.xml`;
-                                    const editorUrl = `/score-editor/index.html?score=${encodeURIComponent(canonicalUrl)}`;
+                                    const editorUrl = buildScoreEditorLaunchUrl({
+                                        scoreUrl: canonicalUrl,
+                                        launchContext: {
+                                            source: 'ourtextscores',
+                                            workId,
+                                            sourceId: source.sourceId,
+                                            revisionId: latest?.revisionId,
+                                            sourceType: source.sourceType,
+                                            sourceLabel: source.label,
+                                            workTitle,
+                                            composer,
+                                            imslpUrl: imslpPermalink,
+                                            canonicalXmlUrl: canonicalUrl,
+                                        },
+                                    });
                                     window.open(editorUrl, '_blank');
                                 }}
                                 className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
@@ -821,6 +840,11 @@ export default function SourceCard({
                         <RevisionHistory
                             workId={workId}
                             sourceId={source.sourceId}
+                            sourceLabel={source.label}
+                            sourceType={source.sourceType}
+                            workTitle={workTitle}
+                            composer={composer}
+                            imslpPermalink={imslpPermalink}
                             revisions={source.revisions as any}
                             branchNames={initialBranches}
                             publicApiBase={PUBLIC_API_BASE}

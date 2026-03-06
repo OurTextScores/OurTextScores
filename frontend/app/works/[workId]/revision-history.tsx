@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import RevisionRating from "./revision-rating";
 import RevisionComments from "./revision-comments";
+import { buildScoreEditorLaunchUrl } from "./score-editor-launch";
 
 type StorageLocator = { bucket: string; objectKey: string; sizeBytes?: number };
 type SourceRevisionView = {
@@ -61,6 +62,11 @@ function statusColor(status: string) {
 export default function RevisionHistory({
   workId,
   sourceId,
+  sourceLabel,
+  sourceType,
+  workTitle,
+  composer,
+  imslpPermalink,
   revisions,
   branchNames,
   publicApiBase,
@@ -68,6 +74,11 @@ export default function RevisionHistory({
 }: {
   workId: string;
   sourceId: string;
+  sourceLabel?: string;
+  sourceType?: string;
+  workTitle?: string;
+  composer?: string;
+  imslpPermalink?: string;
   revisions: SourceRevisionView[];
   branchNames: string[];
   publicApiBase: string;
@@ -108,7 +119,19 @@ export default function RevisionHistory({
           </thead>
           <tbody className="divide-y divide-slate-200 text-slate-700 dark:divide-slate-800 dark:text-slate-300">
             {filtered.map((revision) => (
-              <RevisionRow key={revision.revisionId} revision={revision} workId={workId} sourceId={sourceId} publicApiBase={publicApiBase} currentUser={currentUser} />
+              <RevisionRow
+                key={revision.revisionId}
+                revision={revision}
+                workId={workId}
+                sourceId={sourceId}
+                sourceLabel={sourceLabel}
+                sourceType={sourceType}
+                workTitle={workTitle}
+                composer={composer}
+                imslpPermalink={imslpPermalink}
+                publicApiBase={publicApiBase}
+                currentUser={currentUser}
+              />
             ))}
           </tbody>
         </table>
@@ -219,10 +242,15 @@ function UserBadge({ userId, username }: { userId?: string; username?: string })
   );
 }
 
-function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }: {
+function RevisionRow({ revision, workId, sourceId, sourceLabel, sourceType, workTitle, composer, imslpPermalink, publicApiBase, currentUser }: {
   revision: SourceRevisionView;
   workId: string;
   sourceId: string;
+  sourceLabel?: string;
+  sourceType?: string;
+  workTitle?: string;
+  composer?: string;
+  imslpPermalink?: string;
   publicApiBase: string;
   currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
 }) {
@@ -346,7 +374,21 @@ function RevisionRow({ revision, workId, sourceId, publicApiBase, currentUser }:
                     ? publicApiBase
                     : `${window.location.protocol}//${window.location.hostname}:4000${publicApiBase}`;
                   const canonicalUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/canonical.xml?r=${encodeURIComponent(revision.revisionId)}`;
-                  const editorUrl = `/score-editor/index.html?score=${encodeURIComponent(canonicalUrl)}`;
+                  const editorUrl = buildScoreEditorLaunchUrl({
+                    scoreUrl: canonicalUrl,
+                    launchContext: {
+                      source: 'ourtextscores',
+                      workId,
+                      sourceId,
+                      revisionId: revision.revisionId,
+                      sourceType,
+                      sourceLabel,
+                      workTitle,
+                      composer,
+                      imslpUrl: imslpPermalink,
+                      canonicalXmlUrl: canonicalUrl,
+                    },
+                  });
                   window.open(editorUrl, '_blank');
                 }}
                 className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
