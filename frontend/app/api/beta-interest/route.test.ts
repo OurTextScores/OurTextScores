@@ -35,6 +35,7 @@ jest.mock("../../lib/beta-approvals", () => ({
 }));
 
 jest.mock("../../lib/beta-invites", () => ({
+  buildBetaApprovalUrl: jest.fn(() => "https://ourtextscores.test/a/approval-token-123"),
   resolveInviteBaseUrl: jest.fn(() => "https://ourtextscores.test"),
 }));
 
@@ -85,7 +86,8 @@ describe("beta-interest route", () => {
       expect.objectContaining({
         to: "admin@ourtextscores.test",
         replyTo: "newuser@example.com",
-        text: expect.stringContaining("https://ourtextscores.test/beta-approve?token=approval-token-123"),
+        text: expect.stringContaining("https://ourtextscores.test/a/approval-token-123"),
+        html: expect.stringContaining('href="https://ourtextscores.test/a/approval-token-123"'),
       })
     );
   });

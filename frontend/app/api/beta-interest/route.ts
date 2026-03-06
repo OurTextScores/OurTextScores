@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as nodemailer from "nodemailer";
 import clientPromise from "../../lib/mongo";
 import { generateApprovalToken, getApprovalTtlHours, hashApprovalToken } from "../../lib/beta-approvals";
-import { resolveInviteBaseUrl } from "../../lib/beta-invites";
+import { buildBetaApprovalUrl, resolveInviteBaseUrl } from "../../lib/beta-invites";
 
 function clean(input: unknown): string {
   return String(input ?? "").trim();
@@ -10,6 +10,15 @@ function clean(input: unknown): string {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export async function POST(request: Request) {
@@ -43,7 +52,7 @@ export async function POST(request: Request) {
   const adminApprovalToken = generateApprovalToken();
   const adminApprovalTokenHash = hashApprovalToken(adminApprovalToken);
   const adminApprovalExpiresAt = new Date(now.getTime() + getApprovalTtlHours() * 60 * 60 * 1000);
-  const adminApprovalUrl = `${adminApprovalBaseUrl}/beta-approve?token=${encodeURIComponent(adminApprovalToken)}`;
+  const adminApprovalUrl = buildBetaApprovalUrl(adminApprovalBaseUrl, adminApprovalToken);
 
   // Persist beta request details for admin review and invite workflow.
   try {
@@ -106,13 +115,23 @@ export async function POST(request: Request) {
       "",
       `Submitted at: ${now.toISOString()}`
     ].join("\n");
+    const html = [
+      "<p><strong>New beta preview request</strong></p>",
+      `<p><strong>Email:</strong> ${escapeHtml(email)}</p>`,
+      `<p><strong>Description / use case / potential contributions:</strong><br>${escapeHtml(description).replace(/\n/g, "<br>")}</p>`,
+      `<p><a href="${escapeHtml(adminApprovalUrl)}">Review and send beta invite</a></p>`,
+      `<p>This approval link expires on <strong>${escapeHtml(adminApprovalExpiresAt.toISOString())}</strong>.</p>`,
+      `<p>Admin inbox: <a href="${escapeHtml(`${adminApprovalBaseUrl}/admin/beta-requests`)}">${escapeHtml(`${adminApprovalBaseUrl}/admin/beta-requests`)}</a></p>`,
+      `<p>Submitted at: ${escapeHtml(now.toISOString())}</p>`,
+    ].join("");
 
     await transport.sendMail({
       from: emailFrom,
       to: adminRecipient,
       replyTo: email,
       subject,
-      text
+      text,
+      html,
     });
   } catch (error: any) {
     return NextResponse.json(

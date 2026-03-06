@@ -43,6 +43,26 @@ export function resolveInviteBaseUrl(request: Request): string {
   return new URL(request.url).origin;
 }
 
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}${path}`;
+}
+
+export function buildBetaInvitePath(token: string): string {
+  return `/i/${encodeURIComponent(token)}`;
+}
+
+export function buildBetaInviteUrl(baseUrl: string, token: string): string {
+  return joinUrl(baseUrl, buildBetaInvitePath(token));
+}
+
+export function buildBetaApprovalPath(token: string): string {
+  return `/a/${encodeURIComponent(token)}`;
+}
+
+export function buildBetaApprovalUrl(baseUrl: string, token: string): string {
+  return joinUrl(baseUrl, buildBetaApprovalPath(token));
+}
+
 export function getInviteStatus(invite: any, now: Date): BetaInviteStatus {
   if (!invite) return { value: "none", label: "No invite sent" };
   if (invite.usedAt) return { value: "used", label: "Invite accepted" };

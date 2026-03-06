@@ -1,6 +1,7 @@
 import type { Db } from "mongodb";
 import * as nodemailer from "nodemailer";
 import {
+  buildBetaInviteUrl,
   generateInviteToken,
   getInviteTtlHours,
   hashInviteToken,
@@ -22,6 +23,15 @@ export interface IssueBetaInviteResult {
   inviteUrl: string;
 }
 
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function issueBetaInvite({
   db,
   email,
@@ -35,7 +45,7 @@ export async function issueBetaInvite({
   const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
   const rawToken = generateInviteToken();
   const tokenHash = hashInviteToken(rawToken);
-  const inviteUrl = `${baseUrl}/beta-invite?token=${encodeURIComponent(rawToken)}`;
+  const inviteUrl = buildBetaInviteUrl(baseUrl, rawToken);
 
   await db.collection("beta_invites").updateMany(
     {
@@ -87,12 +97,20 @@ export async function issueBetaInvite({
     "",
     "Use the same email address you used for this request.",
   ].join("\n");
+  const html = [
+    "<p>Your request for OurTextScores beta access has been approved.</p>",
+    `<p><a href="${escapeHtml(inviteUrl)}">Activate your beta invite</a></p>`,
+    `<p>This invite expires on <strong>${escapeHtml(expiresAt.toISOString())}</strong>.</p>`,
+    `<p>After activation, sign in from <a href="${escapeHtml(`${baseUrl}/signin`)}">${escapeHtml(`${baseUrl}/signin`)}</a>.</p>`,
+    "<p>Use the same email address you used for this request.</p>",
+  ].join("");
 
   await transport.sendMail({
     from: emailFrom,
     to: email,
     subject,
     text,
+    html,
   });
 
   return {
