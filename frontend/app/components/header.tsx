@@ -44,46 +44,49 @@ export default function Header() {
   }, [user]);
 
   return (
-    <header className="sticky top-0 z-40 mb-4 border-b border-slate-200/80 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-slate-800/70 dark:bg-slate-950/70">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-2 transition-colors">
-        <Link href="/welcome" className="text-sm font-semibold text-slate-800 hover:underline dark:text-slate-100">
-          🎼 OurTextScores
+    <header className="sticky top-0 z-40 px-3 pt-3">
+      <div className="ots-panel mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 transition-colors md:flex-row md:items-center md:justify-between">
+        <Link href="/welcome" className="min-w-0">
+          <div className="ots-kicker">Open musical texts</div>
+          <div className="font-[var(--font-heading)] text-2xl leading-none text-slate-900 dark:text-slate-50">
+            OurTextScores
+          </div>
         </Link>
-        <div className="flex items-center gap-3">
-          <Link href="/catalogue" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">≡ </span>Catalogue</Link>
-          <Link href="/projects" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">▦ </span>Projects</Link>
-          <Link href="/score-editor" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">✎ </span>Score Editor</Link>
-          <Link href="/legal" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">§ </span>Legal</Link>
+        <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
+          <Link href="/catalogue" className="ots-nav-link">Catalogue</Link>
+          <Link href="/projects" className="ots-nav-link">Projects</Link>
+          <Link href="/score-editor" className="ots-nav-link">Score Editor</Link>
+          <Link href="/legal" className="ots-nav-link">Legal</Link>
           <ThemeToggle />
           {user ? (
             <>
               {effectiveUsername ? (
                 <Link
                   href={`/users/${encodeURIComponent(effectiveUsername)}`}
-                  className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"
+                  className="ots-nav-link"
                 >
                   {userDisplay}
                 </Link>
               ) : (
-                <span className="text-xs text-slate-700 dark:text-slate-300">{userDisplay}</span>
+                <span className="rounded-full px-3 py-2 text-sm text-slate-700 dark:text-slate-300">{userDisplay}</span>
               )}
-              <Link href="/notifications" className="relative text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">
-                <span aria-hidden="true">◉ </span>Notifications
+              <Link href="/notifications" className="ots-nav-link relative">
+                Notifications
                 {unreadCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  <span className="absolute -right-1 top-0 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] font-bold text-white dark:bg-sky-300 dark:text-slate-900">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
               </Link>
-              <Link href="/approvals" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">✓ </span>Approvals</Link>
-              <Link href="/settings" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">⚙ </span>Settings</Link>
-              <button onClick={() => signOut()} className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
-                <span aria-hidden="true">↪ </span>Sign out
+              <Link href="/approvals" className="ots-nav-link">Approvals</Link>
+              <Link href="/settings" className="ots-nav-link">Settings</Link>
+              <button onClick={() => signOut()} className="ots-button-secondary px-3 py-2 text-xs">
+                Sign out
               </button>
             </>
           ) : (
-            <Link href="/signin" className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
-              <span aria-hidden="true">↩ </span>Sign in
+            <Link href="/signin" className="ots-button-secondary px-3 py-2 text-xs">
+              Sign in
             </Link>
           )}
         </div>

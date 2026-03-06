@@ -142,9 +142,9 @@ export default function WorksPage() {
     value: "any" | "yes" | "no",
     onChange: (next: "any" | "yes" | "no") => void
   ) => (
-    <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-      <span className="min-w-[140px]">{label}</span>
-      <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-300 md:flex-row md:items-center md:justify-between">
+      <span className="font-medium text-slate-700 dark:text-slate-200">{label}</span>
+      <div className="inline-flex overflow-hidden rounded-full border border-stone-200 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
         {[
           { value: "any" as const, label: "Any" },
           { value: "yes" as const, label: "On" },
@@ -157,10 +157,10 @@ export default function WorksPage() {
               onChange(option.value);
               setCurrentPage(1);
             }}
-            className={`px-3 py-1 text-xs font-semibold transition ${
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
               value === option.value
-                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                ? "bg-slate-900 text-white dark:bg-sky-300 dark:text-slate-950"
+                : "bg-transparent text-slate-600 hover:bg-stone-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
           >
             {option.label}
@@ -171,88 +171,97 @@ export default function WorksPage() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-50 py-12 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-3xl">
-            <h1 className="text-4xl font-semibold tracking-tight">🎼 OurTextScores</h1>
-            <p className="text-slate-600 dark:text-slate-300">
-              Catalogue of editable community transcriptions of public domain works.
+    <main className="min-h-screen py-10 text-slate-900 dark:text-slate-100">
+      <section className="ots-shell flex flex-col gap-8 pb-12">
+        <header className="ots-panel-strong grid gap-6 px-6 py-7 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] md:px-8">
+          <div className="space-y-4">
+            <div className="ots-kicker">Catalogue</div>
+            <h1 className="font-[var(--font-heading)] text-4xl leading-tight md:text-5xl">
+              Discover editable community scores.
+            </h1>
+            <p className="max-w-3xl text-sm leading-7 text-slate-700 dark:text-slate-300">
+              Browse versioned transcriptions, follow source trails back to IMSLP, and jump directly into editorial workflows.
             </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {[
-              { href: '/works/upload', label: 'Save IMSLP work', icon: '+' },
-              { href: '/upload', label: 'Upload source', icon: '↑' }
-            ].map((b) => (
-              <Link
-                key={b.href}
-                href={b.href}
-                className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-              >
-                <span aria-hidden="true">{b.icon} </span>
-                {b.label}
+            <div className="flex flex-wrap gap-3">
+              <Link href="/works/upload" className="ots-button-primary">
+                Save IMSLP work
               </Link>
-            ))}
+              <Link href="/upload" className="ots-button-secondary">
+                Upload source
+              </Link>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+            <div className="ots-stat">
+              <div className="ots-kicker">Visible works</div>
+              <div className="mt-2 text-3xl font-semibold">{isLoading ? "…" : totalItems}</div>
+            </div>
+            <div className="ots-stat">
+              <div className="ots-kicker">Source count</div>
+              <div className="mt-2 text-3xl font-semibold">
+                {isLoading ? "…" : (totalSourceCount ?? "Live")}
+              </div>
+            </div>
+            <div className="ots-stat">
+              <div className="ots-kicker">Focus</div>
+              <div className="mt-2 text-base font-semibold">Public-domain editorial workbench</div>
+            </div>
           </div>
         </header>
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="w-full md:w-96">
-            <SearchBox
-              onSearch={handleSearch}
-              placeholder="Search by title, composer, or catalogue..."
-              debounceMs={300}
-            />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="ots-panel p-5 md:p-6">
+            <div className="ots-kicker">Search</div>
+            <div className="mt-3">
+              <SearchBox
+                onSearch={handleSearch}
+                placeholder="Search by title, composer, or catalogue..."
+                debounceMs={300}
+              />
+            </div>
           </div>
-          <form onSubmit={handleImslpSubmit} className="w-full max-w-xl">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              IMSLP URL
-            </label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+
+          <form onSubmit={handleImslpSubmit} className="ots-panel p-5 md:p-6">
+            <div className="ots-kicker">Jump from IMSLP</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Paste an IMSLP work URL to land on the matching catalogue entry.
+            </p>
+            <div className="mt-4 flex flex-col gap-3">
               <input
                 type="url"
                 value={imslpUrl}
                 onChange={(event) => setImslpUrl(event.target.value)}
                 placeholder="https://imslp.org/wiki/..."
-                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-600"
+                className="ots-input"
               />
               <button
                 type="submit"
                 disabled={!imslpUrl.trim() || isResolvingImslp}
-                className="inline-flex items-center justify-center rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="ots-button-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isResolvingImslp ? (
-                  <>
-                    <span aria-hidden="true">… </span>
-                    Resolving...
-                  </>
-                ) : (
-                  <>
-                    <span aria-hidden="true">⌕ </span>
-                    Go
-                  </>
-                )}
+                {isResolvingImslp ? "Resolving..." : "Open linked work"}
               </button>
             </div>
             {imslpError && (
-              <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">{imslpError}</p>
+              <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{imslpError}</p>
             )}
           </form>
         </div>
 
-        {/* Filter Controls */}
         {isAdmin && (
-          <div className="flex flex-col gap-3">
-            {renderTriState("Has reference PDF", filterReferencePdf, setFilterReferencePdf)}
-            {renderTriState("Admin verified", filterVerified, setFilterVerified)}
-            {renderTriState("Has flagged sources", filterFlagged, setFilterFlagged)}
+          <div className="ots-panel p-5 md:p-6">
+            <div className="ots-kicker">Admin filters</div>
+            <div className="mt-4 grid gap-4">
+              {renderTriState("Has reference PDF", filterReferencePdf, setFilterReferencePdf)}
+              {renderTriState("Admin verified", filterVerified, setFilterVerified)}
+              {renderTriState("Has flagged sources", filterFlagged, setFilterFlagged)}
+            </div>
           </div>
         )}
 
         {/* Loading State */}
         {isLoading && (
-          <div className="flex items-center justify-center py-12">
+          <div className="ots-panel flex items-center justify-center py-12">
             <div className="text-slate-500 dark:text-slate-400">
               <svg className="h-8 w-8 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -264,9 +273,12 @@ export default function WorksPage() {
 
         {/* Works Table */}
         {!isLoading && (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
-            <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-              <thead className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
+          <div className="ots-panel overflow-hidden">
+            <div className="border-b border-stone-200/80 px-5 py-4 dark:border-slate-800">
+              <div className="ots-kicker">Browse results</div>
+            </div>
+            <table className="min-w-full divide-y divide-stone-200/80 text-sm dark:divide-slate-800">
+              <thead className="bg-stone-100/70 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Title</th>
                   <th className="px-4 py-3">Composer</th>
@@ -278,7 +290,7 @@ export default function WorksPage() {
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {works.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                    <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
                       {searchQuery.trim()
                         ? `No works found matching "${searchQuery}"`
                         : "No works have been uploaded yet."}
@@ -326,7 +338,7 @@ export default function WorksPage() {
 
 function WorkRow({ work }: { work: WorkSummary }) {
   return (
-    <tr className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40">
+    <tr className="transition hover:bg-stone-50/80 dark:hover:bg-slate-800/40">
       <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">
         <Link href={`/works/${encodeURIComponent(work.workId)}`} className="hover:text-primary-600 hover:underline dark:hover:text-primary-400">
           {work.title ?? "—"}

@@ -86,11 +86,11 @@ const waysToContribute = [
 ];
 
 const quickLinks = [
-  { href: "/catalogue", label: "Browse Catalogue", icon: "≡" },
-  { href: "/works/upload", label: "Save IMSLP Work", icon: "+" },
-  { href: "/upload", label: "Upload New Source", icon: "↑" },
-  { href: "/projects", label: "Explore Projects", icon: "▦" },
-  { href: "/score-editor", label: "Open Score Editor", icon: "✎" },
+  { href: "/catalogue", label: "Browse Catalogue" },
+  { href: "/works/upload", label: "Save IMSLP Work" },
+  { href: "/upload", label: "Upload New Source" },
+  { href: "/projects", label: "Explore Projects" },
+  { href: "/score-editor", label: "Open Score Editor" },
 ];
 
 export const metadata = {
@@ -100,10 +100,10 @@ export const metadata = {
 
 export default function WelcomePage() {
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f0f7ff_0%,#e0ecff_55%,#cfddf4_100%)] text-slate-900 dark:bg-[linear-gradient(180deg,#020617_0%,#0b1220_55%,#111a2d_100%)] dark:text-slate-100">
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pb-14 pt-12">
-        <header className="rounded-xl border border-slate-300 bg-[linear-gradient(135deg,#ffffff_0%,#ecf5ff_100%)] p-8 shadow-[0_12px_40px_rgba(21,53,94,0.12)] dark:border-slate-700 dark:bg-[linear-gradient(135deg,#0f172a_0%,#0b1a33_100%)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-          <p className="text-sm uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">Welcome to OurTextScores</p>
+    <main className="min-h-screen text-slate-900 dark:text-slate-100">
+      <section className="ots-shell flex flex-col gap-8 pb-14 pt-10">
+        <header className="ots-panel-strong p-8 md:p-10">
+          <p className="ots-kicker">Welcome to OurTextScores</p>
           <h1 className="mt-2 font-[var(--font-heading)] text-4xl leading-tight md:text-5xl">
             Open, Collaborative, Editable Music Scores
           </h1>
@@ -115,20 +115,20 @@ export default function WelcomePage() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-md border border-cyan-300 bg-white/80 px-4 py-2 text-sm font-semibold text-cyan-800 hover:bg-white dark:border-cyan-700 dark:bg-slate-900 dark:text-cyan-300 dark:hover:bg-slate-800"
+                className={item.href === "/catalogue" ? "ots-button-primary" : "ots-button-secondary"}
               >
-                <span aria-hidden="true">{item.icon} </span>
                 {item.label}
               </Link>
             ))}
           </div>
         </header>
 
-        <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+        <section className="ots-panel p-8">
           <h2 className="font-[var(--font-heading)] text-3xl">Platform Features</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {platformFeatures.map((feature) => (
-              <article key={feature.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
+            {platformFeatures.map((feature, index) => (
+              <article key={feature.title} className="rounded-2xl border border-stone-200 bg-white/90 p-5 dark:border-slate-700 dark:bg-slate-800/70">
+                <div className="ots-kicker">{String(index + 1).padStart(2, "0")}</div>
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100">{feature.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{feature.body}</p>
               </article>
@@ -136,7 +136,7 @@ export default function WelcomePage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+        <section className="ots-panel p-8">
           <h2 className="font-[var(--font-heading)] text-3xl">IMSLP Integration</h2>
           <div className="mt-4 space-y-4 text-sm leading-7 text-slate-700 dark:text-slate-200">
             <p>
@@ -152,11 +152,11 @@ export default function WelcomePage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+        <section className="ots-panel p-8">
           <h2 className="font-[var(--font-heading)] text-3xl">Why Digitize?</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {whyDigitize.map((entry) => (
-              <article key={entry.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
+              <article key={entry.title} className="rounded-2xl border border-stone-200 bg-white/90 p-5 dark:border-slate-700 dark:bg-slate-800/70">
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{entry.body}</p>
               </article>
@@ -164,11 +164,11 @@ export default function WelcomePage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+        <section className="ots-panel p-8">
           <h2 className="font-[var(--font-heading)] text-3xl">Ways to Contribute</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {waysToContribute.map((entry) => (
-              <article key={entry.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
+              <article key={entry.title} className="rounded-2xl border border-stone-200 bg-white/90 p-5 dark:border-slate-700 dark:bg-slate-800/70">
                 <h3 className="font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{entry.body}</p>
                 {entry.title === "Report Bugs or Send PRs" ? (

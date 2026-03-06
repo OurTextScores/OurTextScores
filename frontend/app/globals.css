@@ -8,7 +8,10 @@
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 transition-colors duration-300;
+    background:
+      radial-gradient(circle at top, rgba(250, 218, 122, 0.22), transparent 32%),
+      linear-gradient(180deg, #f7f1e4 0%, #f4efe6 26%, #f0ece6 100%);
+    @apply text-slate-900 transition-colors duration-300;
     @apply dark:bg-midnight-950 dark:text-slate-100;
   }
 
@@ -23,15 +26,134 @@
 }
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --ots-bg: 244 239 230;
+  --ots-paper: 255 252 246;
+  --ots-paper-strong: 255 255 255;
+  --ots-ink: 31 41 55;
+  --ots-muted: 95 108 126;
+  --ots-accent: 29 78 216;
+  --ots-accent-soft: 219 234 254;
+  --ots-border: 214 211 209;
+  --ots-shadow: 15 23 42;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --ots-bg: 10 15 26;
+    --ots-paper: 15 23 42;
+    --ots-paper-strong: 18 28 48;
+    --ots-ink: 226 232 240;
+    --ots-muted: 148 163 184;
+    --ots-accent: 125 211 252;
+    --ots-accent-soft: 8 47 73;
+    --ots-border: 51 65 85;
+    --ots-shadow: 2 6 23;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top, rgba(14, 165, 233, 0.12), transparent 30%),
+      linear-gradient(180deg, #090c13 0%, #0b1120 100%);
+  }
+}
+
+::selection {
+  background: rgba(29, 78, 216, 0.18);
+  color: inherit;
+}
+
+@layer components {
+  .ots-shell {
+    @apply mx-auto w-full max-w-6xl px-6;
+  }
+
+  .ots-panel {
+    background: rgba(var(--ots-paper), 0.88);
+    border: 1px solid rgba(var(--ots-border), 0.82);
+    box-shadow: 0 18px 50px -28px rgba(var(--ots-shadow), 0.35);
+    @apply rounded-2xl backdrop-blur-sm;
+  }
+
+  .ots-panel-strong {
+    background: rgba(var(--ots-paper-strong), 0.96);
+    border: 1px solid rgba(var(--ots-border), 0.92);
+    box-shadow: 0 22px 60px -30px rgba(var(--ots-shadow), 0.45);
+    @apply rounded-2xl backdrop-blur-sm;
+  }
+
+  .ots-muted-copy {
+    color: rgb(var(--ots-muted));
+  }
+
+  .ots-button-primary {
+    @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition;
+    background: rgb(var(--ots-ink));
+    color: rgb(var(--ots-paper-strong));
+    box-shadow: 0 10px 25px -18px rgba(var(--ots-shadow), 0.75);
+  }
+
+  .ots-button-primary:hover {
+    transform: translateY(-1px);
+    background: rgb(15 23 42);
+  }
+
+  .dark .ots-button-primary {
+    background: rgb(var(--ots-accent));
+    color: rgb(8 15 30);
+  }
+
+  .dark .ots-button-primary:hover {
+    background: rgb(103 232 249);
+  }
+
+  .ots-button-secondary {
+    @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition;
+    background: rgba(var(--ots-paper-strong), 0.9);
+    border: 1px solid rgba(var(--ots-border), 0.95);
+    color: rgb(var(--ots-ink));
+  }
+
+  .ots-button-secondary:hover {
+    transform: translateY(-1px);
+    background: rgba(var(--ots-paper-strong), 1);
+    box-shadow: 0 12px 24px -20px rgba(var(--ots-shadow), 0.45);
+  }
+
+  .ots-nav-link {
+    @apply rounded-full px-3 py-2 text-sm font-medium transition;
+    color: rgb(var(--ots-muted));
+  }
+
+  .ots-nav-link:hover {
+    background: rgba(var(--ots-paper-strong), 0.9);
+    color: rgb(var(--ots-ink));
+  }
+
+  .ots-input {
+    @apply w-full rounded-2xl px-4 py-3 text-sm outline-none transition;
+    border: 1px solid rgba(var(--ots-border), 0.95);
+    background: rgba(var(--ots-paper-strong), 0.98);
+    color: rgb(var(--ots-ink));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
+
+  .ots-input::placeholder {
+    color: rgba(var(--ots-muted), 0.75);
+  }
+
+  .ots-input:focus {
+    border-color: rgba(var(--ots-accent), 0.9);
+    box-shadow: 0 0 0 4px rgba(var(--ots-accent-soft), 0.85);
+  }
+
+  .ots-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.24em];
+    color: rgb(var(--ots-muted));
+  }
+
+  .ots-stat {
+    @apply rounded-2xl px-4 py-3;
+    background: rgba(var(--ots-paper-strong), 0.76);
+    border: 1px solid rgba(var(--ots-border), 0.7);
   }
 }
