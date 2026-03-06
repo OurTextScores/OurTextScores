@@ -43,19 +43,19 @@ export default function Pagination({
     const canGoNext = currentPage < totalPages;
 
     return (
-        <div className="flex items-center justify-between border-t border-stone-200/80 bg-transparent px-5 py-4 dark:border-slate-800">
+        <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900/60">
             <div className="flex flex-1 justify-between sm:hidden">
                 <button
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={!canGoPrevious}
-                    className="ots-button-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                    className="relative inline-flex items-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                     Previous
                 </button>
                 <button
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={!canGoNext}
-                    className="ots-button-secondary relative ml-3 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="relative ml-3 inline-flex items-center rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                     Next
                 </button>
@@ -76,11 +76,11 @@ export default function Pagination({
                     </p>
                 </div>
                 <div>
-                    <nav className="isolate inline-flex gap-1 rounded-full border border-stone-200/80 bg-white/90 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900/80" aria-label="Pagination">
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
                         <button
                             onClick={() => onPageChange(currentPage - 1)}
                             disabled={!canGoPrevious}
-                            className="relative inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 hover:bg-stone-100 focus:z-20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
+                            className="relative inline-flex items-center rounded-l-md border border-slate-300 bg-white px-2 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 focus:z-20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
                         >
                             <span className="sr-only">Previous</span>
                             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -107,9 +107,9 @@ export default function Pagination({
                                 <button
                                     key={pageNum}
                                     onClick={() => onPageChange(pageNum)}
-                                    className={`relative inline-flex items-center rounded-full px-4 py-2 text-sm font-medium focus:z-20 ${currentPage === pageNum
-                                            ? 'z-10 bg-slate-900 text-white dark:bg-sky-300 dark:text-slate-950'
-                                            : 'text-slate-700 hover:bg-stone-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                                    className={`relative inline-flex items-center border px-4 py-2 text-sm font-medium focus:z-20 ${currentPage === pageNum
+                                            ? 'z-10 border-primary-500 bg-primary-50 text-primary-600 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-400'
+                                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
                                         }`}
                                 >
                                     {pageNum}
@@ -120,7 +120,7 @@ export default function Pagination({
                         <button
                             onClick={() => onPageChange(currentPage + 1)}
                             disabled={!canGoNext}
-                            className="relative inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-slate-500 hover:bg-stone-100 focus:z-20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
+                            className="relative inline-flex items-center rounded-r-md border border-slate-300 bg-white px-2 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 focus:z-20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
                         >
                             <span className="sr-only">Next</span>
                             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
