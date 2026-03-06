@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import * as nodemailer from "nodemailer";
 import clientPromise from "../../../lib/mongo";
 import { AdminAuthError, requireAdminEmail } from "../../../lib/admin-auth";
 import {
-  generateInviteToken,
-  getInviteTtlHours,
-  hashInviteToken,
   isValidEmail,
   normalizeEmail,
   resolveInviteBaseUrl
 } from "../../../lib/beta-invites";
+import { issueBetaInvite } from "../../../lib/beta-invite-service";
 
 function clean(input: unknown): string {
   return String(input ?? "").trim();
@@ -37,80 +34,23 @@ export async function POST(request: Request) {
     }
     const emailFrom = process.env.EMAIL_FROM || "OurTextScores <noreply@ourtextscores.com>";
 
-    const now = new Date();
-    const ttlHours = getInviteTtlHours();
-    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
-
-    const rawToken = generateInviteToken();
-    const tokenHash = hashInviteToken(rawToken);
     const baseUrl = resolveInviteBaseUrl(request);
-    const inviteUrl = `${baseUrl}/beta-invite?token=${encodeURIComponent(rawToken)}`;
 
     const client = await clientPromise;
     const db = client.db();
-
-    await db.collection("beta_invites").updateMany(
-      {
-        email,
-        usedAt: { $exists: false },
-        revokedAt: { $exists: false }
-      },
-      {
-        $set: {
-          revokedAt: now,
-          revokedBy: adminEmail,
-          updatedAt: now
-        }
-      }
-    );
-
-    await db.collection("beta_invites").insertOne({
+    const result = await issueBetaInvite({
+      db,
       email,
-      tokenHash,
-      createdAt: now,
-      updatedAt: now,
-      createdBy: adminEmail,
-      expiresAt
-    });
-
-    await db.collection("beta_interest_signups").updateOne(
-      { email },
-      {
-        $set: {
-          invitedAt: now,
-          invitedBy: adminEmail,
-          updatedAt: now
-        }
-      }
-    );
-
-    const transport = nodemailer.createTransport(emailServer as any);
-    const subject = "Your OurTextScores beta invite";
-    const text = [
-      "Your request for OurTextScores beta access has been approved.",
-      "",
-      "Use this one-time invite link to activate your account access:",
-      inviteUrl,
-      "",
-      `This invite expires on ${expiresAt.toISOString()}.`,
-      "",
-      "After activation, sign in from:",
-      `${baseUrl}/signin`,
-      "",
-      "Use the same email address you used for this request."
-    ].join("\n");
-
-    await transport.sendMail({
-      from: emailFrom,
-      to: email,
-      subject,
-      text
+      actorLabel: adminEmail,
+      baseUrl,
+      emailServer,
+      emailFrom,
     });
 
     return NextResponse.json({
       ok: true,
-      email,
-      expiresAt: expiresAt.toISOString()
+      email: result.email,
+      expiresAt: result.expiresAt,
     });
   } catch (error: any) {
     if (error instanceof AdminAuthError) {

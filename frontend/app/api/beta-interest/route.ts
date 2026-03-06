@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import * as nodemailer from "nodemailer";
 import clientPromise from "../../lib/mongo";
+import { generateApprovalToken, getApprovalTtlHours, hashApprovalToken } from "../../lib/beta-approvals";
+import { resolveInviteBaseUrl } from "../../lib/beta-invites";
 
 function clean(input: unknown): string {
   return String(input ?? "").trim();
@@ -37,6 +39,11 @@ export async function POST(request: Request) {
   const adminRecipient = process.env.BETA_PREVIEW_ADMIN_EMAIL || "admin@ourtextscores.com";
   const emailServer = process.env.EMAIL_SERVER;
   const emailFrom = process.env.EMAIL_FROM || "OurTextScores <noreply@ourtextscores.com>";
+  const adminApprovalBaseUrl = resolveInviteBaseUrl(request);
+  const adminApprovalToken = generateApprovalToken();
+  const adminApprovalTokenHash = hashApprovalToken(adminApprovalToken);
+  const adminApprovalExpiresAt = new Date(now.getTime() + getApprovalTtlHours() * 60 * 60 * 1000);
+  const adminApprovalUrl = `${adminApprovalBaseUrl}/beta-approve?token=${encodeURIComponent(adminApprovalToken)}`;
 
   // Persist beta request details for admin review and invite workflow.
   try {
@@ -50,11 +57,20 @@ export async function POST(request: Request) {
           description,
           tosAccepted: true,
           tosAcceptedAt: now,
+          adminApprovalTokenHash,
+          adminApprovalIssuedAt: now,
+          adminApprovalExpiresAt,
+          adminApprovalIssuedTo: adminRecipient,
           updatedAt: now
         },
         $setOnInsert: {
           createdAt: now
-        }
+        },
+        $unset: {
+          adminApprovalUsedAt: "",
+          adminApprovalClaimedAt: "",
+          adminApprovalLastError: ""
+        },
       },
       { upsert: true }
     );
@@ -79,6 +95,14 @@ export async function POST(request: Request) {
       "",
       "Description / use case / potential contributions:",
       description,
+      "",
+      "Review this request and send the requester their existing beta invite:",
+      adminApprovalUrl,
+      "",
+      `This approval link expires on ${adminApprovalExpiresAt.toISOString()}.`,
+      "",
+      "Admin inbox:",
+      `${adminApprovalBaseUrl}/admin/beta-requests`,
       "",
       `Submitted at: ${now.toISOString()}`
     ].join("\n");
