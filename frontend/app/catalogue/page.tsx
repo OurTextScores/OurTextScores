@@ -20,6 +20,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { fetchWorksPaginated, resolveImslpUrl, searchWorks, WorkSummary } from "../lib/api";
 import SearchBox from "../components/SearchBox";
 import Pagination from "../components/Pagination";
@@ -33,6 +34,8 @@ const ITEMS_PER_PAGE = 20;
 
 export default function WorksPage() {
   const router = useRouter();
+  const { data: session } = useSession();
+  const isAdmin = Array.isArray(session?.user?.roles) && session.user.roles.includes("admin");
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [totalSourceCount, setTotalSourceCount] = useState<number | undefined>(undefined);
@@ -56,16 +59,19 @@ export default function WorksPage() {
           filterVerified,
           filterFlagged
         ].some((value) => value !== "any");
-        const shouldUseFilter = hasTriStateFilters || !!searchQuery.trim();
+        const effectiveHasTriStateFilters = isAdmin && hasTriStateFilters;
+        const shouldUseFilter = effectiveHasTriStateFilters || !!searchQuery.trim();
         const filters: string[] = [];
         if (shouldUseFilter) {
           filters.push('sourceCount > 0');
-          if (filterReferencePdf === "yes") filters.push('hasReferencePdf = true');
-          if (filterReferencePdf === "no") filters.push('hasReferencePdf = false');
-          if (filterVerified === "yes") filters.push('hasVerifiedSources = true');
-          if (filterVerified === "no") filters.push('hasVerifiedSources = false');
-          if (filterFlagged === "yes") filters.push('hasFlaggedSources = true');
-          if (filterFlagged === "no") filters.push('hasFlaggedSources = false');
+          if (isAdmin) {
+            if (filterReferencePdf === "yes") filters.push('hasReferencePdf = true');
+            if (filterReferencePdf === "no") filters.push('hasReferencePdf = false');
+            if (filterVerified === "yes") filters.push('hasVerifiedSources = true');
+            if (filterVerified === "no") filters.push('hasVerifiedSources = false');
+            if (filterFlagged === "yes") filters.push('hasFlaggedSources = true');
+            if (filterFlagged === "no") filters.push('hasFlaggedSources = false');
+          }
         }
         const filter = filters.length > 0 ? filters.join(' AND ') : undefined;
 
@@ -85,7 +91,7 @@ export default function WorksPage() {
             limit: ITEMS_PER_PAGE,
             offset,
             filter: shouldUseFilter ? filter : undefined,
-            onlyWithSources: !shouldUseFilter,
+            onlyWithSources: !(!!searchQuery.trim() || effectiveHasTriStateFilters),
           });
           setWorks(result.works);
           setTotalItems(result.total);
@@ -102,7 +108,7 @@ export default function WorksPage() {
     }
 
     loadWorks();
-  }, [currentPage, searchQuery, filterReferencePdf, filterVerified, filterFlagged]);
+  }, [currentPage, filterFlagged, filterReferencePdf, filterVerified, isAdmin, searchQuery]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -236,11 +242,13 @@ export default function WorksPage() {
         </div>
 
         {/* Filter Controls */}
-        <div className="flex flex-col gap-3">
-          {renderTriState("Has reference PDF", filterReferencePdf, setFilterReferencePdf)}
-          {renderTriState("Admin verified", filterVerified, setFilterVerified)}
-          {renderTriState("Has flagged sources", filterFlagged, setFilterFlagged)}
-        </div>
+        {isAdmin && (
+          <div className="flex flex-col gap-3">
+            {renderTriState("Has reference PDF", filterReferencePdf, setFilterReferencePdf)}
+            {renderTriState("Admin verified", filterVerified, setFilterVerified)}
+            {renderTriState("Has flagged sources", filterFlagged, setFilterFlagged)}
+          </div>
+        )}
 
         {/* Loading State */}
         {isLoading && (
