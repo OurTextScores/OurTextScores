@@ -9,8 +9,7 @@
 
   body {
     background:
-      radial-gradient(circle at top, rgba(250, 218, 122, 0.22), transparent 32%),
-      linear-gradient(180deg, #f7f1e4 0%, #f4efe6 26%, #f0ece6 100%);
+      linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(246, 243, 238, 0.92) 100%);
     @apply text-slate-900 transition-colors duration-300;
     @apply dark:bg-midnight-950 dark:text-slate-100;
   }
@@ -68,16 +67,16 @@
   }
 
   .ots-panel {
-    background: rgba(var(--ots-paper), 0.88);
-    border: 1px solid rgba(var(--ots-border), 0.82);
-    box-shadow: 0 18px 50px -28px rgba(var(--ots-shadow), 0.35);
+    background: rgb(var(--ots-paper) / 0.94);
+    border: 1px solid rgb(var(--ots-border) / 0.82);
+    box-shadow: 0 14px 36px -30px rgb(var(--ots-shadow) / 0.26);
     @apply rounded-2xl backdrop-blur-sm;
   }
 
   .ots-panel-strong {
-    background: rgba(var(--ots-paper-strong), 0.96);
-    border: 1px solid rgba(var(--ots-border), 0.92);
-    box-shadow: 0 22px 60px -30px rgba(var(--ots-shadow), 0.45);
+    background: rgb(var(--ots-paper-strong) / 0.98);
+    border: 1px solid rgb(var(--ots-border) / 0.92);
+    box-shadow: 0 18px 44px -34px rgb(var(--ots-shadow) / 0.28);
     @apply rounded-2xl backdrop-blur-sm;
   }
 
@@ -89,7 +88,7 @@
     @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition;
     background: rgb(var(--ots-ink));
     color: rgb(var(--ots-paper-strong));
-    box-shadow: 0 10px 25px -18px rgba(var(--ots-shadow), 0.75);
+    box-shadow: 0 10px 25px -18px rgb(var(--ots-shadow) / 0.75);
   }
 
   .ots-button-primary:hover {
@@ -108,15 +107,15 @@
 
   .ots-button-secondary {
     @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition;
-    background: rgba(var(--ots-paper-strong), 0.9);
-    border: 1px solid rgba(var(--ots-border), 0.95);
+    background: rgb(var(--ots-paper-strong) / 0.9);
+    border: 1px solid rgb(var(--ots-border) / 0.95);
     color: rgb(var(--ots-ink));
   }
 
   .ots-button-secondary:hover {
     transform: translateY(-1px);
-    background: rgba(var(--ots-paper-strong), 1);
-    box-shadow: 0 12px 24px -20px rgba(var(--ots-shadow), 0.45);
+    background: rgb(var(--ots-paper-strong));
+    box-shadow: 0 12px 24px -20px rgb(var(--ots-shadow) / 0.45);
   }
 
   .ots-nav-link {
@@ -125,25 +124,25 @@
   }
 
   .ots-nav-link:hover {
-    background: rgba(var(--ots-paper-strong), 0.9);
+    background: rgb(var(--ots-paper-strong) / 0.9);
     color: rgb(var(--ots-ink));
   }
 
   .ots-input {
     @apply w-full rounded-2xl px-4 py-3 text-sm outline-none transition;
-    border: 1px solid rgba(var(--ots-border), 0.95);
-    background: rgba(var(--ots-paper-strong), 0.98);
+    border: 1px solid rgb(var(--ots-border) / 0.95);
+    background: rgb(var(--ots-paper-strong) / 0.98);
     color: rgb(var(--ots-ink));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45);
   }
 
   .ots-input::placeholder {
-    color: rgba(var(--ots-muted), 0.75);
+    color: rgb(var(--ots-muted) / 0.75);
   }
 
   .ots-input:focus {
-    border-color: rgba(var(--ots-accent), 0.9);
-    box-shadow: 0 0 0 4px rgba(var(--ots-accent-soft), 0.85);
+    border-color: rgb(var(--ots-accent) / 0.9);
+    box-shadow: 0 0 0 4px rgb(var(--ots-accent-soft) / 0.85);
   }
 
   .ots-kicker {
@@ -153,7 +152,7 @@
 
   .ots-stat {
     @apply rounded-2xl px-4 py-3;
-    background: rgba(var(--ots-paper-strong), 0.76);
-    border: 1px solid rgba(var(--ots-border), 0.7);
+    background: rgb(var(--ots-paper-strong) / 0.76);
+    border: 1px solid rgb(var(--ots-border) / 0.7);
   }
 }

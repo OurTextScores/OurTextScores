@@ -175,16 +175,18 @@ export default function WorksPage() {
 
   return (
     <main className="min-h-screen py-10 text-slate-900 dark:text-slate-100">
-      <section className="ots-shell flex flex-col gap-8 pb-12">
-        <header className="ots-panel-strong grid gap-6 px-6 py-7 md:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] md:px-8">
-          <div className="space-y-4">
-            <div className="ots-kicker">Catalogue</div>
-            <h1 className="font-[var(--font-heading)] text-4xl leading-tight md:text-5xl">
-              Discover editable community scores.
-            </h1>
-            <p className="max-w-3xl text-sm leading-7 text-slate-700 dark:text-slate-300">
-              Browse versioned transcriptions, follow source trails back to IMSLP, and jump directly into editorial workflows.
-            </p>
+      <section className="ots-shell flex flex-col gap-5 pb-12">
+        <header className="ots-panel-strong px-6 py-5 md:px-7">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div className="space-y-2">
+              <div className="ots-kicker">Catalogue</div>
+              <h1 className="font-[var(--font-heading)] text-3xl leading-tight md:text-4xl">
+                Community transcription workspace
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                Search works, inspect source counts, and jump directly to the work page or editor flow.
+              </p>
+            </div>
             <div className="flex flex-wrap gap-3">
               <Link href="/works/upload" className="ots-button-primary">
                 Save IMSLP work
@@ -194,25 +196,31 @@ export default function WorksPage() {
               </Link>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-1">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="ots-stat">
               <div className="ots-kicker">Visible works</div>
-              <div className="mt-2 text-3xl font-semibold">{isLoading ? "…" : totalItems}</div>
+              <div className="mt-2 text-2xl font-semibold">{isLoading ? "…" : totalItems}</div>
             </div>
             <div className="ots-stat">
               <div className="ots-kicker">Source count</div>
-              <div className="mt-2 text-3xl font-semibold">
+              <div className="mt-2 text-2xl font-semibold">
                 {isLoading ? "…" : (totalSourceCount ?? "Live")}
               </div>
             </div>
             <div className="ots-stat">
-              <div className="ots-kicker">Focus</div>
-              <div className="mt-2 text-base font-semibold">Public-domain editorial workbench</div>
+              <div className="ots-kicker">Search mode</div>
+              <div className="mt-2 text-sm font-semibold">
+                {searchQuery.trim() ? "Filtered query" : "Catalogue browse"}
+              </div>
+            </div>
+            <div className="ots-stat">
+              <div className="ots-kicker">IMSLP jump</div>
+              <div className="mt-2 text-sm font-semibold">Direct work lookup available</div>
             </div>
           </div>
         </header>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="ots-panel p-5 md:p-6">
             <div className="ots-kicker">Search</div>
             <div className="mt-3">
@@ -278,7 +286,19 @@ export default function WorksPage() {
         {!isLoading && (
           <div className="ots-panel overflow-hidden">
             <div className="border-b border-stone-200/80 px-5 py-4 dark:border-slate-800">
-              <div className="ots-kicker">Browse results</div>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="ots-kicker">Browse results</div>
+                  <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                    {searchQuery.trim()
+                      ? `Showing matches for “${searchQuery}”.`
+                      : "Showing catalogue entries with available source material."}
+                  </div>
+                </div>
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                  {works.length} rows on this page
+                </div>
+              </div>
             </div>
             <table className="min-w-full divide-y divide-stone-200/80 text-sm dark:divide-slate-800">
               <thead className="bg-stone-100/70 text-left text-xs uppercase tracking-[0.18em] text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
