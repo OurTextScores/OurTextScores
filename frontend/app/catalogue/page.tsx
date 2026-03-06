@@ -35,7 +35,10 @@ const ITEMS_PER_PAGE = 20;
 export default function WorksPage() {
   const router = useRouter();
   const { data: session } = useSession();
-  const isAdmin = Array.isArray(session?.user?.roles) && session.user.roles.includes("admin");
+  const roles = Array.isArray((session?.user as { roles?: string[] } | undefined)?.roles)
+    ? ((session?.user as { roles?: string[] }).roles as string[])
+    : [];
+  const isAdmin = roles.includes("admin");
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [totalSourceCount, setTotalSourceCount] = useState<number | undefined>(undefined);
