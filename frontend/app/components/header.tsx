@@ -75,6 +75,7 @@ export default function Header() {
                   </span>
                 )}
               </Link>
+              <Link href="/change-reviews" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">☰ </span>Change Reviews</Link>
               <Link href="/approvals" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">✓ </span>Approvals</Link>
               <Link href="/settings" className="text-xs text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300"><span aria-hidden="true">⚙ </span>Settings</Link>
               <button onClick={() => signOut()} className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">

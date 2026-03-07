@@ -5,7 +5,7 @@ import Link from "next/link";
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision';
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted';
   workId: string;
   sourceId: string;
   revisionId: string;
@@ -46,6 +46,11 @@ export default function NotificationsClient({ initialNotifications }: Props) {
           title: `New revision on watched work`,
           description: `${n.workId}/${n.sourceId}`
         };
+      case 'change_review_submitted':
+        return {
+          title: `${actor} submitted a change review`,
+          description: `${n.workId}/${n.sourceId}`,
+        };
       default:
         return {
           title: "Notification",
@@ -55,6 +60,9 @@ export default function NotificationsClient({ initialNotifications }: Props) {
   };
 
   const getNotificationLink = (n: Notification): string => {
+    if (n.type === 'change_review_submitted' && n.payload?.reviewId) {
+      return `/change-reviews/${encodeURIComponent(String(n.payload.reviewId))}`;
+    }
     // Create deep link with URL parameters to open specific source/revision
     const params = new URLSearchParams({
       source: n.sourceId,
@@ -124,6 +132,8 @@ export default function NotificationsClient({ initialNotifications }: Props) {
         return '📝';
       case 'new_revision':
         return '📄';
+      case 'change_review_submitted':
+        return '🧾';
       default:
         return '🔔';
     }

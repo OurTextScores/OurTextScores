@@ -14,8 +14,8 @@ export class NotificationInbox {
   @Prop({ required: true, index: true, trim: true })
   userId!: string; // recipient user ID
 
-  @Prop({ required: true, enum: ['comment_reply', 'source_comment', 'new_revision'] })
-  type!: 'comment_reply' | 'source_comment' | 'new_revision';
+  @Prop({ required: true, enum: ['comment_reply', 'source_comment', 'new_revision', 'change_review_submitted'] })
+  type!: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted';
 
   @Prop({ required: true, trim: true })
   workId!: string;
