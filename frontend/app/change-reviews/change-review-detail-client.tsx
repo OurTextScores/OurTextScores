@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 type ReviewDetail = {
   reviewId: string;
@@ -147,7 +147,26 @@ export default function ChangeReviewDetailClient({
     `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(review.headRevisionId)}`,
   )}&leftLabel=${encodeURIComponent(`Rev #${review.baseSequenceNumber}`)}&rightLabel=${encodeURIComponent(
     `Rev #${review.headSequenceNumber}`,
-  )}`;
+  )}&changeReviewId=${encodeURIComponent(review.reviewId)}`;
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      const data = event.data && typeof event.data === "object" ? event.data as { type?: string; reviewId?: string } : null;
+      if (!data || data.type !== "ots.change-review.updated" || data.reviewId !== review.reviewId) {
+        return;
+      }
+      void refresh().catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    };
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [review.reviewId]);
 
   const renderThread = (thread: ReviewDiff["threads"][number]) => (
     <div className="border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-800">
