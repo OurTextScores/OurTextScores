@@ -4,6 +4,8 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StorageModule } from '../storage/storage.module';
 import { UsersModule } from '../users/users.module';
+import { WatchesModule } from '../watches/watches.module';
+import { BranchesModule } from '../branches/branches.module';
 import { Work, WorkSchema } from '../works/schemas/work.schema';
 import { Source, SourceSchema } from '../works/schemas/source.schema';
 import { SourceRevision, SourceRevisionSchema } from '../works/schemas/source-revision.schema';
@@ -20,6 +22,8 @@ import { ChangeReviewComment, ChangeReviewCommentSchema } from './schemas/change
     NotificationsModule,
     StorageModule,
     UsersModule,
+    WatchesModule,
+    BranchesModule,
     MongooseModule.forFeature([
       { name: ChangeReview.name, schema: ChangeReviewSchema },
       { name: ChangeReviewThread.name, schema: ChangeReviewThreadSchema },

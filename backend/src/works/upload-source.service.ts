@@ -142,6 +142,17 @@ export class UploadSourceService {
     });
   }
 
+  private async assertBranchWritable(workId: string, sourceId: string, branchName: string): Promise<void> {
+    const lifecycle = await this.branchesService.getBranchLifecycle(workId, sourceId, branchName);
+    if (lifecycle === 'open') {
+      return;
+    }
+    throw new ConflictException({
+      error: 'branch_closed_for_review',
+      branchName,
+    });
+  }
+
   async uploadRevision(
     workId: string,
     sourceId: string,
@@ -181,6 +192,7 @@ export class UploadSourceService {
     const sourceType = existing.sourceType;
     const requestedBranchName = this.sanitizeBranchName(request.branchName) || 'trunk';
 
+    await this.assertBranchWritable(trimmedWorkId, trimmedSourceId, requestedBranchName);
     await this.assertExpectedBranchHead({
       workId: trimmedWorkId,
       sourceId: trimmedSourceId,

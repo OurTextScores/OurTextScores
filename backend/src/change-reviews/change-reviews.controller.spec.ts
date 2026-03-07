@@ -16,6 +16,7 @@ describe('ChangeReviewsController', () => {
     updateThreadStatus: jest.fn(),
     submitReview: jest.fn(),
     closeReview: jest.fn(),
+    reopenReview: jest.fn(),
     withdrawReview: jest.fn(),
   } as any as jest.Mocked<ChangeReviewsService>;
 
@@ -74,6 +75,7 @@ describe('ChangeReviewsController', () => {
     const updateThreadStatusGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.updateThreadStatus);
     const submitReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.submitReview);
     const closeReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.closeReview);
+    const reopenReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.reopenReview);
     const withdrawReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.withdrawReview);
 
     expect(createGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
@@ -87,6 +89,7 @@ describe('ChangeReviewsController', () => {
     expect(updateThreadStatusGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(submitReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(closeReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
+    expect(reopenReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(withdrawReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
   });
 });

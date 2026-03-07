@@ -1,11 +1,12 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { SourceBranch, SourceBranchDocument, BranchPolicy } from './schemas/source-branch.schema';
+import { SourceBranch, SourceBranchDocument, BranchPolicy, BranchLifecycle } from './schemas/source-branch.schema';
 
 export interface BranchView {
   name: string;
   policy: BranchPolicy;
+  lifecycle: BranchLifecycle;
   ownerUserId?: string;
   baseRevisionId?: string;
 }
@@ -39,12 +40,14 @@ export class BranchesService {
   private toBranchView(doc: {
     name: string;
     policy: BranchPolicy;
+    lifecycle?: BranchLifecycle | null;
     ownerUserId?: string | null;
     baseRevisionId?: string | null;
   }): BranchView {
     return {
       name: doc.name === BranchesService.LEGACY_DEFAULT_BRANCH ? BranchesService.DEFAULT_BRANCH : doc.name,
       policy: doc.policy,
+      lifecycle: doc.lifecycle ?? 'open',
       ownerUserId: doc.ownerUserId ?? undefined,
       baseRevisionId: doc.baseRevisionId ?? undefined
     };
@@ -64,7 +67,7 @@ export class BranchesService {
   async listBranches(workId: string, sourceId: string): Promise<BranchView[]> {
     const docs = await this.branchModel.find({ workId, sourceId }).sort({ name: 1 }).lean().exec();
     if (!docs || docs.length === 0) {
-      return [{ name: BranchesService.DEFAULT_BRANCH, policy: 'public' }];
+      return [{ name: BranchesService.DEFAULT_BRANCH, policy: 'public', lifecycle: 'open' }];
     }
 
     const deduped = new Map<string, BranchView>();
@@ -85,7 +88,7 @@ export class BranchesService {
       .lean()
       .exec();
     if (!existing) {
-      await this.branchModel.create({ workId, sourceId, name: BranchesService.DEFAULT_BRANCH, policy: 'public' });
+      await this.branchModel.create({ workId, sourceId, name: BranchesService.DEFAULT_BRANCH, policy: 'public', lifecycle: 'open' });
     }
   }
 
@@ -95,7 +98,7 @@ export class BranchesService {
     if (existing) {
       return this.toBranchView(existing);
     }
-    const doc = await this.branchModel.create({ workId: params.workId, sourceId: params.sourceId, name, policy: params.policy, ownerUserId: params.ownerUserId, baseRevisionId: params.baseRevisionId });
+    const doc = await this.branchModel.create({ workId: params.workId, sourceId: params.sourceId, name, policy: params.policy, ownerUserId: params.ownerUserId, baseRevisionId: params.baseRevisionId, lifecycle: 'open' });
     return this.toBranchView(doc);
   }
 
@@ -137,6 +140,32 @@ export class BranchesService {
       .lean()
       .exec();
     return doc?.ownerUserId ?? undefined;
+  }
+
+  async getBranchLifecycle(workId: string, sourceId: string, name?: string): Promise<BranchLifecycle> {
+    const branchName = this.sanitizeName(name);
+    const doc = await this.branchModel
+      .findOne({ workId, sourceId, name: { $in: this.branchAliases(branchName) } })
+      .lean()
+      .exec();
+    return doc?.lifecycle ?? 'open';
+  }
+
+  async setBranchLifecycle(workId: string, sourceId: string, name: string, lifecycle: BranchLifecycle): Promise<BranchView> {
+    const branchName = this.sanitizeName(name);
+    await this.ensureDefaultTrunk(workId, sourceId);
+    const doc = await this.branchModel
+      .findOneAndUpdate(
+        { workId, sourceId, name: { $in: this.branchAliases(branchName) } },
+        { $set: { lifecycle } },
+        { new: true },
+      )
+      .lean()
+      .exec();
+    if (!doc) {
+      throw new NotFoundException('Branch not found');
+    }
+    return this.toBranchView(doc);
   }
 
   async migrateSource(

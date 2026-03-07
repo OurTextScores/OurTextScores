@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
 export type BranchPolicy = 'public' | 'owner_approval';
+export type BranchLifecycle = 'open' | 'closed';
 
 @Schema({ collection: 'source_branches', timestamps: true })
 export class SourceBranch {
@@ -22,6 +23,9 @@ export class SourceBranch {
 
   @Prop({ trim: true })
   baseRevisionId?: string; // The revision this branch was created from
+
+  @Prop({ required: true, enum: ['open', 'closed'], default: 'open' })
+  lifecycle!: BranchLifecycle;
 }
 
 export type SourceBranchDocument = HydratedDocument<SourceBranch>;

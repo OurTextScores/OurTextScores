@@ -2,912 +2,513 @@
 
 ## Status
 
-Proposed design for a new Change Review workflow in OurTextScores.
+Current design. This replaces the earlier revision-pair draft review model.
 
 ## Goal
 
-Add a review workflow where a reviewer can:
+Add a Change Review workflow where:
 
-- open a review against a specific source change
-- review the score change in a musical visual diff
-- leave comments anchored to changed score regions
-- submit the review
-- notify the change owner on submit
-- track their open reviews from a dedicated page
+- one CR exists per reviewable branch
+- the CR is a shared discussion space for that branch
+- new branch revisions extend the same CR as new patchsets
+- comments live in the score visual diff gutter
+- closing the CR closes the branch to new revisions
+- reopening the CR reopens the branch
+- `owner_approval` branches are excluded from CR entirely
 
-The design should fit the existing OurTextScores revision, branch, approval, comment, and notification model rather than introducing a parallel review system.
+## Core Decisions
 
-## Scope
+1. CR identity is `workId + sourceId + branchName`.
+2. There is exactly one CR per reviewable branch.
+3. CR supports multiple revisions via patchsets.
+4. Any authenticated user who can view the branch may open the CR and comment on it.
+5. The branch owner controls CR close/reopen.
+6. Closing a CR closes the branch to new revisions.
+7. Reopening a CR reopens the branch.
+8. `owner_approval` branches do not participate in CR.
 
-This design covers:
+## Why This Model
 
-- backend data model
-- backend API contract
-- frontend pages and flows
-- notifications
-- permissions
-- lifecycle/state model
+The earlier `baseRevisionId -> headRevisionId` review model is too narrow:
 
-This design does not include implementation details for email copy, final visual styling, or migration strategy for historical backfill.
+- it does not support real review across multiple revisions
+- it fragments discussion when follow-up commits land
+- it makes thread resolution artificial
+- it does not fit a one-CR-per-branch workflow
+
+Branch identity plus patchsets is the correct model because review is about a line of work, not one frozen diff forever.
 
 ## Product Model
 
-`Change Review` is a review artifact attached to an exact revision pair:
+### Reviewable Branches
 
-- `baseRevisionId`
-- `headRevisionId`
-- `workId`
-- `sourceId`
+Only reviewable branches can participate in CR:
 
-The review is a structured, participant-scoped discussion over the diff between those two revisions.
+- `public` branches: eligible
+- `owner_approval` branches: not eligible
 
-The key distinction from existing revision comments:
+Rules:
 
-- revision comments are general discussion on one revision
-- change reviews are inline, diff-aware, participant-scoped, and have draft/submitted/open lifecycle
+- no `Start CR` or `Open CR` actions for `owner_approval` branches
+- score editor must hide `Open CR` for revisions on `owner_approval` branches
+- CR create/open endpoints must reject `owner_approval` branches
 
-## Recommended V1 Boundaries
+Recommended error:
 
-V1 should be intentionally narrow:
+```ts
+{
+  error: "branch_not_reviewable",
+  branchName: "feature-a",
+  policy: "owner_approval"
+}
+```
 
-- review surface: score visual diff via the embedded score editor compare view
-- commentable surface: changed score regions anchored to the reviewed diff pair
-- one review targets one exact revision pair
-- draft reviews are private
-- submitted reviews notify the owner
-- owner and reviewer can reply on review threads
-- review stays open until explicitly closed or withdrawn
+### One CR Per Branch
 
-V1 should not attempt:
+Each reviewable branch has one CR record.
 
-- automatic retargeting when branch head changes
-- multi-reviewer assignment
-- approvals replacement
-- automatic mergeability or rebase logic
+That CR may be:
 
-## Why A Separate Model
+- `open`
+- `closed`
 
-Do not extend `revision_comments` for this.
+There is no private draft state in this model.
 
-Reasons:
+If a user tries to open a CR for a branch that already has one, the system returns the existing CR.
 
-- `revision_comments` are attached to a single `revisionId`, not a diff pair
-- they have no draft lifecycle
-- they have no line anchors
-- they assume broad revision discussion, not participant-scoped review threads
-- current notification semantics are wrong for submitted reviews
+If users want a separate review conversation, they should create a new branch.
 
-Reuse should happen at the infrastructure level instead:
+### Shared Review Space
 
-- comment rendering patterns
-- notification inbox/outbox
-- work/source identity
-- revision visibility checks
-- score-editor compare pipeline
+The CR is not reviewer-owned. It is a shared review space for the branch.
 
-## Implementation Correction
+Allowed actions for any authenticated user who can view the branch:
 
-The review surface should be the musical score visual diff, not raw XML or text diff output.
+- open the CR if it does not exist
+- add top-level threads
+- reply to threads
 
-That changes the intended architecture:
+Owner-only actions:
 
-- `canonical.xml` remains a transport/input format for the compare renderer
-- the user-facing review page should embed the score-editor compare view
-- thread anchors should move from XML line anchors to score-aware anchors
-- raw XML diff should be treated as an implementation fallback only, not the primary review experience
+- close CR
+- reopen CR
+- resolve threads
+- reopen resolved threads
 
-## Core Objects
+Optional later extension:
 
-### 1. `ChangeReview`
+- admins/moderators may receive owner-equivalent operational powers
 
-Collection: `change_reviews`
+## Multi-Revision Support
 
-Purpose:
+### Patchsets
 
-- review metadata
-- review lifecycle
-- participant identity
-- exact diff target
+Each time a new revision lands on an open branch with an open CR, the CR gets a new patchset.
 
-Suggested shape:
+Patchset model:
+
+```ts
+{
+  patchsetId: string;
+  reviewId: string;
+  ordinal: number;
+  baseRevisionId: string;
+  headRevisionId: string;
+  baseSequenceNumber: number;
+  headSequenceNumber: number;
+  createdAt: Date;
+  createdByUserId: string;
+}
+```
+
+Rules:
+
+- patchset `1` is created when the CR is first opened
+- later commits create patchsets `2`, `3`, and so on
+- the review page defaults to the latest patchset
+- users may navigate older patchsets
+
+### Threads
+
+Threads attach to a patchset-specific score anchor.
+
+Thread model:
+
+```ts
+{
+  threadId: string;
+  reviewId: string;
+  patchsetId: string;
+  workId: string;
+  sourceId: string;
+  branchName: string;
+  anchor: {
+    anchorId: string;
+    partId?: string;
+    measureStart?: number;
+    measureEnd?: number;
+    voiceId?: string;
+    changeSide: "base" | "head" | "both";
+    label: string;
+  };
+  status: "open" | "resolved" | "outdated";
+  createdByUserId: string;
+  resolvedAt?: Date;
+  resolvedByUserId?: string;
+  outdatedSincePatchsetId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+Rules:
+
+- new threads start `open`
+- owners resolve/reopen threads
+- if a later patchset no longer contains the same anchor, mark the thread `outdated`
+- outdated threads remain visible in history
+- outdated does not imply resolved
+
+Resolution remains explicit. New revisions can make a thread outdated, but should not silently auto-resolve it.
+
+## Branch Lifecycle
+
+### States
+
+CR-enabled branches have explicit lifecycle:
+
+- `open`
+- `closed`
+
+`open`:
+
+- commits are allowed
+- CR is open
+
+`closed`:
+
+- commits are rejected
+- CR remains readable
+- the only way to continue work is to reopen the CR
+
+### Closing A CR
+
+When the owner closes a CR:
+
+- CR status becomes `closed`
+- branch lifecycle becomes `closed`
+- revision uploads to that branch are rejected
+
+Recommended commit rejection:
+
+```ts
+{
+  error: "branch_closed_for_review",
+  branchName: "feature-a",
+  reviewId: "cr_123"
+}
+```
+
+This constraint is necessary. Without it, closing the CR has no operational meaning.
+
+### Reopening A CR
+
+When the owner reopens a CR:
+
+- CR status becomes `open`
+- branch lifecycle becomes `open`
+- the next commit creates the next patchset on the same CR
+
+Reopen must preserve the same CR record. Do not create a second CR for the same branch.
+
+## Data Model
+
+### ChangeReview
 
 ```ts
 {
   reviewId: string;
   workId: string;
   sourceId: string;
-  branchName?: string;
-  baseRevisionId: string;
-  headRevisionId: string;
-  baseSequenceNumber: number;
-  headSequenceNumber: number;
-  reviewerUserId: string;
+  branchName: string;
+  openedByUserId: string;
   ownerUserId: string;
   participantUserIds: string[];
   title?: string;
   summary?: string;
-  status: "draft" | "open" | "closed" | "withdrawn";
+  status: "open" | "closed";
+  branchLifecycle: "open" | "closed";
+  latestPatchsetId: string;
+  latestHeadRevisionId: string;
+  latestHeadSequenceNumber: number;
+  patchsetCount: number;
   unresolvedThreadCount: number;
-  submittedAt?: Date;
   closedAt?: Date;
   closedByUserId?: string;
-  closedReason?: "completed" | "withdrawn";
+  reopenedAt?: Date;
+  reopenedByUserId?: string;
   lastActivityAt: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 ```
 
-Recommended indexes:
+Indexes:
 
-- `{ reviewerUserId: 1, status: 1, lastActivityAt: -1 }`
+- unique: `{ workId: 1, sourceId: 1, branchName: 1 }`
+- `{ openedByUserId: 1, lastActivityAt: -1 }`
 - `{ ownerUserId: 1, status: 1, lastActivityAt: -1 }`
-- `{ workId: 1, sourceId: 1, headRevisionId: 1, status: 1 }`
-- unique partial index for reviewer drafts/open reviews on the same pair:
-  - `{ reviewerUserId: 1, workId: 1, sourceId: 1, baseRevisionId: 1, headRevisionId: 1, status: 1 }`
 
-### 2. `ChangeReviewThread`
-
-Collection: `change_review_threads`
-
-Purpose:
-
-- one diff anchor
-- one conversation on that anchor
-- resolution state
-
-Suggested shape:
+### ChangeReviewPatchset
 
 ```ts
 {
-  threadId: string;
+  patchsetId: string;
   reviewId: string;
   workId: string;
   sourceId: string;
-  fileKind: "canonical";
-  diffAnchor: {
-    side: "base" | "head";
-    oldLineNumber?: number;
-    newLineNumber?: number;
-    anchorId: string;
-    lineHash: string;
-    lineText: string;
-    hunkHeader?: string;
-  };
-  status: "open" | "resolved";
-  createdByUserId: string;
-  resolvedAt?: Date;
-  resolvedByUserId?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-```
-
-Recommended indexes:
-
-- `{ reviewId: 1, createdAt: 1 }`
-- `{ reviewId: 1, status: 1, updatedAt: -1 }`
-- `{ reviewId: 1, "diffAnchor.anchorId": 1 }`
-
-### 3. `ChangeReviewComment`
-
-Collection: `change_review_comments`
-
-Purpose:
-
-- messages inside a review thread
-- thread replies from reviewer or owner
-
-Suggested shape:
-
-```ts
-{
-  commentId: string;
-  reviewId: string;
-  threadId: string;
-  userId: string;
-  content: string;
-  createdAt: Date;
-  editedAt?: Date;
-  deleted?: boolean;
-  deletedAt?: Date;
-}
-```
-
-Recommended indexes:
-
-- `{ threadId: 1, createdAt: 1 }`
-- `{ reviewId: 1, createdAt: 1 }`
-
-## Review Target Semantics
-
-Each change review is bound to an exact diff pair.
-
-That means:
-
-- line anchors are stable
-- review comments remain attached to the exact change that was reviewed
-- branch head updates do not silently move the review target
-
-If a new commit lands on the branch after review creation:
-
-- the existing review stays attached to the old `headRevisionId`
-- UI should show `Newer branch head available`
-- reviewer can start a new review for the newer head
-
-This is a deliberate simplification. Automatic retargeting will make line anchoring and audit history much harder.
-
-## Owner Resolution
-
-The review owner should default to the person expected to respond to the requested changes.
-
-Recommended resolution order:
-
-1. explicit owner from the caller, if allowed
-2. `headRevision.createdBy` when it is a real user
-3. declared branch owner for `owner_approval` branches
-4. source uploader from `source.provenance.uploadedByUserId`
-
-This value should be persisted on the review at creation time.
-
-If the source uploader differs from the resolved owner, the source uploader should still be added to `participantUserIds`.
-
-## Permissions
-
-### Create review
-
-Allowed if:
-
-- user is authenticated
-- user can view both base and head revisions
-- base and head belong to the same `workId/sourceId`
-- base is older than head
-
-### Read review
-
-Draft:
-
-- reviewer
-
-Submitted/open/closed:
-
-- reviewer
-- owner
-- optional additional participants recorded on the review
-
-Recommended V1 default:
-
-- keep reviews private to participants only
-
-This avoids leaking editorial discussion into the public work page.
-
-### Modify review
-
-Draft:
-
-- reviewer can add/edit/delete threads and comments
-
-Open:
-
-- reviewer can add new threads and reply
-- owner can reply to existing threads
-- reviewer or owner can resolve/unresolve threads
-- only reviewer can close review
-- reviewer can withdraw their own review
-
-Closed/withdrawn:
-
-- read-only
-
-## Diff Anchoring
-
-Line comments require a structured diff surface. Raw unified diff text is not enough.
-
-### Recommendation
-
-Add a structured diff endpoint for change review:
-
-- `GET /api/change-reviews/diff?workId=:workId&sourceId=:sourceId&baseRevisionId=:base&headRevisionId=:head&file=canonical`
-
-Response shape:
-
-```ts
-{
-  fileKind: "canonical";
+  branchName: string;
+  ordinal: number;
   baseRevisionId: string;
   headRevisionId: string;
-  hunks: Array<{
-    hunkId: string;
-    header: string;
-    lines: Array<{
-      anchorId: string;
-      type: "context" | "add" | "del";
-      oldLineNumber?: number;
-      newLineNumber?: number;
-      content: string;
-      commentable: boolean;
-      lineHash: string;
-    }>;
-  }>;
+  baseSequenceNumber: number;
+  headSequenceNumber: number;
+  createdAt: Date;
+  createdByUserId: string;
 }
 ```
 
-Rules:
+Indexes:
 
-- only `add` and `del` lines are commentable in v1
-- `context` lines render but cannot receive new threads
-- `anchorId` should be deterministic for this diff pair
+- `{ reviewId: 1, ordinal: -1 }`
+- unique: `{ reviewId: 1, headRevisionId: 1 }`
 
-Suggested `anchorId` input:
+### ChangeReviewComment
 
-- `fileKind`
-- `hunk header`
-- `oldLineNumber`
-- `newLineNumber`
-- normalized line content
+Keep the current comment record shape. It still works.
 
-The frontend should never invent anchors independently of the backend.
+## Ownership And Participants
+
+Owner resolution should persist on CR creation.
+
+Recommended order:
+
+1. declared branch owner for the branch, when present
+2. branch head revision author, when a real user
+3. source uploader
+
+Participant rules:
+
+- `openedByUserId` is informational, not exclusive
+- `participantUserIds` should be dynamic
+- users are added when they comment
+- source uploader should always be included when distinct from owner
 
 ## API Design
 
-## Backend Module Layout
+### Create Or Open Branch CR
 
-Recommend a new backend module:
-
-- `backend/src/change-reviews`
-
-Reason:
-
-- reviews are not only a works detail concern
-- they need a global inbox/list page
-- they have their own schemas, permissions, and notification behavior
-
-The module can still depend on:
-
-- `WorksService` for revision visibility checks
-- `UsersService`
-- `NotificationsService`
-
-## Endpoints
-
-### Create or resume a draft review
-
-- `POST /api/works/:workId/sources/:sourceId/change-reviews`
-
-Request:
-
-```ts
-{
-  baseRevisionId: string;
-  headRevisionId: string;
-  ownerUserId?: string;
-  title?: string;
-}
-```
+- `POST /api/works/:workId/sources/:sourceId/branches/:branchName/change-review`
 
 Behavior:
 
-- validates revision pair
-- resolves owner
-- returns existing draft/open review for same reviewer and pair if one already exists
-- otherwise creates a new draft
+- branch must be reviewable
+- if CR exists, return it
+- otherwise create CR and patchset `1` from current branch head
 
-### Get current user review index
-
-- `GET /api/change-reviews`
-
-Suggested query params:
-
-- `role=reviewer|owner|all`
-- `status=draft|open|closed|all`
-- `limit`
-- `cursor`
-
-Response includes compact cards for the new `/change-reviews` page.
-
-### Get review detail
+### Get Review Detail
 
 - `GET /api/change-reviews/:reviewId`
 
-Response includes:
+Response should include:
 
 - review metadata
-- participants
-- thread summaries
-- permissions
-- links to work/revisions
+- branch lifecycle
+- latest patchset summary
+- patchset list
+- permission flags
 
-### Get structured diff for review
+### Get Patchset Diff
 
-- `GET /api/change-reviews/:reviewId/diff`
+- `GET /api/change-reviews/:reviewId/patchsets/:patchsetId/diff`
 
-Returns the structured canonical diff plus any thread counts per anchor.
+This diff powers the visual score compare gutter.
 
-### Add thread on changed line
+### Add Thread
 
 - `POST /api/change-reviews/:reviewId/threads`
 
-Request:
+Allowed for any authenticated branch viewer while CR is open.
 
-```ts
-{
-  anchorId: string;
-  content: string;
-}
-```
-
-Behavior:
-
-- validates review is mutable
-- validates anchor exists in review diff
-- creates thread and first comment atomically
-- increments unresolved count
-
-### Reply in thread
+### Reply To Thread
 
 - `POST /api/change-reviews/:reviewId/threads/:threadId/comments`
 
-Request:
+Allowed for any authenticated branch viewer while CR is open.
 
-```ts
-{
-  content: string;
-}
-```
-
-### Edit/Delete review comment
-
-- `PATCH /api/change-reviews/:reviewId/comments/:commentId`
-- `DELETE /api/change-reviews/:reviewId/comments/:commentId`
-
-### Resolve or reopen thread
+### Resolve Or Reopen Thread
 
 - `PATCH /api/change-reviews/:reviewId/threads/:threadId`
 
-Request:
+Owner-controlled in v1.
 
-```ts
-{
-  status: "open" | "resolved";
-}
-```
-
-### Submit review
-
-- `POST /api/change-reviews/:reviewId/submit`
-
-Request:
-
-```ts
-{
-  summary?: string;
-}
-```
-
-Behavior:
-
-- requires reviewer
-- requires at least one thread or non-empty summary
-- transitions `draft -> open`
-- sets `submittedAt`
-- updates `lastActivityAt`
-- notifies owner
-
-### Close review
+### Close Review
 
 - `POST /api/change-reviews/:reviewId/close`
 
-Request:
+Owner only. Also closes the branch.
 
-```ts
-{
-  reason?: "completed";
-}
-```
+### Reopen Review
 
-### Withdraw review
+- `POST /api/change-reviews/:reviewId/reopen`
 
-- `POST /api/change-reviews/:reviewId/withdraw`
+Owner only. Also reopens the branch.
 
-Behavior:
+### Commit Guard
 
-- reviewer only
-- sets status `withdrawn`
+Revision upload flow must validate branch lifecycle.
 
-## Frontend UX
+If the branch is closed for review:
 
-## Entry Points
+- reject before Fossil write
+- return `branch_closed_for_review`
 
-### 1. Works page revision history
+### Patchset Creation Hook
 
-Add review actions near existing diff/open actions:
+When a new revision lands on a branch with an open CR:
 
-- `Start review`
-- `Continue draft`
-- `Open review`
+- append a new patchset to that CR
+- update `latestPatchsetId`
+- update `latestHeadRevisionId`
+- update `latestHeadSequenceNumber`
 
-The natural starting point is a revision pair already selected for diff.
+## Frontend Flow
 
-Recommended behavior:
+### Works Page
 
-- from revision history or diff preview, user chooses `base` and `head`
-- click `Start review`
-- server creates/resumes draft
-- user lands on dedicated review page
+For reviewable branches:
 
-### 2. Global review inbox page
+- show `Start CR` if branch has no CR
+- show `Open CR` if branch already has one
 
-Add:
+For `owner_approval` branches:
 
-- `/change-reviews`
+- show no CR actions
 
-This page should be auth-required.
+### Score Editor
 
-It should show three sections:
+For reviewable branches:
 
-- `Needs your response`
-  - `ownerUserId = currentUser`
-  - `status = open`
-- `Drafts`
-  - `reviewerUserId = currentUser`
-  - `status = draft`
-- `Open by you`
-  - `reviewerUserId = currentUser`
-  - `status = open`
+- show `Open CR` in the revision list
+- if CR exists, open it
+- otherwise create/open the branch CR
 
-Each item should show:
+For `owner_approval` branches:
 
-- work title / source label
+- hide `Open CR`
+
+### Review Page
+
+The CR page is a branch review workspace.
+
+It should show:
+
 - branch name
-- `#base -> #head`
-- reviewer and owner usernames
-- unresolved thread count
-- last activity
-- status badge
-- direct link to review
-- direct link back to work
+- CR status
+- branch lifecycle
+- latest patchset
+- patchset selector
+- unresolved/resolved/outdated thread counts
+- close/reopen controls
 
-### 3. Dedicated review page
+Primary closed-state message:
 
-Add:
+- `This review is closed. The branch is locked for new revisions until the review is reopened.`
 
-- `/change-reviews/[reviewId]`
+## Notifications
 
-This page is the main review workspace.
+Primary notification:
 
-Layout:
+- `change_review_opened`
 
-- header with work/source and revision pair
-- status badge and owner/reviewer badges
-- diff toolbar
-- structured text diff with inline thread markers
-- thread panel or inline expandable thread blocks
-- submission footer for draft reviews
+Recipients:
 
-## Review Page Behavior
+- all current CR participants
+- all watchers of the source from the existing works-page watch system
 
-### Draft state
+Rules:
 
-Reviewer can:
+- recipient set is de-duplicated
+- actor does not notify themselves
+- watchers do not need to have commented previously
+- source uploader should already be included through participant logic when applicable
 
-- add line comments
-- edit/delete their draft comments
-- write overall summary
-- submit review
+Optional later notifications:
 
-Owner should not see draft review unless explicitly changed later. Keep draft private in v1.
+- `change_review_reopened`
+- `change_review_new_patchset`
 
-### Open state
+Do not notify on every comment in v1.
 
-Reviewer can:
+## Relationship To Existing Systems
 
-- add more threads
-- reply
-- resolve/unresolve
-- close review
+### Revision Comments
 
-Owner can:
+Keep revision comments as general revision discussion.
 
-- add new top-level threads
-- reply
-- resolve/unresolve
+Keep CR separate for:
 
-The open review page should show:
+- branch-scoped review
+- score diff gutter comments
+- patchset history
+- branch close/reopen lifecycle
 
-- unresolved thread count
-- resolved thread count
-- last activity
-- if a newer branch head exists, a non-blocking banner with link to start a new review
+### Approvals
 
-### Closed/withdrawn state
+CR does not replace branch approval.
 
-Read-only timeline.
-
-Closed and withdrawn reviews should remain discoverable from `/change-reviews` only, not from the works page.
-
-## Notification Design
-
-Reuse the existing inbox/outbox model in `notifications`.
-
-### New notification type
-
-Add:
-
-- `change_review_submitted`
-
-Inbox payload:
-
-```ts
-{
-  reviewId: string;
-  reviewerUserId: string;
-  unresolvedThreadCount: number;
-  baseRevisionId: string;
-  headRevisionId: string;
-}
-```
-
-Behavior:
-
-- on `submit`, create in-app notification for `ownerUserId`
-- if owner has email notifications enabled and transporter exists, include this in digest/immediate handling
-
-Deep link:
-
-- `/change-reviews/:reviewId`
-
-### Optional later notification types
-
-Not required for v1:
-
-- `change_review_replied`
-- `change_review_closed`
-
-## Relationship To Existing Approvals
-
-Change review should not replace branch approval.
-
-The systems answer different questions:
-
-- approvals decide whether a pending revision is accepted into visible history
-- change reviews capture inline reviewer feedback on a specific diff
-
-Recommended integration:
-
-- on approvals inbox items, show a link to open existing change reviews for that head revision
-- on works page, show count of open change reviews next to the revision if available
-
-Neither integration is required for the first implementation pass.
-
-## Relationship To Existing Revision Comments
-
-Keep revision comments as public/general discussion on a revision.
-
-Keep change reviews separate for:
-
-- private draft review
-- inline diff discussion
-- owner notification on submit
-- explicit open/closed lifecycle
-
-No attempt should be made to merge these systems in v1.
-
-## Suggested Frontend File Additions
-
-Frontend:
-
-- `frontend/app/change-reviews/page.tsx`
-- `frontend/app/change-reviews/[reviewId]/page.tsx`
-- `frontend/app/change-reviews/change-review-list.tsx`
-- `frontend/app/change-reviews/change-review-detail.tsx`
-- `frontend/app/change-reviews/change-review-diff.tsx`
-
-Works page integration:
-
-- `frontend/app/works/[workId]/revision-history.tsx`
-- `frontend/app/works/[workId]/diff-preview.tsx`
-
-Notifications:
-
-- `frontend/app/notifications/notifications-client.tsx`
-
-## Suggested Backend File Additions
-
-Backend:
-
-- `backend/src/change-reviews/change-reviews.module.ts`
-- `backend/src/change-reviews/change-reviews.controller.ts`
-- `backend/src/change-reviews/change-reviews.service.ts`
-- `backend/src/change-reviews/schemas/change-review.schema.ts`
-- `backend/src/change-reviews/schemas/change-review-thread.schema.ts`
-- `backend/src/change-reviews/schemas/change-review-comment.schema.ts`
-
-Notification updates:
-
-- `backend/src/notifications/notifications.service.ts`
-- `backend/src/notifications/schemas/inbox.schema.ts`
-- `backend/src/notifications/schemas/outbox.schema.ts`
-
-## Query and State Rules
-
-### Open review calculation
-
-A review is considered open when:
-
-- `status = draft` or `status = open`
-
-For the global page, draft and open should be separated visually.
-
-### Unresolved thread count
-
-Store and maintain `unresolvedThreadCount` on `ChangeReview`.
-
-Reason:
-
-- global page needs cheap sorting/filtering
-- notification payload needs it
-- avoids re-counting large thread sets for every list request
-
-### Last activity
-
-Update `lastActivityAt` on:
-
-- thread creation
-- comment reply
-- resolve/unresolve
-- submit
-- close/withdraw
-
-This should drive default sort order on `/change-reviews`.
+`owner_approval` branches are excluded from CR.
+Public branches may use CR without changing the existing revision/approval model.
 
 ## Implementation Order
 
-1. Add backend schemas and service for review metadata, threads, and comments
-2. Add review creation/detail/list endpoints
-3. Add structured diff endpoint for review anchors
-4. Add notification type and submit notification flow
-5. Add `/change-reviews` index page
-6. Add `/change-reviews/[reviewId]` detail page
-7. Add works-page entry points into review creation
-8. Add test coverage and smoke coverage
+1. Replace revision-pair review schema with branch CR + patchsets.
+2. Add branch review create/open endpoint.
+3. Add explicit branch lifecycle for reviewable branches.
+4. Add revision commit guard for closed branches.
+5. Add patchset creation on branch-head updates.
+6. Update review detail API/page to navigate patchsets.
+7. Update score editor and works page to open CR by branch.
+8. Remove CR entry points from `owner_approval` branches.
+9. Add tests for shared commenting, branch closure, reopen, and patchset creation.
 
 ## Testing
 
 ### Backend
 
-- review creation validates source and revision pair
-- draft is private to reviewer/admin
-- owner resolution falls back correctly
-- thread creation only works on changed lines
-- submit transitions draft to open
-- submit sends `change_review_submitted`
-- resolve/unresolve updates unresolved count
-- list endpoint filters correctly for reviewer/owner/status
+- cannot create CR on `owner_approval` branch
+- creating CR on reviewable branch returns existing CR if present
+- creating/opening CR creates patchset `1`
+- committing to open CR branch creates a new patchset
+- closing CR closes branch
+- commit to closed branch returns `branch_closed_for_review`
+- reopening CR reopens branch
+- any authenticated branch viewer can create thread/reply
+- only owner can close/reopen CR and resolve threads
 
 ### Frontend
 
-- `/change-reviews` renders drafts/open sections correctly
-- review detail page renders structured diff and thread markers
-- draft reviewer can add line comment and submit
-- owner can open notified review and reply
-- notifications page links `change_review_submitted` to review page
+- works page hides CR actions for `owner_approval` branches
+- score editor hides `Open CR` for `owner_approval` branches
+- score editor `Open CR` opens existing branch CR
+- review page shows patchset selector
+- closed review page shows branch-locked message
 
 ### Smoke
 
-- reviewer starts draft from a work diff
-- reviewer comments on a changed line
-- reviewer submits review
-- owner sees notification
-- owner opens `/change-reviews/[reviewId]`
-- owner replies and resolves one thread
-- reviewer sees review in `Open by you`
-
-## Resolved Product Decisions
-
-1. The source uploader should always be added as an additional participant when different from the head revision author or resolved owner.
-2. Owners may start new top-level threads after submit.
-3. Closed reviews should remain discoverable only from `/change-reviews`, not from the works page.
-
-## Implementation Plan
-
-### Phase 1: Backend Foundation
-
-1. Add `change_reviews`, `change_review_threads`, and `change_review_comments` schemas.
-2. Add `ChangeReviewsModule` with service and controller wiring.
-3. Add shared permission and revision-pair validation helpers.
-4. Wire the module into `AppModule`.
-
-Deliverable:
-
-- backend can persist review metadata, threads, and comments
-- no frontend integration yet
-
-### Phase 2: Review Metadata APIs
-
-1. Implement `POST /api/works/:workId/sources/:sourceId/change-reviews`
-2. Implement `GET /api/change-reviews`
-3. Implement `GET /api/change-reviews/:reviewId`
-4. Add compact DTOs for review cards and review detail
-
-Deliverable:
-
-- reviewer can create or resume a draft review for a revision pair
-- authenticated user can list and open their review records
-
-### Phase 3: Structured Diff and Anchors
-
-1. Add structured canonical diff generation for a revision pair
-2. Implement `GET /api/change-reviews/:reviewId/diff`
-3. Add backend anchor validation logic for thread creation
-
-Deliverable:
-
-- backend exposes stable, commentable changed-line anchors for review pages
-
-### Phase 4: Review Threads and Comments
-
-1. Implement `POST /api/change-reviews/:reviewId/threads`
-2. Implement `POST /api/change-reviews/:reviewId/threads/:threadId/comments`
-3. Implement comment edit/delete
-4. Implement thread resolve/unresolve
-5. Maintain `unresolvedThreadCount` and `lastActivityAt`
-
-Deliverable:
-
-- full review discussion lifecycle works on the backend
-
-### Phase 5: Submit and Notification Flow
-
-1. Add `change_review_submitted` notification type
-2. Implement `POST /api/change-reviews/:reviewId/submit`
-3. Implement `POST /api/change-reviews/:reviewId/close`
-4. Implement `POST /api/change-reviews/:reviewId/withdraw`
-5. Add notification deep link support to `/change-reviews/[reviewId]`
-
-Deliverable:
-
-- review submit notifies the owner and moves the review into the open state
-
-### Phase 6: Frontend Review Pages
-
-1. Add `/change-reviews`
-2. Add `/change-reviews/[reviewId]`
-3. Add review list cards for `Needs your response`, `Drafts`, and `Open by you`
-4. Add structured diff view with inline thread markers and reply flows
-
-Deliverable:
-
-- end-to-end review UI exists independent of the works page
-
-### Phase 7: Works Page Entry Points
-
-1. Add `Start review` and `Open review` entry points from revision history and diff preview
-2. Add draft/open state affordances for the current user on the relevant revision pair
-3. Keep closed reviews off the works page
-
-Deliverable:
-
-- users can begin a review directly from the current revision comparison workflow
-
-### Phase 8: Testing and Smoke Coverage
-
-1. Add backend unit coverage for lifecycle, permissions, and notifications
-2. Add frontend coverage for review list and detail flows
-3. Add smoke coverage for create -> comment -> submit -> notify -> reply -> resolve
-
-Deliverable:
-
-- stable baseline for future review iterations
-
-## Immediate Delivery Order
-
-This implementation pass should proceed in this order:
-
-1. backend schemas and module wiring
-2. create/list/detail APIs
-3. initial backend tests
-4. structured diff endpoint
-5. thread/comment APIs
-6. submit/notification flow
-7. frontend pages
-8. works page entry points
+- user opens CR from score editor on a public branch
+- second user comments on the same CR
+- owner closes CR
+- commit attempt on branch is rejected
+- owner reopens CR
+- new commit succeeds and creates a new patchset

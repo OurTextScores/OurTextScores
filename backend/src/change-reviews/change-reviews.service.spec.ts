@@ -31,6 +31,8 @@ describe('ChangeReviewsService', () => {
   let notificationsService: any;
   let storageService: any;
   let usersService: any;
+  let watchesService: any;
+  let branchesService: any;
 
   const work = { workId: '164349', title: 'Test Work', composer: 'Test Composer' };
   const source = {
@@ -97,6 +99,12 @@ describe('ChangeReviewsService', () => {
     usersService = {
       findById: jest.fn(async (id: string) => ({ _id: id, username: `${id}-name`, email: `${id}@example.com` })),
     };
+    watchesService = {
+      getSubscribersUserIds: jest.fn().mockResolvedValue([]),
+    };
+    branchesService = {
+      setBranchLifecycle: jest.fn().mockResolvedValue({ name: 'trunk', policy: 'public', lifecycle: 'open' }),
+    };
 
     workModel.findOne.mockImplementation((query: any) => {
       if (query?.workId === '164349') return chain(work);
@@ -132,9 +140,11 @@ describe('ChangeReviewsService', () => {
       sourceModel as any,
       sourceRevisionModel as any,
       sourceBranchModel as any,
+      branchesService as any,
       notificationsService as any,
       storageService as any,
       usersService as any,
+      watchesService as any,
     );
   });
 
@@ -305,7 +315,7 @@ describe('ChangeReviewsService', () => {
     );
   });
 
-  it('submits a draft review and queues owner notification', async () => {
+  it('submits a draft review and queues notifications for participants and watchers', async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     reviewModel.findOne.mockReturnValue(
       chain({
@@ -328,6 +338,7 @@ describe('ChangeReviewsService', () => {
         save,
       }),
     );
+    watchesService.getSubscribersUserIds.mockResolvedValue(['watcher-1', 'author-2', 'reviewer-1']);
     threadModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(1) });
 
     const result = await service.submitReview({
@@ -337,6 +348,7 @@ describe('ChangeReviewsService', () => {
     });
 
     expect(save).toHaveBeenCalled();
+    expect(notificationsService.queueChangeReviewSubmitted).toHaveBeenCalledTimes(3);
     expect(notificationsService.queueChangeReviewSubmitted).toHaveBeenCalledWith(
       expect.objectContaining({
         reviewId: 'review-1',
@@ -344,6 +356,68 @@ describe('ChangeReviewsService', () => {
         actorUserId: 'reviewer-1',
       }),
     );
+    expect(notificationsService.queueChangeReviewSubmitted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: 'review-1',
+        recipientUserId: 'uploader-1',
+        actorUserId: 'reviewer-1',
+      }),
+    );
+    expect(notificationsService.queueChangeReviewSubmitted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: 'review-1',
+        recipientUserId: 'watcher-1',
+        actorUserId: 'reviewer-1',
+      }),
+    );
     expect(result.status).toBe('open');
+  });
+
+  it('closing a review closes the branch lifecycle', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        branchName: 'trunk',
+        reviewerUserId: 'reviewer-1',
+        status: 'open',
+        save,
+      }),
+    );
+
+    const result = await service.closeReview({
+      reviewId: 'review-1',
+      viewer: { userId: 'reviewer-1', roles: ['user'] },
+    });
+
+    expect(save).toHaveBeenCalled();
+    expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith('164349', 'src-1', 'trunk', 'closed');
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('reopening a review reopens the branch lifecycle', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        branchName: 'trunk',
+        reviewerUserId: 'reviewer-1',
+        status: 'closed',
+        save,
+      }),
+    );
+
+    const result = await service.reopenReview({
+      reviewId: 'review-1',
+      viewer: { userId: 'reviewer-1', roles: ['user'] },
+    });
+
+    expect(save).toHaveBeenCalled();
+    expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith('164349', 'src-1', 'trunk', 'open');
+    expect(result).toEqual({ ok: true });
   });
 });

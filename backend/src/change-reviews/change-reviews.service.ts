@@ -15,9 +15,11 @@ import { Work, WorkDocument } from '../works/schemas/work.schema';
 import { Source, SourceDocument } from '../works/schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from '../works/schemas/source-revision.schema';
 import { SourceBranch, SourceBranchDocument } from '../branches/schemas/source-branch.schema';
+import { BranchesService } from '../branches/branches.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
+import { WatchesService } from '../watches/watches.service';
 import type { RequestUser } from '../auth/types/auth-user';
 
 type ReviewRole = 'reviewer' | 'owner' | 'all';
@@ -51,9 +53,11 @@ export class ChangeReviewsService {
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>,
     @InjectModel(SourceBranch.name)
     private readonly sourceBranchModel: Model<SourceBranchDocument>,
+    private readonly branchesService: BranchesService,
     private readonly notificationsService: NotificationsService,
     private readonly storageService: StorageService,
     private readonly usersService: UsersService,
+    private readonly watchesService: WatchesService,
   ) {}
 
   async createOrResumeReview(input: {
@@ -519,17 +523,7 @@ export class ChangeReviewsService {
     (review as any).lastActivityAt = now;
     await review.save();
 
-    await this.notificationsService.queueChangeReviewSubmitted({
-      workId: String((review as any).workId),
-      sourceId: String((review as any).sourceId),
-      revisionId: String((review as any).headRevisionId),
-      reviewId: String((review as any).reviewId),
-      recipientUserId: String((review as any).ownerUserId),
-      actorUserId: input.viewer.userId,
-      unresolvedThreadCount: Number((review as any).unresolvedThreadCount || 0),
-      baseRevisionId: String((review as any).baseRevisionId),
-      headRevisionId: String((review as any).headRevisionId),
-    });
+    await this.queueSubmittedReviewNotifications(review as any, input.viewer.userId);
 
     return this.getReviewDetail(String((review as any).reviewId), input.viewer);
   }
@@ -556,6 +550,43 @@ export class ChangeReviewsService {
     (review as any).closedReason = 'completed';
     (review as any).lastActivityAt = now;
     await review.save();
+    await this.branchesService.setBranchLifecycle(
+      String((review as any).workId),
+      String((review as any).sourceId),
+      String((review as any).branchName || 'trunk'),
+      'closed',
+    );
+    return { ok: true };
+  }
+
+  async reopenReview(input: {
+    reviewId: string;
+    viewer: RequestUser;
+  }) {
+    const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).exec();
+    if (!review) {
+      throw new NotFoundException('Change review not found');
+    }
+    if ((review as any).status !== 'closed') {
+      throw new BadRequestException('Only closed reviews can be reopened');
+    }
+    if (String((review as any).reviewerUserId) !== input.viewer.userId) {
+      throw new ForbiddenException('Only the reviewer may reopen this review');
+    }
+
+    const now = new Date();
+    (review as any).status = 'open';
+    (review as any).closedAt = undefined;
+    (review as any).closedByUserId = undefined;
+    (review as any).closedReason = undefined;
+    (review as any).lastActivityAt = now;
+    await review.save();
+    await this.branchesService.setBranchLifecycle(
+      String((review as any).workId),
+      String((review as any).sourceId),
+      String((review as any).branchName || 'trunk'),
+      'open',
+    );
     return { ok: true };
   }
 
@@ -901,6 +932,37 @@ export class ChangeReviewsService {
         },
       )
       .exec();
+  }
+
+  private async queueSubmittedReviewNotifications(review: any, actorUserId: string) {
+    const watcherUserIds = await this.watchesService.getSubscribersUserIds(
+      String(review.workId),
+      String(review.sourceId),
+    );
+    const recipientUserIds = Array.from(
+      new Set(
+        [
+          ...((review.participantUserIds as string[] | undefined) || []),
+          ...watcherUserIds,
+        ].filter((userId) => Boolean(userId) && userId !== actorUserId),
+      ),
+    );
+
+    await Promise.all(
+      recipientUserIds.map((recipientUserId) =>
+        this.notificationsService.queueChangeReviewSubmitted({
+          workId: String(review.workId),
+          sourceId: String(review.sourceId),
+          revisionId: String(review.headRevisionId),
+          reviewId: String(review.reviewId),
+          recipientUserId: String(recipientUserId),
+          actorUserId,
+          unresolvedThreadCount: Number(review.unresolvedThreadCount || 0),
+          baseRevisionId: String(review.baseRevisionId),
+          headRevisionId: String(review.headRevisionId),
+        }),
+      ),
+    );
   }
 
   private async generateUnifiedDiff(aLoc: { bucket: string; objectKey: string }, bLoc: { bucket: string; objectKey: string }) {

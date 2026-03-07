@@ -49,9 +49,10 @@ describe('UploadSourceService (unit)', () => {
 
   const branchesService = {
     getBranchPolicy: jest.fn().mockResolvedValue('public'),
+    getBranchLifecycle: jest.fn().mockResolvedValue('open'),
     getBranchOwnerUserId: jest.fn(),
     ensureDefaultTrunk: jest.fn().mockResolvedValue(undefined),
-    listBranches: jest.fn().mockResolvedValue([{ name: 'trunk', policy: 'public' }])
+    listBranches: jest.fn().mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }])
   } as unknown as jest.Mocked<BranchesService>;
 
   const notifications = {
@@ -72,8 +73,9 @@ describe('UploadSourceService (unit)', () => {
       lean: jest.fn().mockReturnThis(),
       exec: jest.fn().mockResolvedValue([])
     });
-    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public' }]);
+    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]);
     branchesService.getBranchPolicy.mockResolvedValue('public');
+    branchesService.getBranchLifecycle.mockResolvedValue('open');
     branchesService.getBranchOwnerUserId.mockResolvedValue(undefined);
     service = new UploadSourceService(
       config,
@@ -249,8 +251,8 @@ describe('UploadSourceService (unit)', () => {
       ])
     });
     branchesService.listBranches.mockResolvedValue([
-      { name: 'trunk', policy: 'public' },
-      { name: 'feature-a', policy: 'public', baseRevisionId: 'r-base' }
+      { name: 'trunk', policy: 'public', lifecycle: 'open' },
+      { name: 'feature-a', policy: 'public', lifecycle: 'open', baseRevisionId: 'r-base' }
     ]);
 
     const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
@@ -264,6 +266,27 @@ describe('UploadSourceService (unit)', () => {
         undefined,
         'pid'
       )
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(derivativePipeline.process).not.toHaveBeenCalled();
+    expect(sourceRevisionModel.create).not.toHaveBeenCalled();
+  });
+
+  it('uploadRevision() rejects commits to branches closed for review with 409', async () => {
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({
+        workId: '10',
+        sourceId: 'x',
+        label: 'Existing source',
+        sourceType: 'score'
+      })
+    });
+    branchesService.getBranchLifecycle.mockResolvedValue('closed');
+
+    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+
+    await expect(
+      service.uploadRevision('10', 'x', { branchName: 'feature-a' }, file, undefined, 'pid')
     ).rejects.toBeInstanceOf(ConflictException);
 
     expect(derivativePipeline.process).not.toHaveBeenCalled();

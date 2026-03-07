@@ -180,6 +180,12 @@ export class ChangeReviewsController {
     return this.changeReviewsService.closeReview({ reviewId, viewer });
   }
 
+  @Post('change-reviews/:reviewId/reopen')
+  @UseGuards(AuthRequiredGuard)
+  reopenReview(@Param('reviewId') reviewId: string, @CurrentUser() viewer: RequestUser) {
+    return this.changeReviewsService.reopenReview({ reviewId, viewer });
+  }
+
   @Post('change-reviews/:reviewId/withdraw')
   @UseGuards(AuthRequiredGuard)
   withdrawReview(@Param('reviewId') reviewId: string, @CurrentUser() viewer: RequestUser) {
