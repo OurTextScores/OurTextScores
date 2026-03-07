@@ -437,4 +437,59 @@ describe('RevisionHistory', () => {
 
     openSpy.mockRestore();
   });
+
+  it('starts a change review against the previous visible revision', async () => {
+    const user = userEvent.setup();
+    const originalFetch = global.fetch;
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    global.fetch = jest.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/change-reviews')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ reviewId: 'review-123' }),
+          text: async () => '',
+        } as any);
+      }
+      if (url.includes('/comments')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ([]),
+          text: async () => '[]',
+        } as any);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ([]),
+        text: async () => '[]',
+      } as any);
+    }) as any;
+
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        revisions={mockRevisions}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /Start Review vs #2/i }));
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/proxy/works/12345/sources/source-1/change-reviews',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          baseRevisionId: 'rev-2',
+          headRevisionId: 'rev-3',
+          title: 'Review #2 -> #3',
+        }),
+      }),
+    );
+
+    global.fetch = originalFetch;
+    consoleErrorSpy.mockRestore();
+  });
 });

@@ -219,7 +219,7 @@ export default function DiffPreview({
                   throw new Error(text || `Failed to start review (${res.status})`);
                 }
                 const data = await res.json();
-                window.location.href = `/change-reviews/${encodeURIComponent(data.reviewId)}`;
+                window.location.assign(`/change-reviews/${encodeURIComponent(data.reviewId)}`);
               } catch (err) {
                 setReviewState("error");
                 setReviewError(err instanceof Error ? err.message : String(err));

@@ -59,6 +59,15 @@ function statusColor(status: string) {
   }
 }
 
+export function navigateToChangeReview(reviewId: string) {
+  const path = `/change-reviews/${encodeURIComponent(reviewId)}`;
+  if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "")) {
+    window.history.pushState({}, "", path);
+    return;
+  }
+  window.location.assign(path);
+}
+
 export default function RevisionHistory({
   workId,
   sourceId,
@@ -118,10 +127,11 @@ export default function RevisionHistory({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-slate-700 dark:divide-slate-800 dark:text-slate-300">
-            {filtered.map((revision) => (
+            {filtered.map((revision, index) => (
               <RevisionRow
                 key={revision.revisionId}
                 revision={revision}
+                previousRevision={filtered[index + 1]}
                 workId={workId}
                 sourceId={sourceId}
                 sourceLabel={sourceLabel}
@@ -242,8 +252,9 @@ function UserBadge({ userId, username }: { userId?: string; username?: string })
   );
 }
 
-function RevisionRow({ revision, workId, sourceId, sourceLabel, sourceType, workTitle, composer, imslpPermalink, publicApiBase, currentUser }: {
+function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel, sourceType, workTitle, composer, imslpPermalink, publicApiBase, currentUser }: {
   revision: SourceRevisionView;
+  previousRevision?: SourceRevisionView;
   workId: string;
   sourceId: string;
   sourceLabel?: string;
@@ -254,6 +265,8 @@ function RevisionRow({ revision, workId, sourceId, sourceLabel, sourceType, work
   publicApiBase: string;
   currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
 }) {
+  const [reviewState, setReviewState] = useState<"idle" | "loading" | "error">("idle");
+  const [reviewError, setReviewError] = useState("");
   const artifactsAvailable = [
     revision.derivatives?.canonicalXml,
     revision.derivatives?.normalizedMxl,
@@ -398,6 +411,46 @@ function RevisionRow({ revision, workId, sourceId, sourceLabel, sourceType, work
                 Open in Editor
               </button>
             )}
+            {previousRevision && (
+              <button
+                onClick={async () => {
+                  try {
+                    setReviewState("loading");
+                    setReviewError("");
+                    const res = await fetch(
+                      `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/change-reviews`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          baseRevisionId: previousRevision.revisionId,
+                          headRevisionId: revision.revisionId,
+                          title: `Review #${previousRevision.sequenceNumber} -> #${revision.sequenceNumber}`,
+                        }),
+                      }
+                    );
+                    if (!res.ok) {
+                      const text = await res.text();
+                      throw new Error(text || `Failed to start review (${res.status})`);
+                    }
+                    const data = await res.json();
+                    navigateToChangeReview(String(data.reviewId));
+                  } catch (err) {
+                    setReviewState("error");
+                    setReviewError(err instanceof Error ? err.message : String(err));
+                  }
+                }}
+                className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
+              >
+                <span aria-hidden="true">☰ </span>
+                {reviewState === "loading"
+                  ? "Starting review..."
+                  : `Start Review vs #${previousRevision.sequenceNumber}`}
+              </button>
+            )}
+            {reviewError ? (
+              <span className="px-2 py-1 text-xs text-rose-600 dark:text-rose-300">{reviewError}</span>
+            ) : null}
           </div>
         ) : (
           <span className="text-slate-500">No artifacts yet</span>
