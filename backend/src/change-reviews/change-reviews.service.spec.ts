@@ -77,6 +77,7 @@ describe('ChangeReviewsService', () => {
     } as any;
     patchsetModel = {
       create: jest.fn().mockResolvedValue(undefined),
+      find: jest.fn().mockReturnValue(chain([])),
       findOne: jest.fn().mockReturnValue(chain(null)),
       countDocuments: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) }),
     } as any;

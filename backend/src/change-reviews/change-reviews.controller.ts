@@ -80,8 +80,14 @@ export class ChangeReviewsController {
     description: 'Returns structured canonical XML diff hunks and attached review threads.',
   })
   @ApiParam({ name: 'reviewId', example: 'a245d562-7f9d-4b1c-8269-23ccfcab4e1b' })
-  getReviewDiff(@Param('reviewId') reviewId: string, @CurrentUser() viewer: RequestUser) {
-    return this.changeReviewsService.getReviewDiff(reviewId, viewer);
+  @ApiQuery({ name: 'patchset', required: false, description: 'Patchset number to diff (defaults to latest)' })
+  getReviewDiff(
+    @Param('reviewId') reviewId: string,
+    @Query('patchset') patchset: string | undefined,
+    @CurrentUser() viewer: RequestUser,
+  ) {
+    const patchsetNumber = patchset ? Number(patchset) : undefined;
+    return this.changeReviewsService.getReviewDiff(reviewId, viewer, patchsetNumber);
   }
 
   @Post('change-reviews/:reviewId/threads')

@@ -26,6 +26,12 @@ type ReviewDetail = {
   submittedAt?: string;
   work: { workId: string; title?: string; composer?: string };
   source: { sourceId: string; label?: string; sourceType?: string };
+  patchsets?: Array<{
+    patchsetNumber: number;
+    baseSequenceNumber: number;
+    headSequenceNumber: number;
+    createdAt: string;
+  }>;
   permissions: {
     canRead: boolean;
     canEditDraft: boolean;
@@ -114,6 +120,7 @@ export default function ChangeReviewDetailClient({
   const [review, setReview] = useState(initialReview);
   const [diff, setDiff] = useState(initialDiff);
   const [summaryDraft, setSummaryDraft] = useState(initialReview.summary || "");
+  const [selectedPatchset, setSelectedPatchset] = useState<number | null>(null);
   const [newThreadAnchorId, setNewThreadAnchorId] = useState<string | null>(null);
   const [newThreadContent, setNewThreadContent] = useState("");
   const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
@@ -121,14 +128,18 @@ export default function ChangeReviewDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (patchset?: number | null) => {
+    const ps = patchset ?? selectedPatchset;
+    const diffUrl = ps != null
+      ? `/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/diff?patchset=${ps}`
+      : `/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/diff`;
     const [nextReview, nextDiff] = await Promise.all([
       jsonFetch<ReviewDetail>(`/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}`),
-      jsonFetch<ReviewDiff>(`/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/diff`),
+      jsonFetch<ReviewDiff>(diffUrl),
     ]);
     setReview(nextReview);
     setDiff(nextDiff);
-  }, [review.reviewId]);
+  }, [review.reviewId, selectedPatchset]);
 
   const runAction = (fn: () => Promise<void>) => {
     setError(null);
@@ -141,13 +152,19 @@ export default function ChangeReviewDetailClient({
 
   const threadsByAnchor = new Map(diff.threads.map((thread) => [thread.diffAnchor.anchorId, thread]));
   const legacyThreads = diff.threads.filter((thread) => !diff.scoreRegions.some((region) => region.anchorId === thread.diffAnchor.anchorId));
+  const patchsets = review.patchsets ?? [];
+  const activePatchset = selectedPatchset != null
+    ? patchsets.find((ps) => ps.patchsetNumber === selectedPatchset)
+    : null;
+  const diffBaseSeq = activePatchset?.baseSequenceNumber ?? review.baseSequenceNumber;
+  const diffHeadSeq = activePatchset?.headSequenceNumber ?? review.headSequenceNumber;
   const visualDiffUrl = `/score-editor/index.html?compareLeft=${encodeURIComponent(
-    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(review.baseRevisionId)}`,
+    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(diff.baseRevisionId)}`,
   )}&compareRight=${encodeURIComponent(
-    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(review.headRevisionId)}`,
-  )}&leftLabel=${encodeURIComponent(`Rev #${review.baseSequenceNumber}`)}&rightLabel=${encodeURIComponent(
-    `Rev #${review.headSequenceNumber}`,
-  )}&changeReviewId=${encodeURIComponent(review.reviewId)}`;
+    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(diff.headRevisionId)}`,
+  )}&leftLabel=${encodeURIComponent(`Rev #${diffBaseSeq}`)}&rightLabel=${encodeURIComponent(
+    `Rev #${diffHeadSeq}`,
+  )}&changeReviewId=${encodeURIComponent(review.reviewId)}${selectedPatchset != null ? `&patchset=${selectedPatchset}` : ''}`;
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -380,14 +397,53 @@ export default function ChangeReviewDetailClient({
         </section>
       ) : null}
 
+      {patchsets.length > 1 && (
+        <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Rounds</h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {patchsets.length} round{patchsets.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {patchsets.map((ps) => {
+              const isSelected = selectedPatchset === ps.patchsetNumber
+                || (selectedPatchset == null && ps.patchsetNumber === patchsets[patchsets.length - 1].patchsetNumber);
+              return (
+                <button
+                  key={ps.patchsetNumber}
+                  onClick={() => {
+                    const next = ps.patchsetNumber === patchsets[patchsets.length - 1].patchsetNumber ? null : ps.patchsetNumber;
+                    setSelectedPatchset(next);
+                    runAction(async () => { await refresh(next); });
+                  }}
+                  disabled={isPending}
+                  className={`rounded border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                    isSelected
+                      ? "border-cyan-500 bg-cyan-50 text-cyan-800 dark:border-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-200"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  Round {ps.patchsetNumber}
+                  <span className="ml-1 text-[10px] text-slate-500 dark:text-slate-400">
+                    (Rev {ps.baseSequenceNumber}→{ps.headSequenceNumber})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Score Visual Diff</h2>
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            Rev #{review.baseSequenceNumber} vs Rev #{review.headSequenceNumber}
+            Rev #{diffBaseSeq} vs Rev #{diffHeadSeq}
           </span>
         </div>
         <iframe
+          key={`${diff.baseRevisionId}-${diff.headRevisionId}`}
           src={visualDiffUrl}
           title="Score visual diff"
           className="h-[820px] w-full rounded border border-slate-200 dark:border-slate-800"

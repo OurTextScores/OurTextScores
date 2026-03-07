@@ -512,3 +512,177 @@ Public branches may use CR without changing the existing revision/approval model
 - commit attempt on branch is rejected
 - owner reopens CR
 - new commit succeeds and creates a new patchset
+
+
+### Handoff
+Handoff
+  Remaining tasks for the next agent:
+
+  1. Dense-gutter CR comments need foregrounding.
+
+  - Problem: when many diff blocks have threads, the gutter cards overlap
+    visually and become hard to use.
+  - Expected behavior: clicking a thread/card should bring it to the foreground
+    above neighboring gutter cards, and ideally dim or de-emphasize the others.
+  - Likely work area:
+      - ScoreEditor.tsx
+      - compare-gutter UI inside the embedded diff flow
+      - any CR-gutter state lifted through the compare view components in
+        OTS_Web/components
+
+  2. CRs now support multiple revision rounds on one branch; the UI needs a
+     round-switcher.
+
+  - Design direction already agreed:
+      - 1 CR per reviewable branch
+      - multiple patchsets/rounds within one CR
+      - branch close/reopen tied to CR close/reopen
+  - Missing UI:
+      - round selector on /change-reviews/[reviewId]
+      - visible “current round” context in the embedded visual diff
+      - thread state across rounds, especially outdated vs current
+  - Likely work area:
+      - change-review-detail-client.tsx
+      - change review detail backend payload in change-reviews.service.ts
+
+  3. In the new branch section, branch comments should start collapsed.
+
+  - Current branch cards render comments expanded.
+  - Desired change: each branch’s comments section starts collapsed and can be
+    expanded explicitly.
+  - Likely work area:
+      - branches-panel.tsx
+      - branch-comments.tsx
+
+  Current State
+  Recent commits already in place:
+
+  - OTS_Web 270c9f9 block closed review branches in editor
+  - OurTextScores eca7b5d move work page source review to branches
+
+  Implemented already:
+
+  - branch-centric works page section replaces revision history in the source
+    card
+  - branch-level comments and ratings
+  - CR is branch-based, shared, and tied to branch lifecycle
+  - closed-for-review branches are blocked before upload/commit with a friendly
+    message
+  - legacy revision-pair CR route removed
+  - notifications now fan out to participants and source watchers
+  - embed rebuilt and vendored into OurTextScores
+
+  Important Files
+  CR / branch review backend:
+
+  - change-reviews.service.ts
+  - change-reviews.controller.ts
+  - notifications.service.ts
+  - works.service.ts
+  - upload-source.service.ts
+
+  Works page frontend:
+
+  - source-card.tsx
+  - branches-panel.tsx
+  - branch-comments.tsx
+  - branch-rating.tsx
+  - open-branch-review-button.tsx
+
+  CR detail frontend:
+
+  - change-review-detail-client.tsx
+
+  Embedded editor / compare gutter:
+
+  - ScoreEditor.tsx
+  - LeftSidebar.tsx
+
+  Embed / Rsync / Docker Flow
+  When OTS_Web changes affect the embedded editor used by OurTextScores, do
+  this:
+
+  1. Build the embed in OTS_Web.
+
+  npm run build:embed --prefix /home/jhlusko/workspace/OTS_Web
+
+  2. Smoke the static export locally.
+
+  - Default 8080 may already be in use.
+
+  PORT=8081 npm run test:embed --prefix /home/jhlusko/workspace/OTS_Web
+  curl -I http://localhost:8081/score-editor/
+
+  3. Sync the built embed into OurTextScores.
+
+  rsync -a --delete /home/jhlusko/workspace/OTS_Web/out/ /home/jhlusko/
+  workspace/OurTextScores/frontend/public/score-editor/
+
+  4. Rebuild the local OurTextScores containers so localhost:3000 serves the
+     updated vendored embed.
+
+  docker compose -f /home/jhlusko/workspace/OurTextScores/docker-compose.yml up
+  -d --build backend frontend
+
+  5. Verify live:
+
+  curl -I http://localhost:3000/score-editor
+
+  Why this matters
+
+  - Editing only OTS_Web source is not enough.
+  - http://localhost:3000/score-editor serves the vendored static embed from Ou
+    rTextScores/frontend/public/score-editor.
+  - If the embed is not rebuilt and rsynced, the live app will look stale even
+    though source code changed.
+
+  Validation Commands Used Recently
+  Backend:
+
+  npm test --prefix /home/jhlusko/workspace/OurTextScores/backend -- change-
+  reviews.controller.spec.ts change-reviews.service.spec.ts
+  notifications.service.spec.ts works.service.spec.ts upload-
+  source.service.spec.ts
+  npm run build --prefix /home/jhlusko/workspace/OurTextScores/backend
+
+  Frontend:
+
+  npm test --prefix /home/jhlusko/workspace/OurTextScores/frontend --
+  --runInBand source-card.test.tsx upload-revision-form.test.tsx
+
+  OTS_Web:
+
+  npm test --prefix /home/jhlusko/workspace/OTS_Web -- unit/ourtextscores-api-
+  client.test.ts
+  npm run typecheck --prefix /home/jhlusko/workspace/OTS_Web
+  npm run build:embed --prefix /home/jhlusko/workspace/OTS_Web
+
+  Known Caveats
+
+  - OTS_Web/tsconfig.json has one unrelated local modification. Do not assume it
+    is part of this feature work.
+  - test:embed may fail on port collision if run on 8080; using PORT=8081
+    worked.
+  - The current CR gutter is functional but not robust when many threads are
+    adjacent.
+  - Patchset data exists conceptually, but the round-switching UI is still
+    missing.
+
+  Recommended Order For Next Agent
+
+  1. Add gutter foregrounding/z-index focus for dense CR threads in OTS_Web.
+  2. Design and implement CR round switching in OurTextScores review detail UI
+     and payloads.
+  3. Collapse branch comments by default in the works-page branch section.
+  4. Rebuild embed, rsync, rebuild containers, and smoke live on localhost:3000.
+
+  Live Smoke Targets After Changes
+
+  - /change-reviews/[reviewId]
+      - dense gutter threads can be selected and foregrounded
+      - round selector changes the visual diff context cleanly
+  - /works/[workId]
+      - branch comments start collapsed
+      - branch CR links still work
+  - /score-editor
+      - updated embed is actually live after rsync + docker rebuild

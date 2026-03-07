@@ -148,7 +148,11 @@ export class ChangeReviewsService {
       reviewerUserId: opener.userId,
       ownerUserId,
       participantUserIds,
-      title: input.title?.trim() || `CR for ${branchName}`,
+      title: input.title?.trim() || [
+        (target.work as any)?.title,
+        (target.source as any)?.label,
+        branchName,
+      ].filter(Boolean).join(' — '),
       status: 'open',
       unresolvedThreadCount: 0,
       submittedAt: now,
@@ -348,15 +352,30 @@ export class ChangeReviewsService {
     return this.buildReviewDetail(review as any, work as any, source as any, viewer);
   }
 
-  async getReviewDiff(reviewId: string, viewer: RequestUser) {
+  async getReviewDiff(reviewId: string, viewer: RequestUser, patchsetNumber?: number) {
     const review = await this.getReadableReview(reviewId, viewer);
+
+    let baseRevisionId = review.baseRevisionId;
+    let headRevisionId = review.headRevisionId;
+    if (patchsetNumber != null) {
+      const patchset = await this.patchsetModel
+        .findOne({ reviewId: review.reviewId, patchsetNumber })
+        .lean()
+        .exec();
+      if (!patchset) {
+        throw new NotFoundException(`Patchset ${patchsetNumber} not found`);
+      }
+      baseRevisionId = String(patchset.baseRevisionId);
+      headRevisionId = String(patchset.headRevisionId);
+    }
+
     const [baseRevision, headRevision, threadViews] = await Promise.all([
       this.sourceRevisionModel
-        .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: review.baseRevisionId })
+        .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: baseRevisionId })
         .lean()
         .exec(),
       this.sourceRevisionModel
-        .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: review.headRevisionId })
+        .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: headRevisionId })
         .lean()
         .exec(),
       this.buildThreadViews(review.reviewId),
@@ -379,8 +398,8 @@ export class ChangeReviewsService {
     return {
       reviewId: review.reviewId,
       fileKind: 'canonical' as const,
-      baseRevisionId: review.baseRevisionId,
-      headRevisionId: review.headRevisionId,
+      baseRevisionId,
+      headRevisionId,
       scoreRegions,
       hunks: parsed.hunks,
       rawDiff,
@@ -732,9 +751,17 @@ export class ChangeReviewsService {
       ),
     );
     const userIdToUsername = await this.loadUsernames(participantIds);
-    const threadCounts = await this.threadModel.aggregate([
-      { $match: { reviewId: review.reviewId } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
+    const [threadCounts, patchsets] = await Promise.all([
+      this.threadModel.aggregate([
+        { $match: { reviewId: review.reviewId } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      this.patchsetModel
+        .find({ reviewId: review.reviewId })
+        .sort({ patchsetNumber: 1 })
+        .select('patchsetNumber baseSequenceNumber headSequenceNumber createdAt createdByUserId')
+        .lean()
+        .exec(),
     ]);
 
     const openThreads = Number(threadCounts.find((item) => item._id === 'open')?.count || 0);
@@ -781,6 +808,12 @@ export class ChangeReviewsService {
         label: source.label,
         sourceType: source.sourceType,
       },
+      patchsets: patchsets.map((ps: any) => ({
+        patchsetNumber: ps.patchsetNumber,
+        baseSequenceNumber: ps.baseSequenceNumber,
+        headSequenceNumber: ps.headSequenceNumber,
+        createdAt: ps.createdAt,
+      })),
       permissions: {
         canRead: true,
         canEditDraft: review.status === 'draft' && review.reviewerUserId === viewer.userId,

@@ -36,6 +36,12 @@ interface ChangeReviewDetail {
     label?: string;
     sourceType?: string;
   };
+  patchsets?: Array<{
+    patchsetNumber: number;
+    baseSequenceNumber: number;
+    headSequenceNumber: number;
+    createdAt: string;
+  }>;
   permissions: {
     canRead: boolean;
     canEditDraft: boolean;

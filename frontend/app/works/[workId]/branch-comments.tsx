@@ -29,6 +29,7 @@ export default function BranchComments({
 }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,50 +88,59 @@ export default function BranchComments({
 
   return (
     <div className="space-y-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+      >
+        <span className="inline-block w-3 text-center">{expanded ? '▾' : '▸'}</span>
         Branch comments ({comments.length})
-      </div>
-      {error && (
-        <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
-          {error}
-        </div>
-      )}
-      {currentUser ? (
-        <div className="space-y-2">
-          <textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Write a branch comment..."
-            rows={3}
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-          />
-          <button
-            onClick={() => void handleSubmitComment()}
-            disabled={isSubmitting || !newComment.trim()}
-            className="rounded border border-cyan-300 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200"
-          >
-            {isSubmitting ? "Posting..." : "Post comment"}
-          </button>
-        </div>
-      ) : (
-        <div className="text-xs text-slate-600 dark:text-slate-400">Sign in to post comments</div>
-      )}
-      <div className="space-y-4">
-        {comments.map(comment => (
-          <CommentItem
-            key={comment.commentId}
-            comment={comment}
-            workId={workId}
-            sourceId={sourceId}
-            branchName={branchName}
-            currentUser={currentUser}
-            onUpdate={loadComments}
-            depth={0}
-          />
-        ))}
-      </div>
-      {comments.length === 0 && (
-        <div className="py-2 text-sm text-slate-500 dark:text-slate-400">No comments yet.</div>
+      </button>
+      {expanded && (
+        <>
+          {error && (
+            <div className="rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700 dark:bg-rose-900/50 dark:text-rose-200">
+              {error}
+            </div>
+          )}
+          {currentUser ? (
+            <div className="space-y-2">
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Write a branch comment..."
+                rows={3}
+                className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+              <button
+                onClick={() => void handleSubmitComment()}
+                disabled={isSubmitting || !newComment.trim()}
+                className="rounded border border-cyan-300 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 hover:bg-cyan-100 disabled:opacity-50 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200"
+              >
+                {isSubmitting ? "Posting..." : "Post comment"}
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-600 dark:text-slate-400">Sign in to post comments</div>
+          )}
+          <div className="space-y-4">
+            {comments.map(comment => (
+              <CommentItem
+                key={comment.commentId}
+                comment={comment}
+                workId={workId}
+                sourceId={sourceId}
+                branchName={branchName}
+                currentUser={currentUser}
+                onUpdate={loadComments}
+                depth={0}
+              />
+            ))}
+          </div>
+          {comments.length === 0 && (
+            <div className="py-2 text-sm text-slate-500 dark:text-slate-400">No comments yet.</div>
+          )}
+        </>
       )}
     </div>
   );
