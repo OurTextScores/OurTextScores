@@ -68,13 +68,13 @@ describe('BranchesService', () => {
     it('returns default trunk when none exist', async () => {
       branchModel.find.mockReturnValue(chain([]));
       const out = await svc.listBranches('w', 's');
-      expect(out).toEqual([{ name: 'trunk', policy: 'public' }]);
+      expect(out).toEqual([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]);
     });
 
     it('returns default trunk when docs is null', async () => {
       branchModel.find.mockReturnValue(chain(null));
       const out = await svc.listBranches('w', 's');
-      expect(out).toEqual([{ name: 'trunk', policy: 'public' }]);
+      expect(out).toEqual([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]);
     });
 
     it('returns branches when they exist', async () => {
@@ -85,8 +85,8 @@ describe('BranchesService', () => {
       branchModel.find.mockReturnValue(chain(docs));
       const out = await svc.listBranches('w', 's');
       expect(out).toEqual([
-        { name: 'feature', policy: 'owner_approval', ownerUserId: 'user123' },
-        { name: 'trunk', policy: 'public', ownerUserId: undefined }
+        { name: 'feature', policy: 'owner_approval', ownerUserId: 'user123', lifecycle: 'open', baseRevisionId: undefined },
+        { name: 'trunk', policy: 'public', ownerUserId: undefined, lifecycle: 'open', baseRevisionId: undefined }
       ]);
     });
 
@@ -98,7 +98,7 @@ describe('BranchesService', () => {
       branchModel.find.mockReturnValue(chain(docs));
       const out = await svc.listBranches('w', 's');
       expect(out).toEqual([
-        { name: 'trunk', policy: 'public', ownerUserId: 'owner1' }
+        { name: 'trunk', policy: 'public', ownerUserId: 'owner1', lifecycle: 'open', baseRevisionId: undefined }
       ]);
     });
 
@@ -106,7 +106,7 @@ describe('BranchesService', () => {
       const docs = [{ name: 'main', policy: 'public', ownerUserId: null }];
       branchModel.find.mockReturnValue(chain(docs));
       const out = await svc.listBranches('w', 's');
-      expect(out).toEqual([{ name: 'trunk', policy: 'public', ownerUserId: undefined }]);
+      expect(out).toEqual([{ name: 'trunk', policy: 'public', ownerUserId: undefined, lifecycle: 'open', baseRevisionId: undefined }]);
     });
 
     it('converts null ownerUserId to undefined', async () => {
@@ -129,7 +129,7 @@ describe('BranchesService', () => {
         sourceId: 's',
         name: { $in: ['trunk', 'main'] }
       });
-      expect(branchModel.create).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'trunk', policy: 'public' });
+      expect(branchModel.create).toHaveBeenCalledWith({ workId: 'w', sourceId: 's', name: 'trunk', policy: 'public', lifecycle: 'open' });
     });
 
     it('does not create trunk branch when a legacy main branch already exists', async () => {
@@ -159,14 +159,14 @@ describe('BranchesService', () => {
       branchModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
       branchModel.create.mockResolvedValue({ workId: 'w', sourceId: 's', name: 'feature', policy: 'owner_approval', ownerUserId: 'u1' });
       const out = await svc.createBranch({ workId: 'w', sourceId: 's', name: 'feature', policy: 'owner_approval', ownerUserId: 'u1' });
-      expect(out).toEqual({ name: 'feature', policy: 'owner_approval', ownerUserId: 'u1', baseRevisionId: undefined });
+      expect(out).toEqual({ name: 'feature', policy: 'owner_approval', ownerUserId: 'u1', baseRevisionId: undefined, lifecycle: 'open' });
     });
 
     it('creates branch without ownerUserId', async () => {
       branchModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(null) });
       branchModel.create.mockResolvedValue({ workId: 'w', sourceId: 's', name: 'feature', policy: 'public', ownerUserId: null });
       const out = await svc.createBranch({ workId: 'w', sourceId: 's', name: 'feature', policy: 'public' });
-      expect(out).toEqual({ name: 'feature', policy: 'public', ownerUserId: undefined, baseRevisionId: undefined });
+      expect(out).toEqual({ name: 'feature', policy: 'public', ownerUserId: undefined, baseRevisionId: undefined, lifecycle: 'open' });
     });
 
     it('sanitizes branch name before creating', async () => {
@@ -179,14 +179,15 @@ describe('BranchesService', () => {
         name: 'My-Feature',
         policy: 'public',
         ownerUserId: undefined,
-        baseRevisionId: undefined
+        baseRevisionId: undefined,
+        lifecycle: 'open'
       });
     });
 
     it('treats a legacy main branch as the existing trunk branch', async () => {
       branchModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue({ name: 'main', policy: 'public', ownerUserId: null }) });
       const out = await svc.createBranch({ workId: 'w', sourceId: 's', name: 'trunk', policy: 'public' });
-      expect(out).toEqual({ name: 'trunk', policy: 'public', ownerUserId: undefined, baseRevisionId: undefined });
+      expect(out).toEqual({ name: 'trunk', policy: 'public', ownerUserId: undefined, baseRevisionId: undefined, lifecycle: 'open' });
       expect(branchModel.create).not.toHaveBeenCalled();
     });
   });

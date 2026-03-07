@@ -21,7 +21,8 @@
     "ops:project-promotion": "node scripts/project-promotion.js",
     "ops:seed-admin-user": "node scripts/seed-admin-user.js",
     "ops:pdmx-import": "node scripts/pdmx-import-csv.js",
-    "ops:pdmx-sync-assets": "node scripts/pdmx-sync-assets.js"
+    "ops:pdmx-sync-assets": "node scripts/pdmx-sync-assets.js",
+    "ops:migrate-main-to-trunk": "node scripts/migrate-main-to-trunk.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
