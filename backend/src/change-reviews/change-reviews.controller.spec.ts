@@ -6,6 +6,7 @@ import { ChangeReviewsService } from './change-reviews.service';
 describe('ChangeReviewsController', () => {
   const service = {
     createOrResumeReview: jest.fn(),
+    createOrOpenBranchReview: jest.fn(),
     listReviews: jest.fn(),
     getReviewDetail: jest.fn(),
     getReviewDiff: jest.fn(),
@@ -63,8 +64,32 @@ describe('ChangeReviewsController', () => {
     });
   });
 
+  it('createOrOpenBranchReview delegates to service', async () => {
+    service.createOrOpenBranchReview.mockResolvedValue({ reviewId: 'review-branch-1' } as any);
+    const viewer = { userId: 'reviewer-1', roles: ['user'] } as any;
+
+    const result = await controller.createOrOpenBranchReview(
+      '164349',
+      'src-1',
+      'trunk',
+      { title: 'CR for trunk' },
+      viewer,
+    );
+
+    expect(service.createOrOpenBranchReview).toHaveBeenCalledWith({
+      workId: '164349',
+      sourceId: 'src-1',
+      branchName: 'trunk',
+      ownerUserId: undefined,
+      title: 'CR for trunk',
+      opener: viewer,
+    });
+    expect(result).toEqual({ reviewId: 'review-branch-1' });
+  });
+
   it('requires auth for all routes', () => {
     const createGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.createOrResumeReview);
+    const createBranchReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.createOrOpenBranchReview);
     const listGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.listReviews);
     const detailGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewDetail);
     const diffGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewDiff);
@@ -79,6 +104,7 @@ describe('ChangeReviewsController', () => {
     const withdrawReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.withdrawReview);
 
     expect(createGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
+    expect(createBranchReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(listGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(detailGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(diffGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));

@@ -2,6 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import type { Model } from 'mongoose';
 import { ChangeReviewsService } from './change-reviews.service';
 import { ChangeReview } from './schemas/change-review.schema';
+import { ChangeReviewPatchset } from './schemas/change-review-patchset.schema';
 import { ChangeReviewThread } from './schemas/change-review-thread.schema';
 import { ChangeReviewComment } from './schemas/change-review-comment.schema';
 import { Work } from '../works/schemas/work.schema';
@@ -22,6 +23,7 @@ function chain<T>(result: T) {
 describe('ChangeReviewsService', () => {
   let service: ChangeReviewsService;
   let reviewModel: jest.Mocked<Partial<Model<ChangeReview>>> & any;
+  let patchsetModel: jest.Mocked<Partial<Model<ChangeReviewPatchset>>> & any;
   let threadModel: any;
   let commentModel: any;
   let workModel: any;
@@ -71,6 +73,12 @@ describe('ChangeReviewsService', () => {
       findOne: jest.fn(),
       find: jest.fn(),
       create: jest.fn(),
+      updateOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) }),
+    } as any;
+    patchsetModel = {
+      create: jest.fn().mockResolvedValue(undefined),
+      findOne: jest.fn().mockReturnValue(chain(null)),
+      countDocuments: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) }),
     } as any;
     threadModel = {
       aggregate: jest.fn().mockResolvedValue([]),
@@ -103,6 +111,9 @@ describe('ChangeReviewsService', () => {
       getSubscribersUserIds: jest.fn().mockResolvedValue([]),
     };
     branchesService = {
+      sanitizeName: jest.fn((name?: string) => (name || 'trunk').trim() || 'trunk'),
+      getBranchPolicy: jest.fn().mockResolvedValue('public'),
+      listBranches: jest.fn().mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]),
       setBranchLifecycle: jest.fn().mockResolvedValue({ name: 'trunk', policy: 'public', lifecycle: 'open' }),
     };
 
@@ -134,6 +145,7 @@ describe('ChangeReviewsService', () => {
 
     service = new ChangeReviewsService(
       reviewModel as any,
+      patchsetModel as any,
       threadModel as any,
       commentModel as any,
       workModel as any,
@@ -148,7 +160,7 @@ describe('ChangeReviewsService', () => {
     );
   });
 
-  it('creates a draft review and adds uploader as participant', async () => {
+  it('creates an open branch review, seeds patchset 1, and adds uploader as participant', async () => {
     const result = await service.createOrResumeReview({
       workId: '164349',
       sourceId: 'src-1',
@@ -159,11 +171,18 @@ describe('ChangeReviewsService', () => {
 
     expect(reviewModel.create).toHaveBeenCalled();
     const payload = reviewModel.create.mock.calls[0][0];
-    expect(payload.status).toBe('draft');
+    expect(payload.status).toBe('open');
+    expect(payload.branchName).toBe('trunk');
     expect(payload.ownerUserId).toBe('author-2');
     expect(payload.participantUserIds).toEqual(
       expect.arrayContaining(['reviewer-1', 'author-2', 'uploader-1']),
     );
+    expect(patchsetModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      reviewId: payload.reviewId,
+      patchsetNumber: 1,
+      baseRevisionId: 'rev-1',
+      headRevisionId: 'rev-2',
+    }));
     expect(result.work.title).toBe('Test Work');
     expect(result.source.label).toBe('Primary Score');
   });
@@ -182,7 +201,7 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'draft',
+        status: 'open',
         unresolvedThreadCount: 0,
         lastActivityAt: new Date(),
         createdAt: new Date(),
@@ -382,6 +401,7 @@ describe('ChangeReviewsService', () => {
         sourceId: 'src-1',
         branchName: 'trunk',
         reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
         status: 'open',
         save,
       }),
@@ -389,7 +409,7 @@ describe('ChangeReviewsService', () => {
 
     const result = await service.closeReview({
       reviewId: 'review-1',
-      viewer: { userId: 'reviewer-1', roles: ['user'] },
+      viewer: { userId: 'author-2', roles: ['user'] },
     });
 
     expect(save).toHaveBeenCalled();
@@ -406,6 +426,7 @@ describe('ChangeReviewsService', () => {
         sourceId: 'src-1',
         branchName: 'trunk',
         reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
         status: 'closed',
         save,
       }),
@@ -413,7 +434,7 @@ describe('ChangeReviewsService', () => {
 
     const result = await service.reopenReview({
       reviewId: 'review-1',
-      viewer: { userId: 'reviewer-1', roles: ['user'] },
+      viewer: { userId: 'author-2', roles: ['user'] },
     });
 
     expect(save).toHaveBeenCalled();

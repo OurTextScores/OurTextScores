@@ -13,6 +13,7 @@ import { SourceBranch, SourceBranchSchema } from '../branches/schemas/source-bra
 import { ChangeReviewsController } from './change-reviews.controller';
 import { ChangeReviewsService } from './change-reviews.service';
 import { ChangeReview, ChangeReviewSchema } from './schemas/change-review.schema';
+import { ChangeReviewPatchset, ChangeReviewPatchsetSchema } from './schemas/change-review-patchset.schema';
 import { ChangeReviewThread, ChangeReviewThreadSchema } from './schemas/change-review-thread.schema';
 import { ChangeReviewComment, ChangeReviewCommentSchema } from './schemas/change-review-comment.schema';
 
@@ -26,6 +27,7 @@ import { ChangeReviewComment, ChangeReviewCommentSchema } from './schemas/change
     BranchesModule,
     MongooseModule.forFeature([
       { name: ChangeReview.name, schema: ChangeReviewSchema },
+      { name: ChangeReviewPatchset.name, schema: ChangeReviewPatchsetSchema },
       { name: ChangeReviewThread.name, schema: ChangeReviewThreadSchema },
       { name: ChangeReviewComment.name, schema: ChangeReviewCommentSchema },
       { name: Work.name, schema: WorkSchema },

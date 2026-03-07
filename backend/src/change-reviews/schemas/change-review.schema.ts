@@ -79,6 +79,16 @@ ChangeReviewSchema.index({ reviewerUserId: 1, status: 1, lastActivityAt: -1 });
 ChangeReviewSchema.index({ ownerUserId: 1, status: 1, lastActivityAt: -1 });
 ChangeReviewSchema.index({ workId: 1, sourceId: 1, headRevisionId: 1, status: 1 });
 ChangeReviewSchema.index(
+  { workId: 1, sourceId: 1, branchName: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      branchName: { $exists: true, $ne: null },
+      status: { $in: ['open', 'closed'] },
+    },
+  },
+);
+ChangeReviewSchema.index(
   {
     reviewerUserId: 1,
     workId: 1,

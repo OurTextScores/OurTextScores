@@ -438,7 +438,7 @@ describe('RevisionHistory', () => {
     openSpy.mockRestore();
   });
 
-  it('starts a change review against the previous visible revision', async () => {
+  it('opens the shared branch change review', async () => {
     const user = userEvent.setup();
     const originalFetch = global.fetch;
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -475,16 +475,14 @@ describe('RevisionHistory', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: /Start Review vs #2/i }));
+    await user.click(screen.getAllByRole('button', { name: /Open CR/i })[0]);
 
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/proxy/works/12345/sources/source-1/change-reviews',
+      '/api/proxy/works/12345/sources/source-1/branches/trunk/change-review',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          baseRevisionId: 'rev-2',
-          headRevisionId: 'rev-3',
-          title: 'Review #2 -> #3',
+          title: 'CR for trunk',
         }),
       }),
     );

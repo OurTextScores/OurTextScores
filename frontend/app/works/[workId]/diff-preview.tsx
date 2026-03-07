@@ -9,6 +9,7 @@ const PUBLIC_API_BASE = getPublicApiBase();
 
 type DiffKind = "score_editor" | "xml" | "manifest";
 type ViewMode = "side-by-side" | "line-by-line";
+type BranchView = { name: string; policy: "public" | "owner_approval" };
 
 export default function DiffPreview({
   workId,
@@ -43,6 +44,7 @@ export default function DiffPreview({
   const [error, setError] = useState<string>("");
   const [reviewState, setReviewState] = useState<"idle" | "loading" | "error">("idle");
   const [reviewError, setReviewError] = useState<string>("");
+  const [branchPolicies, setBranchPolicies] = useState<Record<string, BranchView["policy"]>>({ trunk: "public" });
   const [html, setHtml] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
   const [isDark, setIsDark] = useState<boolean>(false);
@@ -65,6 +67,34 @@ export default function DiffPreview({
     observer.observe(root, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        const branches = Array.isArray(data?.branches) ? data.branches as BranchView[] : [];
+        if (cancelled) return;
+        setBranchPolicies(
+          branches.reduce<Record<string, BranchView["policy"]>>((acc, branch) => {
+            acc[branch.name] = branch.policy;
+            return acc;
+          }, { trunk: "public" }),
+        );
+      } catch {
+        // ignore branch policy fetch failures
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workId, sourceId]);
 
   useEffect(() => {
     let aborted = false;
@@ -198,20 +228,17 @@ export default function DiffPreview({
             Open in Score Editor
           </button>
         )}
-        {revAItem && revBItem && (
+        {revAItem && revBItem && branch !== 'All' && branchPolicies[branch] !== 'owner_approval' && (
           <button
             onClick={async () => {
               try {
                 setReviewState("loading");
                 setReviewError("");
-                const ordered = [revAItem, revBItem].slice().sort((a, b) => a.sequenceNumber - b.sequenceNumber);
-                const res = await fetch(`/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/change-reviews`, {
+                const res = await fetch(`/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches/${encodeURIComponent(branch)}/change-review`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    baseRevisionId: ordered[0].revisionId,
-                    headRevisionId: ordered[1].revisionId,
-                    title: `Review #${ordered[0].sequenceNumber} -> #${ordered[1].sequenceNumber}`
+                    title: `CR for ${branch}`
                   })
                 });
                 if (!res.ok) {
@@ -226,10 +253,10 @@ export default function DiffPreview({
               }
             }}
             className="rounded border border-cyan-300 bg-cyan-50 px-2 py-1 text-xs text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300 dark:hover:bg-cyan-950/60"
-            title="Start or resume a change review for the selected revision pair"
+            title="Open the shared change review for this branch"
           >
             <span aria-hidden="true">☰ </span>
-            {reviewState === "loading" ? "Starting review..." : "Start Review"}
+            {reviewState === "loading" ? "Opening CR..." : "Open CR"}
           </button>
         )}
         {state === "loading" && <span className="text-slate-400">Loading diff…</span>}

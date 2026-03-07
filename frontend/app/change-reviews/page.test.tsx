@@ -54,7 +54,7 @@ describe("ChangeReviewsPage", () => {
         json: async () => ({
           items: [
             {
-              reviewId: "draft-1",
+              reviewId: "open-1",
               workId: "work-2",
               sourceId: "source-2",
               baseSequenceNumber: 1,
@@ -63,8 +63,8 @@ describe("ChangeReviewsPage", () => {
               reviewerUsername: "reviewer",
               ownerUserId: "owner-2",
               ownerUsername: "owner2",
-              title: "Draft review",
-              status: "draft",
+              title: "Open review",
+              status: "open",
               unresolvedThreadCount: 0,
               lastActivityAt: "2026-03-07T15:00:00.000Z",
               workTitle: "Work Two",
@@ -79,7 +79,7 @@ describe("ChangeReviewsPage", () => {
         json: async () => ({
           items: [
             {
-              reviewId: "open-by-you-1",
+              reviewId: "closed-1",
               workId: "work-3",
               sourceId: "source-3",
               baseSequenceNumber: 7,
@@ -88,8 +88,8 @@ describe("ChangeReviewsPage", () => {
               reviewerUsername: "reviewer",
               ownerUserId: "owner-3",
               ownerUsername: "owner3",
-              title: "Open by you review",
-              status: "open",
+              title: "Closed review",
+              status: "closed",
               unresolvedThreadCount: 1,
               lastActivityAt: "2026-03-07T14:00:00.000Z",
               workTitle: "Work Three",
@@ -103,11 +103,11 @@ describe("ChangeReviewsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Change Reviews" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Needs Your Response" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Drafts" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Open By You" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open Reviews" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recently Closed" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Owner review" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Draft review" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open by you review" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open review" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Closed review" })).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 

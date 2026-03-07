@@ -37,6 +37,34 @@ export class ChangeReviewsController {
     });
   }
 
+  @Post('works/:workId/sources/:sourceId/branches/:branchName/change-review')
+  @UseGuards(AuthRequiredGuard)
+  @ApiOperation({
+    summary: 'Create or open the branch change review',
+    description:
+      'Creates the shared change review for a reviewable branch, or returns the existing branch review if one already exists.',
+  })
+  @ApiParam({ name: 'workId', example: '164349' })
+  @ApiParam({ name: 'sourceId', example: 'src-1' })
+  @ApiParam({ name: 'branchName', example: 'trunk' })
+  @ApiResponse({ status: 201, description: 'Branch change review created or returned' })
+  createOrOpenBranchReview(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('branchName') branchName: string,
+    @Body() body: { ownerUserId?: string; title?: string },
+    @CurrentUser() viewer: RequestUser,
+  ) {
+    return this.changeReviewsService.createOrOpenBranchReview({
+      workId,
+      sourceId,
+      branchName,
+      ownerUserId: body.ownerUserId,
+      title: body.title,
+      opener: viewer,
+    });
+  }
+
   @Get('change-reviews')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({

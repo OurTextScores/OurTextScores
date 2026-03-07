@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RevisionRating from "./revision-rating";
 import RevisionComments from "./revision-comments";
@@ -29,6 +29,11 @@ type SourceRevisionView = {
   license?: string;
   licenseUrl?: string;
   licenseAttribution?: string;
+};
+
+type BranchView = {
+  name: string;
+  policy: "public" | "owner_approval";
 };
 
 function formatDate(value?: string) {
@@ -93,12 +98,41 @@ export default function RevisionHistory({
   publicApiBase: string;
   currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
 }) {
+  const [branchPolicies, setBranchPolicies] = useState<Record<string, BranchView["policy"]>>({ trunk: "public" });
   const uniqueBranches = useMemo(() => {
     const names = new Set<string>(["All", "trunk", ...branchNames]);
     for (const r of revisions) if (r.fossilBranch) names.add(r.fossilBranch);
     return Array.from(names);
   }, [revisions, branchNames]);
   const [selected, setSelected] = useState<string>("All");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        const branches = Array.isArray(data?.branches) ? data.branches as BranchView[] : [];
+        if (cancelled) return;
+        setBranchPolicies(
+          branches.reduce<Record<string, BranchView["policy"]>>((acc, branch) => {
+            acc[branch.name] = branch.policy;
+            return acc;
+          }, { trunk: "public" }),
+        );
+      } catch {
+        // ignore branch policy fetch failures; revision history can still render
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workId, sourceId]);
 
   const filtered = selected === "All"
     ? revisions
@@ -141,6 +175,7 @@ export default function RevisionHistory({
                 imslpPermalink={imslpPermalink}
                 publicApiBase={publicApiBase}
                 currentUser={currentUser}
+                branchPolicy={branchPolicies[revision.fossilBranch || "trunk"]}
               />
             ))}
           </tbody>
@@ -252,7 +287,7 @@ function UserBadge({ userId, username }: { userId?: string; username?: string })
   );
 }
 
-function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel, sourceType, workTitle, composer, imslpPermalink, publicApiBase, currentUser }: {
+function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel, sourceType, workTitle, composer, imslpPermalink, publicApiBase, currentUser, branchPolicy }: {
   revision: SourceRevisionView;
   previousRevision?: SourceRevisionView;
   workId: string;
@@ -264,9 +299,11 @@ function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel
   imslpPermalink?: string;
   publicApiBase: string;
   currentUser?: { userId: string; email?: string; name?: string; isAdmin: boolean } | null;
+  branchPolicy?: BranchView["policy"];
 }) {
   const [reviewState, setReviewState] = useState<"idle" | "loading" | "error">("idle");
   const [reviewError, setReviewError] = useState("");
+  const branchName = revision.fossilBranch || "trunk";
   const artifactsAvailable = [
     revision.derivatives?.canonicalXml,
     revision.derivatives?.normalizedMxl,
@@ -411,21 +448,19 @@ function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel
                 Open in Editor
               </button>
             )}
-            {previousRevision && (
+            {branchPolicy !== "owner_approval" && (
               <button
                 onClick={async () => {
                   try {
                     setReviewState("loading");
                     setReviewError("");
                     const res = await fetch(
-                      `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/change-reviews`,
+                      `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches/${encodeURIComponent(branchName)}/change-review`,
                       {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                          baseRevisionId: previousRevision.revisionId,
-                          headRevisionId: revision.revisionId,
-                          title: `Review #${previousRevision.sequenceNumber} -> #${revision.sequenceNumber}`,
+                          title: `CR for ${branchName}`,
                         }),
                       }
                     );
@@ -444,8 +479,8 @@ function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel
               >
                 <span aria-hidden="true">☰ </span>
                 {reviewState === "loading"
-                  ? "Starting review..."
-                  : `Start Review vs #${previousRevision.sequenceNumber}`}
+                  ? "Opening CR..."
+                  : "Open CR"}
               </button>
             )}
             {reviewError ? (

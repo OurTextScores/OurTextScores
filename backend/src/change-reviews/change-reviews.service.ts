@@ -9,6 +9,7 @@ import { Model } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
 import { ChangeReview, ChangeReviewDocument, ChangeReviewStatus } from './schemas/change-review.schema';
+import { ChangeReviewPatchset, ChangeReviewPatchsetDocument } from './schemas/change-review-patchset.schema';
 import { ChangeReviewThread, ChangeReviewThreadDocument } from './schemas/change-review-thread.schema';
 import { ChangeReviewComment, ChangeReviewCommentDocument } from './schemas/change-review-comment.schema';
 import { Work, WorkDocument } from '../works/schemas/work.schema';
@@ -41,6 +42,8 @@ export class ChangeReviewsService {
   constructor(
     @InjectModel(ChangeReview.name)
     private readonly reviewModel: Model<ChangeReviewDocument>,
+    @InjectModel(ChangeReviewPatchset.name)
+    private readonly patchsetModel: Model<ChangeReviewPatchsetDocument>,
     @InjectModel(ChangeReviewThread.name)
     private readonly threadModel: Model<ChangeReviewThreadDocument>,
     @InjectModel(ChangeReviewComment.name)
@@ -69,45 +72,83 @@ export class ChangeReviewsService {
     title?: string;
     reviewer: RequestUser;
   }) {
-    const { workId, sourceId, baseRevisionId, headRevisionId, reviewer } = input;
-    const viewerIsAdmin = this.isAdmin(reviewer);
-
-    const { work, source, baseRevision, headRevision } = await this.loadRevisionPair({
+    const { workId, sourceId, reviewer } = input;
+    const { source, headRevision } = await this.loadRevisionPair({
       workId,
       sourceId,
-      baseRevisionId,
-      headRevisionId,
+      baseRevisionId: input.baseRevisionId,
+      headRevisionId: input.headRevisionId,
       viewer: reviewer,
     });
+    return this.createOrOpenBranchReview({
+      workId,
+      sourceId,
+      branchName: this.resolveBranchName(headRevision as any),
+      ownerUserId: input.ownerUserId,
+      title: input.title,
+      opener: reviewer,
+      initialPair: {
+        baseRevisionId: input.baseRevisionId,
+        headRevisionId: input.headRevisionId,
+      },
+    });
+  }
+
+  async createOrOpenBranchReview(input: {
+    workId: string;
+    sourceId: string;
+    branchName: string;
+    ownerUserId?: string;
+    title?: string;
+    opener: RequestUser;
+    initialPair?: { baseRevisionId: string; headRevisionId: string };
+  }) {
+    const { workId, sourceId, opener } = input;
+    const branchName = this.branchesService.sanitizeName(input.branchName || 'trunk');
+    const viewerIsAdmin = this.isAdmin(opener);
 
     const existing = await this.reviewModel
       .findOne({
-        reviewerUserId: reviewer.userId,
         workId,
         sourceId,
-        baseRevisionId,
-        headRevisionId,
-        status: { $in: ['draft', 'open'] },
+        branchName,
+        status: { $in: ['open', 'closed'] },
       })
       .lean()
       .exec();
-
     if (existing) {
-      return this.buildReviewDetail(existing, work as any, source as any, reviewer);
+      const [work, source] = await Promise.all([
+        this.workModel.findOne({ workId }).select('workId title composer').lean().exec(),
+        this.sourceModel.findOne({ workId, sourceId }).select('workId sourceId label sourceType provenance').lean().exec(),
+      ]);
+      if (!work || !source) {
+        throw new NotFoundException('Review target not found');
+      }
+      return this.buildReviewDetail(existing as any, work as any, source as any, opener);
     }
 
+    const branchPolicy = await this.branchesService.getBranchPolicy(workId, sourceId, branchName);
+    if (branchPolicy === 'owner_approval') {
+      throw new BadRequestException('Change reviews are not available for owner approval branches');
+    }
     if (input.ownerUserId && !viewerIsAdmin) {
       throw new ForbiddenException('Only admins may set review owner explicitly');
     }
 
-    const branchName = this.resolveBranchName(headRevision as any);
+    const target = await this.loadBranchReviewTarget({
+      workId,
+      sourceId,
+      branchName,
+      viewer: opener,
+      initialPair: input.initialPair,
+    });
     const ownerUserId = await this.resolveOwnerUserId({
       explicitOwnerUserId: input.ownerUserId,
       workId,
       sourceId,
       branchName,
-      headRevision: headRevision as any,
-      source: source as any,
+      headRevision: target.headRevision as any,
+      source: target.source as any,
     });
 
     if (!ownerUserId) {
@@ -117,35 +158,114 @@ export class ChangeReviewsService {
     const participantUserIds = Array.from(
       new Set(
         [
-          reviewer.userId,
+          opener.userId,
           ownerUserId,
-          (source as any)?.provenance?.uploadedByUserId,
+          (target.source as any)?.provenance?.uploadedByUserId,
         ].filter(Boolean),
       ),
     );
 
     const now = new Date();
+    const reviewId = randomUUID();
     const created = await this.reviewModel.create({
-      reviewId: randomUUID(),
+      reviewId,
       workId,
       sourceId,
       branchName,
-      baseRevisionId,
-      headRevisionId,
-      baseSequenceNumber: Number((baseRevision as any).sequenceNumber || 0),
-      headSequenceNumber: Number((headRevision as any).sequenceNumber || 0),
-      reviewerUserId: reviewer.userId,
+      baseRevisionId: String((target.baseRevision as any).revisionId),
+      headRevisionId: String((target.headRevision as any).revisionId),
+      baseSequenceNumber: Number((target.baseRevision as any).sequenceNumber || 0),
+      headSequenceNumber: Number((target.headRevision as any).sequenceNumber || 0),
+      reviewerUserId: opener.userId,
       ownerUserId,
       participantUserIds,
-      title: input.title?.trim() || undefined,
-      status: 'draft',
+      title: input.title?.trim() || `CR for ${branchName}`,
+      status: 'open',
       unresolvedThreadCount: 0,
+      submittedAt: now,
       lastActivityAt: now,
       createdAt: now,
       updatedAt: now,
     });
 
-    return this.buildReviewDetail(created.toObject() as any, work as any, source as any, reviewer);
+    await this.patchsetModel.create({
+      reviewId,
+      patchsetNumber: 1,
+      workId,
+      sourceId,
+      branchName,
+      baseRevisionId: String((target.baseRevision as any).revisionId),
+      headRevisionId: String((target.headRevision as any).revisionId),
+      baseSequenceNumber: Number((target.baseRevision as any).sequenceNumber || 0),
+      headSequenceNumber: Number((target.headRevision as any).sequenceNumber || 0),
+      createdByUserId: opener.userId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await this.branchesService.setBranchLifecycle(workId, sourceId, branchName, 'open');
+    await this.queueSubmittedReviewNotifications(created.toObject() as any, opener.userId);
+
+    return this.buildReviewDetail(created.toObject() as any, target.work as any, target.source as any, opener);
+  }
+
+  async syncOpenReviewPatchsetForRevision(input: {
+    workId: string;
+    sourceId: string;
+    branchName: string;
+    headRevisionId: string;
+    headSequenceNumber: number;
+    actorUserId?: string;
+  }) {
+    const branchName = this.branchesService.sanitizeName(input.branchName || 'trunk');
+    const review = await this.reviewModel
+      .findOne({ workId: input.workId, sourceId: input.sourceId, branchName, status: 'open' })
+      .lean()
+      .exec();
+    if (!review) {
+      return { ok: true, patchsetCreated: false };
+    }
+    if (String(review.headRevisionId) === input.headRevisionId) {
+      return { ok: true, patchsetCreated: false };
+    }
+    const existingPatchset = await this.patchsetModel
+      .findOne({ reviewId: review.reviewId, headRevisionId: input.headRevisionId })
+      .lean()
+      .exec();
+    if (existingPatchset) {
+      return { ok: true, patchsetCreated: false };
+    }
+
+    const nextPatchsetNumber = (await this.patchsetModel.countDocuments({ reviewId: review.reviewId }).exec()) + 1;
+    const now = new Date();
+    await this.patchsetModel.create({
+      reviewId: review.reviewId,
+      patchsetNumber: nextPatchsetNumber,
+      workId: input.workId,
+      sourceId: input.sourceId,
+      branchName,
+      baseRevisionId: String(review.headRevisionId),
+      headRevisionId: input.headRevisionId,
+      baseSequenceNumber: Number(review.headSequenceNumber || 0),
+      headSequenceNumber: Number(input.headSequenceNumber || 0),
+      createdByUserId: input.actorUserId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await this.reviewModel
+      .updateOne(
+        { reviewId: review.reviewId },
+        {
+          $set: {
+            baseRevisionId: String(review.headRevisionId),
+            headRevisionId: input.headRevisionId,
+            baseSequenceNumber: Number(review.headSequenceNumber || 0),
+            headSequenceNumber: Number(input.headSequenceNumber || 0),
+            lastActivityAt: now,
+          },
+        },
+      )
+      .exec();
+    return { ok: true, patchsetCreated: true };
   }
 
   async listReviews(input: {
@@ -357,6 +477,7 @@ export class ChangeReviewsService {
       createdAt: now,
     });
 
+    await this.addParticipantUserId(review.reviewId, input.viewer.userId);
     await this.syncReviewCounters(review.reviewId, now);
     return this.getReviewDiff(review.reviewId, input.viewer);
   }
@@ -395,6 +516,7 @@ export class ChangeReviewsService {
       content,
       createdAt: now,
     });
+    await this.addParticipantUserId(review.reviewId, input.viewer.userId);
     await this.syncReviewCounters(input.reviewId, now);
     return this.buildThreadViews(input.reviewId);
   }
@@ -479,6 +601,9 @@ export class ChangeReviewsService {
     if (!thread) {
       throw new NotFoundException('Review thread not found');
     }
+    if (!this.canManageOpenReview(review as any, input.viewer)) {
+      throw new ForbiddenException('Only the review owner may resolve or reopen threads');
+    }
 
     (thread as any).status = input.status;
     (thread as any).updatedAt = new Date();
@@ -539,8 +664,8 @@ export class ChangeReviewsService {
     if ((review as any).status !== 'open') {
       throw new BadRequestException('Only open reviews can be closed');
     }
-    if (String((review as any).reviewerUserId) !== input.viewer.userId) {
-      throw new ForbiddenException('Only the reviewer may close this review');
+    if (!this.canManageOpenReview(review as any, input.viewer)) {
+      throw new ForbiddenException('Only the review owner may close this review');
     }
 
     const now = new Date();
@@ -570,8 +695,8 @@ export class ChangeReviewsService {
     if ((review as any).status !== 'closed') {
       throw new BadRequestException('Only closed reviews can be reopened');
     }
-    if (String((review as any).reviewerUserId) !== input.viewer.userId) {
-      throw new ForbiddenException('Only the reviewer may reopen this review');
+    if (!this.canManageOpenReview(review as any, input.viewer)) {
+      throw new ForbiddenException('Only the review owner may reopen this review');
     }
 
     const now = new Date();
@@ -678,11 +803,11 @@ export class ChangeReviewsService {
           (review.status === 'draft' && review.reviewerUserId === viewer.userId)
           || (review.status === 'open' && this.canCreateTopLevelThread(review, viewer)),
         canSubmit: review.status === 'draft' && review.reviewerUserId === viewer.userId,
-        canClose: review.status === 'open' && review.reviewerUserId === viewer.userId,
+        canClose: review.status === 'open' && this.canManageOpenReview(review, viewer),
         canWithdraw:
           ['draft', 'open'].includes(String(review.status)) && review.reviewerUserId === viewer.userId,
         canReply: review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
-        canResolve: review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
+        canResolve: review.status === 'open' && this.canManageOpenReview(review, viewer),
       },
     };
   }
@@ -779,6 +904,73 @@ export class ChangeReviewsService {
     return { work, source, baseRevision, headRevision };
   }
 
+  private async loadBranchReviewTarget(input: {
+    workId: string;
+    sourceId: string;
+    branchName: string;
+    viewer: RequestUser;
+    initialPair?: { baseRevisionId: string; headRevisionId: string };
+  }) {
+    if (input.initialPair) {
+      return this.loadRevisionPair({
+        workId: input.workId,
+        sourceId: input.sourceId,
+        baseRevisionId: input.initialPair.baseRevisionId,
+        headRevisionId: input.initialPair.headRevisionId,
+        viewer: input.viewer,
+      });
+    }
+
+    const viewerIsAdmin = this.isAdmin(input.viewer);
+    const branchName = this.branchesService.sanitizeName(input.branchName || 'trunk');
+    const [work, source, revisions, declaredBranches] = await Promise.all([
+      this.workModel.findOne({ workId: input.workId }).select('workId title composer').lean().exec(),
+      this.sourceModel.findOne({ workId: input.workId, sourceId: input.sourceId }).lean().exec(),
+      this.sourceRevisionModel
+        .find({ workId: input.workId, sourceId: input.sourceId })
+        .sort({ sequenceNumber: -1 })
+        .lean()
+        .exec(),
+      this.branchesService.listBranches(input.workId, input.sourceId),
+    ]);
+
+    if (!work) {
+      throw new NotFoundException(`Work ${input.workId} not found`);
+    }
+    if (!source) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const visibleRevisions = revisions.filter((revision: any) =>
+      this.canViewerAccessRevision(revision as any, input.viewer, viewerIsAdmin),
+    );
+    const branchRevisions = visibleRevisions.filter((revision: any) =>
+      this.resolveBranchName(revision as any) === branchName,
+    );
+    const headRevision = branchRevisions[0];
+    if (!headRevision) {
+      throw new BadRequestException('Branch has no reviewable revisions');
+    }
+
+    let baseRevision = branchRevisions[1];
+    if (!baseRevision) {
+      const declaredBranch = declaredBranches.find((branch) => branch.name === branchName);
+      const baseRevisionId = declaredBranch?.baseRevisionId;
+      if (baseRevisionId) {
+        baseRevision = visibleRevisions.find((revision: any) => String(revision.revisionId) === baseRevisionId) as any;
+      }
+    }
+    if (!baseRevision) {
+      throw new BadRequestException('Branch needs at least two revisions, or a declared base revision, before it can be reviewed');
+    }
+
+    if (Number((baseRevision as any).sequenceNumber || 0) >= Number((headRevision as any).sequenceNumber || 0)) {
+      throw new BadRequestException('Resolved branch review base revision is not older than the branch head');
+    }
+
+    return { work, source, baseRevision, headRevision };
+  }
+
   private async getReadableReview(reviewId: string, viewer: RequestUser) {
     const review = await this.reviewModel.findOne({ reviewId }).lean().exec();
     if (!review) {
@@ -824,12 +1016,7 @@ export class ChangeReviewsService {
       }
       return;
     }
-    const participantUserIds = new Set<string>([
-      review.reviewerUserId,
-      review.ownerUserId,
-      ...(review.participantUserIds || []),
-    ]);
-    if (participantUserIds.has(viewer.userId) || this.isAdmin(viewer)) {
+    if (viewer?.userId || this.isAdmin(viewer)) {
       return;
     }
     throw new NotFoundException('Change review not found');
@@ -859,15 +1046,15 @@ export class ChangeReviewsService {
   }
 
   private canParticipateInOpenReview(review: any, viewer: RequestUser) {
-    return review.reviewerUserId === viewer.userId
-      || review.ownerUserId === viewer.userId
-      || (review.participantUserIds || []).includes(viewer.userId);
+    return Boolean(viewer?.userId);
   }
 
   private canCreateTopLevelThread(review: any, viewer: RequestUser) {
-    return this.isAdmin(viewer)
-      || review.reviewerUserId === viewer.userId
-      || review.ownerUserId === viewer.userId;
+    return Boolean(viewer?.userId);
+  }
+
+  private canManageOpenReview(review: any, viewer: RequestUser) {
+    return this.isAdmin(viewer) || review.ownerUserId === viewer.userId;
   }
 
   private canViewerAccessRevision(revision: RevisionLike, viewer?: RequestUser, viewerIsAdmin?: boolean): boolean {
@@ -932,6 +1119,13 @@ export class ChangeReviewsService {
         },
       )
       .exec();
+  }
+
+  private async addParticipantUserId(reviewId: string, userId?: string) {
+    if (!userId) {
+      return;
+    }
+    await this.reviewModel.updateOne({ reviewId }, { $addToSet: { participantUserIds: userId } }).exec();
   }
 
   private async queueSubmittedReviewNotifications(review: any, actorUserId: string) {

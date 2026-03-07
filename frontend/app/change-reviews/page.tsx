@@ -26,8 +26,8 @@ interface ChangeReviewListItem {
 }
 
 async function fetchSection(
-  role: "reviewer" | "owner",
-  status: "draft" | "open",
+  role: "reviewer" | "owner" | "all",
+  status: "draft" | "open" | "closed",
 ): Promise<ChangeReviewListItem[]> {
   const API_BASE = getApiBase();
   const headers = await getApiAuthHeaders();
@@ -125,10 +125,10 @@ function ReviewSection({
 }
 
 export default async function ChangeReviewsPage() {
-  const [needsResponse, drafts, openByYou] = await Promise.all([
+  const [needsResponse, openReviews, closedReviews] = await Promise.all([
     fetchSection("owner", "open"),
-    fetchSection("reviewer", "draft"),
-    fetchSection("reviewer", "open"),
+    fetchSection("all", "open"),
+    fetchSection("all", "closed"),
   ]);
 
   return (
@@ -138,7 +138,7 @@ export default async function ChangeReviewsPage() {
           <div>
             <h1 className="text-3xl font-semibold">Change Reviews</h1>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Review drafts, open reviews awaiting your response, and reviews you have submitted.
+              Shared branch change reviews that need your response, are currently open, or were recently closed.
             </p>
           </div>
           <Link href="/" className="text-sm text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-300">
@@ -153,14 +153,14 @@ export default async function ChangeReviewsPage() {
             items={needsResponse}
           />
           <ReviewSection
-            title="Drafts"
-            emptyText="You have no draft change reviews."
-            items={drafts}
+            title="Open Reviews"
+            emptyText="There are no open change reviews right now."
+            items={openReviews}
           />
           <ReviewSection
-            title="Open By You"
-            emptyText="You have no submitted open change reviews."
-            items={openByYou}
+            title="Recently Closed"
+            emptyText="There are no recently closed change reviews."
+            items={closedReviews}
           />
         </div>
       </div>

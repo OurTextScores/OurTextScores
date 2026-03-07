@@ -62,6 +62,9 @@ describe('UploadSourceService (unit)', () => {
   const imslpService = {
     getRawByWorkId: jest.fn()
   } as any;
+  const changeReviewsService = {
+    syncOpenReviewPatchsetForRevision: jest.fn().mockResolvedValue({ ok: true, patchsetCreated: false })
+  } as any;
   const config = {
     get: jest.fn((_: string, defaultValue?: string) => defaultValue)
   } as any;
@@ -87,6 +90,7 @@ describe('UploadSourceService (unit)', () => {
       branchesService,
       notifications,
       imslpService,
+      changeReviewsService,
       sourceModel,
       sourceRevisionModel
     );

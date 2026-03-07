@@ -24,6 +24,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { ImslpService } from '../imslp/imslp.service';
 import type { RequestUser } from '../auth/types/auth-user';
 import { ConfigService } from '@nestjs/config';
+import { ChangeReviewsService } from '../change-reviews/change-reviews.service';
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100MB
 
@@ -72,6 +73,7 @@ export class UploadSourceService {
     private readonly branchesService: BranchesService,
     private readonly notifications: NotificationsService,
     private readonly imslpService: ImslpService,
+    private readonly changeReviewsService: ChangeReviewsService,
     @InjectModel(Source.name)
     private readonly sourceModel: Model<SourceDocument>,
     @InjectModel(SourceRevision.name)
@@ -453,6 +455,16 @@ export class UploadSourceService {
     }
     if (status === 'pending_approval') {
       await this.notifications.queuePushRequest({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId, ownerUserId: approval?.ownerUserId });
+    }
+    if (status === 'approved') {
+      await this.changeReviewsService.syncOpenReviewPatchsetForRevision({
+        workId: trimmedWorkId,
+        sourceId: trimmedSourceId,
+        branchName: committedLogicalBranch,
+        headRevisionId: revisionId,
+        headSequenceNumber: sequenceNumber,
+        actorUserId: user?.userId,
+      });
     }
     if (setLatest) {
       this.scheduleDeferredPdfGeneration({

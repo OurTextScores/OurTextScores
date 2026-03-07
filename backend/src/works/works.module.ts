@@ -25,6 +25,7 @@ import { SearchModule } from '../search/search.module';
 import { UsersModule } from '../users/users.module';
 import { Project, ProjectSchema } from '../projects/schemas/project.schema';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { ChangeReviewsModule } from '../change-reviews/change-reviews.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     SearchModule,
     UsersModule,
     AnalyticsModule,
+    ChangeReviewsModule,
     MongooseModule.forFeature([
       { name: Work.name, schema: WorkSchema },
       { name: Source.name, schema: SourceSchema },
