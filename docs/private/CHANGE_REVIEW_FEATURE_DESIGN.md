@@ -9,7 +9,8 @@ Proposed design for a new Change Review workflow in OurTextScores.
 Add a review workflow where a reviewer can:
 
 - open a review against a specific source change
-- leave comments on changed lines
+- review the score change in a musical visual diff
+- leave comments anchored to changed score regions
 - submit the review
 - notify the change owner on submit
 - track their open reviews from a dedicated page
@@ -49,7 +50,8 @@ The key distinction from existing revision comments:
 
 V1 should be intentionally narrow:
 
-- commentable surface: `canonical.xml` changed lines only
+- review surface: score visual diff via the embedded score editor compare view
+- commentable surface: changed score regions anchored to the reviewed diff pair
 - one review targets one exact revision pair
 - draft reviews are private
 - submitted reviews notify the owner
@@ -58,9 +60,7 @@ V1 should be intentionally narrow:
 
 V1 should not attempt:
 
-- visual-score inline commenting
 - automatic retargeting when branch head changes
-- manifest-line comments
 - multi-reviewer assignment
 - approvals replacement
 - automatic mergeability or rebase logic
@@ -83,7 +83,18 @@ Reuse should happen at the infrastructure level instead:
 - notification inbox/outbox
 - work/source identity
 - revision visibility checks
-- diff generation pipeline
+- score-editor compare pipeline
+
+## Implementation Correction
+
+The review surface should be the musical score visual diff, not raw XML or text diff output.
+
+That changes the intended architecture:
+
+- `canonical.xml` remains a transport/input format for the compare renderer
+- the user-facing review page should embed the score-editor compare view
+- thread anchors should move from XML line anchors to score-aware anchors
+- raw XML diff should be treated as an implementation fallback only, not the primary review experience
 
 ## Core Objects
 

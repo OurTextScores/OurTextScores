@@ -124,6 +124,13 @@ export default function ChangeReviewDetailClient({
   };
 
   const threadsByAnchor = new Map(diff.threads.map((thread) => [thread.diffAnchor.anchorId, thread]));
+  const visualDiffUrl = `/score-editor/index.html?compareLeft=${encodeURIComponent(
+    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(review.baseRevisionId)}`,
+  )}&compareRight=${encodeURIComponent(
+    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(review.headRevisionId)}`,
+  )}&leftLabel=${encodeURIComponent(`Rev #${review.baseSequenceNumber}`)}&rightLabel=${encodeURIComponent(
+    `Rev #${review.headSequenceNumber}`,
+  )}`;
 
   return (
     <div className="space-y-6">
@@ -242,11 +249,29 @@ export default function ChangeReviewDetailClient({
 
       <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Canonical XML Diff</h2>
+          <h2 className="text-lg font-semibold">Score Visual Diff</h2>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            Rev #{review.baseSequenceNumber} vs Rev #{review.headSequenceNumber}
+          </span>
+        </div>
+        <iframe
+          src={visualDiffUrl}
+          title="Score visual diff"
+          className="h-[820px] w-full rounded border border-slate-200 dark:border-slate-800"
+        />
+      </section>
+
+      <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Review Threads</h2>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {diff.threads.length} thread{diff.threads.length === 1 ? "" : "s"}
           </span>
         </div>
+        <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+          Review against the visual score diff above. Thread creation still uses the technical change anchors below until
+          score-aware anchors are implemented.
+        </p>
         <div className="space-y-6">
           {diff.hunks.map((hunk) => (
             <div key={hunk.hunkId} className="overflow-hidden rounded border border-slate-200 dark:border-slate-800">
