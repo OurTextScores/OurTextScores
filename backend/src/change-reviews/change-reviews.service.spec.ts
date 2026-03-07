@@ -271,14 +271,38 @@ describe('ChangeReviewsService', () => {
     threadModel.find.mockReturnValue(chain([]));
     commentModel.find.mockReturnValue(chain([]));
     storageService.getObjectBuffer
-      .mockResolvedValueOnce(Buffer.from('<a>\nold\n</a>\n'))
-      .mockResolvedValueOnce(Buffer.from('<a>\nnew\n</a>\n'));
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>D</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>D</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
+        ),
+      );
 
     const result = await service.getReviewDiff('review-1', { userId: 'reviewer-1', roles: ['user'] });
 
     expect(result.fileKind).toBe('canonical');
-    expect(result.hunks.length).toBeGreaterThan(0);
-    expect(result.hunks.some((hunk: any) => hunk.lines.some((line: any) => line.commentable))).toBe(true);
+    expect(result.scoreRegions.length).toBeGreaterThan(0);
+    expect(result.scoreRegions[0]).toEqual(
+      expect.objectContaining({
+        label: 'Piano - m. 1',
+        changeType: 'modified',
+        commentable: true,
+      }),
+    );
   });
 
   it('submits a draft review and queues owner notification', async () => {

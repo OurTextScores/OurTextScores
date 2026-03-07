@@ -53,6 +53,22 @@ interface ReviewDiffResponse {
   fileKind: "canonical";
   baseRevisionId: string;
   headRevisionId: string;
+  scoreRegions: Array<{
+    anchorId: string;
+    partId: string;
+    partIndex: number;
+    partName?: string;
+    side: "base" | "head";
+    changeType: "added" | "removed" | "modified";
+    baseMeasureIndex?: number;
+    headMeasureIndex?: number;
+    baseMeasureNumber?: string;
+    headMeasureNumber?: string;
+    label: string;
+    summary: string;
+    commentable: boolean;
+    regionHash: string;
+  }>;
   hunks: Array<{
     hunkId: string;
     header: string;

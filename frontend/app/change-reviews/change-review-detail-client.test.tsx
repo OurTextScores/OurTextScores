@@ -47,6 +47,24 @@ const initialDiff = {
   fileKind: "canonical" as const,
   baseRevisionId: "rev-1",
   headRevisionId: "rev-2",
+  scoreRegions: [
+    {
+      anchorId: "anchor-1",
+      partId: "P1",
+      partIndex: 0,
+      partName: "Piano",
+      side: "head" as const,
+      changeType: "modified" as const,
+      baseMeasureIndex: 0,
+      headMeasureIndex: 0,
+      baseMeasureNumber: "2",
+      headMeasureNumber: "2",
+      label: "Piano - m. 2",
+      summary: "Changed Piano - m. 2",
+      commentable: true,
+      regionHash: "hash-1",
+    },
+  ],
   hunks: [
     {
       hunkId: "hunk-1",
@@ -114,11 +132,11 @@ describe("ChangeReviewDetailClient", () => {
     render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={initialDiff} />);
 
     await user.click(screen.getByRole("button", { name: "Add Thread" }));
-    await user.type(screen.getByPlaceholderText("Write a review comment on this changed line"), "Please verify this measure.");
+    await user.type(screen.getByPlaceholderText("Write a review comment on this score change"), "Please verify this measure.");
     await user.click(screen.getByRole("button", { name: "Save Thread" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Please verify this measure.")).toBeInTheDocument();
+      expect(screen.getAllByText("Please verify this measure.").length).toBeGreaterThan(0);
     });
 
     expect(fetch).toHaveBeenNthCalledWith(

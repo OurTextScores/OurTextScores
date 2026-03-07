@@ -281,12 +281,14 @@ export class ChangeReviewsService {
 
     const rawDiff = await this.generateUnifiedDiff(baseLocator, headLocator);
     const parsed = this.parseUnifiedDiff(rawDiff);
+    const scoreRegions = await this.buildScoreRegions(baseLocator, headLocator);
 
     return {
       reviewId: review.reviewId,
       fileKind: 'canonical' as const,
       baseRevisionId: review.baseRevisionId,
       headRevisionId: review.headRevisionId,
+      scoreRegions,
       hunks: parsed.hunks,
       rawDiff,
       threads: threadViews,
@@ -311,8 +313,9 @@ export class ChangeReviewsService {
     }
 
     const diff = await this.getReviewDiff(review.reviewId, input.viewer);
-    const anchor = this.findAnchor(diff.hunks, input.anchorId);
-    if (!anchor || !anchor.commentable) {
+    const scoreRegion = (diff as any).scoreRegions?.find((region: any) => region.anchorId === input.anchorId) || null;
+    const anchor = scoreRegion ? null : this.findAnchor(diff.hunks, input.anchorId);
+    if (!scoreRegion && (!anchor || !anchor.commentable)) {
       throw new BadRequestException('Invalid or non-commentable diff anchor');
     }
 
@@ -327,13 +330,13 @@ export class ChangeReviewsService {
       sourceId: review.sourceId,
       fileKind: 'canonical',
       diffAnchor: {
-        side: anchor.side,
-        oldLineNumber: anchor.oldLineNumber,
-        newLineNumber: anchor.newLineNumber,
-        anchorId: anchor.anchorId,
-        lineHash: anchor.lineHash,
-        lineText: anchor.content,
-        hunkHeader: anchor.hunkHeader,
+        side: scoreRegion?.side || anchor?.side || 'head',
+        oldLineNumber: anchor?.oldLineNumber,
+        newLineNumber: anchor?.newLineNumber,
+        anchorId: scoreRegion?.anchorId || anchor?.anchorId || input.anchorId,
+        lineHash: scoreRegion?.regionHash || anchor?.lineHash || this.hashText(input.anchorId),
+        lineText: scoreRegion?.label || anchor?.content || 'Score region',
+        hunkHeader: scoreRegion?.summary || anchor?.hunkHeader,
       },
       status: 'open',
       createdByUserId: input.viewer.userId,
@@ -931,6 +934,16 @@ export class ChangeReviewsService {
     }
   }
 
+  private async buildScoreRegions(aLoc: { bucket: string; objectKey: string }, bLoc: { bucket: string; objectKey: string }) {
+    const [bufA, bufB] = await Promise.all([
+      this.storageService.getObjectBuffer(aLoc.bucket, aLoc.objectKey),
+      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey),
+    ]);
+    const baseScore = this.extractScoreStructure(bufA.toString('utf8'));
+    const headScore = this.extractScoreStructure(bufB.toString('utf8'));
+    return this.diffScoreStructures(baseScore, headScore);
+  }
+
   private parseUnifiedDiff(rawDiff: string) {
     const hunks: Array<{
       hunkId: string;
@@ -1062,5 +1075,160 @@ export class ChangeReviewsService {
 
   private hashText(value: string) {
     return createHash('sha256').update(value).digest('hex').slice(0, 16);
+  }
+
+  private extractScoreStructure(xml: string) {
+    const cleaned = String(xml || '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<print\b[\s\S]*?<\/print>/gi, '')
+      .replace(/<layout-break\b[\s\S]*?<\/layout-break>/gi, '')
+      .replace(/>\s+</g, '><')
+      .trim();
+    const scoreBody = cleaned.replace(/<part-list\b[\s\S]*?<\/part-list>/gi, '');
+
+    const partNames = new Map<string, string>();
+    const scorePartRegex = /<score-part\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/score-part>/gi;
+    let scorePartMatch: RegExpExecArray | null;
+    while ((scorePartMatch = scorePartRegex.exec(cleaned))) {
+      const [, partId, body] = scorePartMatch;
+      const partNameMatch = body.match(/<part-name\b[^>]*>([\s\S]*?)<\/part-name>/i);
+      if (partNameMatch) {
+        partNames.set(partId, this.stripXmlText(partNameMatch[1]));
+      }
+    }
+
+    const parts: Array<{
+      partId: string;
+      partIndex: number;
+      partName?: string;
+      measures: Array<{ measureIndex: number; measureNumber: string; signature: string }>;
+    }> = [];
+    const partRegex = /<part\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/part>/gi;
+    let partMatch: RegExpExecArray | null;
+    let partIndex = 0;
+    while ((partMatch = partRegex.exec(scoreBody))) {
+      const [, partId, body] = partMatch;
+      const measures: Array<{ measureIndex: number; measureNumber: string; signature: string }> = [];
+      const measureRegex = /<measure\b([^>]*)>([\s\S]*?)<\/measure>/gi;
+      let measureMatch: RegExpExecArray | null;
+      let measureIndex = 0;
+      while ((measureMatch = measureRegex.exec(body))) {
+        const attrs = measureMatch[1] || '';
+        const measureBody = measureMatch[2] || '';
+        const numberMatch = attrs.match(/\bnumber="([^"]+)"/i);
+        measures.push({
+          measureIndex,
+          measureNumber: (numberMatch?.[1] || `${measureIndex + 1}`).trim(),
+          signature: this.hashText(
+            measureBody
+              .replace(/\s+/g, ' ')
+              .replace(/\s+</g, '<')
+              .replace(/>\s+/g, '>')
+              .trim(),
+          ),
+        });
+        measureIndex += 1;
+      }
+      parts.push({
+        partId,
+        partIndex,
+        partName: partNames.get(partId),
+        measures,
+      });
+      partIndex += 1;
+    }
+
+    return { parts };
+  }
+
+  private diffScoreStructures(
+    baseScore: {
+      parts: Array<{
+        partId: string;
+        partIndex: number;
+        partName?: string;
+        measures: Array<{ measureIndex: number; measureNumber: string; signature: string }>;
+      }>;
+    },
+    headScore: {
+      parts: Array<{
+        partId: string;
+        partIndex: number;
+        partName?: string;
+        measures: Array<{ measureIndex: number; measureNumber: string; signature: string }>;
+      }>;
+    },
+  ) {
+    const baseById = new Map(baseScore.parts.map((part) => [part.partId, part]));
+    const headById = new Map(headScore.parts.map((part) => [part.partId, part]));
+    const orderedPartIds = Array.from(new Set([...headScore.parts.map((part) => part.partId), ...baseScore.parts.map((part) => part.partId)]));
+    const regions: Array<{
+      anchorId: string;
+      partId: string;
+      partIndex: number;
+      partName?: string;
+      side: 'base' | 'head';
+      changeType: 'added' | 'removed' | 'modified';
+      baseMeasureIndex?: number;
+      headMeasureIndex?: number;
+      baseMeasureNumber?: string;
+      headMeasureNumber?: string;
+      label: string;
+      summary: string;
+      commentable: boolean;
+      regionHash: string;
+    }> = [];
+
+    for (const partId of orderedPartIds) {
+      const basePart = baseById.get(partId);
+      const headPart = headById.get(partId);
+      const baseMeasures = basePart?.measures || [];
+      const headMeasures = headPart?.measures || [];
+      const partName = headPart?.partName || basePart?.partName;
+      const partIndex = headPart?.partIndex ?? basePart?.partIndex ?? 0;
+      const maxLength = Math.max(baseMeasures.length, headMeasures.length);
+
+      for (let index = 0; index < maxLength; index += 1) {
+        const baseMeasure = baseMeasures[index];
+        const headMeasure = headMeasures[index];
+        const changed =
+          !baseMeasure ||
+          !headMeasure ||
+          baseMeasure.signature !== headMeasure.signature ||
+          baseMeasure.measureNumber !== headMeasure.measureNumber;
+        if (!changed) {
+          continue;
+        }
+
+        const changeType = !baseMeasure ? 'added' : !headMeasure ? 'removed' : 'modified';
+        const side = changeType === 'removed' ? 'base' : 'head';
+        const measureNumber = headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
+        const label = `${partName || `Part ${partIndex + 1}`} - m. ${measureNumber}`;
+        const summary = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
+        const regionHash = this.hashText(`${partId}|${index}|${baseMeasure?.signature || ''}|${headMeasure?.signature || ''}|${changeType}`);
+        regions.push({
+          anchorId: this.hashText(`score-region|${partId}|${index}|${baseMeasure?.measureNumber || ''}|${headMeasure?.measureNumber || ''}|${regionHash}`),
+          partId,
+          partIndex,
+          partName,
+          side,
+          changeType,
+          baseMeasureIndex: baseMeasure?.measureIndex,
+          headMeasureIndex: headMeasure?.measureIndex,
+          baseMeasureNumber: baseMeasure?.measureNumber,
+          headMeasureNumber: headMeasure?.measureNumber,
+          label,
+          summary,
+          commentable: true,
+          regionHash,
+        });
+      }
+    }
+
+    return regions;
+  }
+
+  private stripXmlText(value: string) {
+    return String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 }
