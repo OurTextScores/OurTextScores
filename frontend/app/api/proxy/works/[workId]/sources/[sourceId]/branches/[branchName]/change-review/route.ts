@@ -1,5 +1,5 @@
-import { getApiAuthHeaders } from "../../../../../../../../lib/authToken";
-import { getBackendApiBase, proxyFetch } from "../../../../../../_lib/upstream";
+import { getApiAuthHeaders } from "../../../../../../../../../lib/authToken";
+import { getBackendApiBase, proxyFetch } from "../../../../../../../_lib/upstream";
 
 export async function POST(
   request: Request,
