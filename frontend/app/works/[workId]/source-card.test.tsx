@@ -345,6 +345,7 @@ describe('SourceCard', () => {
             source: 'ourtextscores',
             workId: 'work-123',
             sourceId: 'source-1',
+            branchName: 'trunk',
             revisionId: 'rev-99',
             workTitle: 'Prelude in C',
             composer: 'J.S. Bach',

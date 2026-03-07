@@ -380,6 +380,7 @@ function RevisionRow({ revision, workId, sourceId, sourceLabel, sourceType, work
                       source: 'ourtextscores',
                       workId,
                       sourceId,
+                      branchName: revision.fossilBranch || 'trunk',
                       revisionId: revision.revisionId,
                       sourceType,
                       sourceLabel,

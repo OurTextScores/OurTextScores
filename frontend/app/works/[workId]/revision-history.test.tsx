@@ -426,6 +426,7 @@ describe('RevisionHistory', () => {
       source: 'ourtextscores',
       workId: '12345',
       sourceId: 'source-1',
+      branchName: 'trunk',
       revisionId: 'rev-3',
       sourceLabel: 'Full Score',
       sourceType: 'score',

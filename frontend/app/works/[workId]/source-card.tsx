@@ -712,6 +712,7 @@ export default function SourceCard({
                                             source: 'ourtextscores',
                                             workId,
                                             sourceId: source.sourceId,
+                                            branchName: latest?.fossilBranch || 'trunk',
                                             revisionId: latest?.revisionId,
                                             sourceType: source.sourceType,
                                             sourceLabel: source.label,
