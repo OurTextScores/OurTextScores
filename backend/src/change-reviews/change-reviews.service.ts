@@ -640,9 +640,15 @@ export class ChangeReviewsService {
       permissions: {
         canRead: true,
         canEditDraft: review.status === 'draft' && review.reviewerUserId === viewer.userId,
+        canAddThread:
+          (review.status === 'draft' && review.reviewerUserId === viewer.userId)
+          || (review.status === 'open' && this.canCreateTopLevelThread(review, viewer)),
         canSubmit: review.status === 'draft' && review.reviewerUserId === viewer.userId,
         canClose: review.status === 'open' && review.reviewerUserId === viewer.userId,
+        canWithdraw:
+          ['draft', 'open'].includes(String(review.status)) && review.reviewerUserId === viewer.userId,
         canReply: review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
+        canResolve: review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
       },
     };
   }
@@ -813,8 +819,8 @@ export class ChangeReviewsService {
     if (!isParticipant) {
       throw new ForbiddenException('You do not have access to modify this review');
     }
-    if (options.allowNewThreads) {
-      return;
+    if (options.allowNewThreads && !this.canCreateTopLevelThread(review, viewer)) {
+      throw new ForbiddenException('You do not have access to create top-level threads on this review');
     }
   }
 
@@ -822,6 +828,12 @@ export class ChangeReviewsService {
     return review.reviewerUserId === viewer.userId
       || review.ownerUserId === viewer.userId
       || (review.participantUserIds || []).includes(viewer.userId);
+  }
+
+  private canCreateTopLevelThread(review: any, viewer: RequestUser) {
+    return this.isAdmin(viewer)
+      || review.reviewerUserId === viewer.userId
+      || review.ownerUserId === viewer.userId;
   }
 
   private canViewerAccessRevision(revision: RevisionLike, viewer?: RequestUser, viewerIsAdmin?: boolean): boolean {
