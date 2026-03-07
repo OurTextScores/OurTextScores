@@ -32,7 +32,7 @@ const mockRevisions = [
       canonicalXml: { bucket: 'scores-derivatives', objectKey: 'work123/rev3.xml', sizeBytes: 10000 },
     },
     fossilArtifactId: 'abc123',
-    fossilBranch: 'main',
+    fossilBranch: 'trunk',
   },
   {
     revisionId: 'rev-2',
@@ -44,7 +44,7 @@ const mockRevisions = [
     derivatives: {
       pdf: { bucket: 'scores-derivatives', objectKey: 'work123/rev2.pdf', sizeBytes: 48000 },
     },
-    fossilBranch: 'main',
+    fossilBranch: 'trunk',
   },
   {
     revisionId: 'rev-1',
@@ -57,7 +57,7 @@ const mockRevisions = [
   },
 ];
 
-const branchNames = ['All', 'main', 'trunk'];
+const branchNames = ['All', 'trunk'];
 
 describe('RevisionHistory', () => {
   it('renders all revisions by default', () => {
@@ -114,9 +114,9 @@ describe('RevisionHistory', () => {
     });
 
     if (branchSelect) {
-      await user.selectOptions(branchSelect, 'main');
+      await user.selectOptions(branchSelect, 'trunk');
 
-      // Should only show revisions from 'main' branch
+      // Should only show revisions from 'trunk' branch
       expect(screen.getByText('3')).toBeInTheDocument();
       expect(screen.getByText('2')).toBeInTheDocument();
       // Note: With 'All' filter active, all revisions including #1 will still be visible
@@ -167,9 +167,6 @@ describe('RevisionHistory', () => {
         publicApiBase="http://localhost:4000/api"
       />
     );
-
-    const mainBadges = screen.getAllByText('main');
-    expect(mainBadges.length).toBeGreaterThanOrEqual(1);
 
     const trunkBadges = screen.getAllByText('trunk');
     expect(trunkBadges.length).toBeGreaterThanOrEqual(1);

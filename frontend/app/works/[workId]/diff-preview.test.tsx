@@ -29,13 +29,13 @@ const mockRevisions = [
     revisionId: 'rev-3',
     sequenceNumber: 3,
     createdAt: '2025-11-08T10:00:00Z',
-    fossilBranch: 'main',
+    fossilBranch: 'trunk',
   },
   {
     revisionId: 'rev-2',
     sequenceNumber: 2,
     createdAt: '2025-11-07T10:00:00Z',
-    fossilBranch: 'main',
+    fossilBranch: 'trunk',
   },
   {
     revisionId: 'rev-1',
@@ -88,9 +88,9 @@ describe('DiffPreview', () => {
       />
     );
 
-    // Should have branch selector with 'All', 'main', 'trunk'
+    // Should have branch selector with 'All' and 'trunk'
     const branchSelect = screen.getAllByRole('combobox').find(
-      (select) => select.innerHTML.includes('All') || select.innerHTML.includes('main')
+      (select) => select.innerHTML.includes('All') || select.innerHTML.includes('trunk')
     );
 
     if (branchSelect) {
@@ -220,10 +220,10 @@ describe('DiffPreview', () => {
     const branchSelect = branchSelects[0]; // First should be branch selector
 
     if (branchSelect) {
-      await user.selectOptions(branchSelect, 'main');
+      await user.selectOptions(branchSelect, 'trunk');
 
       await waitFor(() => {
-        // Revisions should be filtered to only show 'main' branch
+        // Revisions should be filtered to only show 'trunk' branch
         const options = screen.getAllByRole('option');
         const mainOptions = options.filter((opt) =>
           opt.getAttribute('value')?.includes('rev-2') ||

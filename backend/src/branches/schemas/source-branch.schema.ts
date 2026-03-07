@@ -12,7 +12,7 @@ export class SourceBranch {
   sourceId!: string;
 
   @Prop({ required: true, trim: true })
-  name!: string; // e.g. "main"
+  name!: string; // e.g. "trunk"
 
   @Prop({ required: true, enum: ['public', 'owner_approval'], default: 'public' })
   policy!: BranchPolicy;
@@ -27,4 +27,3 @@ export class SourceBranch {
 export type SourceBranchDocument = HydratedDocument<SourceBranch>;
 export const SourceBranchSchema = SchemaFactory.createForClass(SourceBranch);
 SourceBranchSchema.index({ workId: 1, sourceId: 1, name: 1 }, { unique: true });
-
