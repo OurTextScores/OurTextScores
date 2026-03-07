@@ -146,6 +146,40 @@ export class WorksEngagementController {
     return this.worksService.getRevisionRatings(workId, sourceId, revisionId);
   }
 
+  @Post(':workId/sources/:sourceId/branches/:branchName/rate')
+  @UseGuards(AuthRequiredGuard)
+  async rateBranch(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('branchName') branchName: string,
+    @Body() body: { rating: number },
+    @CurrentUser() user: RequestUser,
+  ) {
+    const isAdmin = user?.roles?.includes('admin') ?? false;
+    return this.worksService.rateBranch(workId, sourceId, branchName, user.userId, body.rating, isAdmin);
+  }
+
+  @Get(':workId/sources/:sourceId/branches/:branchName/ratings')
+  async getBranchRatings(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('branchName') branchName: string,
+  ) {
+    return this.worksService.getBranchRatings(workId, sourceId, branchName);
+  }
+
+  @Get(':workId/sources/:sourceId/branches/:branchName/ratings/check')
+  @UseGuards(AuthRequiredGuard)
+  async checkUserBranchRating(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('branchName') branchName: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const hasRated = await this.worksService.hasUserRatedBranch(workId, sourceId, branchName, user.userId);
+    return { hasRated };
+  }
+
   @Get(':workId/sources/:sourceId/revisions/:revisionId/ratings/check')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
@@ -224,6 +258,28 @@ export class WorksEngagementController {
     return this.worksService.getComments(revisionId, user?.userId);
   }
 
+  @Post(':workId/sources/:sourceId/branches/:branchName/comments')
+  @UseGuards(AuthRequiredGuard)
+  async createBranchComment(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('branchName') branchName: string,
+    @Body() body: { content: string; parentCommentId?: string },
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.worksService.createBranchComment(workId, sourceId, branchName, user.userId, body.content, body.parentCommentId);
+  }
+
+  @Get(':workId/sources/:sourceId/branches/:branchName/comments')
+  async getBranchComments(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Param('branchName') branchName: string,
+    @CurrentUser() user?: RequestUser,
+  ) {
+    return this.worksService.getBranchComments(workId, sourceId, branchName, user?.userId);
+  }
+
   @Patch(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
@@ -247,6 +303,16 @@ export class WorksEngagementController {
     return this.worksService.updateComment(commentId, user.userId, body.content);
   }
 
+  @Patch(':workId/sources/:sourceId/branches/:branchName/comments/:commentId')
+  @UseGuards(AuthRequiredGuard)
+  async updateBranchComment(
+    @Param('commentId') commentId: string,
+    @Body() body: { content: string },
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.worksService.updateBranchComment(commentId, user.userId, body.content);
+  }
+
   @Delete(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
@@ -264,6 +330,13 @@ export class WorksEngagementController {
   async deleteComment(@Param('commentId') commentId: string, @CurrentUser() user: RequestUser) {
     const isAdmin = user?.roles?.includes('admin') ?? false;
     return this.worksService.deleteComment(commentId, user.userId, isAdmin);
+  }
+
+  @Delete(':workId/sources/:sourceId/branches/:branchName/comments/:commentId')
+  @UseGuards(AuthRequiredGuard)
+  async deleteBranchComment(@Param('commentId') commentId: string, @CurrentUser() user: RequestUser) {
+    const isAdmin = user?.roles?.includes('admin') ?? false;
+    return this.worksService.deleteBranchComment(commentId, user.userId, isAdmin);
   }
 
   @Post(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId/vote')
@@ -285,6 +358,16 @@ export class WorksEngagementController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.worksService.voteComment(commentId, user.userId, body.voteType);
+  }
+
+  @Post(':workId/sources/:sourceId/branches/:branchName/comments/:commentId/vote')
+  @UseGuards(AuthRequiredGuard)
+  async voteBranchComment(
+    @Param('commentId') commentId: string,
+    @Body() body: { voteType: 'up' | 'down' },
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.worksService.voteBranchComment(commentId, user.userId, body.voteType);
   }
 
   @Post(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId/flag')
@@ -309,6 +392,16 @@ export class WorksEngagementController {
     return this.worksService.flagComment(commentId, user.userId, body.reason);
   }
 
+  @Post(':workId/sources/:sourceId/branches/:branchName/comments/:commentId/flag')
+  @UseGuards(AuthRequiredGuard)
+  async flagBranchComment(
+    @Param('commentId') commentId: string,
+    @Body() body: { reason: string },
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.worksService.flagBranchComment(commentId, user.userId, body.reason);
+  }
+
   @Delete(':workId/sources/:sourceId/revisions/:revisionId/comments/:commentId/flag')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
@@ -328,5 +421,14 @@ export class WorksEngagementController {
       throw new ForbiddenException('Admin role required');
     }
     return this.worksService.unflagComment(commentId);
+  }
+
+  @Delete(':workId/sources/:sourceId/branches/:branchName/comments/:commentId/flag')
+  @UseGuards(AuthRequiredGuard)
+  async unflagBranchComment(@Param('commentId') commentId: string, @CurrentUser() user?: RequestUser) {
+    if (!user?.roles?.includes('admin')) {
+      throw new ForbiddenException('Admin role required');
+    }
+    return this.worksService.unflagBranchComment(commentId);
   }
 }

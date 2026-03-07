@@ -12,7 +12,7 @@ function getBackendApiBase(): string {
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted';
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
   workId: string;
   sourceId: string;
   revisionId: string;

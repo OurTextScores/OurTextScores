@@ -63,37 +63,6 @@ export class ChangeReviewsService {
     private readonly watchesService: WatchesService,
   ) {}
 
-  async createOrResumeReview(input: {
-    workId: string;
-    sourceId: string;
-    baseRevisionId: string;
-    headRevisionId: string;
-    ownerUserId?: string;
-    title?: string;
-    reviewer: RequestUser;
-  }) {
-    const { workId, sourceId, reviewer } = input;
-    const { source, headRevision } = await this.loadRevisionPair({
-      workId,
-      sourceId,
-      baseRevisionId: input.baseRevisionId,
-      headRevisionId: input.headRevisionId,
-      viewer: reviewer,
-    });
-    return this.createOrOpenBranchReview({
-      workId,
-      sourceId,
-      branchName: this.resolveBranchName(headRevision as any),
-      ownerUserId: input.ownerUserId,
-      title: input.title,
-      opener: reviewer,
-      initialPair: {
-        baseRevisionId: input.baseRevisionId,
-        headRevisionId: input.headRevisionId,
-      },
-    });
-  }
-
   async createOrOpenBranchReview(input: {
     workId: string;
     sourceId: string;
@@ -479,6 +448,11 @@ export class ChangeReviewsService {
 
     await this.addParticipantUserId(review.reviewId, input.viewer.userId);
     await this.syncReviewCounters(review.reviewId, now);
+    await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
+      activityType: 'thread_created',
+      threadId,
+      contentPreview: content,
+    });
     return this.getReviewDiff(review.reviewId, input.viewer);
   }
 
@@ -518,6 +492,11 @@ export class ChangeReviewsService {
     });
     await this.addParticipantUserId(review.reviewId, input.viewer.userId);
     await this.syncReviewCounters(input.reviewId, now);
+    await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
+      activityType: 'comment_added',
+      threadId: input.threadId,
+      contentPreview: content,
+    });
     return this.buildThreadViews(input.reviewId);
   }
 
@@ -681,6 +660,9 @@ export class ChangeReviewsService {
       String((review as any).branchName || 'trunk'),
       'closed',
     );
+    await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
+      activityType: 'review_closed',
+    });
     return { ok: true };
   }
 
@@ -712,6 +694,9 @@ export class ChangeReviewsService {
       String((review as any).branchName || 'trunk'),
       'open',
     );
+    await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
+      activityType: 'review_reopened',
+    });
     return { ok: true };
   }
 
@@ -1126,6 +1111,46 @@ export class ChangeReviewsService {
       return;
     }
     await this.reviewModel.updateOne({ reviewId }, { $addToSet: { participantUserIds: userId } }).exec();
+  }
+
+  private async queueReviewActivityNotifications(
+    review: any,
+    actorUserId: string,
+    input: {
+      activityType: 'thread_created' | 'comment_added' | 'review_closed' | 'review_reopened';
+      threadId?: string;
+      contentPreview?: string;
+    },
+  ) {
+    const watcherUserIds = await this.watchesService.getSubscribersUserIds(
+      String(review.workId),
+      String(review.sourceId),
+    );
+    const recipientUserIds = Array.from(
+      new Set(
+        [
+          ...((review.participantUserIds as string[] | undefined) || []),
+          ...watcherUserIds,
+        ].filter((userId) => Boolean(userId) && userId !== actorUserId),
+      ),
+    );
+
+    await Promise.all(
+      recipientUserIds.map((recipientUserId) =>
+        this.notificationsService.queueChangeReviewActivity({
+          workId: String(review.workId),
+          sourceId: String(review.sourceId),
+          revisionId: String(review.headRevisionId),
+          reviewId: String(review.reviewId),
+          recipientUserId: String(recipientUserId),
+          actorUserId,
+          activityType: input.activityType,
+          branchName: String(review.branchName || 'trunk'),
+          threadId: input.threadId,
+          contentPreview: input.contentPreview,
+        }),
+      ),
+    );
   }
 
   private async queueSubmittedReviewNotifications(review: any, actorUserId: string) {

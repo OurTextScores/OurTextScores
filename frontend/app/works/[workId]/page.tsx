@@ -20,9 +20,6 @@ import UploadNewSourceForm from "./upload-new-source-form";
 import MxlViewer from "./mxl-viewer";
 import PdfViewer from "./pdf-viewer";
 import BranchesPanel from "./branches-panel";
-import RevisionHistory from "./revision-history";
-// Removed old open-diff panel in favor of visual inline diff preview
-import DiffPreview from "./diff-preview";
 import CopyDownload from "../../components/copy-download";
 import WatchControls from "./watch-controls";
 import { fetchBackendSession } from "../../lib/server-session";
@@ -86,10 +83,6 @@ export default async function WorkDetailPage({
 }) {
   const { workId } = params;
   const targetSourceId = searchParams.source;
-  const targetRevisionId = searchParams.revision;
-  const targetCommentId = searchParams.comment;
-  const autoOpenPanel =
-    targetRevisionId || targetCommentId ? "revision-history" : "source-pdf";
   const [work, imslp, raw, session] = await Promise.all([
     fetchWorkDetail(workId).catch(() => notFound()),
     fetchImslpMetadataByWorkId(workId).catch(() => undefined),
@@ -173,7 +166,6 @@ export default async function WorkDetailPage({
                 imslpPermalink={imslpPermalink}
                 currentUser={currentUser}
                 autoOpen={source.sourceId === targetSourceId}
-                autoOpenPanel={autoOpenPanel}
                 watchControlsSlot={
                   <Suspense fallback={<span className="rounded px-3 py-1 text-xs text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">Loading…</span>}>
                     <WatchControls workId={workId} sourceId={source.sourceId} />
@@ -181,7 +173,12 @@ export default async function WorkDetailPage({
                 }
                 branchesPanelSlot={
                   <Suspense fallback={<div className="text-xs text-slate-500 dark:text-slate-400">Loading branches…</div>}>
-                    <BranchesPanel workId={workId} sourceId={source.sourceId} latestRevisionId={source.revisions[0]?.revisionId} />
+                    <BranchesPanel
+                      workId={workId}
+                      sourceId={source.sourceId}
+                      latestRevisionId={source.revisions[0]?.revisionId}
+                      currentUser={currentUser}
+                    />
                   </Suspense>
                 }
               />

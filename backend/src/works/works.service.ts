@@ -27,6 +27,9 @@ import { SourceRevision, SourceRevisionDocument } from './schemas/source-revisio
 import { RevisionRating, RevisionRatingDocument } from './schemas/revision-rating.schema';
 import { RevisionComment, RevisionCommentDocument } from './schemas/revision-comment.schema';
 import { RevisionCommentVote, RevisionCommentVoteDocument } from './schemas/revision-comment-vote.schema';
+import { BranchRating, BranchRatingDocument } from './schemas/branch-rating.schema';
+import { BranchComment, BranchCommentDocument } from './schemas/branch-comment.schema';
+import { BranchCommentVote, BranchCommentVoteDocument } from './schemas/branch-comment-vote.schema';
 import { ValidationState } from './schemas/validation.schema';
 import { StorageLocator } from './schemas/storage-locator.schema';
 import { DerivativeArtifacts } from './schemas/derivatives.schema';
@@ -127,6 +130,7 @@ export interface WorkDetail extends WorkSummary {
 export interface SourceHistoryBranchView {
   name: string;
   policy: 'public' | 'owner_approval';
+  lifecycle: 'open' | 'closed';
   ownerUserId?: string;
   ownerUsername?: string;
   baseRevisionId?: string;
@@ -219,6 +223,12 @@ export class WorksService {
     private readonly revisionCommentModel: Model<RevisionCommentDocument>,
     @InjectModel(RevisionCommentVote.name)
     private readonly revisionCommentVoteModel: Model<RevisionCommentVoteDocument>,
+    @InjectModel(BranchRating.name)
+    private readonly branchRatingModel: Model<BranchRatingDocument>,
+    @InjectModel(BranchComment.name)
+    private readonly branchCommentModel: Model<BranchCommentDocument>,
+    @InjectModel(BranchCommentVote.name)
+    private readonly branchCommentVoteModel: Model<BranchCommentVoteDocument>,
     private readonly imslpService: ImslpService,
     private readonly storageService: StorageService,
     private readonly fossilService: FossilService,
@@ -908,6 +918,7 @@ except Exception:
       ?? {
         name: selectedBranchName,
         policy: 'public' as const,
+        lifecycle: 'open' as const,
         commitCount: 0,
         empty: true
       };
@@ -942,9 +953,11 @@ except Exception:
       isBranchHead: revision.revisionId === headRevisionId
     }));
 
-    const canCommitToSelectedBranch = selectedBranch.policy === 'public'
+    const canCommitToSelectedBranch = selectedBranch.lifecycle === 'open' && (
+      selectedBranch.policy === 'public'
       || viewerIsAdmin
-      || Boolean(selectedBranch.ownerUserId && viewer?.userId === selectedBranch.ownerUserId);
+      || Boolean(selectedBranch.ownerUserId && viewer?.userId === selectedBranch.ownerUserId)
+    );
 
     return {
       source: {
@@ -1823,7 +1836,7 @@ except Exception:
   }
 
   private buildSourceHistoryBranches(input: {
-    declaredBranches: Array<{ name: string; policy: 'public' | 'owner_approval'; ownerUserId?: string; baseRevisionId?: string }>;
+    declaredBranches: Array<{ name: string; policy: 'public' | 'owner_approval'; lifecycle?: 'open' | 'closed'; ownerUserId?: string; baseRevisionId?: string }>;
     revisions: Array<any>;
     userIdToUsername: Map<string, string>;
   }): SourceHistoryBranchView[] {
@@ -1833,6 +1846,7 @@ except Exception:
       branchMap.set(branch.name, {
         name: branch.name,
         policy: branch.policy,
+        lifecycle: branch.lifecycle || 'open',
         ownerUserId: branch.ownerUserId,
         ownerUsername: branch.ownerUserId ? input.userIdToUsername.get(branch.ownerUserId) : undefined,
         baseRevisionId: branch.baseRevisionId,
@@ -1846,6 +1860,7 @@ except Exception:
       const current = branchMap.get(branchName) ?? {
         name: branchName,
         policy: 'public' as const,
+        lifecycle: 'open' as const,
         commitCount: 0,
         empty: true
       };
@@ -1863,6 +1878,7 @@ except Exception:
       branchMap.set('trunk', {
         name: 'trunk',
         policy: 'public',
+        lifecycle: 'open',
         commitCount: 0,
         empty: true
       });
@@ -1880,6 +1896,22 @@ except Exception:
     fossilBranch?: string;
   }): string {
     return this.branchesService.sanitizeName(revision.branchName || revision.fossilBranch || 'trunk');
+  }
+
+  private async ensureBranchExists(workId: string, sourceId: string, branchName?: string): Promise<string> {
+    const source = await this.sourceModel.findOne({ workId, sourceId }).select('sourceId').lean().exec();
+    if (!source) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const sanitizedBranchName = this.branchesService.sanitizeName(branchName || 'trunk');
+    const branches = await this.branchesService.listBranches(workId, sourceId);
+    const branch = branches.find((candidate) => candidate.name === sanitizedBranchName);
+    if (!branch) {
+      throw new NotFoundException(`Branch ${sanitizedBranchName} not found`);
+    }
+
+    return sanitizedBranchName;
   }
 
   private decodeHistoryCursor(cursor?: string): number | null {
@@ -2057,6 +2089,90 @@ except Exception:
     return !!existing;
   }
 
+  async rateBranch(
+    workId: string,
+    sourceId: string,
+    branchName: string,
+    userId: string,
+    rating: number,
+    isAdmin: boolean
+  ): Promise<{ ok: true; ratedAt: Date }> {
+    if (rating < 1 || rating > 5) {
+      throw new BadRequestException('Rating must be between 1 and 5');
+    }
+
+    const sanitizedBranchName = await this.ensureBranchExists(workId, sourceId, branchName);
+    const existing = await this.branchRatingModel
+      .findOne({ workId, sourceId, branchName: sanitizedBranchName, userId })
+      .exec();
+
+    if (existing) {
+      throw new BadRequestException('You have already rated this branch');
+    }
+
+    const now = new Date();
+    await this.branchRatingModel.create({
+      workId,
+      sourceId,
+      branchName: sanitizedBranchName,
+      userId,
+      rating,
+      isAdmin,
+      ratedAt: now
+    });
+
+    return { ok: true, ratedAt: now };
+  }
+
+  async getBranchRatings(
+    workId: string,
+    sourceId: string,
+    branchName: string
+  ): Promise<{
+    histogram: Array<{ stars: number; userCount: number; adminCount: number }>;
+    totalRatings: number;
+  }> {
+    const sanitizedBranchName = await this.ensureBranchExists(workId, sourceId, branchName);
+    const aggregation = await this.branchRatingModel.aggregate([
+      { $match: { workId, sourceId, branchName: sanitizedBranchName } },
+      {
+        $group: {
+          _id: { rating: '$rating', isAdmin: '$isAdmin' },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const histogram = [1, 2, 3, 4, 5].map(stars => {
+      const userEntry = aggregation.find(a => a._id.rating === stars && !a._id.isAdmin);
+      const adminEntry = aggregation.find(a => a._id.rating === stars && a._id.isAdmin);
+      return {
+        stars,
+        userCount: userEntry?.count ?? 0,
+        adminCount: adminEntry?.count ?? 0
+      };
+    });
+
+    return {
+      histogram,
+      totalRatings: aggregation.reduce((sum, entry) => sum + entry.count, 0),
+    };
+  }
+
+  async hasUserRatedBranch(
+    workId: string,
+    sourceId: string,
+    branchName: string,
+    userId: string
+  ): Promise<boolean> {
+    const sanitizedBranchName = await this.ensureBranchExists(workId, sourceId, branchName);
+    const existing = await this.branchRatingModel
+      .findOne({ workId, sourceId, branchName: sanitizedBranchName, userId })
+      .exec();
+
+    return !!existing;
+  }
+
   /**
    * Create a comment on a revision
    */
@@ -2216,6 +2332,265 @@ except Exception:
     });
 
     return result;
+  }
+
+  async createBranchComment(
+    workId: string,
+    sourceId: string,
+    branchName: string,
+    userId: string,
+    content: string,
+    parentCommentId?: string
+  ): Promise<{ commentId: string; createdAt: Date }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('Comment content is required');
+    }
+
+    const sanitizedBranchName = await this.ensureBranchExists(workId, sourceId, branchName);
+
+    if (parentCommentId) {
+      const parent = await this.branchCommentModel.findOne({ commentId: parentCommentId }).exec();
+      if (!parent || parent.deleted) {
+        throw new NotFoundException('Parent comment not found');
+      }
+    }
+
+    const commentId = `bcmt-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const now = new Date();
+
+    await this.branchCommentModel.create({
+      commentId,
+      workId,
+      sourceId,
+      branchName: sanitizedBranchName,
+      userId,
+      content: content.trim(),
+      parentCommentId,
+      voteScore: 0,
+      createdAt: now
+    });
+
+    return { commentId, createdAt: now };
+  }
+
+  async getBranchComments(
+    workId: string,
+    sourceId: string,
+    branchName: string,
+    currentUserId?: string
+  ): Promise<any[]> {
+    const sanitizedBranchName = await this.ensureBranchExists(workId, sourceId, branchName);
+    const comments = await this.branchCommentModel
+      .find({ workId, sourceId, branchName: sanitizedBranchName, deleted: { $ne: true } })
+      .sort({ voteScore: -1, createdAt: -1 })
+      .exec();
+
+    let userVotes: Map<string, 'up' | 'down'> = new Map();
+    if (currentUserId) {
+      const votes = await this.branchCommentVoteModel
+        .find({
+          commentId: { $in: comments.map(c => c.commentId) },
+          userId: currentUserId
+        })
+        .exec();
+
+      votes.forEach(v => userVotes.set(v.commentId, v.voteType));
+    }
+
+    const userIds = [...new Set(comments.map(c => c.userId))];
+    const userMap = new Map<string, string>();
+    for (const uid of userIds) {
+      try {
+        const user = await this.usersService.findById(uid);
+        if (user) {
+          userMap.set(uid, user.username || user.email || 'Unknown');
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const commentMap = new Map();
+    const result: any[] = [];
+
+    comments.forEach(c => {
+      const comment = {
+        commentId: c.commentId,
+        userId: c.userId,
+        username: userMap.get(c.userId) || 'Unknown',
+        content: c.content,
+        voteScore: c.voteScore,
+        createdAt: c.createdAt,
+        editedAt: c.editedAt,
+        flagged: c.flagged,
+        userVote: userVotes.get(c.commentId),
+        replies: []
+      };
+
+      commentMap.set(c.commentId, comment);
+    });
+
+    comments.forEach(c => {
+      const comment = commentMap.get(c.commentId);
+      if (c.parentCommentId) {
+        const parent = commentMap.get(c.parentCommentId);
+        if (parent) {
+          parent.replies.push(comment);
+        }
+      } else {
+        result.push(comment);
+      }
+    });
+
+    return result;
+  }
+
+  async updateBranchComment(
+    commentId: string,
+    userId: string,
+    content: string
+  ): Promise<{ ok: true; editedAt: Date }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException('Comment content is required');
+    }
+
+    const now = new Date();
+    const updated = await this.branchCommentModel
+      .findOneAndUpdate(
+        { commentId, userId, deleted: { $ne: true } },
+        { $set: { content: content.trim(), editedAt: now } },
+        { new: true }
+      )
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException('Comment not found or you do not have permission to edit it');
+    }
+
+    return { ok: true, editedAt: now };
+  }
+
+  async deleteBranchComment(
+    commentId: string,
+    userId: string,
+    isAdmin: boolean
+  ): Promise<{ ok: true }> {
+    const comment = await this.branchCommentModel.findOne({ commentId }).exec();
+    if (!comment || comment.deleted) {
+      throw new NotFoundException('Comment not found');
+    }
+    if (!isAdmin && comment.userId !== userId) {
+      throw new ForbiddenException('You do not have permission to delete this comment');
+    }
+
+    await this.branchCommentModel
+      .updateOne(
+        { commentId },
+        { $set: { deleted: true, deletedAt: new Date(), content: '[deleted]' } }
+      )
+      .exec();
+
+    return { ok: true };
+  }
+
+  async voteBranchComment(
+    commentId: string,
+    userId: string,
+    voteType: 'up' | 'down'
+  ): Promise<{ ok: true; newScore: number }> {
+    const comment = await this.branchCommentModel
+      .findOne({ commentId, deleted: { $ne: true } })
+      .exec();
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    const existingVote = await this.branchCommentVoteModel
+      .findOne({ commentId, userId })
+      .exec();
+
+    const now = new Date();
+
+    if (existingVote) {
+      if (existingVote.voteType === voteType) {
+        await this.branchCommentVoteModel.deleteOne({ commentId, userId }).exec();
+        comment.voteScore += voteType === 'up' ? -1 : 1;
+      } else {
+        existingVote.voteType = voteType;
+        existingVote.votedAt = now;
+        await existingVote.save();
+        comment.voteScore += voteType === 'up' ? 2 : -2;
+      }
+    } else {
+      await this.branchCommentVoteModel.create({
+        commentId,
+        userId,
+        voteType,
+        votedAt: now
+      });
+      comment.voteScore += voteType === 'up' ? 1 : -1;
+    }
+
+    await comment.save();
+    return { ok: true, newScore: comment.voteScore };
+  }
+
+  async flagBranchComment(
+    commentId: string,
+    userId: string,
+    reason: string
+  ): Promise<{ ok: true }> {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Flag reason is required');
+    }
+
+    const comment = await this.branchCommentModel
+      .findOne({ commentId, deleted: { $ne: true } })
+      .exec();
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    await this.branchCommentModel
+      .updateOne(
+        { commentId },
+        {
+          $set: {
+            flagged: true,
+            flaggedBy: userId,
+            flaggedAt: new Date(),
+            flagReason: reason.trim()
+          }
+        }
+      )
+      .exec();
+
+    return { ok: true };
+  }
+
+  async unflagBranchComment(commentId: string): Promise<{ ok: true }> {
+    const comment = await this.branchCommentModel.findOne({ commentId }).exec();
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    await this.branchCommentModel
+      .updateOne(
+        { commentId },
+        {
+          $set: {
+            flagged: false,
+            flaggedBy: undefined,
+            flaggedAt: undefined,
+            flagReason: undefined
+          }
+        }
+      )
+      .exec();
+
+    return { ok: true };
   }
 
   /**

@@ -5,7 +5,7 @@ import Link from "next/link";
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted';
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
   workId: string;
   sourceId: string;
   revisionId: string;
@@ -51,6 +51,28 @@ export default function NotificationsClient({ initialNotifications }: Props) {
           title: `${actor} submitted a change review`,
           description: `${n.workId}/${n.sourceId}`,
         };
+      case 'change_review_activity': {
+        const activityType = String(n.payload?.activityType || '');
+        const branchName = n.payload?.branchName ? ` on ${n.payload.branchName}` : '';
+        const contentPreview = typeof n.payload?.contentPreview === 'string' ? n.payload.contentPreview : undefined;
+        const previewText = contentPreview
+          ? (contentPreview.length > 100 ? `${contentPreview.slice(0, 100)}...` : contentPreview)
+          : undefined;
+        const title = activityType === 'thread_created'
+          ? `${actor} opened a change review thread`
+          : activityType === 'comment_added'
+            ? `${actor} replied on a change review`
+            : activityType === 'review_closed'
+              ? `${actor} closed a change review`
+              : activityType === 'review_reopened'
+                ? `${actor} reopened a change review`
+                : `${actor} updated a change review`;
+        return {
+          title,
+          description: `${n.workId}/${n.sourceId}${branchName}`,
+          preview: previewText,
+        };
+      }
       default:
         return {
           title: "Notification",
@@ -60,7 +82,7 @@ export default function NotificationsClient({ initialNotifications }: Props) {
   };
 
   const getNotificationLink = (n: Notification): string => {
-    if (n.type === 'change_review_submitted' && n.payload?.reviewId) {
+    if ((n.type === 'change_review_submitted' || n.type === 'change_review_activity') && n.payload?.reviewId) {
       return `/change-reviews/${encodeURIComponent(String(n.payload.reviewId))}`;
     }
     // Create deep link with URL parameters to open specific source/revision
@@ -134,6 +156,8 @@ export default function NotificationsClient({ initialNotifications }: Props) {
         return '📄';
       case 'change_review_submitted':
         return '🧾';
+      case 'change_review_activity':
+        return '🗨️';
       default:
         return '🔔';
     }

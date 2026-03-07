@@ -288,21 +288,38 @@ describe('SourceCard', () => {
         });
 
         const sourcePdfDetails = screen.getByText('Browse Source').closest('details');
-        const revisionHistoryDetails = screen.getByText(/Revision history/i).closest('details');
 
         expect(sourcePdfDetails).toHaveAttribute('open');
-        expect(revisionHistoryDetails).not.toHaveAttribute('open');
     });
 
     it('passes launch context when opening the score editor', async () => {
         const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
         const sourceWithCanonicalXml: SourceView = {
             ...mockSource,
+            derivatives: {
+                ...mockSource.derivatives,
+                normalizedMxl: {
+                    bucket: 'derivs',
+                    objectKey: 'score.mxl',
+                    sizeBytes: 1024,
+                    contentType: 'application/vnd.recordare.musicxml',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z',
+                },
+            },
             revisions: [
                 {
                     ...mockSource.revisions[0],
                     revisionId: 'rev-99',
                     derivatives: {
+                        normalizedMxl: {
+                            bucket: 'derivs',
+                            objectKey: 'score.mxl',
+                            sizeBytes: 1024,
+                            contentType: 'application/vnd.recordare.musicxml',
+                            checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                            lastModifiedAt: '2025-11-01T10:00:00Z',
+                        },
                         canonicalXml: {
                             bucket: 'derivs',
                             objectKey: 'score.xml',
@@ -334,7 +351,7 @@ describe('SourceCard', () => {
             throw new Error('Header not found');
         }
         fireEvent.click(header);
-        fireEvent.click(screen.getByRole('button', { name: /^Open in Editor$/i }));
+        fireEvent.click(screen.getByRole('button', { name: /^Open Score in Editor$/i }));
 
         expect(openSpy).toHaveBeenCalledTimes(1);
         const [editorUrl] = openSpy.mock.calls[0];

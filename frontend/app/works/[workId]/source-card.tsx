@@ -8,8 +8,6 @@ import { getPublicApiBase } from "../../lib/api";
 import StopPropagation from "../../components/stop-propagation";
 import EditSourceForm from "./edit-source-form";
 import DeleteSourceButton from "./delete-source-button";
-import RevisionHistory from "./revision-history";
-import DiffPreview from "./diff-preview";
 import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
 import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction, migrateSourceAction } from "./admin-actions";
@@ -460,7 +458,6 @@ export default function SourceCard({
     watchControlsSlot,
     branchesPanelSlot,
     autoOpen = false,
-    autoOpenPanel = "revision-history"
 }: {
     source: SourceView;
     workId: string;
@@ -471,25 +468,20 @@ export default function SourceCard({
     watchControlsSlot: React.ReactNode;
     branchesPanelSlot: React.ReactNode;
     autoOpen?: boolean;
-    autoOpenPanel?: "revision-history" | "source-pdf";
+    autoOpenPanel?: "source-pdf";
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    const [isRevisionHistoryOpen, setIsRevisionHistoryOpen] = useState(false);
     const [isSourcePdfOpen, setIsSourcePdfOpen] = useState(false);
 
-    // Auto-open card and the requested panel when a source deep link is provided.
+    // Auto-open card and source PDF when a source deep link is provided.
     useEffect(() => {
         if (autoOpen) {
             setIsOpen(true);
-            if (autoOpenPanel === "source-pdf" && source.derivatives?.pdf) {
-                setIsRevisionHistoryOpen(false);
+            if (source.derivatives?.pdf) {
                 setIsSourcePdfOpen(true);
-            } else {
-                setIsRevisionHistoryOpen(true);
-                setIsSourcePdfOpen(false);
             }
         }
-    }, [autoOpen, autoOpenPanel, source.derivatives?.pdf]);
+    }, [autoOpen, source.derivatives?.pdf]);
     const latest = source.revisions[0];
     const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
     const isOwner =
@@ -832,33 +824,9 @@ export default function SourceCard({
                         </div>
                     )}
 
-                    <details
-                        className="group"
-                        open={isRevisionHistoryOpen}
-                        onToggle={(event) => setIsRevisionHistoryOpen(event.currentTarget.open)}
-                    >
-                        <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">Revision history ({source.revisions.length})</summary>
-                        <RevisionHistory
-                            workId={workId}
-                            sourceId={source.sourceId}
-                            sourceLabel={source.label}
-                            sourceType={source.sourceType}
-                            workTitle={workTitle}
-                            composer={composer}
-                            imslpPermalink={imslpPermalink}
-                            revisions={source.revisions as any}
-                            branchNames={initialBranches}
-                            publicApiBase={PUBLIC_API_BASE}
-                            currentUser={currentUser ? { ...currentUser, isAdmin } : null}
-                        />
-                        <div className="px-5 pb-6">
-                            <DiffPreview
-                                workId={workId}
-                                sourceId={source.sourceId}
-                                revisions={source.revisions.map(r => ({ revisionId: r.revisionId, sequenceNumber: r.sequenceNumber, createdAt: r.createdAt as unknown as string, fossilBranch: (r as any).fossilBranch }))}
-                            />
-                        </div>
-                    </details>
+                    <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
+                        {branchesPanelSlot}
+                    </div>
 
                     {source.hasReferencePdf && (
                         <LazyDetails
@@ -953,9 +921,6 @@ export default function SourceCard({
                             isAdmin={isAdmin}
                         />
                     )}
-                    <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
-                        {branchesPanelSlot}
-                    </div>
                 </div>
             )}
         </article>

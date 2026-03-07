@@ -13,6 +13,12 @@ const API_BASE = getPublicApiBase();
 const COPYRIGHT_LICENSE = "All Rights Reserved";
 const COPYRIGHT_CERTIFICATION_TEXT = "I certify that I have permission from the copyright holder to upload this work.";
 
+type BranchOption = {
+  name: string;
+  policy: "public" | "owner_approval";
+  lifecycle: "open" | "closed";
+};
+
 const LICENSE_OPTIONS = [
   { value: '', label: 'No license specified' },
   { value: 'CC0', label: 'CC0 - Public Domain Dedication' },
@@ -51,6 +57,7 @@ export default function UploadRevisionForm({
     () => (defaultBranch && defaultBranch !== "trunk") ? defaultBranch : "trunk"
   );
   const [branches, setBranches] = useState<string[]>(() => initialBranches || []);
+  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [license, setLicense] = useState("");
   const [licenseUrl, setLicenseUrl] = useState("");
@@ -84,6 +91,42 @@ export default function UploadRevisionForm({
     }
   }, [initialBranches]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBranches() {
+      try {
+        const res = await fetch(
+          `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        const nextBranches = Array.isArray(data?.branches) ? data.branches as BranchOption[] : [];
+        if (cancelled) {
+          return;
+        }
+        setBranchOptions(nextBranches);
+        if (nextBranches.length > 0) {
+          setBranches(nextBranches.map((branch) => branch.name));
+        }
+      } catch {
+        // Ignore branch metadata fetch failures and fall back to the server-provided branch names.
+      }
+    }
+    void loadBranches();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceId, workId]);
+
+  const selectedExistingBranch = branchMode === "existing"
+    ? branchOptions.find((branch) => branch.name === branchName)
+    : null;
+  const branchClosedForReview = selectedExistingBranch?.lifecycle === "closed";
+  const canSubmitRevision = canSubmit && !(branchMode === "existing" && branchClosedForReview);
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
@@ -92,6 +135,10 @@ export default function UploadRevisionForm({
     }
     if (requiresCopyrightCertification && !copyrightPermissionConfirmed) {
       setErrorModal({ open: true, message: COPYRIGHT_CERTIFICATION_TEXT });
+      return;
+    }
+    if (branchMode === "existing" && branchClosedForReview) {
+      setErrorModal({ open: true, message: "This branch is closed while its change review is closed. Reopen the CR before uploading a new revision." });
       return;
     }
     setBusy(true);
@@ -168,6 +215,9 @@ export default function UploadRevisionForm({
       );
       if (!res.ok) {
         const text = await res.text();
+        if (text.includes("branch_closed_for_review")) {
+          throw new Error("This branch is closed while its change review is closed. Reopen the CR before uploading a new revision.");
+        }
         throw new Error(text || `Upload failed (${res.status})`);
       }
       trackUploadOutcomeClient({
@@ -302,17 +352,25 @@ export default function UploadRevisionForm({
           <select value={branchName} onChange={(e) => setBranchName(e.target.value)} className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
             <option value="">Select Branch…</option>
             <option value="trunk">trunk</option>
-            {branches.filter(b => b !== 'trunk').map(b => (
-              <option key={b} value={b}>{b}</option>
-            ))}
+            {branches.filter(b => b !== 'trunk').map(b => {
+              const option = branchOptions.find((branch) => branch.name === b);
+              const suffix = option?.lifecycle === "closed" ? " (closed)" : "";
+              return (
+              <option key={b} value={b}>{`${b}${suffix}`}</option>
+            )})}
           </select>
+        )}
+        {branchMode==='existing' && branchClosedForReview && (
+          <span className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+            This branch is closed while its change review is closed. Reopen the CR before uploading.
+          </span>
         )}
         {branchMode==='new' && (
           <input type="text" placeholder="Branch Name" value={branchName} onChange={(e) => setBranchName(e.target.value)} className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder-slate-500" />
         )}
         <button
           type="submit"
-          disabled={!canSubmit}
+          disabled={!canSubmitRevision}
           className="rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
         >
           {busy ? (

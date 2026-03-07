@@ -24,6 +24,19 @@ describe("UploadRevisionForm", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useRouter as jest.Mock).mockReturnValue(mockRouter);
+    (fetch as jest.Mock).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/branches")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ branches: [{ name: "trunk", policy: "public", lifecycle: "open" }] }),
+        });
+      }
+      if (url.includes("/api/auth/api-token")) {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+      }
+      return Promise.resolve({ ok: true });
+    });
   });
 
   it("renders the form", () => {
@@ -139,9 +152,21 @@ describe("UploadRevisionForm", () => {
 
   it("shows an error message on upload failure", async () => {
     const errorMessage = "Upload failed";
-    (fetch as jest.Mock).mockResolvedValue({
-      ok: false,
-      text: () => Promise.resolve(errorMessage),
+    (fetch as jest.Mock).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/branches")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ branches: [{ name: "trunk", policy: "public", lifecycle: "open" }] }),
+        });
+      }
+      if (url.includes("/api/auth/api-token")) {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+      }
+      return Promise.resolve({
+        ok: false,
+        text: () => Promise.resolve(errorMessage),
+      });
     });
     const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
 
@@ -157,5 +182,32 @@ describe("UploadRevisionForm", () => {
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
+  });
+
+  it("disables upload to a closed branch before submitting", async () => {
+    (fetch as jest.Mock).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/branches")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ branches: [{ name: "trunk", policy: "public", lifecycle: "closed" }] }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    render(<UploadRevisionForm workId={workId} sourceId={sourceId} />);
+    const fileInput = screen.getByTestId("file-input");
+    const uploadButton = screen.getByRole("button", { name: /Upload new revision/i });
+    const file = new File(["content"], "test.mxl", { type: "application/octet-stream" });
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [file] } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/This branch is closed while its change review is closed/i)).toBeInTheDocument();
+    });
+    expect(uploadButton).toBeDisabled();
   });
 });

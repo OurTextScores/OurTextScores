@@ -22,6 +22,9 @@ describe('WorksService (unit, mocked models)', () => {
   let revisionRatingModel: any;
   let revisionCommentModel: any;
   let revisionCommentVoteModel: any;
+  let branchRatingModel: any;
+  let branchCommentModel: any;
+  let branchCommentVoteModel: any;
   let usersService: any;
   const imslpService = {
     ensureByWorkId: jest.fn(),
@@ -50,7 +53,7 @@ describe('WorksService (unit, mocked models)', () => {
       if (!raw) return 'trunk';
       return raw.toLowerCase() === 'main' ? 'trunk' : raw.toLowerCase();
     });
-    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public' }]);
+    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]);
     usersService = { userModel: { find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(chain([])) }) } } as any;
     workModel = {
       find: jest.fn(),
@@ -78,6 +81,9 @@ describe('WorksService (unit, mocked models)', () => {
     revisionRatingModel = { find: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
     revisionCommentModel = { find: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
     revisionCommentVoteModel = { find: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    branchRatingModel = { find: jest.fn(), findOne: jest.fn(), aggregate: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    branchCommentModel = { find: jest.fn(), findOne: jest.fn(), findOneAndUpdate: jest.fn(), updateOne: jest.fn(), updateMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() } as any;
+    branchCommentVoteModel = { find: jest.fn(), findOne: jest.fn(), updateOne: jest.fn(), create: jest.fn(), deleteOne: jest.fn(), deleteMany: jest.fn() } as any;
 
     service = new WorksService(
       workModel as any,
@@ -87,6 +93,9 @@ describe('WorksService (unit, mocked models)', () => {
       revisionRatingModel as any,
       revisionCommentModel as any,
       revisionCommentVoteModel as any,
+      branchRatingModel as any,
+      branchCommentModel as any,
+      branchCommentVoteModel as any,
       imslpService,
       storageService,
       fossilService,
@@ -1034,8 +1043,8 @@ describe('WorksService (unit, mocked models)', () => {
     ];
 
     branchesService.listBranches.mockResolvedValue([
-      { name: 'trunk', policy: 'public' },
-      { name: 'feature-a', policy: 'owner_approval', ownerUserId: 'user-2', baseRevisionId: 'r2' }
+      { name: 'trunk', policy: 'public', lifecycle: 'open' },
+      { name: 'feature-a', policy: 'owner_approval', lifecycle: 'open', ownerUserId: 'user-2', baseRevisionId: 'r2' }
     ]);
     usersService = {
       userModel: {
@@ -1055,6 +1064,9 @@ describe('WorksService (unit, mocked models)', () => {
       revisionRatingModel as any,
       revisionCommentModel as any,
       revisionCommentVoteModel as any,
+      branchRatingModel as any,
+      branchCommentModel as any,
+      branchCommentVoteModel as any,
       imslpService,
       storageService,
       fossilService,
@@ -1087,6 +1099,7 @@ describe('WorksService (unit, mocked models)', () => {
     expect(history.selectedBranch).toMatchObject({
       name: 'feature-a',
       policy: 'owner_approval',
+      lifecycle: 'open',
       ownerUserId: 'user-2',
       ownerUsername: 'bob',
       headRevisionId: 'r3',

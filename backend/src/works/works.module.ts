@@ -12,6 +12,9 @@ import { SourceRevision, SourceRevisionSchema } from './schemas/source-revision.
 import { RevisionRating, RevisionRatingSchema } from './schemas/revision-rating.schema';
 import { RevisionComment, RevisionCommentSchema } from './schemas/revision-comment.schema';
 import { RevisionCommentVote, RevisionCommentVoteSchema } from './schemas/revision-comment-vote.schema';
+import { BranchRating, BranchRatingSchema } from './schemas/branch-rating.schema';
+import { BranchComment, BranchCommentSchema } from './schemas/branch-comment.schema';
+import { BranchCommentVote, BranchCommentVoteSchema } from './schemas/branch-comment-vote.schema';
 import { UploadSourceService } from './upload-source.service';
 import { StorageModule } from '../storage/storage.module';
 import { DerivativePipelineService } from './derivative-pipeline.service';
@@ -48,6 +51,9 @@ import { ChangeReviewsModule } from '../change-reviews/change-reviews.module';
       { name: RevisionRating.name, schema: RevisionRatingSchema },
       { name: RevisionComment.name, schema: RevisionCommentSchema },
       { name: RevisionCommentVote.name, schema: RevisionCommentVoteSchema },
+      { name: BranchRating.name, schema: BranchRatingSchema },
+      { name: BranchComment.name, schema: BranchCommentSchema },
+      { name: BranchCommentVote.name, schema: BranchCommentVoteSchema },
       { name: Project.name, schema: ProjectSchema }
     ])
   ],

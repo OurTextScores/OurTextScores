@@ -1,0 +1,32 @@
+import { NextResponse } from "next/server";
+import { getApiAuthHeaders } from "../../../../../../../../../../lib/authToken";
+import { getBackendApiBase, proxyFetch } from "../../../../../../../../_lib/upstream";
+
+export async function GET(
+  request: Request,
+  { params }: { params: { workId: string; sourceId: string; branchName: string } }
+) {
+  const API = getBackendApiBase();
+  const { workId, sourceId, branchName } = params;
+
+  try {
+    const auth = await getApiAuthHeaders();
+    const res = await proxyFetch(
+      request,
+      `${API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches/${encodeURIComponent(branchName)}/ratings/check`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(auth.Authorization && { Authorization: auth.Authorization })
+        },
+        cache: "no-store"
+      }
+    );
+
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
+}

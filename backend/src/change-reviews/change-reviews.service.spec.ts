@@ -100,6 +100,7 @@ describe('ChangeReviewsService', () => {
     } as any;
     notificationsService = {
       queueChangeReviewSubmitted: jest.fn().mockResolvedValue(undefined),
+      queueChangeReviewActivity: jest.fn().mockResolvedValue(undefined),
     } as any;
     storageService = {
       getObjectBuffer: jest.fn(),
@@ -161,12 +162,16 @@ describe('ChangeReviewsService', () => {
   });
 
   it('creates an open branch review, seeds patchset 1, and adds uploader as participant', async () => {
-    const result = await service.createOrResumeReview({
+    reviewModel.findOne.mockReturnValueOnce(chain(null));
+    sourceRevisionModel.find = jest.fn().mockReturnValue(
+      chain([headRevision, baseRevision]),
+    );
+
+    const result = await service.createOrOpenBranchReview({
       workId: '164349',
       sourceId: 'src-1',
-      baseRevisionId: 'rev-1',
-      headRevisionId: 'rev-2',
-      reviewer: { userId: 'reviewer-1', roles: ['user'] },
+      branchName: 'trunk',
+      opener: { userId: 'reviewer-1', roles: ['user'] },
     });
 
     expect(reviewModel.create).toHaveBeenCalled();
@@ -187,7 +192,7 @@ describe('ChangeReviewsService', () => {
     expect(result.source.label).toBe('Primary Score');
   });
 
-  it('resumes an existing active review instead of creating another one', async () => {
+  it('returns an existing active branch review instead of creating another one', async () => {
     reviewModel.findOne.mockReturnValueOnce(
       chain({
         reviewId: 'review-1',
@@ -209,12 +214,11 @@ describe('ChangeReviewsService', () => {
       }),
     );
 
-    const result = await service.createOrResumeReview({
+    const result = await service.createOrOpenBranchReview({
       workId: '164349',
       sourceId: 'src-1',
-      baseRevisionId: 'rev-1',
-      headRevisionId: 'rev-2',
-      reviewer: { userId: 'reviewer-1', roles: ['user'] },
+      branchName: 'trunk',
+      opener: { userId: 'reviewer-1', roles: ['user'] },
     });
 
     expect(reviewModel.create).not.toHaveBeenCalled();

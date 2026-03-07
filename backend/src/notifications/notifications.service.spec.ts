@@ -83,6 +83,35 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('queueChangeReviewActivity', () => {
+    it('creates an inbox notification for review activity', async () => {
+      inboxModel.create.mockResolvedValue({});
+      await svc.queueChangeReviewActivity({
+        workId: 'w',
+        sourceId: 's',
+        revisionId: 'r',
+        reviewId: 'cr-1',
+        recipientUserId: 'u1',
+        actorUserId: 'u2',
+        activityType: 'thread_created',
+        branchName: 'trunk',
+      });
+      expect(inboxModel.create).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 'u1',
+        type: 'change_review_activity',
+        workId: 'w',
+        sourceId: 's',
+        revisionId: 'r',
+        payload: expect.objectContaining({
+          reviewId: 'cr-1',
+          actorUserId: 'u2',
+          activityType: 'thread_created',
+          branchName: 'trunk',
+        }),
+      }));
+    });
+  });
+
   describe('processOutbox', () => {
     it('sends approval notifications and marks sent', async () => {
       const doc = {

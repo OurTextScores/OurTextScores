@@ -10,33 +10,6 @@ import { ChangeReviewsService } from './change-reviews.service';
 export class ChangeReviewsController {
   constructor(private readonly changeReviewsService: ChangeReviewsService) {}
 
-  @Post('works/:workId/sources/:sourceId/change-reviews')
-  @UseGuards(AuthRequiredGuard)
-  @ApiOperation({
-    summary: 'Create or resume a change review',
-    description:
-      'Creates a draft change review for the given revision pair, or returns the existing active review for the same reviewer and pair.',
-  })
-  @ApiParam({ name: 'workId', example: '164349' })
-  @ApiParam({ name: 'sourceId', example: 'src-1' })
-  @ApiResponse({ status: 201, description: 'Change review created or resumed' })
-  createOrResumeReview(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string,
-    @Body() body: { baseRevisionId: string; headRevisionId: string; ownerUserId?: string; title?: string },
-    @CurrentUser() viewer: RequestUser,
-  ) {
-    return this.changeReviewsService.createOrResumeReview({
-      workId,
-      sourceId,
-      baseRevisionId: body.baseRevisionId,
-      headRevisionId: body.headRevisionId,
-      ownerUserId: body.ownerUserId,
-      title: body.title,
-      reviewer: viewer,
-    });
-  }
-
   @Post('works/:workId/sources/:sourceId/branches/:branchName/change-review')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({

@@ -106,6 +106,35 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async queueChangeReviewActivity(params: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    reviewId: string;
+    recipientUserId: string;
+    actorUserId: string;
+    activityType: 'thread_created' | 'comment_added' | 'review_closed' | 'review_reopened';
+    branchName?: string;
+    threadId?: string;
+    contentPreview?: string;
+  }) {
+    await this.createNotification({
+      userId: params.recipientUserId,
+      type: 'change_review_activity',
+      workId: params.workId,
+      sourceId: params.sourceId,
+      revisionId: params.revisionId,
+      payload: {
+        reviewId: params.reviewId,
+        actorUserId: params.actorUserId,
+        activityType: params.activityType,
+        branchName: params.branchName,
+        threadId: params.threadId,
+        contentPreview: params.contentPreview,
+      }
+    });
+  }
+
   async migrateSource(
     oldWorkId: string,
     oldSourceId: string,
@@ -131,7 +160,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
    */
   async createNotification(params: {
     userId: string;
-    type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted';
+    type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
     workId: string;
     sourceId: string;
     revisionId: string;
@@ -428,6 +457,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         return `New revision on ${notification.workId}/${notification.sourceId}`;
       case 'change_review_submitted':
         return `Change review submitted on ${notification.workId}/${notification.sourceId}`;
+      case 'change_review_activity':
+        return `Change review activity on ${notification.workId}/${notification.sourceId}`;
       default:
         return `New notification from OurTextScores`;
     }
@@ -466,6 +497,13 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           <p>Revision: <code>${notification.revisionId}</code></p>
           <p><a href="${this.publicWebBaseUrl}/change-reviews/${encodeURIComponent(String(notification.payload?.reviewId || ''))}">Open change review</a> • <a href="${notificationsUrl}">See all notifications</a></p>
         `;
+      case 'change_review_activity':
+        return `
+          <p>There is new activity on a change review you are following.</p>
+          <p>Source: <code>${notification.workId}/${notification.sourceId}</code></p>
+          <p>Revision: <code>${notification.revisionId}</code></p>
+          <p><a href="${this.publicWebBaseUrl}/change-reviews/${encodeURIComponent(String(notification.payload?.reviewId || ''))}">Open change review</a> • <a href="${notificationsUrl}">See all notifications</a></p>
+        `;
       default:
         return `
           <p>You have a new notification from OurTextScores.</p>
@@ -492,6 +530,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           break;
         case 'change_review_submitted':
           typeLabel = 'Change review submitted';
+          break;
+        case 'change_review_activity':
+          typeLabel = 'Change review activity';
           break;
       }
       return `<li>${typeLabel}: <a href="${workUrl}">${n.workId}/${n.sourceId}</a> (${n.revisionId.slice(0, 8)}...)</li>`;
