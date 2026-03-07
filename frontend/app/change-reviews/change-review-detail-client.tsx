@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
 type ReviewDetail = {
   reviewId: string;
@@ -121,14 +121,14 @@ export default function ChangeReviewDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const [nextReview, nextDiff] = await Promise.all([
       jsonFetch<ReviewDetail>(`/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}`),
       jsonFetch<ReviewDiff>(`/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/diff`),
     ]);
     setReview(nextReview);
     setDiff(nextDiff);
-  };
+  }, [review.reviewId]);
 
   const runAction = (fn: () => Promise<void>) => {
     setError(null);
@@ -166,7 +166,7 @@ export default function ChangeReviewDetailClient({
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [review.reviewId]);
+  }, [refresh, review.reviewId]);
 
   const renderThread = (thread: ReviewDiff["threads"][number]) => (
     <div className="border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-800">
