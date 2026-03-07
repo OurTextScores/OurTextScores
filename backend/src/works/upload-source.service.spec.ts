@@ -1,5 +1,5 @@
 jest.mock('uuid', () => ({ v4: () => '00000000-0000-0000-0000-000000000000' }));
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { UploadSourceService } from './upload-source.service';
 import { WorksService } from './works.service';
 import { DerivativePipelineService } from './derivative-pipeline.service';
@@ -42,13 +42,16 @@ describe('UploadSourceService (unit)', () => {
   } as any;
   const sourceRevisionModel = {
     create: jest.fn(),
+    find: jest.fn(),
     updateOne: jest.fn(),
     findOne: jest.fn()
   } as any;
 
   const branchesService = {
     getBranchPolicy: jest.fn().mockResolvedValue('public'),
-    ensureDefaultTrunk: jest.fn().mockResolvedValue(undefined)
+    getBranchOwnerUserId: jest.fn(),
+    ensureDefaultTrunk: jest.fn().mockResolvedValue(undefined),
+    listBranches: jest.fn().mockResolvedValue([{ name: 'trunk', policy: 'public' }])
   } as unknown as jest.Mocked<BranchesService>;
 
   const notifications = {
@@ -64,6 +67,14 @@ describe('UploadSourceService (unit)', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
+    sourceRevisionModel.find.mockReturnValue({
+      sort: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([])
+    });
+    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public' }]);
+    branchesService.getBranchPolicy.mockResolvedValue('public');
+    branchesService.getBranchOwnerUserId.mockResolvedValue(undefined);
     service = new UploadSourceService(
       config,
       worksService,
@@ -218,6 +229,45 @@ describe('UploadSourceService (unit)', () => {
     expect(sourceRevisionModel.create).toHaveBeenCalled();
     expect(sourceModel.updateOne).toHaveBeenCalled();
     expect(worksService.recordSourceRevision).toHaveBeenCalled();
+  });
+
+  it('uploadRevision() rejects stale branch head tokens with 409', async () => {
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({
+        workId: '10',
+        sourceId: 'x',
+        label: 'Existing source',
+        sourceType: 'score'
+      })
+    });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({ sequenceNumber: 2 }) }) });
+    sourceRevisionModel.find.mockReturnValue({
+      sort: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([
+        { revisionId: 'r-current', sequenceNumber: 2, branchName: 'feature-a' }
+      ])
+    });
+    branchesService.listBranches.mockResolvedValue([
+      { name: 'trunk', policy: 'public' },
+      { name: 'feature-a', policy: 'public', baseRevisionId: 'r-base' }
+    ]);
+
+    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+
+    await expect(
+      service.uploadRevision(
+        '10',
+        'x',
+        { branchName: 'feature-a', expectedHeadRevisionId: 'r-stale' },
+        file,
+        undefined,
+        'pid'
+      )
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(derivativePipeline.process).not.toHaveBeenCalled();
+    expect(sourceRevisionModel.create).not.toHaveBeenCalled();
   });
 
   it('uploadRevision() preserves existing reference PDF when no new reference is uploaded', async () => {

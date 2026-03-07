@@ -33,10 +33,24 @@ describe('WorksService (unit, mocked models)', () => {
   const watches = { getSubscribersUserIds: jest.fn(), migrateSource: jest.fn() } as any;
   const notifications = { queueNewRevision: jest.fn(), migrateSource: jest.fn() } as any;
   const searchService = { indexWork: jest.fn() } as any;
-  const branchesService = { migrateSource: jest.fn() } as any;
+  const branchesService = {
+    migrateSource: jest.fn(),
+    listBranches: jest.fn(),
+    sanitizeName: jest.fn((name?: string) => {
+      const raw = (name ?? '').trim();
+      if (!raw) return 'trunk';
+      return raw.toLowerCase() === 'main' ? 'trunk' : raw.toLowerCase();
+    })
+  } as any;
 
   beforeEach(() => {
     jest.resetAllMocks();
+    branchesService.sanitizeName.mockImplementation((name?: string) => {
+      const raw = (name ?? '').trim();
+      if (!raw) return 'trunk';
+      return raw.toLowerCase() === 'main' ? 'trunk' : raw.toLowerCase();
+    });
+    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public' }]);
     usersService = { userModel: { find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue(chain([])) }) } } as any;
     workModel = {
       find: jest.fn(),
@@ -959,6 +973,142 @@ describe('WorksService (unit, mocked models)', () => {
     expect(detail.sources[0].hasReferencePdf).toBe(true);
     expect(detail.sources[0].derivatives?.referencePdf?.objectKey).toBe('ref.pdf');
     expect(detail.sources[0].revisions[0].revisionId).toBe('r2');
+  });
+
+  it('getSourceHistory returns branch summaries and selected branch revisions', async () => {
+    const work = {
+      workId: '300',
+      sourceCount: 1,
+      availableFormats: ['application/xml'],
+      latestRevisionAt: new Date('2024-06-01'),
+      title: 'Test Work',
+      composer: 'Composer'
+    };
+    const source = {
+      workId: '300',
+      sourceId: 's1',
+      label: 'Uploaded source',
+      sourceType: 'score',
+      visibility: 'public'
+    };
+    const revisions = [
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r3',
+        sequenceNumber: 3,
+        createdAt: new Date('2024-07-01'),
+        createdBy: 'user-2',
+        branchName: 'feature-a',
+        status: 'approved',
+        derivatives: {
+          canonicalXml: { bucket: 'b', objectKey: 'feature-canonical', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '33' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        },
+        manifest: { bucket: 'b', objectKey: 'feature-manifest', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '44' }, contentType: 'application/json', lastModifiedAt: new Date() }
+      },
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r2',
+        sequenceNumber: 2,
+        createdAt: new Date('2024-06-01'),
+        createdBy: 'user-1',
+        branchName: 'trunk',
+        status: 'approved',
+        derivatives: {
+          canonicalXml: { bucket: 'b', objectKey: 'trunk-canonical', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '22' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        },
+        manifest: { bucket: 'b', objectKey: 'trunk-manifest', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: '55' }, contentType: 'application/json', lastModifiedAt: new Date() }
+      },
+      {
+        workId: '300',
+        sourceId: 's1',
+        revisionId: 'r1',
+        sequenceNumber: 1,
+        createdAt: new Date('2024-05-01'),
+        createdBy: 'user-1',
+        branchName: 'trunk',
+        status: 'approved',
+        derivatives: {}
+      }
+    ];
+
+    branchesService.listBranches.mockResolvedValue([
+      { name: 'trunk', policy: 'public' },
+      { name: 'feature-a', policy: 'owner_approval', ownerUserId: 'user-2', baseRevisionId: 'r2' }
+    ]);
+    usersService = {
+      userModel: {
+        find: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue(chain([
+            { _id: 'user-1', username: 'alice' },
+            { _id: 'user-2', username: 'bob' }
+          ]))
+        })
+      }
+    } as any;
+    service = new WorksService(
+      workModel as any,
+      sourceModel as any,
+      sourceRevisionModel as any,
+      projectModel as any,
+      revisionRatingModel as any,
+      revisionCommentModel as any,
+      revisionCommentVoteModel as any,
+      imslpService,
+      storageService,
+      fossilService,
+      watches,
+      notifications,
+      searchService,
+      usersService,
+      branchesService
+    );
+
+    workModel.findOne.mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(work) }) } as any);
+    sourceModel.findOne.mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(source) }) } as any);
+    sourceRevisionModel.find.mockReturnValue(chain(revisions as any));
+
+    const history = await service.getSourceHistory({
+      workId: '300',
+      sourceId: 's1',
+      branch: 'feature-a',
+      viewer: { userId: 'user-2', roles: ['user'] }
+    });
+
+    expect(history.source).toMatchObject({
+      workId: '300',
+      sourceId: 's1',
+      label: 'Uploaded source',
+      defaultBranch: 'trunk',
+      workTitle: 'Test Work',
+      composer: 'Composer'
+    });
+    expect(history.selectedBranch).toMatchObject({
+      name: 'feature-a',
+      policy: 'owner_approval',
+      ownerUserId: 'user-2',
+      ownerUsername: 'bob',
+      headRevisionId: 'r3',
+      headSequenceNumber: 3,
+      commitCount: 1,
+      empty: false
+    });
+    expect(history.viewer).toMatchObject({
+      authenticated: true,
+      canCreateBranch: true,
+      canCommitToSelectedBranch: true
+    });
+    expect(history.branches.map((branch) => branch.name)).toEqual(['trunk', 'feature-a']);
+    expect(history.revisions).toHaveLength(1);
+    expect(history.revisions[0]).toMatchObject({
+      revisionId: 'r3',
+      createdByUsername: 'bob',
+      branchName: 'feature-a',
+      canonicalXmlAvailable: true,
+      manifestAvailable: true,
+      isBranchHead: true
+    });
   });
 
   describe('updateSource', () => {

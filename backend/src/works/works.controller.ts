@@ -233,6 +233,36 @@ export class WorksController {
     return detail;
   }
 
+  @Get(':workId/sources/:sourceId/history')
+  @UseGuards(AuthOptionalGuard)
+  @ApiOperation({
+    summary: 'Get source history',
+    description: 'Returns branch metadata and visible revisions for a source.'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiQuery({ name: 'branch', required: false, description: 'Selected branch name', example: 'trunk' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Maximum number of revisions to return', example: 50 })
+  @ApiQuery({ name: 'cursor', required: false, description: 'Pagination cursor for older revisions' })
+  async getSourceHistory(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Query('branch') branch?: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+    @CurrentUser() user?: RequestUser
+  ) {
+    const viewer = user ? { userId: user.userId, roles: user.roles } : undefined;
+    return this.worksService.getSourceHistory({
+      workId,
+      sourceId,
+      viewer,
+      branch,
+      limit: limit ? Number.parseInt(limit, 10) : undefined,
+      cursor
+    });
+  }
+
   @Post(":workId/metadata")
   @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
   updateMetadata(
@@ -455,6 +485,8 @@ export class WorksController {
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
         createBranch: { type: 'boolean', description: 'Create a new branch for this revision' },
         branchName: { type: 'string', description: 'Name of new branch if createBranch is true' },
+        baseRevisionId: { type: 'string', description: 'Base revision for detached or empty-branch commits' },
+        expectedHeadRevisionId: { type: 'string', description: 'Expected current branch head revision for optimistic concurrency' },
         changeSummary: { type: 'string', description: 'Summary of changes in this revision', example: 'Fixed measure 42 dynamics' },
         license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' },
         rightsDeclarationAccepted: { type: 'boolean', description: 'Whether uploader confirms they have legal rights to upload this content' }
@@ -480,6 +512,8 @@ export class WorksController {
       formatHint: body?.formatHint,
       createBranch: this.toBoolean((body as any)?.createBranch),
       branchName: (body as any)?.branchName,
+      baseRevisionId: (body as any)?.baseRevisionId,
+      expectedHeadRevisionId: (body as any)?.expectedHeadRevisionId,
       rightsDeclarationAccepted: this.toBoolean((body as any)?.rightsDeclarationAccepted)
     };
     const file = files?.file?.[0];

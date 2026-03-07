@@ -124,6 +124,55 @@ export interface WorkDetail extends WorkSummary {
   sources: SourceView[];
 }
 
+export interface SourceHistoryBranchView {
+  name: string;
+  policy: 'public' | 'owner_approval';
+  ownerUserId?: string;
+  ownerUsername?: string;
+  baseRevisionId?: string;
+  headRevisionId?: string;
+  headSequenceNumber?: number;
+  commitCount: number;
+  empty: boolean;
+}
+
+export interface SourceHistoryRevisionView {
+  revisionId: string;
+  sequenceNumber: number;
+  createdAt: Date;
+  createdBy: string;
+  createdByUsername?: string;
+  changeSummary?: string;
+  branchName: string;
+  fossilBranch?: string;
+  fossilArtifactId?: string;
+  status: 'approved' | 'pending_approval' | 'rejected' | 'withdrawn';
+  canonicalXmlAvailable: boolean;
+  manifestAvailable: boolean;
+  isBranchHead: boolean;
+}
+
+export interface SourceHistoryResponse {
+  source: {
+    workId: string;
+    sourceId: string;
+    label: string;
+    sourceType: Source['sourceType'];
+    workTitle?: string;
+    composer?: string;
+    defaultBranch: 'trunk';
+  };
+  viewer: {
+    authenticated: boolean;
+    canCreateBranch: boolean;
+    canCommitToSelectedBranch: boolean;
+  };
+  selectedBranch: SourceHistoryBranchView;
+  branches: SourceHistoryBranchView[];
+  revisions: SourceHistoryRevisionView[];
+  nextCursor?: string | null;
+}
+
 export interface ViewerContext {
   userId?: string;
   roles?: string[];
@@ -588,20 +637,7 @@ except Exception:
   }
 
   async getWorkDetail(workId: string, viewer?: ViewerContext): Promise<WorkDetail> {
-    let work = await this.workModel.findOne({ workId }).lean().exec();
-    if (!work) {
-      throw new NotFoundException(`Work ${workId} not found`);
-    }
-
-    if (!work.title || !work.composer) {
-      try {
-        const metadataResult = await this.imslpService.ensureByWorkId(workId);
-        const hydrated = await this.hydrateWorkMetadataFromImslp(work as any, metadataResult.metadata);
-        work = hydrated as any;
-      } catch {
-        // Keep existing work details if metadata enrichment fails.
-      }
-    }
+    const work = await this.getHydratedWork(workId);
 
     const sources = await this.sourceModel
       .find({ workId })
@@ -805,6 +841,130 @@ except Exception:
     return {
       ...summary,
       sources: sourceViews
+    };
+  }
+
+  async getSourceHistory(input: {
+    workId: string;
+    sourceId: string;
+    viewer?: ViewerContext;
+    branch?: string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<SourceHistoryResponse> {
+    const { workId, sourceId, viewer } = input;
+    const viewerIsAdmin = this.isViewerAdmin(viewer);
+    const work = await this.getHydratedWork(workId);
+    const source = await this.sourceModel
+      .findOne({ workId, sourceId })
+      .lean()
+      .exec();
+
+    if (!source) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const sourceVisibility = ((source as any).visibility || 'public') as string;
+    if (sourceVisibility !== 'public' && !viewerIsAdmin) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const declaredBranches = await this.branchesService.listBranches(workId, sourceId);
+    const selectedBranchName = this.branchesService.sanitizeName(input.branch);
+    const revisions = await this.sourceRevisionModel
+      .find({ workId, sourceId })
+      .sort({ sequenceNumber: -1 })
+      .lean()
+      .exec();
+
+    const visibleRevisions = revisions.filter((revision) =>
+      this.canViewerAccessRevision(revision as any, viewer, viewerIsAdmin),
+    );
+
+    if (revisions.length > 0 && visibleRevisions.length === 0) {
+      throw new NotFoundException('Source not found');
+    }
+
+    const uniqueUserIds = new Set<string>();
+    for (const revision of visibleRevisions) {
+      if (revision.createdBy && revision.createdBy !== 'system') {
+        uniqueUserIds.add(revision.createdBy);
+      }
+    }
+    for (const branch of declaredBranches) {
+      if (branch.ownerUserId) {
+        uniqueUserIds.add(branch.ownerUserId);
+      }
+    }
+
+    const userIdToUsername = await this.loadUsernames(uniqueUserIds);
+    const branchViews = this.buildSourceHistoryBranches({
+      declaredBranches,
+      revisions: visibleRevisions as any[],
+      userIdToUsername
+    });
+    const selectedBranch = branchViews.find((branch) => branch.name === selectedBranchName)
+      ?? branchViews[0]
+      ?? {
+        name: selectedBranchName,
+        policy: 'public' as const,
+        commitCount: 0,
+        empty: true
+      };
+
+    const selectedBranchRevisions = visibleRevisions
+      .filter((revision) => this.resolveRevisionBranchName(revision as any) === selectedBranch.name);
+    const parsedCursor = this.decodeHistoryCursor(input.cursor);
+    const filteredRevisions = selectedBranchRevisions.filter((revision) =>
+      parsedCursor == null || revision.sequenceNumber < parsedCursor,
+    );
+    const requestedLimit = Number.isFinite(input.limit) ? Number(input.limit) : 50;
+    const limit = Math.min(Math.max(requestedLimit, 1), 200);
+    const pagedRevisions = filteredRevisions.slice(0, limit);
+    const nextCursor = filteredRevisions.length > limit
+      ? this.encodeHistoryCursor(filteredRevisions[limit].sequenceNumber)
+      : null;
+
+    const headRevisionId = selectedBranch.headRevisionId;
+    const revisionViews: SourceHistoryRevisionView[] = pagedRevisions.map((revision) => ({
+      revisionId: revision.revisionId,
+      sequenceNumber: revision.sequenceNumber,
+      createdAt: revision.createdAt,
+      createdBy: revision.createdBy,
+      createdByUsername: userIdToUsername.get(revision.createdBy),
+      changeSummary: revision.changeSummary,
+      branchName: this.resolveRevisionBranchName(revision as any),
+      fossilBranch: (revision as any).fossilBranch ?? undefined,
+      fossilArtifactId: revision.fossilArtifactId,
+      status: ((revision as any).status || 'approved') as SourceHistoryRevisionView['status'],
+      canonicalXmlAvailable: Boolean((revision as any)?.derivatives?.canonicalXml),
+      manifestAvailable: Boolean((revision as any)?.manifest),
+      isBranchHead: revision.revisionId === headRevisionId
+    }));
+
+    const canCommitToSelectedBranch = selectedBranch.policy === 'public'
+      || viewerIsAdmin
+      || Boolean(selectedBranch.ownerUserId && viewer?.userId === selectedBranch.ownerUserId);
+
+    return {
+      source: {
+        workId,
+        sourceId,
+        label: String((source as any).label || ''),
+        sourceType: (source as any).sourceType,
+        workTitle: work.title,
+        composer: work.composer,
+        defaultBranch: 'trunk'
+      },
+      viewer: {
+        authenticated: Boolean(viewer?.userId),
+        canCreateBranch: Boolean(viewer?.userId),
+        canCommitToSelectedBranch
+      },
+      selectedBranch,
+      branches: branchViews,
+      revisions: revisionViews,
+      nextCursor
     };
   }
 
@@ -1618,6 +1778,127 @@ except Exception:
 
   private isViewerAdmin(viewer?: ViewerContext): boolean {
     return Boolean((viewer?.roles ?? []).includes('admin'));
+  }
+
+  private async getHydratedWork(workId: string): Promise<
+    Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> & Partial<Work>
+  > {
+    let work = await this.workModel.findOne({ workId }).lean().exec();
+    if (!work) {
+      throw new NotFoundException(`Work ${workId} not found`);
+    }
+
+    if (!work.title || !work.composer) {
+      try {
+        const metadataResult = await this.imslpService.ensureByWorkId(workId);
+        const hydrated = await this.hydrateWorkMetadataFromImslp(work as any, metadataResult.metadata);
+        work = hydrated as any;
+      } catch {
+        // Keep existing work details if metadata enrichment fails.
+      }
+    }
+
+    return work as any;
+  }
+
+  private async loadUsernames(userIds: Iterable<string>): Promise<Map<string, string>> {
+    const ids = Array.from(new Set(Array.from(userIds).filter(Boolean)));
+    const userIdToUsername = new Map<string, string>();
+    if (ids.length === 0) {
+      return userIdToUsername;
+    }
+
+    const users = await this.usersService['userModel']
+      .find({ _id: { $in: ids } })
+      .select('_id username')
+      .lean()
+      .exec();
+
+    for (const user of users) {
+      if (user.username) {
+        userIdToUsername.set(String(user._id), user.username);
+      }
+    }
+    return userIdToUsername;
+  }
+
+  private buildSourceHistoryBranches(input: {
+    declaredBranches: Array<{ name: string; policy: 'public' | 'owner_approval'; ownerUserId?: string; baseRevisionId?: string }>;
+    revisions: Array<any>;
+    userIdToUsername: Map<string, string>;
+  }): SourceHistoryBranchView[] {
+    const branchMap = new Map<string, SourceHistoryBranchView>();
+
+    for (const branch of input.declaredBranches) {
+      branchMap.set(branch.name, {
+        name: branch.name,
+        policy: branch.policy,
+        ownerUserId: branch.ownerUserId,
+        ownerUsername: branch.ownerUserId ? input.userIdToUsername.get(branch.ownerUserId) : undefined,
+        baseRevisionId: branch.baseRevisionId,
+        commitCount: 0,
+        empty: true
+      });
+    }
+
+    for (const revision of input.revisions) {
+      const branchName = this.resolveRevisionBranchName(revision);
+      const current = branchMap.get(branchName) ?? {
+        name: branchName,
+        policy: 'public' as const,
+        commitCount: 0,
+        empty: true
+      };
+
+      current.commitCount += 1;
+      current.empty = false;
+      if (!current.headRevisionId) {
+        current.headRevisionId = revision.revisionId;
+        current.headSequenceNumber = revision.sequenceNumber;
+      }
+      branchMap.set(branchName, current);
+    }
+
+    if (!branchMap.has('trunk')) {
+      branchMap.set('trunk', {
+        name: 'trunk',
+        policy: 'public',
+        commitCount: 0,
+        empty: true
+      });
+    }
+
+    return Array.from(branchMap.values()).sort((a, b) => {
+      if (a.name === 'trunk') return -1;
+      if (b.name === 'trunk') return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  private resolveRevisionBranchName(revision: {
+    branchName?: string;
+    fossilBranch?: string;
+  }): string {
+    return this.branchesService.sanitizeName(revision.branchName || revision.fossilBranch || 'trunk');
+  }
+
+  private decodeHistoryCursor(cursor?: string): number | null {
+    const trimmed = cursor?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      const decoded = Buffer.from(trimmed, 'base64url').toString('utf8');
+      const value = Number.parseInt(decoded, 10);
+      return Number.isFinite(value) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private encodeHistoryCursor(sequenceNumber: number): string {
+    return Buffer.from(String(sequenceNumber), 'utf8').toString('base64url');
   }
 
   private canViewerAccessRevision(

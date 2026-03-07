@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createHash } from 'node:crypto';
@@ -40,6 +40,8 @@ export interface UploadSourceRequest {
   commitMessage?: string;
   createBranch?: boolean;
   branchName?: string;
+  baseRevisionId?: string;
+  expectedHeadRevisionId?: string;
 }
 
 export interface UploadSourceResult {
@@ -101,6 +103,45 @@ export class UploadSourceService {
     }
   }
 
+  private async assertExpectedBranchHead(input: {
+    workId: string;
+    sourceId: string;
+    branchName: string;
+    expectedHeadRevisionId?: string;
+    baseRevisionId?: string;
+  }): Promise<void> {
+    const expectedRevisionId = input.expectedHeadRevisionId?.trim() || input.baseRevisionId?.trim();
+    if (!expectedRevisionId) {
+      return;
+    }
+
+    const branchName = this.sanitizeBranchName(input.branchName) || 'trunk';
+    const branchRevisions = await this.sourceRevisionModel
+      .find({ workId: input.workId, sourceId: input.sourceId })
+      .sort({ sequenceNumber: -1 })
+      .lean()
+      .exec();
+
+    const headRevision = branchRevisions.find((revision) =>
+      (this.sanitizeBranchName(revision.branchName || revision.fossilBranch) || 'trunk') === branchName,
+    );
+    const declaredBranch = (await this.branchesService.listBranches(input.workId, input.sourceId))
+      .find((branch) => branch.name === branchName);
+    const actualHeadRevisionId = headRevision?.revisionId ?? declaredBranch?.baseRevisionId;
+
+    if (actualHeadRevisionId === expectedRevisionId) {
+      return;
+    }
+
+    throw new ConflictException({
+      error: 'branch_head_changed',
+      branch: branchName,
+      expectedHeadRevisionId: expectedRevisionId,
+      actualHeadRevisionId: actualHeadRevisionId ?? null,
+      actualHeadSequenceNumber: headRevision?.sequenceNumber ?? null
+    });
+  }
+
   async uploadRevision(
     workId: string,
     sourceId: string,
@@ -138,6 +179,15 @@ export class UploadSourceService {
     const originalMscz = this.normalizeOriginalMsczFile(originalMsczFile);
     const label = existing.label; // keep existing label
     const sourceType = existing.sourceType;
+    const requestedBranchName = this.sanitizeBranchName(request.branchName) || 'trunk';
+
+    await this.assertExpectedBranchHead({
+      workId: trimmedWorkId,
+      sourceId: trimmedSourceId,
+      branchName: requestedBranchName,
+      expectedHeadRevisionId: request.expectedHeadRevisionId,
+      baseRevisionId: request.baseRevisionId
+    });
 
     const checksumHex = createHash('sha256').update(file.buffer).digest('hex');
     const storageKey = `${trimmedWorkId}/${trimmedSourceId}/raw/${file.originalname ?? 'upload'}`;
@@ -194,7 +244,6 @@ export class UploadSourceService {
     let manifest = derivativeOutcome.manifest;
     let manifestData = derivativeOutcome.manifestData;
     let fossilArtifactId: string | undefined;
-    let committedBranchName2: string | undefined;
     let committedBranchName: string | undefined;
     const currentCanonical = derivativeOutcome.derivatives.canonicalXml;
     const previousCanonical = previousRevision?.derivatives?.canonicalXml;
@@ -210,7 +259,7 @@ export class UploadSourceService {
         this.progress.publish(progressId, 'Committing to Fossil', 'fossil.start');
         const fossilFiles = await this.collectFossilFiles(derivativeOutcome);
         if (fossilFiles.length > 0) {
-          const branch = this.sanitizeBranchName(request.branchName);
+          const branch = requestedBranchName;
           const commit = await this.fossilService.commitRevision({
             workId: trimmedWorkId,
             sourceId: trimmedSourceId,
@@ -307,8 +356,9 @@ export class UploadSourceService {
     const rightsAcceptedAt = rightsAccepted ? receivedAt : undefined;
 
     // Determine branch policy gating
-    const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
-    const policy = await this.branchesService.getBranchPolicy(trimmedWorkId, trimmedSourceId, sanitizedBranch);
+    const committedLogicalBranch =
+      this.sanitizeBranchName(committedBranchName ?? this.commitBranchFromNotes(notes) ?? requestedBranchName) || 'trunk';
+    const policy = await this.branchesService.getBranchPolicy(trimmedWorkId, trimmedSourceId, committedLogicalBranch);
     let status: 'approved' | 'pending_approval' = 'approved';
     let approval: any = undefined;
     if (policy === 'owner_approval') {
@@ -316,7 +366,7 @@ export class UploadSourceService {
         throw new BadRequestException('Authentication required to submit to an owned branch');
       }
       status = 'pending_approval';
-      const ownerUserId = await this.branchesService.getBranchOwnerUserId(trimmedWorkId, trimmedSourceId, sanitizedBranch);
+      const ownerUserId = await this.branchesService.getBranchOwnerUserId(trimmedWorkId, trimmedSourceId, committedLogicalBranch);
       approval = { ownerUserId, requestedAt: receivedAt };
     }
 
@@ -330,7 +380,7 @@ export class UploadSourceService {
       fossilParentArtifactIds:
         previousRevision?.fossilArtifactId != null ? [previousRevision.fossilArtifactId] : [],
       fossilBranch: committedBranchName ?? this.commitBranchFromNotes(notes) ?? undefined,
-      branchName: sanitizedBranch,
+      branchName: committedLogicalBranch,
       rawStorage: storageLocator,
       visibility: 'public',
       checksum: storageLocator.checksum,

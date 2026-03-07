@@ -27,6 +27,7 @@ function createMockResponse() {
 describe('WorksController (unit)', () => {
   const worksService = {
     getWorkDetail: jest.fn(),
+    getSourceHistory: jest.fn(),
     resolveDownloadAsset: jest.fn(),
     ensureWorkWithMetadata: jest.fn(),
     saveWorkByImslpUrl: jest.fn(),
@@ -240,13 +241,47 @@ describe('WorksController (unit)', () => {
       expect(uploadSourceService.uploadRevision).toHaveBeenCalledWith(
         workId,
         sourceId,
-        { ...body, formatHint: undefined, createBranch: undefined, branchName: undefined, isPrimary: true },
+        {
+          ...body,
+          formatHint: undefined,
+          createBranch: undefined,
+          branchName: undefined,
+          baseRevisionId: undefined,
+          expectedHeadRevisionId: undefined,
+          isPrimary: true
+        },
         file,
         undefined,
         progressId,
         user,
         undefined
       );
+    });
+  });
+
+  describe('getSourceHistory', () => {
+    it('should forward branch history params with viewer context', async () => {
+      const payload = { source: { workId: '123', sourceId: 's1' } };
+      worksService.getSourceHistory.mockResolvedValue(payload as any);
+
+      const result = await controller.getSourceHistory(
+        '123',
+        's1',
+        'feature-a',
+        '25',
+        'abc',
+        { userId: 'user-1', roles: ['user'] } as any
+      );
+
+      expect(worksService.getSourceHistory).toHaveBeenCalledWith({
+        workId: '123',
+        sourceId: 's1',
+        viewer: { userId: 'user-1', roles: ['user'] },
+        branch: 'feature-a',
+        limit: 25,
+        cursor: 'abc'
+      });
+      expect(result).toEqual(payload);
     });
   });
 
