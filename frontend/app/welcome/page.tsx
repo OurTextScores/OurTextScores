@@ -1,29 +1,39 @@
 import Link from "next/link";
 
-const platformFeatures = [
+const platformFeatures: Array<{
+  title: string;
+  body: string;
+  media?: { light: string; dark?: string };
+}> = [
   {
     title: "Versioned Sources",
     body: "Every source has revision history, branching workflows, and reviewable metadata so editorial work stays traceable over time.",
+    media: { light: "/images/features/versioned-sources-light.webm", dark: "/images/features/versioned-sources-dark.webm" },
   },
   {
     title: "Visual Musical Diff",
     body: "Compare revisions at the score level and in canonical text views to quickly inspect meaningful notation changes.",
+    media: { light: "/images/features/visual-diff-light.webm" },
   },
   {
     title: "Integrated Score Editor",
     body: "Open and inspect scores directly in the browser to reduce context switching between tools.",
+    media: { light: "/images/features/score-editor-light.webm" },
   },
   {
     title: "Catalogue Discovery",
     body: "Search and browse works by title, composer and catalogue number.",
+    media: { light: "/images/features/catalogue-light.webm", dark: "/images/features/catalogue-dark.webm" },
   },
   {
     title: "Project Workspaces",
     body: "Coordinate contributors, track project-linked sources, and manage collaborative progress in dedicated project pages.",
+    media: { light: "/images/features/projects-light.webm", dark: "/images/features/projects-dark.webm" },
   },
   {
-    title: "Downloadable Artifacts",
-    body: "Access MusicXML, MuseScore (MSCX) and PDFs versions from each revision for practical reuse.",
+    title: "Change Review Workflows",
+    body: "Get feedback on each changed line in the Visual Score Diff and resolve comments across multiple revisions.",
+    media: { light: "/images/features/change-review-light.webm", dark: "/images/features/change-review-dark.webm" },
   },
 ];
 
@@ -125,14 +135,54 @@ export default function WelcomePage() {
         </header>
 
         <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
-          <h2 className="font-[var(--font-heading)] text-3xl">Platform Features</h2>
+          <h2 className="font-[var(--font-heading)] text-3xl">Why Digitize?</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {platformFeatures.map((feature) => (
-              <article key={feature.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
-                <h3 className="font-semibold text-slate-900 dark:text-slate-100">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{feature.body}</p>
+            {whyDigitize.map((entry) => (
+              <article key={entry.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{entry.body}</p>
               </article>
             ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+          <h2 className="font-[var(--font-heading)] text-3xl">Platform Features</h2>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {platformFeatures.map((feature, idx) => {
+              // Left column (even index) expands right; right column (odd) expands left
+              const origin = idx % 2 === 0 ? "top left" : "top right";
+              return (
+                <article key={feature.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
+                  <h3 className="font-semibold text-slate-900 dark:text-slate-100">{feature.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{feature.body}</p>
+                  {feature.media && (
+                    <div className="relative mt-3">
+                      <video
+                        src={feature.media.light}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className={`w-full rounded border border-slate-200 transition-transform duration-300 ease-out hover:scale-[2] hover:relative hover:z-50 hover:shadow-2xl dark:border-slate-700 ${feature.media.dark ? "dark:hidden" : ""}`}
+                        style={{ transformOrigin: origin }}
+                      />
+                      {feature.media.dark && (
+                        <video
+                          src={feature.media.dark}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="hidden w-full rounded border border-slate-700 transition-transform duration-300 ease-out hover:scale-[2] hover:relative hover:z-50 hover:shadow-2xl dark:block"
+                          style={{ transformOrigin: origin }}
+                        />
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -149,18 +199,6 @@ export default function WelcomePage() {
               </Link>
               {" "}work. Only reference PDFs from the IMSLP page are allowed which ensures they are public domain/legal in Canada where OurTextScores is hosted. Please note that does NOT mean they are public domain/legal to download in your country. If you are not in Canada, please check the associated IMSLP page for whether a given work is public domain in your country. Also note that the engraving may have a different copyright license than the underlying work.
             </p>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-300 bg-white/90 p-8 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
-          <h2 className="font-[var(--font-heading)] text-3xl">Why Digitize?</h2>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {whyDigitize.map((entry) => (
-              <article key={entry.title} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800/70">
-                <h3 className="font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{entry.body}</p>
-              </article>
-            ))}
           </div>
         </section>
 

@@ -100,8 +100,8 @@ export default async function WorkDetailPage({
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-                  <Link href="/" className="transition hover:text-slate-800 dark:hover:text-slate-200">
-                    ← Back to works
+                  <Link href="/catalogue" className="transition hover:text-slate-800 dark:hover:text-slate-200">
+                    ← Back to catalogue
                   </Link>
                   <span className="opacity-50">•</span>
                   <span className="font-mono opacity-75">ID: {work.workId}</span>
