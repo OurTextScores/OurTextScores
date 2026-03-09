@@ -176,7 +176,7 @@ export default function WorksPage() {
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6">
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
           <div className="max-w-3xl">
-            <h1 className="text-4xl font-semibold tracking-tight">🎼 OurTextScores</h1>
+            <h1 className="text-4xl font-semibold tracking-tight">Catalogue</h1>
             <p className="mt-1 text-slate-600 dark:text-slate-300">
               Catalogue of editable community transcriptions of public domain works.
             </p>
