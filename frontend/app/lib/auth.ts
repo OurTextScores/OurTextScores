@@ -91,36 +91,32 @@ export const authOptions: NextAuthOptions = {
         );
         if (existingUser) return true;
 
-        if (canBootstrapEmail(candidate)) {
-          const now = new Date();
-          const roles = bootstrapAdminEmails.has(candidate) ? ["user", "admin"] : ["user"];
+        // Auto-provision new users on first sign-in (beta gating disabled).
+        const now = new Date();
+        const roles = bootstrapAdminEmails.has(candidate) ? ["user", "admin"] : ["user"];
 
-          await db.collection("users").updateOne(
-            { email: candidate },
-            {
-              $set: {
-                email: candidate,
-                roles,
-                status: "active",
-                enforcementStrikes: 0,
-                updatedAt: now
-              },
-              $setOnInsert: {
-                createdAt: now,
-                notify: { watchPreference: "immediate" }
-              }
+        await db.collection("users").updateOne(
+          { email: candidate },
+          {
+            $set: {
+              email: candidate,
+              roles,
+              status: "active",
+              enforcementStrikes: 0,
+              updatedAt: now
             },
-            { upsert: true }
-          );
+            $setOnInsert: {
+              createdAt: now,
+              notify: { watchPreference: "immediate" }
+            }
+          },
+          { upsert: true }
+        );
 
-          console.warn(
-            `[auth] bootstrap sign-in allowed emailHash=${hashForLog(candidate)} roles=${roles.join(",")}`
-          );
-          return true;
-        }
-
-        console.warn(`[auth] sign-in denied emailHash=${hashForLog(candidate)} reason=no_user`);
-        return false;
+        console.info(
+          `[auth] auto-provisioned new user emailHash=${hashForLog(candidate)} roles=${roles.join(",")}`
+        );
+        return true;
       } catch (error) {
         console.error("signIn callback lookup failed:", error);
         return false;
