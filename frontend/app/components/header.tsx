@@ -16,6 +16,7 @@ export default function Header() {
   const effectiveUsername = resolvedUsername ?? profileUsername;
   const userDisplay = effectiveUsername || user?.name || user?.email;
   const [unreadCount, setUnreadCount] = useState(0);
+  const [toolbarOpen, setToolbarOpen] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -44,13 +45,28 @@ export default function Header() {
   }, [user]);
 
   return (
-    <header className="sticky top-0 z-40 mb-4 border-b border-slate-200/80 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-slate-800/70 dark:bg-slate-950/70">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-2 transition-colors">
-        <Link href="/welcome" className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 hover:underline dark:text-slate-100">
-          <img src="/images/OTS-icon.svg" alt="" className="h-10 w-10" />
-          OurTextScores
-        </Link>
-        <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-slate-800/70 dark:bg-slate-950/70">
+      <button
+        onClick={() => setToolbarOpen(prev => !prev)}
+        className="fixed left-0 -top-5 z-50 cursor-pointer"
+        aria-label={toolbarOpen ? "Collapse toolbar" : "Expand toolbar"}
+      >
+        <img src="/images/OTS-icon-light.svg" alt="" className="h-20 w-20 opacity-80 drop-shadow-md dark:hidden" />
+        <img src="/images/OTS-icon-dark.svg" alt="" className="hidden h-20 w-20 opacity-70 drop-shadow-md dark:block" />
+      </button>
+      <div
+        className="origin-left overflow-hidden transition-all duration-500 ease-in-out"
+        style={{
+          maxHeight: toolbarOpen ? "4rem" : "0",
+          opacity: toolbarOpen ? 1 : 0,
+          borderBottomWidth: toolbarOpen ? undefined : 0,
+        }}
+      >
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-2 pl-24">
+          <Link href="/welcome" className="text-sm font-semibold text-slate-800 hover:underline dark:text-slate-100">
+            OurTextScores
+          </Link>
+          <div className="flex items-center gap-3">
           <Link href="/catalogue" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">≡ </span>Catalogue</Link>
           <Link href="/projects" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">▦ </span>Projects</Link>
           <Link href="/score-editor" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">✎ </span>Score Editor</Link>
@@ -88,6 +104,7 @@ export default function Header() {
               <span aria-hidden="true">↩ </span>Sign in
             </Link>
           )}
+        </div>
         </div>
       </div>
     </header>
