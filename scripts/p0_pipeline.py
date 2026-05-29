@@ -126,9 +126,10 @@ def iter_pdmx_csv(csv_path: str, mxl_root: str, limit: int = 0) -> Iterator[dict
                 skipped["license"] += 1
                 continue
 
-            # Quality / dedup
-            if row.get("subset:rated_deduplicated", "").strip().lower() != "true":
-                skipped["not_rated_deduped"] += 1
+            # Deduplication (drop subset:rated — only 5.2% of PDMX has ratings,
+            # far too restrictive for a training corpus)
+            if row.get("subset:deduplicated", "").strip().lower() != "true":
+                skipped["not_deduplicated"] += 1
                 continue
 
             # Staff count proxy: n_tracks
