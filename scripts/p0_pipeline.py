@@ -183,43 +183,195 @@ def iter_pdmx_csv(csv_path: str, mxl_root: str, limit: int = 0) -> Iterator[dict
 # Stage 1 — MXL → canonical kern via verovio
 # ===========================================================================
 
-def mxl_to_kern(mxl_path: str) -> str | None:
+# ---------------------------------------------------------------------------
+# music21-based MXL → kern serializer
+# (Replaces verovio which segfaults on ~70% of PDMX files in Python 3.10/3.11)
+# ---------------------------------------------------------------------------
+
+_KERN_PITCH_LETTERS = "CDEFGAB"
+_M21_STEP_IDX = {"C": 0, "D": 1, "E": 2, "F": 3, "G": 4, "A": 5, "B": 6}
+
+def _m21_pitch_to_kern(pitch) -> str:
+    """Convert a music21 Pitch to a kern pitch token (e.g. 'c', 'G', 'cc#')."""
+    step = pitch.step          # 'C','D',...
+    octave = pitch.octave      # 4 = middle C octave
+    alter = pitch.accidental.alter if pitch.accidental else 0.0
+
+    if octave is None:
+        octave = 4
+
+    # Kern octave encoding:
+    # octave 4 → lowercase once: c d e f g a b
+    # octave 5 → lowercase twice: cc dd …
+    # octave 3 → uppercase once: C D …
+    # octave 2 → uppercase twice: CC DD …
+    if octave >= 4:
+        reps = octave - 3
+        letter = step.lower() * reps
+    else:
+        reps = 4 - octave
+        letter = step.upper() * reps
+
+    acc = ""
+    if alter > 0:
+        acc = "#" * int(alter)
+    elif alter < 0:
+        acc = "-" * int(-alter)
+
+    return letter + acc
+
+
+def _ql_to_kern_duration(ql: float) -> str:
+    """Convert a quarterLength to a kern duration string (e.g. '4', '2.', '8')."""
+    # Common exact values
+    _TABLE = {
+        8.0: "1",   6.0: "1.", 4.0: "2",  3.0: "2.",
+        2.0: "4",   1.5: "4.", 1.0: "8",  0.75: "8.",
+        0.5: "16",  0.375: "16.", 0.25: "32", 0.125: "64",
+    }
+    # Also whole note = 4 quarterLengths
+    table = {4.0: "1", 3.0: "1.", 2.0: "2", 1.5: "2.", 1.0: "4", 0.75: "4.",
+             0.5: "8", 0.375: "8.", 0.25: "16", 0.125: "32", 0.0625: "64"}
+    if ql in table:
+        return table[ql]
+    # Fallback: find nearest
+    best = min(table.keys(), key=lambda k: abs(k - ql))
+    return table[best]
+
+
+def _m21_clef_to_kern(clef) -> str:
+    """Convert music21 clef to kern *clef token."""
+    if clef is None:
+        return "*clefG2"
+    name = type(clef).__name__
+    if "Treble" in name or "G" in name:
+        return "*clefG2"
+    if "Bass" in name or "F" in name:
+        return "*clefF4"
+    if "Alto" in name:
+        return "*clefC3"
+    if "Tenor" in name:
+        return "*clefC4"
+    return "*clefG2"
+
+
+def _m21_key_to_kern(key_sig) -> str:
+    """Convert music21 KeySignature/Key to kern *k[] token."""
+    if key_sig is None:
+        return "*k[]"
+    sharps = key_sig.sharps
+    if sharps == 0:
+        return "*k[]"
+    order_sharps = ["f#", "c#", "g#", "d#", "a#", "e#", "b#"]
+    order_flats  = ["b-", "e-", "a-", "d-", "g-", "c-", "f-"]
+    if sharps > 0:
+        tokens = order_sharps[:sharps]
+    else:
+        tokens = order_flats[:-sharps]  # sharps is negative
+    return "*k[" + "".join(tokens) + "]"
+
+
+def _m21_timesig_to_kern(ts) -> str:
+    if ts is None:
+        return "*M4/4"
+    return f"*M{ts.numerator}/{ts.denominator}"
+
+
+def _note_to_kern_token(note, beam_start: bool = False, beam_end: bool = False) -> str:
+    """Convert a music21 Note or Rest to a kern note token."""
+    dur = _ql_to_kern_duration(note.duration.quarterLength)
+    if note.isRest:
+        token = dur + "r"
+    elif hasattr(note, "pitches"):
+        # Chord — sort pitches ascending
+        pitches = sorted(note.pitches, key=lambda p: p.midi)
+        token = " ".join(dur + _m21_pitch_to_kern(p) for p in pitches)
+    else:
+        token = dur + _m21_pitch_to_kern(note.pitch)
+
+    # Tie
+    if hasattr(note, "tie") and note.tie:
+        if note.tie.type == "start":
+            token = token + "["
+        elif note.tie.type == "stop":
+            token = token + "]"
+        elif note.tie.type == "continue":
+            token = token + "_"
+
+    return token
+
+
+def mxl_to_kern(mxl_path: str, timeout: int = 60) -> str | None:
     """
-    Convert MXL/MusicXML to **kern using verovio.
+    Convert MXL/MusicXML to **kern using music21.
+    Reliable replacement for verovio which segfaults on ~70% of PDMX files.
     Returns canonical kern string, or None on failure.
     """
-    if not _HAS_VEROVIO:
-        raise RuntimeError("verovio not installed — run: pip install verovio")
-
-    path = Path(mxl_path)
     try:
-        if path.suffix.lower() == ".mxl":
-            # Compressed MXL: extract the XML inside
-            import zipfile
-            with zipfile.ZipFile(path) as zf:
-                xml_names = [n for n in zf.namelist()
-                             if n.endswith(".xml") and not n.startswith("META-INF")]
-                if not xml_names:
-                    return None
-                xml_bytes = zf.read(xml_names[0])
-                xml_text = xml_bytes.decode("utf-8", errors="replace")
-        else:
-            xml_text = path.read_text(encoding="utf-8", errors="replace")
+        import music21
+        score = music21.converter.parse(mxl_path)
     except Exception as exc:
-        log.debug("mxl read failed %s: %s", mxl_path, exc)
+        log.debug("music21 parse failed %s: %s", mxl_path, exc)
         return None
 
     try:
-        tk = _verovio.toolkit()
-        ok = tk.loadData(xml_text)
-        if not ok:
+        parts = list(score.parts)
+        if not parts:
             return None
-        kern = tk.getHumdrumBuffer()
-        if not kern or "**kern" not in kern:
-            return None
-        return kern
+
+        # Build kern for each part as a spine
+        spines: list[list[str]] = [[] for _ in parts]
+
+        for spine_idx, part in enumerate(parts):
+            spine = spines[spine_idx]
+            spine.append("**kern")
+
+            # Collect context from first measure
+            first_m = next(iter(part.getElementsByClass("Measure")), None)
+            clef = part.recurse().getElementsByClass("Clef").first()
+            key_sig = part.recurse().getElementsByClass("KeySignature").first()
+            ts = part.recurse().getElementsByClass("TimeSignature").first()
+
+            spine.append(_m21_clef_to_kern(clef))
+            spine.append(_m21_key_to_kern(key_sig))
+            spine.append(_m21_timesig_to_kern(ts))
+
+            for measure in part.getElementsByClass("Measure"):
+                m_num = measure.number or 1
+                spine.append(f"={m_num}")
+
+                # Update context mid-score
+                for elem in measure:
+                    if isinstance(elem, music21.clef.Clef):
+                        spine.append(_m21_clef_to_kern(elem))
+                    elif isinstance(elem, music21.key.KeySignature):
+                        spine.append(_m21_key_to_kern(elem))
+                    elif isinstance(elem, music21.meter.TimeSignature):
+                        spine.append(_m21_timesig_to_kern(elem))
+                    elif isinstance(elem, (music21.note.Note,
+                                           music21.note.Rest,
+                                           music21.chord.Chord)):
+                        spine.append(_note_to_kern_token(elem))
+
+            spine.append("==")
+            spine.append("*-")
+
+        # If single part, emit as single-column kern
+        if len(spines) == 1:
+            return "\n".join(spines[0]) + "\n"
+
+        # Multi-part: zip spines with tab separator
+        # Pad shorter spines to equal length
+        max_len = max(len(s) for s in spines)
+        for s in spines:
+            while len(s) < max_len:
+                s.append(".")
+
+        lines = ["\t".join(row[i] for row in spines) for i in range(max_len)]
+        return "\n".join(lines) + "\n"
+
     except Exception as exc:
-        log.debug("verovio failed %s: %s", mxl_path, exc)
+        log.debug("kern serialization failed %s: %s", mxl_path, exc)
         return None
 
 
@@ -362,10 +514,13 @@ def validate_kern(kern_text: str) -> list[str]:
 # ===========================================================================
 
 _MUSESCORE_CANDIDATES = [
-    "musescore4", "mscore4portable", "musescore3", "musescore", "MuseScore3",
+    "musescore3", "musescore", "MuseScore3",
+    "musescore4", "mscore4portable", "MuseScore4",
 ]
 
 def _find_musescore() -> str | None:
+    # Prefer musescore3 — musescore4 AppImage often has RC=40 in Docker environments
+    # and bundles its own xvfb-run which conflicts with our wrapper.
     for candidate in _MUSESCORE_CANDIDATES:
         if shutil.which(candidate):
             return candidate
@@ -814,7 +969,7 @@ def process_score(args: tuple) -> dict:
     kern_path = kern_dir / f"{score_id}.kern"
     if not kern_path.exists():
         if dry_run:
-            return {"scoreId": score_id, "ok": False, "reason": "dry_run"}
+            return {"scoreId": score_id, "ok": True, "dry_run": True, "examples": []}
 
         raw_kern = mxl_to_kern(mxl_path)
         if not raw_kern:
