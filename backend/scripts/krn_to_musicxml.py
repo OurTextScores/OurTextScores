@@ -8,6 +8,7 @@ CLI contract matches DerivativePipelineService:
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 
 
@@ -22,6 +23,31 @@ def _print_version() -> int:
         return 0
 
 
+def _ensure_music21():
+    try:
+        import music21  # type: ignore
+        return music21
+    except Exception:
+        auto_install = os.environ.get("MUSIC_KERN_MUSICXML_AUTO_INSTALL", "1").strip().lower()
+        if auto_install not in {"1", "true", "yes", "on"}:
+            raise
+        pip_args = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--break-system-packages",
+            "--no-cache-dir",
+            "music21>=9,<10",
+        ]
+        try:
+            subprocess.run(pip_args, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to auto-install music21: {exc}") from exc
+        import music21  # type: ignore
+        return music21
+
+
 def main(argv: list[str]) -> int:
     if len(argv) == 2 and argv[1] in {"--version", "-V", "-v"}:
         return _print_version()
@@ -33,12 +59,9 @@ def main(argv: list[str]) -> int:
     in_path, out_path = argv[1], argv[2]
 
     try:
+        _ensure_music21()
         from music21 import converter  # type: ignore
-    except Exception as exc:
-        print(f"Failed to import music21: {exc}", file=sys.stderr)
-        return 1
 
-    try:
         # Prefer explicit Humdrum parser; fallback to auto-detection.
         try:
             score = converter.parse(in_path, format="humdrum")
