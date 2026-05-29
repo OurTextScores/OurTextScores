@@ -39,7 +39,7 @@ describe("POST /api/llm/anthropic", () => {
 
     const req = {
       json: async () => ({
-        model: "claude-opus-4-5",
+        model: "claude-opus-4-8",
         promptText: "Return patch",
       }),
     } as unknown as Request;

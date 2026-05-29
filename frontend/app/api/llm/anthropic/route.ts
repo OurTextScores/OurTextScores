@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const model = coerceString(body.model) || "claude-opus-4-5";
+  const model = coerceString(body.model) || "claude-opus-4-8";
   const systemPrompt = coerceString(body.systemPrompt);
   const promptText =
     coerceString(body.promptText) || coerceString(body.prompt) || coerceString(body.xml);
@@ -122,4 +122,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ text });
 }
-

@@ -33,7 +33,7 @@ describe("POST /api/llm/gemini/models", () => {
       ok: true,
       text: async () =>
         JSON.stringify({
-          models: [{ name: "models/gemini-3-pro-preview" }],
+          models: [{ name: "models/gemini-2.5-pro" }],
         }),
     });
 
@@ -49,7 +49,7 @@ describe("POST /api/llm/gemini/models", () => {
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      models: [{ name: "models/gemini-3-pro-preview" }],
+      models: [{ name: "models/gemini-2.5-pro" }],
     });
   });
 
@@ -71,4 +71,3 @@ describe("POST /api/llm/gemini/models", () => {
     await expect(response.json()).resolves.toEqual({ error: "unauthorized" });
   });
 });
-

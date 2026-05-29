@@ -141,7 +141,7 @@ describe('AnalyticsService', () => {
         properties: {
           editor_session_id: 'sess_1',
           channel: 'assistant_patch',
-          model: 'gpt-5.2',
+          model: 'gpt-5.5',
           outcome: 'success',
           duration_ms: 812
         }
@@ -156,7 +156,7 @@ describe('AnalyticsService', () => {
     expect(inserted.properties).toMatchObject({
       editor_session_id: 'sess_1',
       channel: 'assistant_patch',
-      model: 'gpt-5.2',
+      model: 'gpt-5.5',
       outcome: 'success',
       duration_ms: 812
     });
@@ -326,7 +326,7 @@ describe('AnalyticsService', () => {
         properties: {
           channel: 'assistant_patch',
           provider: 'openai',
-          model: 'gpt-5.2',
+          model: 'gpt-5.5',
           outcome: 'success',
           duration_ms: 1000
         }
@@ -338,7 +338,7 @@ describe('AnalyticsService', () => {
         properties: {
           channel: 'assistant_patch',
           provider: 'openai',
-          model: 'gpt-5.2',
+          model: 'gpt-5.5',
           outcome: 'failure',
           duration_ms: 2000
         }
@@ -370,7 +370,7 @@ describe('AnalyticsService', () => {
     expect(result.aiBreakdown[0]).toMatchObject({
       channel: 'assistant_patch',
       provider: 'openai',
-      model: 'gpt-5.2',
+      model: 'gpt-5.5',
       requests: 2,
       failures: 1
     });

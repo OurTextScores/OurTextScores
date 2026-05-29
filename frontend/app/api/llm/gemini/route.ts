@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const model = coerceString(body.model) || "gemini-3-pro-preview";
+  const model = coerceString(body.model) || "gemini-2.5-pro";
   const normalizedModel = model.includes("/") ? model : `models/${model}`;
   const systemPrompt = coerceString(body.systemPrompt);
   const promptText =
@@ -129,4 +129,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ text });
 }
-

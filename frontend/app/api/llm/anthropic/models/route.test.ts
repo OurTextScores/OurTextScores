@@ -33,7 +33,7 @@ describe("POST /api/llm/anthropic/models", () => {
       ok: true,
       text: async () =>
         JSON.stringify({
-          data: [{ id: "claude-opus-4-5" }],
+          data: [{ id: "claude-opus-4-8" }],
         }),
     });
 
@@ -46,7 +46,7 @@ describe("POST /api/llm/anthropic/models", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe("https://api.anthropic.com/v1/models");
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ data: [{ id: "claude-opus-4-5" }] });
+    await expect(response.json()).resolves.toEqual({ data: [{ id: "claude-opus-4-8" }] });
   });
 
   it("bubbles upstream status on failure", async () => {

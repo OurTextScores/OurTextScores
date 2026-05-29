@@ -45,7 +45,7 @@ describe("POST /api/llm/gemini", () => {
 
     const req = {
       json: async () => ({
-        model: "gemini-3-pro-preview",
+        model: "gemini-2.5-pro",
         promptText: "Return patch",
       }),
     } as unknown as Request;
@@ -54,7 +54,7 @@ describe("POST /api/llm/gemini", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
     );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ text: "Patch payload" });
@@ -78,4 +78,3 @@ describe("POST /api/llm/gemini", () => {
     await expect(response.json()).resolves.toEqual({ error: "rate_limited" });
   });
 });
-
