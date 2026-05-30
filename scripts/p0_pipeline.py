@@ -529,9 +529,10 @@ def _find_musescore() -> str | None:
 
 
 def render_score(mxl_path: str, out_dir: Path, dpi: int = 150,
-                 timeout: int = 120) -> dict[str, list[Path]]:
+                 timeout: int = 120, svg_only: bool = False) -> dict[str, list[Path]]:
     """
-    Render MXL/MusicXML to per-page PNGs and SVGs.
+    Render MXL/MusicXML to per-page PNGs and/or SVGs.
+    svg_only=True skips the PNG render (used when PNGs pre-exist from p0-render.mjs).
     Returns {"png": [page1.png, …], "svg": [page1.svg, …]}.
     On failure returns {"png": [], "svg": []}.
     """
@@ -577,7 +578,7 @@ def render_score(mxl_path: str, out_dir: Path, dpi: int = 150,
                 found = [single]
         return found
 
-    png_pages = _run("png", ["-r", str(dpi)])
+    png_pages = [] if svg_only else _run("png", ["-r", str(dpi)])
     svg_pages = _run("svg", [])
 
     return {"png": png_pages, "svg": svg_pages}
@@ -974,7 +975,7 @@ def process_score(args: tuple) -> dict:
 
         raw_kern = mxl_to_kern(mxl_path)
         if not raw_kern:
-            return {"scoreId": score_id, "ok": False, "reason": "verovio_failed"}
+            return {"scoreId": score_id, "ok": False, "reason": "kern_failed"}
 
         normalized, norm_report = normalize_kern(raw_kern)
         validation_errors = validate_kern(normalized)
@@ -990,25 +991,34 @@ def process_score(args: tuple) -> dict:
         normalized = kern_path.read_text(encoding="utf-8")
 
     # ------------------------------------------------------------------
-    # Stage 2: MuseScore render
+    # Stage 2: MuseScore render (skip if p0-render.mjs already did it)
     # ------------------------------------------------------------------
+    # Check for pre-rendered PNGs from the parallel render container.
+    # SVGs are always re-generated to a tmpdir (not kept by render container).
+    pre_rendered_pngs = sorted(render_dir.glob(f"{score_id}-p*.png"))
+
     with tempfile.TemporaryDirectory(prefix=f"p0-{score_id}-") as tmp:
         tmp_path = Path(tmp)
-        render_result = render_score(mxl_path, tmp_path, dpi=150, timeout=120)
 
-        png_pages = render_result["png"]
-        svg_pages = render_result["svg"]
+        if pre_rendered_pngs:
+            # PNGs already exist — only render SVGs (halves MuseScore invocations)
+            svg_result = render_score(mxl_path, tmp_path, dpi=150, timeout=120, svg_only=True)
+            svg_pages = svg_result["svg"]
+            saved_pngs = pre_rendered_pngs
+        else:
+            render_result = render_score(mxl_path, tmp_path, dpi=150, timeout=120)
+            png_pages = render_result["png"]
+            svg_pages = render_result["svg"]
 
-        if not png_pages:
-            return {"scoreId": score_id, "ok": False, "reason": "render_no_png"}
+            if not png_pages:
+                return {"scoreId": score_id, "ok": False, "reason": "render_no_png"}
 
-        # Copy PNGs to permanent render dir
-        saved_pngs: list[Path] = []
-        for i, src in enumerate(png_pages, 1):
-            dst = render_dir / f"{score_id}-p{i:02d}.png"
-            if not dst.exists():
-                shutil.copy2(src, dst)
-            saved_pngs.append(dst)
+            saved_pngs = []
+            for i, src in enumerate(png_pages, 1):
+                dst = render_dir / f"{score_id}-p{i:02d}.png"
+                if not dst.exists():
+                    shutil.copy2(src, dst)
+                saved_pngs.append(dst)
 
         # ------------------------------------------------------------------
         # Stage 3 + 4: segment & align per page
