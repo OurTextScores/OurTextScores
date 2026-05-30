@@ -546,11 +546,8 @@ def render_score(mxl_path: str, out_dir: Path, dpi: int = 150,
         out_base = out_dir / f"output.{output_suffix}"
         cmd = [mscore, "-platform", "offscreen"] + extra_args + ["-o", str(out_base), mxl_path]
 
-        # Wrap with xvfb-run if available
-        xvfb = shutil.which("xvfb-run")
-        if xvfb:
-            cmd = [xvfb, "-a"] + cmd
-
+        # -platform offscreen is self-contained — no xvfb-run needed.
+        # Using xvfb-run -a causes display-number races under concurrent workers.
         try:
             subprocess.run(
                 cmd,
@@ -558,6 +555,7 @@ def render_score(mxl_path: str, out_dir: Path, dpi: int = 150,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
+                env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
             )
         except subprocess.TimeoutExpired:
             log.debug("MuseScore timed out: %s", mxl_path)
