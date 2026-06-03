@@ -460,10 +460,10 @@ async function main() {
     console.error('Error: MuseScore not found on PATH. Install musescore3 or musescore4.');
     process.exit(1);
   }
-  const xvfb = bin ? await findXvfbRun() : null;
+  const xvfb = null; // QT_QPA_PLATFORM=offscreen is self-contained; xvfb-run causes display races
   const timeoutMs = Number(process.env.MUSIC_MUSESCORE_TIMEOUT_MS || 120_000);
 
-  if (bin) log(`MuseScore: ${bin}${xvfb ? ' (xvfb-run)' : ''} | DPI: ${args.dpi} | workers: ${args.workers}`);
+  if (bin) log(`MuseScore: ${bin} (offscreen) | DPI: ${args.dpi} | workers: ${args.workers}`);
 
   const sem = new Semaphore(args.workers);
 

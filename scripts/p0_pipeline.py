@@ -687,6 +687,11 @@ def crop_system(png_path: Path, y1: int, y2: int, out_path: Path) -> bool:
         raise RuntimeError("Pillow not installed — run: pip install pillow")
     try:
         img = _PILImage.open(png_path)
+        if img.mode == 'RGBA':
+            # MuseScore renders RGBA with content in alpha; composite onto white
+            bg = _PILImage.new('RGBA', img.size, (255, 255, 255, 255))
+            bg.paste(img, mask=img.split()[3])
+            img = bg.convert('RGB')
         w, h = img.size
         crop = img.crop((0, y1, w, y2))
         crop.save(out_path, format="PNG", optimize=True)
