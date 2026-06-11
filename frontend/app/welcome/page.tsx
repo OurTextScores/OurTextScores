@@ -245,7 +245,7 @@ export default function WelcomePage() {
                 {entry.title === "Join us on Discord" && (
                   <div className="mt-3">
                     <Link
-                      href="https://discord.gg/wRzhrzJe"
+                      href="https://discord.gg/T3BuWeWGqt"
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-all duration-150 hover:-translate-y-px hover:bg-indigo-100 hover:shadow-sm dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
