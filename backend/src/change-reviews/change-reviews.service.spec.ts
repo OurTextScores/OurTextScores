@@ -334,8 +334,55 @@ describe('ChangeReviewsService', () => {
       expect.objectContaining({
         label: 'Piano - m. 1',
         changeType: 'modified',
+        summary: 'Changed Piano - m. 1: - <step>C</step>; + <step>D</step>',
         commentable: true,
       }),
+    );
+  });
+
+  it('includes attribute-only XML changes in score region summaries', async () => {
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        branchName: 'trunk',
+        baseRevisionId: 'rev-1',
+        headRevisionId: 'rev-2',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open',
+      }),
+    );
+    threadModel.find.mockReturnValue(chain([]));
+    commentModel.find.mockReturnValue(chain([]));
+    storageService.getObjectBuffer
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-10"><rest/></note></measure></part></score-partwise>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-20"><rest/></note></measure></part></score-partwise>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-10"><rest/></note></measure></part></score-partwise>',
+        ),
+      )
+      .mockResolvedValueOnce(
+        Buffer.from(
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-20"><rest/></note></measure></part></score-partwise>',
+        ),
+      );
+
+    const result = await service.getReviewDiff('review-1', { userId: 'reviewer-1', roles: ['user'] });
+
+    expect(result.scoreRegions[0].summary).toBe(
+      'Changed Piano - m. 1: - <note default-y="-10">; + <note default-y="-20">',
     );
   });
 

@@ -1415,14 +1415,14 @@ export class ChangeReviewsService {
       partId: string;
       partIndex: number;
       partName?: string;
-      measures: Array<{ measureIndex: number; measureNumber: string; signature: string }>;
+      measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }>;
     }> = [];
     const partRegex = /<part\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/part>/gi;
     let partMatch: RegExpExecArray | null;
     let partIndex = 0;
     while ((partMatch = partRegex.exec(scoreBody))) {
       const [, partId, body] = partMatch;
-      const measures: Array<{ measureIndex: number; measureNumber: string; signature: string }> = [];
+      const measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }> = [];
       const measureRegex = /<measure\b([^>]*)>([\s\S]*?)<\/measure>/gi;
       let measureMatch: RegExpExecArray | null;
       let measureIndex = 0;
@@ -1430,16 +1430,16 @@ export class ChangeReviewsService {
         const attrs = measureMatch[1] || '';
         const measureBody = measureMatch[2] || '';
         const numberMatch = attrs.match(/\bnumber="([^"]+)"/i);
+        const normalizedMeasureBody = measureBody
+          .replace(/\s+/g, ' ')
+          .replace(/\s+</g, '<')
+          .replace(/>\s+/g, '>')
+          .trim();
         measures.push({
           measureIndex,
           measureNumber: (numberMatch?.[1] || `${measureIndex + 1}`).trim(),
-          signature: this.hashText(
-            measureBody
-              .replace(/\s+/g, ' ')
-              .replace(/\s+</g, '<')
-              .replace(/>\s+/g, '>')
-              .trim(),
-          ),
+          signature: this.hashText(normalizedMeasureBody),
+          xml: normalizedMeasureBody,
         });
         measureIndex += 1;
       }
@@ -1461,7 +1461,7 @@ export class ChangeReviewsService {
         partId: string;
         partIndex: number;
         partName?: string;
-        measures: Array<{ measureIndex: number; measureNumber: string; signature: string }>;
+        measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }>;
       }>;
     },
     headScore: {
@@ -1469,7 +1469,7 @@ export class ChangeReviewsService {
         partId: string;
         partIndex: number;
         partName?: string;
-        measures: Array<{ measureIndex: number; measureNumber: string; signature: string }>;
+        measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }>;
       }>;
     },
   ) {
@@ -1518,7 +1518,9 @@ export class ChangeReviewsService {
         const side = changeType === 'removed' ? 'base' : 'head';
         const measureNumber = headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
         const label = `${partName || `Part ${partIndex + 1}`} - m. ${measureNumber}`;
-        const summary = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
+        const xmlDiff = this.summarizeMeasureXmlDiff(baseMeasure?.xml, headMeasure?.xml);
+        const summaryPrefix = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
+        const summary = xmlDiff ? `${summaryPrefix}: ${xmlDiff}` : summaryPrefix;
         const regionHash = this.hashText(`${partId}|${index}|${baseMeasure?.signature || ''}|${headMeasure?.signature || ''}|${changeType}`);
         regions.push({
           anchorId: this.hashText(`score-region|${partId}|${index}|${baseMeasure?.measureNumber || ''}|${headMeasure?.measureNumber || ''}|${regionHash}`),
@@ -1540,6 +1542,62 @@ export class ChangeReviewsService {
     }
 
     return regions;
+  }
+
+  private summarizeMeasureXmlDiff(baseXml?: string, headXml?: string) {
+    const extractLeafElements = (xml?: string) => {
+      const elements: string[] = [];
+      const leafRegex = /<([A-Za-z_][\w:.-]*)(?:\s[^>]*)?>([^<]+)<\/\1>/g;
+      let match: RegExpExecArray | null;
+      while ((match = leafRegex.exec(xml || ''))) {
+        const text = match[2].replace(/\s+/g, ' ').trim();
+        if (text) {
+          elements.push(`<${match[1]}>${text}</${match[1]}>`);
+        }
+      }
+      return elements;
+    };
+    const extractStartTags = (xml?: string) => {
+      return Array.from((xml || '').matchAll(/<(?!\/|!|\?)([A-Za-z_][\w:.-]*)(?:\s[^>]*)?\/?>/g))
+        .map((match) => match[0].replace(/\s+/g, ' ').trim());
+    };
+    const subtract = (values: string[], otherValues: string[]) => {
+      const remaining = [...otherValues];
+      return values.filter((value) => {
+        const matchIndex = remaining.indexOf(value);
+        if (matchIndex === -1) {
+          return true;
+        }
+        remaining.splice(matchIndex, 1);
+        return false;
+      });
+    };
+    const format = (prefix: '-' | '+', values: string[]) => {
+      if (!values.length) {
+        return '';
+      }
+      const shown = values.slice(0, 3).join(', ');
+      return `${prefix} ${shown}${values.length > 3 ? `, … (${values.length - 3} more)` : ''}`;
+    };
+
+    const baseElements = extractLeafElements(baseXml);
+    const headElements = extractLeafElements(headXml);
+    let removed = subtract(baseElements, headElements);
+    let added = subtract(headElements, baseElements);
+    if (!removed.length && !added.length && baseXml !== headXml) {
+      const baseTags = extractStartTags(baseXml);
+      const headTags = extractStartTags(headXml);
+      removed = subtract(baseTags, headTags);
+      added = subtract(headTags, baseTags);
+    }
+    const summary = [format('-', removed), format('+', added)].filter(Boolean).join('; ');
+    if (summary) {
+      return summary.length > 300 ? `${summary.slice(0, 297).replace(/[,\s;…]+$/g, '')}…` : summary;
+    }
+    if (baseXml === headXml) {
+      return '';
+    }
+    return 'XML structure changed';
   }
 
   private stripXmlText(value: string) {
