@@ -1435,11 +1435,17 @@ export class ChangeReviewsService {
           .replace(/\s+</g, '<')
           .replace(/>\s+/g, '>')
           .trim();
+        // Strip layout-only positioning attributes before hashing so that notation
+        // software rewriting default-x/y coordinates doesn't flag musically unchanged measures.
+        const semanticMeasureBody = normalizedMeasureBody.replace(
+          /\s+(default-x|default-y|relative-x|relative-y)="[^"]*"/g,
+          '',
+        );
         measures.push({
           measureIndex,
           measureNumber: (numberMatch?.[1] || `${measureIndex + 1}`).trim(),
-          signature: this.hashText(normalizedMeasureBody),
-          xml: normalizedMeasureBody,
+          signature: this.hashText(semanticMeasureBody),
+          xml: semanticMeasureBody,
         });
         measureIndex += 1;
       }

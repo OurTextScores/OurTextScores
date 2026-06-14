@@ -340,7 +340,7 @@ describe('ChangeReviewsService', () => {
     );
   });
 
-  it('includes attribute-only XML changes in score region summaries', async () => {
+  it('excludes layout-only attribute changes (default-y/x, relative-y/x) from score regions', async () => {
     reviewModel.findOne.mockReturnValue(
       chain({
         reviewId: 'review-1',
@@ -381,9 +381,8 @@ describe('ChangeReviewsService', () => {
 
     const result = await service.getReviewDiff('review-1', { userId: 'reviewer-1', roles: ['user'] });
 
-    expect(result.scoreRegions[0].summary).toBe(
-      'Changed Piano - m. 1: - <note default-y="-10">; + <note default-y="-20">',
-    );
+    // Measures that differ only in layout positioning attributes should not appear as changed regions.
+    expect(result.scoreRegions).toHaveLength(0);
   });
 
   it('submits a draft review and queues notifications for participants and watchers', async () => {
