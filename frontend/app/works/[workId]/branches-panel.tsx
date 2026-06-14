@@ -9,11 +9,13 @@ export default async function BranchesPanel({
   workId,
   sourceId,
   latestRevisionId,
+  revisions,
   currentUser,
 }: {
   workId: string;
   sourceId: string;
   latestRevisionId?: string;
+  revisions?: Array<{ revisionId: string; sequenceNumber: number; fossilBranch?: string }>;
   currentUser?: { userId: string; email?: string; name?: string; roles?: string[] } | null;
 }) {
   const API_BASE = getApiBase();
@@ -21,14 +23,18 @@ export default async function BranchesPanel({
   const authed = !!(headers && (headers as any).Authorization);
   const res = await fetch(`${API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches`, { headers, cache: 'no-store' });
   const data = res.ok ? await res.json() : { branches: [{ name: 'trunk', policy: 'public' }] };
-  const branches: Array<{ name: string; policy: 'public' | 'owner_approval'; lifecycle?: 'open' | 'closed'; ownerUserId?: string }> = data.branches || [];
+  const branches: Array<{ name: string; policy: 'public' | 'owner_approval'; lifecycle?: 'open' | 'closed'; ownerUserId?: string; baseRevisionId?: string }> = data.branches || [];
   const normalizedUser = currentUser ? { ...currentUser, isAdmin: Array.isArray(currentUser.roles) && currentUser.roles.includes('admin') } : null;
 
   return (
     <section className="rounded border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60">
       <h3 className="mb-3 font-semibold">Branches</h3>
       <div className="space-y-4">
-        {branches.map((branch) => (
+        {branches.map((branch) => {
+          const branchRevisions = (revisions ?? [])
+            .filter((revision) => (revision.fossilBranch || 'trunk') === branch.name)
+            .sort((a, b) => b.sequenceNumber - a.sequenceNumber);
+          return (
           <div key={branch.name} className="rounded border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-2">
@@ -42,7 +48,13 @@ export default async function BranchesPanel({
                   </span>
                 </div>
                 {branch.policy !== 'owner_approval' && authed && (
-                  <OpenBranchReviewButton workId={workId} sourceId={sourceId} branchName={branch.name} />
+                  <OpenBranchReviewButton
+                    workId={workId}
+                    sourceId={sourceId}
+                    branchName={branch.name}
+                    baseRevisionId={branchRevisions[1]?.revisionId || branch.baseRevisionId}
+                    headRevisionId={branchRevisions[0]?.revisionId}
+                  />
                 )}
                 {branch.policy !== 'owner_approval' && !authed && (
                   <div className="text-xs text-slate-600 dark:text-slate-300">
@@ -68,7 +80,8 @@ export default async function BranchesPanel({
               />
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       {authed ? (
         <div className="mt-4">

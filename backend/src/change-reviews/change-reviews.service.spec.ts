@@ -193,6 +193,48 @@ describe('ChangeReviewsService', () => {
     expect(result.source.label).toBe('Primary Score');
   });
 
+  it('initializes a branch review from its only revision', async () => {
+    reviewModel.findOne.mockReturnValueOnce(chain(null));
+    sourceRevisionModel.find = jest.fn().mockReturnValue(chain([headRevision]));
+
+    const result = await service.createOrOpenBranchReview({
+      workId: '164349',
+      sourceId: 'src-1',
+      branchName: 'trunk',
+      opener: { userId: 'reviewer-1', roles: ['user'] },
+    });
+
+    expect(reviewModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      baseRevisionId: 'rev-2',
+      headRevisionId: 'rev-2',
+      baseSequenceNumber: 2,
+      headSequenceNumber: 2,
+    }));
+    expect(patchsetModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      patchsetNumber: 1,
+      baseRevisionId: 'rev-2',
+      headRevisionId: 'rev-2',
+    }));
+    expect(result.reviewId).toBeDefined();
+  });
+
+  it('accepts the same revision as an explicit initial CR pair', async () => {
+    reviewModel.findOne.mockReturnValueOnce(chain(null));
+
+    await service.createOrOpenBranchReview({
+      workId: '164349',
+      sourceId: 'src-1',
+      branchName: 'trunk',
+      initialPair: { baseRevisionId: 'rev-2', headRevisionId: 'rev-2' },
+      opener: { userId: 'reviewer-1', roles: ['user'] },
+    });
+
+    expect(reviewModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      baseRevisionId: 'rev-2',
+      headRevisionId: 'rev-2',
+    }));
+  });
+
   it('returns an existing active branch review instead of creating another one', async () => {
     reviewModel.findOne.mockReturnValueOnce(
       chain({
@@ -383,6 +425,114 @@ describe('ChangeReviewsService', () => {
 
     // Measures that differ only in layout positioning attributes should not appear as changed regions.
     expect(result.scoreRegions).toHaveLength(0);
+  });
+
+  it('returns every head bar with changed metadata for the single-score review view', async () => {
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        baseRevisionId: 'rev-1',
+        headRevisionId: 'rev-2',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open',
+      }),
+    );
+    jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
+      reviewId: 'review-1',
+      fileKind: 'canonical',
+      baseRevisionId: 'rev-1',
+      headRevisionId: 'rev-2',
+      scoreRegions: [{
+        anchorId: 'changed-region',
+        partId: 'P1',
+        partIndex: 0,
+        partName: 'Piano',
+        side: 'head',
+        changeType: 'modified',
+        headMeasureIndex: 0,
+        headMeasureNumber: '1',
+        label: 'Piano - m. 1',
+        summary: 'Changed Piano - m. 1',
+        commentable: true,
+        regionHash: 'region-hash',
+      }],
+      hunks: [],
+      rawDiff: '',
+      threads: [],
+    } as any);
+    storageService.getObjectBuffer.mockResolvedValueOnce(
+      Buffer.from(
+        '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/></note></measure><measure number="2"><note><rest/></note></measure></part></score-partwise>',
+      ),
+    );
+
+    const result = await service.getReviewScoreView('review-1', { userId: 'reviewer-1', roles: ['user'] });
+
+    expect(result.bars).toHaveLength(2);
+    expect(result.bars[0]).toEqual(expect.objectContaining({
+      kind: 'score_bar',
+      label: 'Piano - m. 1',
+      changeType: 'modified',
+      commentable: true,
+    }));
+    expect(result.bars[1]).toEqual(expect.objectContaining({
+      label: 'Piano - m. 2',
+      changeType: undefined,
+      hasThread: false,
+      commentable: true,
+    }));
+  });
+
+  it('marks score-view bars that have review threads', async () => {
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        baseRevisionId: 'rev-2',
+        headRevisionId: 'rev-2',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open',
+      }),
+    );
+    jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
+      reviewId: 'review-1',
+      fileKind: 'canonical',
+      baseRevisionId: 'rev-2',
+      headRevisionId: 'rev-2',
+      scoreRegions: [],
+      hunks: [],
+      rawDiff: '',
+      threads: [{
+        threadId: 'thread-1',
+        status: 'open',
+        diffAnchor: {
+          anchorId: 'older-anchor-format',
+          lineHash: 'older-hash-format',
+          lineText: 'Piano - m. 1',
+        },
+        comments: [],
+      }],
+    } as any);
+    storageService.getObjectBuffer.mockResolvedValueOnce(
+      Buffer.from(
+        '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/></note></measure></part></score-partwise>',
+      ),
+    );
+
+    const result = await service.getReviewScoreView('review-1', { userId: 'reviewer-1', roles: ['user'] });
+
+    expect(result.bars[0]).toEqual(expect.objectContaining({
+      label: 'Piano - m. 1',
+      hasThread: true,
+      threadAnchorId: 'older-anchor-format',
+    }));
   });
 
   it('submits a draft review and queues notifications for participants and watchers', async () => {

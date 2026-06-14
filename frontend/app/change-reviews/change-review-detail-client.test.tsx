@@ -87,6 +87,36 @@ const initialDiff = {
 };
 
 describe("ChangeReviewDetailClient", () => {
+  it("embeds distinct base and head revisions in two-score review mode", () => {
+    const { container } = render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={initialDiff} />);
+
+    const iframe = container.querySelector("iframe");
+    expect(iframe?.getAttribute("src")).not.toContain("reviewScore=");
+    expect(iframe?.getAttribute("src")).toContain("compareLeft=");
+    expect(iframe?.getAttribute("src")).toContain("compareRight=");
+  });
+
+  it("embeds an initial same-revision review in single-score mode", () => {
+    const sameRevisionDiff = {
+      ...initialDiff,
+      baseRevisionId: "rev-2",
+      headRevisionId: "rev-2",
+    };
+    const sameRevisionReview = {
+      ...initialReview,
+      baseRevisionId: "rev-2",
+      headRevisionId: "rev-2",
+      baseSequenceNumber: 2,
+      headSequenceNumber: 2,
+    };
+    const { container } = render(<ChangeReviewDetailClient initialReview={sameRevisionReview} initialDiff={sameRevisionDiff} />);
+
+    const iframe = container.querySelector("iframe");
+    expect(iframe?.getAttribute("src")).toContain("reviewScore=");
+    expect(iframe?.getAttribute("src")).not.toContain("compareLeft=");
+    expect(iframe?.getAttribute("src")).not.toContain("compareRight=");
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -131,9 +161,9 @@ describe("ChangeReviewDetailClient", () => {
 
     render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={initialDiff} />);
 
-    await user.click(screen.getByRole("button", { name: "Add Thread" }));
+    await user.click(screen.getByRole("button", { name: "Comment on this bar" }));
     await user.type(screen.getByPlaceholderText("Write a review comment on this score change"), "Please verify this measure.");
-    await user.click(screen.getByRole("button", { name: "Save Thread" }));
+    await user.click(screen.getByRole("button", { name: "Comment" }));
 
     await waitFor(() => {
       expect(screen.getAllByText("Please verify this measure.").length).toBeGreaterThan(0);
@@ -154,6 +184,35 @@ describe("ChangeReviewDetailClient", () => {
         }),
       }),
     );
+  });
+
+  it("selects a changed bar before opening its comment composer", async () => {
+    const user = userEvent.setup();
+    const diffWithTwoBars = {
+      ...initialDiff,
+      scoreRegions: [
+        ...initialDiff.scoreRegions,
+        {
+          ...initialDiff.scoreRegions[0],
+          anchorId: "anchor-2",
+          baseMeasureIndex: 3,
+          headMeasureIndex: 3,
+          baseMeasureNumber: "4",
+          headMeasureNumber: "4",
+          label: "Piano - m. 4",
+          summary: "Changed Piano - m. 4: - <step>C</step>; + <step>D</step>",
+          regionHash: "hash-2",
+        },
+      ],
+    };
+
+    render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={diffWithTwoBars} />);
+
+    await user.click(screen.getByRole("button", { name: /Piano - m\. 4/ }));
+    expect(screen.getAllByText("Changed Piano - m. 4: - <step>C</step>; + <step>D</step>")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Comment on this bar" }));
+    expect(screen.getByPlaceholderText("Write a review comment on this score change")).toBeInTheDocument();
   });
 
   it("submits a draft review and refreshes to open status", async () => {

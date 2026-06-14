@@ -25,7 +25,7 @@ export class ChangeReviewsController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Param('branchName') branchName: string,
-    @Body() body: { ownerUserId?: string; title?: string },
+    @Body() body: { ownerUserId?: string; title?: string; baseRevisionId?: string; headRevisionId?: string },
     @CurrentUser() viewer: RequestUser,
   ) {
     return this.changeReviewsService.createOrOpenBranchReview({
@@ -34,6 +34,9 @@ export class ChangeReviewsController {
       branchName,
       ownerUserId: body.ownerUserId,
       title: body.title,
+      initialPair: body.baseRevisionId && body.headRevisionId
+        ? { baseRevisionId: body.baseRevisionId, headRevisionId: body.headRevisionId }
+        : undefined,
       opener: viewer,
     });
   }
@@ -90,17 +93,35 @@ export class ChangeReviewsController {
     return this.changeReviewsService.getReviewDiff(reviewId, viewer, patchsetNumber);
   }
 
+  @Get('change-reviews/:reviewId/score-view')
+  @UseGuards(AuthRequiredGuard)
+  @ApiOperation({
+    summary: 'Get the single-score change review view',
+    description: 'Returns all commentable bars in the head score, changed-bar metadata, removed regions, and threads.',
+  })
+  @ApiParam({ name: 'reviewId', example: 'a245d562-7f9d-4b1c-8269-23ccfcab4e1b' })
+  @ApiQuery({ name: 'patchset', required: false, description: 'Patchset number to review (defaults to latest)' })
+  getReviewScoreView(
+    @Param('reviewId') reviewId: string,
+    @Query('patchset') patchset: string | undefined,
+    @CurrentUser() viewer: RequestUser,
+  ) {
+    const patchsetNumber = patchset ? Number(patchset) : undefined;
+    return this.changeReviewsService.getReviewScoreView(reviewId, viewer, patchsetNumber);
+  }
+
   @Post('change-reviews/:reviewId/threads')
   @UseGuards(AuthRequiredGuard)
   createThread(
     @Param('reviewId') reviewId: string,
-    @Body() body: { anchorId: string; content: string },
+    @Body() body: { anchorId: string; content: string; patchsetNumber?: number },
     @CurrentUser() viewer: RequestUser,
   ) {
     return this.changeReviewsService.createThread({
       reviewId,
       anchorId: body.anchorId,
       content: body.content,
+      patchsetNumber: body.patchsetNumber,
       viewer,
     });
   }

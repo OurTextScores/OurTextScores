@@ -407,10 +407,77 @@ export class ChangeReviewsService {
     };
   }
 
+  async getReviewScoreView(reviewId: string, viewer: RequestUser, patchsetNumber?: number) {
+    const diff = await this.getReviewDiff(reviewId, viewer, patchsetNumber);
+    const review = await this.getReadableReview(reviewId, viewer);
+    const headRevision = await this.sourceRevisionModel
+      .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: diff.headRevisionId })
+      .lean()
+      .exec();
+    const headLocator = (headRevision as any)?.derivatives?.canonicalXml;
+    if (!headLocator) {
+      throw new NotFoundException('Canonical XML missing for head revision');
+    }
+
+    const headBuffer = await this.storageService.getObjectBuffer(headLocator.bucket, headLocator.objectKey);
+    const headScore = this.extractScoreStructure(headBuffer.toString('utf8'));
+    const changedByBar = new Map(
+      diff.scoreRegions
+        .filter((region) => region.side === 'head' && region.headMeasureIndex != null)
+        .map((region) => [`${region.partId}|${region.headMeasureIndex}`, region]),
+    );
+    const bars = headScore.parts.flatMap((part) =>
+      part.measures.map((measure) => {
+        const change = changedByBar.get(`${part.partId}|${measure.measureIndex}`);
+        const label = `${part.partName || `Part ${part.partIndex + 1}`} - m. ${measure.measureNumber}`;
+        const anchorId = this.hashText(
+          `score-bar|${review.reviewId}|${patchsetNumber ?? 'latest'}|${diff.headRevisionId}|${part.partId}|${measure.measureIndex}|${measure.signature}`,
+        );
+        const thread = diff.threads.find((candidate) =>
+          candidate.diffAnchor.anchorId === anchorId
+          || candidate.diffAnchor.anchorId === change?.anchorId
+          || candidate.diffAnchor.lineHash === measure.signature
+          || candidate.diffAnchor.lineText === label,
+        );
+        return {
+          kind: 'score_bar' as const,
+          anchorId,
+          patchsetNumber,
+          revisionId: diff.headRevisionId,
+          side: 'head' as const,
+          partId: part.partId,
+          partIndex: part.partIndex,
+          partName: part.partName,
+          measureIndex: measure.measureIndex,
+          measureNumber: measure.measureNumber,
+          measureHash: measure.signature,
+          label,
+          changeAnchorId: change?.anchorId,
+          changeType: change?.changeType,
+          summary: change?.summary,
+          threadAnchorId: thread?.diffAnchor.anchorId,
+          hasThread: Boolean(thread),
+          commentable: true,
+        };
+      }),
+    );
+
+    return {
+      reviewId: review.reviewId,
+      patchsetNumber,
+      baseRevisionId: diff.baseRevisionId,
+      headRevisionId: diff.headRevisionId,
+      bars,
+      removedRegions: diff.scoreRegions.filter((region) => region.changeType === 'removed'),
+      threads: diff.threads,
+    };
+  }
+
   async createThread(input: {
     reviewId: string;
     anchorId: string;
     content: string;
+    patchsetNumber?: number;
     viewer: RequestUser;
   }) {
     const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).lean().exec();
@@ -424,12 +491,18 @@ export class ChangeReviewsService {
       throw new BadRequestException('Comment content is required');
     }
 
-    const diff = await this.getReviewDiff(review.reviewId, input.viewer);
+    const diff = await this.getReviewDiff(review.reviewId, input.viewer, input.patchsetNumber);
     const scoreRegion = (diff as any).scoreRegions?.find((region: any) => region.anchorId === input.anchorId) || null;
     const anchor = scoreRegion ? null : this.findAnchor(diff.hunks, input.anchorId);
-    if (!scoreRegion && (!anchor || !anchor.commentable)) {
+    const scoreView = scoreRegion || anchor
+      ? null
+      : await this.getReviewScoreView(review.reviewId, input.viewer, input.patchsetNumber);
+    const scoreBar = scoreView?.bars.find((bar) => bar.anchorId === input.anchorId) || null;
+    const removedRegion = scoreView?.removedRegions.find((region) => region.anchorId === input.anchorId) || null;
+    if (!scoreRegion && !scoreBar && !removedRegion && (!anchor || !anchor.commentable)) {
       throw new BadRequestException('Invalid or non-commentable diff anchor');
     }
+    const scoreAnchor = scoreRegion || scoreBar || removedRegion;
 
     const now = new Date();
     const threadId = randomUUID();
@@ -442,13 +515,13 @@ export class ChangeReviewsService {
       sourceId: review.sourceId,
       fileKind: 'canonical',
       diffAnchor: {
-        side: scoreRegion?.side || anchor?.side || 'head',
+        side: scoreAnchor?.side || anchor?.side || 'head',
         oldLineNumber: anchor?.oldLineNumber,
         newLineNumber: anchor?.newLineNumber,
-        anchorId: scoreRegion?.anchorId || anchor?.anchorId || input.anchorId,
-        lineHash: scoreRegion?.regionHash || anchor?.lineHash || this.hashText(input.anchorId),
-        lineText: scoreRegion?.label || anchor?.content || 'Score region',
-        hunkHeader: scoreRegion?.summary || anchor?.hunkHeader,
+        anchorId: scoreAnchor?.anchorId || anchor?.anchorId || input.anchorId,
+        lineHash: scoreRegion?.regionHash || scoreBar?.measureHash || removedRegion?.regionHash || anchor?.lineHash || this.hashText(input.anchorId),
+        lineText: scoreAnchor?.label || anchor?.content || 'Score region',
+        hunkHeader: scoreAnchor?.summary || anchor?.hunkHeader,
       },
       status: 'open',
       createdByUserId: input.viewer.userId,
@@ -915,8 +988,8 @@ export class ChangeReviewsService {
     if (!this.canViewerAccessRevision(headRevision as any, input.viewer, viewerIsAdmin)) {
       throw new NotFoundException(`Revision ${input.headRevisionId} not found`);
     }
-    if (Number((baseRevision as any).sequenceNumber || 0) >= Number((headRevision as any).sequenceNumber || 0)) {
-      throw new BadRequestException('baseRevisionId must be older than headRevisionId');
+    if (Number((baseRevision as any).sequenceNumber || 0) > Number((headRevision as any).sequenceNumber || 0)) {
+      throw new BadRequestException('baseRevisionId must not be newer than headRevisionId');
     }
 
     return { work, source, baseRevision, headRevision };
@@ -979,11 +1052,13 @@ export class ChangeReviewsService {
       }
     }
     if (!baseRevision) {
-      throw new BadRequestException('Branch needs at least two revisions, or a declared base revision, before it can be reviewed');
+      // Initialize a branch CR against its first revision. The first later upload
+      // creates the first meaningful patchset from this revision to the new head.
+      baseRevision = headRevision;
     }
 
-    if (Number((baseRevision as any).sequenceNumber || 0) >= Number((headRevision as any).sequenceNumber || 0)) {
-      throw new BadRequestException('Resolved branch review base revision is not older than the branch head');
+    if (Number((baseRevision as any).sequenceNumber || 0) > Number((headRevision as any).sequenceNumber || 0)) {
+      throw new BadRequestException('Resolved branch review base revision is newer than the branch head');
     }
 
     return { work, source, baseRevision, headRevision };

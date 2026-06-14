@@ -238,7 +238,9 @@ export default function DiffPreview({
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    title: `CR for ${branch}`
+                    title: `CR for ${branch}`,
+                    baseRevisionId: revAItem.sequenceNumber < revBItem.sequenceNumber ? revAItem.revisionId : revBItem.revisionId,
+                    headRevisionId: revAItem.sequenceNumber < revBItem.sequenceNumber ? revBItem.revisionId : revAItem.revisionId,
                   })
                 });
                 if (!res.ok) {

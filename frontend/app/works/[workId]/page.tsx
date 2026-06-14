@@ -177,6 +177,7 @@ export default async function WorkDetailPage({
                       workId={workId}
                       sourceId={source.sourceId}
                       latestRevisionId={source.revisions[0]?.revisionId}
+                      revisions={source.revisions}
                       currentUser={currentUser}
                     />
                   </Suspense>

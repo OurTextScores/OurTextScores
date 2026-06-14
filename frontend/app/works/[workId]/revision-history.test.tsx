@@ -15,7 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders, userEvent } from '../../test-utils';
 import RevisionHistory from './revision-history';
 
@@ -483,11 +483,68 @@ describe('RevisionHistory', () => {
         method: 'POST',
         body: JSON.stringify({
           title: 'CR for trunk',
+          baseRevisionId: 'rev-2',
+          headRevisionId: 'rev-3',
         }),
       }),
     );
 
     global.fetch = originalFetch;
     consoleErrorSpy.mockRestore();
+  });
+
+  it('creates an initial change review when a branch has only one revision', async () => {
+    const user = userEvent.setup();
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/change-review')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ reviewId: 'review-initial' }),
+          text: async () => '',
+        } as any);
+      }
+      if (url.includes('/comments')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ([]),
+          text: async () => '[]',
+        } as any);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ branches: [] }),
+        text: async () => '',
+      } as any);
+    }) as any;
+
+    renderWithProviders(
+      <RevisionHistory
+        workId="12345"
+        sourceId="source-1"
+        revisions={[mockRevisions[0]]}
+        branchNames={branchNames}
+        publicApiBase="http://localhost:4000/api"
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /Create CR/i }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/proxy/works/12345/sources/source-1/branches/trunk/change-review',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            title: 'CR for trunk',
+            baseRevisionId: 'rev-3',
+            headRevisionId: 'rev-3',
+          }),
+        }),
+      );
+    });
+
+    global.fetch = originalFetch;
   });
 });

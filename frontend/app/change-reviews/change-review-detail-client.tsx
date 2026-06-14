@@ -121,6 +121,9 @@ export default function ChangeReviewDetailClient({
   const [diff, setDiff] = useState(initialDiff);
   const [summaryDraft, setSummaryDraft] = useState(initialReview.summary || "");
   const [selectedPatchset, setSelectedPatchset] = useState<number | null>(null);
+  const [selectedRegionAnchorId, setSelectedRegionAnchorId] = useState<string | null>(
+    initialDiff.scoreRegions[0]?.anchorId ?? null,
+  );
   const [newThreadAnchorId, setNewThreadAnchorId] = useState<string | null>(null);
   const [newThreadContent, setNewThreadContent] = useState("");
   const [replyThreadId, setReplyThreadId] = useState<string | null>(null);
@@ -152,19 +155,34 @@ export default function ChangeReviewDetailClient({
 
   const threadsByAnchor = new Map(diff.threads.map((thread) => [thread.diffAnchor.anchorId, thread]));
   const legacyThreads = diff.threads.filter((thread) => !diff.scoreRegions.some((region) => region.anchorId === thread.diffAnchor.anchorId));
+  const selectedRegion = diff.scoreRegions.find((region) => region.anchorId === selectedRegionAnchorId)
+    ?? diff.scoreRegions[0]
+    ?? null;
+  const selectedRegionThread = selectedRegion ? threadsByAnchor.get(selectedRegion.anchorId) : undefined;
   const patchsets = review.patchsets ?? [];
   const activePatchset = selectedPatchset != null
     ? patchsets.find((ps) => ps.patchsetNumber === selectedPatchset)
     : null;
   const diffBaseSeq = activePatchset?.baseSequenceNumber ?? review.baseSequenceNumber;
   const diffHeadSeq = activePatchset?.headSequenceNumber ?? review.headSequenceNumber;
-  const visualDiffUrl = `/score-editor/index.html?compareLeft=${encodeURIComponent(
-    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(diff.baseRevisionId)}`,
-  )}&compareRight=${encodeURIComponent(
-    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(diff.headRevisionId)}`,
-  )}&leftLabel=${encodeURIComponent(`Rev #${diffBaseSeq}`)}&rightLabel=${encodeURIComponent(
-    `Rev #${diffHeadSeq}`,
-  )}&changeReviewId=${encodeURIComponent(review.reviewId)}${selectedPatchset != null ? `&patchset=${selectedPatchset}` : ''}`;
+  const isSingleRevisionReview = review.baseRevisionId === review.headRevisionId;
+  const scoreUrl = (revisionId: string) =>
+    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(revisionId)}`;
+  const visualDiffUrl = isSingleRevisionReview
+    ? `/score-editor/index.html?reviewScore=${encodeURIComponent(scoreUrl(diff.headRevisionId))}&reviewLabel=${encodeURIComponent(
+      `Rev #${diffHeadSeq}`,
+    )}&changeReviewId=${encodeURIComponent(review.reviewId)}${selectedPatchset != null ? `&patchset=${selectedPatchset}` : ''}`
+    : `/score-editor/index.html?compareLeft=${encodeURIComponent(scoreUrl(diff.baseRevisionId))}&compareRight=${encodeURIComponent(
+      scoreUrl(diff.headRevisionId),
+    )}&leftLabel=${encodeURIComponent(`Rev #${diffBaseSeq}`)}&rightLabel=${encodeURIComponent(
+      `Rev #${diffHeadSeq}`,
+    )}&changeReviewId=${encodeURIComponent(review.reviewId)}${selectedPatchset != null ? `&patchset=${selectedPatchset}` : ''}`;
+
+  useEffect(() => {
+    if (!diff.scoreRegions.some((region) => region.anchorId === selectedRegionAnchorId)) {
+      setSelectedRegionAnchorId(diff.scoreRegions[0]?.anchorId ?? null);
+    }
+  }, [diff.scoreRegions, selectedRegionAnchorId]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -435,107 +453,170 @@ export default function ChangeReviewDetailClient({
         </section>
       )}
 
-      <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Score Visual Diff</h2>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Rev #{diffBaseSeq} vs Rev #{diffHeadSeq}
-          </span>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+          <div>
+            <h2 className="text-lg font-semibold">Review score</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {isSingleRevisionReview
+                ? "Select any bar in the score to read or leave a focused comment."
+                : "Review changes between the base and head revisions and leave focused thread comments."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span>{isSingleRevisionReview ? `Rev #${diffHeadSeq}` : `Rev #${diffBaseSeq} vs Rev #${diffHeadSeq}`}</span>
+            <span aria-hidden="true">·</span>
+            <span>{diff.scoreRegions.length} changed bar{diff.scoreRegions.length === 1 ? "" : "s"}</span>
+          </div>
         </div>
-        <iframe
-          key={`${diff.baseRevisionId}-${diff.headRevisionId}`}
-          src={visualDiffUrl}
-          title="Score visual diff"
-          className="h-[820px] w-full rounded border border-slate-200 dark:border-slate-800"
-        />
-      </section>
 
-      <section className="rounded border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Changed Score Regions</h2>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {diff.scoreRegions.length} region{diff.scoreRegions.length === 1 ? "" : "s"}
-          </span>
-        </div>
-        <div className="space-y-6">
-          {diff.scoreRegions.map((region) => {
-            const thread = threadsByAnchor.get(region.anchorId);
-            const regionClasses =
-              region.changeType === "added"
-                ? "bg-emerald-50 dark:bg-emerald-950/20"
-                : region.changeType === "removed"
-                  ? "bg-rose-50 dark:bg-rose-950/20"
-                  : "bg-amber-50 dark:bg-amber-950/20";
-            return (
-              <div key={region.anchorId} className={`overflow-hidden rounded border border-slate-200 dark:border-slate-800 ${regionClasses}`}>
-                <div className="flex items-start justify-between gap-4 px-4 py-3">
-                  <div>
-                    <div className="font-medium text-slate-900 dark:text-slate-100">{region.label}</div>
-                    <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">{region.summary}</div>
-                  </div>
-                  {!thread && region.commentable && review.permissions.canAddThread ? (
+        <div className="min-h-[820px]">
+          <div className="min-w-0 bg-slate-100 p-3 dark:bg-slate-950/60">
+            <iframe
+              key={`${diff.baseRevisionId}-${diff.headRevisionId}`}
+              src={visualDiffUrl}
+              title="Score visual diff"
+              className="h-[820px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+            />
+          </div>
+
+          <aside className="hidden">
+            <div className="border-b border-slate-200 p-3 dark:border-slate-800">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Changed bars</h3>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {diff.threads.filter((thread) => thread.status === "open").length} open
+                </span>
+              </div>
+              <div className="flex max-h-64 gap-2 overflow-auto pb-1 lg:flex-col lg:pb-0">
+                {diff.scoreRegions.map((region) => {
+                  const thread = threadsByAnchor.get(region.anchorId);
+                  const isSelected = selectedRegion?.anchorId === region.anchorId;
+                  const changeDot =
+                    region.changeType === "added"
+                      ? "bg-emerald-500"
+                      : region.changeType === "removed"
+                        ? "bg-rose-500"
+                        : "bg-amber-500";
+                  return (
                     <button
+                      key={region.anchorId}
+                      type="button"
+                      aria-pressed={isSelected}
                       onClick={() => {
-                        setNewThreadAnchorId(region.anchorId);
+                        setSelectedRegionAnchorId(region.anchorId);
+                        setNewThreadAnchorId(null);
                         setNewThreadContent("");
                       }}
-                      className="rounded border border-slate-300 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      className={`min-w-56 rounded-lg border px-3 py-2.5 text-left transition-colors lg:min-w-0 ${
+                        isSelected
+                          ? "border-cyan-500 bg-cyan-50 ring-1 ring-cyan-500 dark:border-cyan-500 dark:bg-cyan-950/30"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800/70"
+                      }`}
                     >
-                      Add Thread
+                      <span className="flex items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${changeDot}`} />
+                        <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{region.label}</span>
+                        {thread ? (
+                          <span className={`ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                            thread.status === "open"
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
+                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200"
+                          }`}>
+                            {thread.status}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-slate-500 dark:text-slate-400">{region.summary}</span>
                     </button>
-                  ) : null}
-                </div>
-                {newThreadAnchorId === region.anchorId ? (
-                  <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
-                    <textarea
-                      value={newThreadContent}
-                      onChange={(e) => setNewThreadContent(e.target.value)}
-                      rows={3}
-                      placeholder="Write a review comment on this score change"
-                      className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        onClick={() =>
-                          runAction(async () => {
-                            await jsonFetch(`/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/threads`, {
-                              method: "POST",
-                              body: JSON.stringify({
-                                anchorId: region.anchorId,
-                                content: newThreadContent,
-                              }),
-                            });
-                            setNewThreadAnchorId(null);
-                            setNewThreadContent("");
-                            await refresh();
-                          })
-                        }
-                        className="rounded bg-cyan-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
-                        disabled={isPending}
-                      >
-                        Save Thread
-                      </button>
-                      <button
-                        onClick={() => {
-                          setNewThreadAnchorId(null);
-                          setNewThreadContent("");
-                        }}
-                        className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                  );
+                })}
+                {diff.scoreRegions.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 px-3 py-5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    No musically changed bars were identified for this revision pair.
                   </div>
                 ) : null}
-                {thread ? renderThread(thread) : null}
               </div>
-            );
-          })}
-          {diff.scoreRegions.length === 0 ? (
-            <div className="rounded border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              No score regions were identified for this revision pair.
             </div>
-          ) : null}
+
+            {selectedRegion ? (
+              <div className="lg:sticky lg:top-4">
+                <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Selected bar
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">{selectedRegion.label}</div>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {selectedRegion.changeType}
+                    </span>
+                  </div>
+                  <p className="mt-2 break-words text-xs leading-5 text-slate-600 dark:text-slate-400">{selectedRegion.summary}</p>
+                </div>
+
+                {!selectedRegionThread && selectedRegion.commentable && review.permissions.canAddThread ? (
+                  <div className="p-4">
+                    {newThreadAnchorId === selectedRegion.anchorId ? (
+                      <div>
+                        <textarea
+                          autoFocus
+                          value={newThreadContent}
+                          onChange={(e) => setNewThreadContent(e.target.value)}
+                          rows={5}
+                          placeholder="Write a review comment on this score change"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        />
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={() =>
+                              runAction(async () => {
+                                await jsonFetch(`/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/threads`, {
+                                  method: "POST",
+                                  body: JSON.stringify({
+                                    anchorId: selectedRegion.anchorId,
+                                    content: newThreadContent,
+                                  }),
+                                });
+                                setNewThreadAnchorId(null);
+                                setNewThreadContent("");
+                                await refresh();
+                              })
+                            }
+                            className="rounded bg-cyan-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
+                            disabled={isPending || !newThreadContent.trim()}
+                          >
+                            Comment
+                          </button>
+                          <button
+                            onClick={() => {
+                              setNewThreadAnchorId(null);
+                              setNewThreadContent("");
+                            }}
+                            className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setNewThreadAnchorId(selectedRegion.anchorId);
+                          setNewThreadContent("");
+                        }}
+                        className="w-full rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+                      >
+                        Comment on this bar
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+                {selectedRegionThread ? renderThread(selectedRegionThread) : null}
+              </div>
+            ) : null}
+          </aside>
         </div>
       </section>
 

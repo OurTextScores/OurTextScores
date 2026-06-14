@@ -161,11 +161,14 @@ export default function RevisionHistory({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-slate-700 dark:divide-slate-800 dark:text-slate-300">
-            {filtered.map((revision, index) => (
+            {filtered.map((revision) => (
               <RevisionRow
                 key={revision.revisionId}
                 revision={revision}
-                previousRevision={filtered[index + 1]}
+                previousRevision={revisions.find((candidate) =>
+                  candidate.sequenceNumber < revision.sequenceNumber
+                  && (candidate.fossilBranch || "trunk") === (revision.fossilBranch || "trunk")
+                )}
                 workId={workId}
                 sourceId={sourceId}
                 sourceLabel={sourceLabel}
@@ -450,6 +453,8 @@ function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel
             )}
             {branchPolicy !== "owner_approval" && (
               <button
+                disabled={reviewState === "loading"}
+                title={previousRevision ? "Open a change review for this revision pair" : "Create a change review for this branch"}
                 onClick={async () => {
                   try {
                     setReviewState("loading");
@@ -461,6 +466,8 @@ function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                           title: `CR for ${branchName}`,
+                          baseRevisionId: previousRevision?.revisionId || revision.revisionId,
+                          headRevisionId: revision.revisionId,
                         }),
                       }
                     );
@@ -475,12 +482,14 @@ function RevisionRow({ revision, previousRevision, workId, sourceId, sourceLabel
                     setReviewError(err instanceof Error ? err.message : String(err));
                   }
                 }}
-                className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
+                className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-500 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900 dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
               >
                 <span aria-hidden="true">☰ </span>
                 {reviewState === "loading"
                   ? "Opening CR..."
-                  : "Open CR"}
+                  : previousRevision
+                    ? "Open CR"
+                    : "Create CR"}
               </button>
             )}
             {reviewError ? (
