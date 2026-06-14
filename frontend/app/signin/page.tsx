@@ -12,6 +12,7 @@ export default function SignInPage({
 }) {
   const next = typeof searchParams?.next === "string" ? searchParams.next : "";
   const errorCode = typeof searchParams?.error === "string" ? searchParams.error : "";
+  const emailEnabled = Boolean(process.env.EMAIL_SERVER && process.env.EMAIL_FROM);
   const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   const githubEnabled = Boolean(process.env.GITHUB_ID && process.env.GITHUB_SECRET);
 
@@ -21,13 +22,14 @@ export default function SignInPage({
         <header className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
           <h1 className="text-2xl font-semibold">Sign in</h1>
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-            Sign in with Google to get started.
+            Sign in to access reviews and collaboration tools.
           </p>
         </header>
 
         <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
           <SignInForm
             initialNext={next}
+            emailEnabled={emailEnabled}
             googleEnabled={googleEnabled}
             githubEnabled={githubEnabled}
             initialErrorCode={errorCode}

@@ -1,9 +1,11 @@
 import type { NextAuthOptions } from "next-auth";
 import NextAuth from "next-auth";
+import EmailProvider from "next-auth/providers/email";
 import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
 import { MongoDBAdapter } from "@next-auth/mongodb-adapter";
 import { createHash } from "crypto";
+import nodemailer from "nodemailer";
 import clientPromise from "./mongo";
 
 function escapeRegex(input: string): string {
@@ -50,6 +52,28 @@ export const authOptions: NextAuthOptions = {
   adapter: MongoDBAdapter(clientPromise),
   debug: !!process.env.NEXTAUTH_DEBUG,
   providers: [
+    ...(process.env.EMAIL_SERVER && process.env.EMAIL_FROM
+      ? [
+          EmailProvider({
+            server: process.env.EMAIL_SERVER,
+            from: process.env.EMAIL_FROM,
+            async sendVerificationRequest({ identifier, url, provider }) {
+              const transport = nodemailer.createTransport(provider.server as any);
+              const result = await transport.sendMail({
+                to: identifier,
+                from: provider.from as string,
+                subject: "Sign in to OurTextScores",
+                text: `Sign in by clicking this link: ${url}`,
+                html: `<p>Sign in by clicking this link:</p><p><a href="${url}">${url}</a></p>`
+              });
+              const failed = [...(result.rejected || []), ...(result.pending || [])];
+              if (failed.length) {
+                throw new Error(`Email(s) ${failed.join(", ")} could not be sent`);
+              }
+            }
+          })
+        ]
+      : []),
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [
           GoogleProvider({

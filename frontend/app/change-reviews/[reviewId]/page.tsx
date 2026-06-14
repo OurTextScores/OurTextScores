@@ -130,7 +130,7 @@ export default async function ChangeReviewDetailPage({
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <div className="mx-auto w-full max-w-7xl px-6">
+      <div className="w-full px-6">
         <header className="mb-8 flex items-start justify-between gap-6">
           <div>
             <div className="mb-2 flex flex-wrap items-center gap-2">
