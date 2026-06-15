@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { Model } from 'mongoose';
 import { ChangeReviewsService } from './change-reviews.service';
 import { ChangeReview } from './schemas/change-review.schema';
@@ -141,8 +141,10 @@ describe('ChangeReviewsService', () => {
     threadModel.find = jest.fn().mockReturnValue(chain([]));
     threadModel.countDocuments = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
     threadModel.create = jest.fn().mockResolvedValue(undefined);
+    threadModel.deleteOne = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) });
     commentModel.find = jest.fn().mockReturnValue(chain([]));
     commentModel.create = jest.fn().mockResolvedValue(undefined);
+    commentModel.countDocuments = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<score-partwise/>\n'));
 
     service = new ChangeReviewsService(
@@ -330,6 +332,58 @@ describe('ChangeReviewsService', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
+  it('returns the current viewer id with review detail', async () => {
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open',
+      }),
+    );
+
+    const detail = await service.getReviewDetail('review-1', { userId: 'reviewer-1', roles: ['user'] });
+
+    expect(detail.viewerUserId).toBe('reviewer-1');
+  });
+
+  it('deletes an empty thread after its author deletes the last comment', async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open',
+      }),
+    );
+    commentModel.findOne = jest.fn().mockReturnValue({
+      exec: jest.fn().mockResolvedValue({
+        commentId: 'comment-1',
+        reviewId: 'review-1',
+        threadId: 'thread-1',
+        userId: 'reviewer-1',
+        save,
+      }),
+    });
+
+    await service.deleteComment({
+      reviewId: 'review-1',
+      commentId: 'comment-1',
+      viewer: { userId: 'reviewer-1', roles: ['user'] },
+    });
+
+    expect(save).toHaveBeenCalled();
+    expect(threadModel.deleteOne).toHaveBeenCalledWith({
+      reviewId: 'review-1',
+      threadId: 'thread-1',
+    });
+  });
+
   it('returns structured diff hunks for a readable review', async () => {
     reviewModel.findOne.mockReturnValue(
       chain({
@@ -372,6 +426,12 @@ describe('ChangeReviewsService', () => {
 
     expect(result.fileKind).toBe('canonical');
     expect(result.scoreRegions.length).toBeGreaterThan(0);
+    expect(result.bars).toHaveLength(2);
+    expect(result.bars).toEqual(expect.arrayContaining([
+      expect.objectContaining({ side: 'base', partId: 'P1', partIndex: 0, measureIndex: 0, commentable: true }),
+      expect.objectContaining({ side: 'head', partId: 'P1', partIndex: 0, measureIndex: 0, commentable: true }),
+    ]));
+    expect(result.bars[0].anchorId).not.toBe(result.bars[1].anchorId);
     expect(result.scoreRegions[0]).toEqual(
       expect.objectContaining({
         label: 'Piano - m. 1',
@@ -532,6 +592,93 @@ describe('ChangeReviewsService', () => {
       label: 'Piano - m. 1',
       hasThread: true,
       threadAnchorId: 'older-anchor-format',
+    }));
+  });
+
+  it('rejects client-generated measure anchors that are not in the review diff', async () => {
+    reviewModel.findOne.mockReturnValue(chain({
+      reviewId: 'review-1',
+      workId: '164349',
+      sourceId: 'src-1',
+      reviewerUserId: 'reviewer-1',
+      ownerUserId: 'author-2',
+      participantUserIds: ['reviewer-1', 'author-2'],
+      status: 'open',
+    }));
+    jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
+      reviewId: 'review-1',
+      fileKind: 'canonical',
+      baseRevisionId: 'rev-1',
+      headRevisionId: 'rev-2',
+      scoreRegions: [],
+      bars: [],
+      hunks: [],
+      rawDiff: '',
+      threads: [],
+    } as any);
+    jest.spyOn(service, 'getReviewScoreView').mockResolvedValue({
+      reviewId: 'review-1',
+      baseRevisionId: 'rev-1',
+      headRevisionId: 'rev-2',
+      bars: [],
+      removedRegions: [],
+      threads: [],
+    } as any);
+
+    await expect(service.createThread({
+      reviewId: 'review-1',
+      anchorId: 'score-measure:head:4',
+      content: 'This should not be accepted',
+      viewer: { userId: 'reviewer-1', roles: ['user'] },
+    })).rejects.toThrow(BadRequestException);
+  });
+
+  it('creates a thread only for an exact backend-generated comparison bar anchor', async () => {
+    reviewModel.findOne.mockReturnValue(chain({
+      reviewId: 'review-1',
+      workId: '164349',
+      sourceId: 'src-1',
+      reviewerUserId: 'reviewer-1',
+      ownerUserId: 'author-2',
+      participantUserIds: ['reviewer-1', 'author-2'],
+      status: 'open',
+    }));
+    jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
+      reviewId: 'review-1',
+      fileKind: 'canonical',
+      baseRevisionId: 'rev-1',
+      headRevisionId: 'rev-2',
+      scoreRegions: [],
+      bars: [{
+        anchorId: 'trusted-part-aware-anchor',
+        side: 'base',
+        partId: 'P2',
+        partIndex: 1,
+        measureIndex: 4,
+        measureHash: 'measure-hash',
+        label: 'Cello - m. 5',
+        commentable: true,
+      }],
+      hunks: [],
+      rawDiff: '',
+      threads: [],
+    } as any);
+
+    await service.createThread({
+      reviewId: 'review-1',
+      anchorId: 'trusted-part-aware-anchor',
+      content: 'Check this measure',
+      patchsetNumber: 2,
+      viewer: { userId: 'reviewer-1', roles: ['user'] },
+    });
+
+    expect(threadModel.create).toHaveBeenCalledWith(expect.objectContaining({
+      diffAnchor: expect.objectContaining({
+        anchorId: 'trusted-part-aware-anchor',
+        side: 'base',
+        lineHash: 'measure-hash',
+        lineText: 'Cello - m. 5',
+      }),
     }));
   });
 

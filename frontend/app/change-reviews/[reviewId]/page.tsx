@@ -6,6 +6,7 @@ import ChangeReviewDetailClient from "../change-review-detail-client";
 
 interface ChangeReviewDetail {
   reviewId: string;
+  viewerUserId: string;
   workId: string;
   sourceId: string;
   branchName?: string;
@@ -75,6 +76,7 @@ interface ReviewDiffResponse {
     commentable: boolean;
     regionHash: string;
   }>;
+  bars?: Array<{ anchorId: string }>;
   hunks: Array<{
     hunkId: string;
     header: string;

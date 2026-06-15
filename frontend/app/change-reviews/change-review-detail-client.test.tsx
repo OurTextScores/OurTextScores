@@ -9,6 +9,7 @@ global.fetch = jest.fn();
 
 const initialReview = {
   reviewId: "review-1",
+  viewerUserId: "reviewer-1",
   workId: "work-1",
   sourceId: "source-1",
   branchName: "trunk",
@@ -184,6 +185,40 @@ describe("ChangeReviewDetailClient", () => {
         }),
       }),
     );
+  });
+
+  it("only shows delete for comments authored by the current viewer", () => {
+    const diffWithComments = {
+      ...initialDiff,
+      threads: [{
+        threadId: "thread-1",
+        status: "open" as const,
+        diffAnchor: { anchorId: "anchor-1", lineText: "Piano - m. 2" },
+        comments: [
+          {
+            commentId: "own-comment",
+            userId: "reviewer-1",
+            username: "reviewer",
+            content: "My comment",
+            createdAt: "2026-03-07T16:05:00.000Z",
+          },
+          {
+            commentId: "other-comment",
+            userId: "owner-1",
+            username: "owner",
+            content: "Another comment",
+            createdAt: "2026-03-07T16:06:00.000Z",
+          },
+        ],
+      }],
+    };
+
+    render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={diffWithComments} />);
+
+    // The legacy detail page renders the selected thread and its diff-line copy.
+    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+    expect(screen.getAllByText(/reviewer/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/owner/).length).toBeGreaterThan(0);
   });
 
   it("selects a changed bar before opening its comment composer", async () => {

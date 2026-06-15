@@ -393,14 +393,21 @@ export class ChangeReviewsService {
 
     const rawDiff = await this.generateUnifiedDiff(baseLocator, headLocator);
     const parsed = this.parseUnifiedDiff(rawDiff);
-    const scoreRegions = await this.buildScoreRegions(baseLocator, headLocator);
+    const scoreComparison = await this.buildScoreComparison(baseLocator, headLocator, {
+      reviewId: review.reviewId,
+      patchsetNumber,
+      baseRevisionId,
+      headRevisionId,
+    });
 
     return {
       reviewId: review.reviewId,
       fileKind: 'canonical' as const,
+      patchsetNumber,
       baseRevisionId,
       headRevisionId,
-      scoreRegions,
+      scoreRegions: scoreComparison.regions,
+      bars: scoreComparison.bars,
       hunks: parsed.hunks,
       rawDiff,
       threads: threadViews,
@@ -430,9 +437,15 @@ export class ChangeReviewsService {
       part.measures.map((measure) => {
         const change = changedByBar.get(`${part.partId}|${measure.measureIndex}`);
         const label = `${part.partName || `Part ${part.partIndex + 1}`} - m. ${measure.measureNumber}`;
-        const anchorId = this.hashText(
-          `score-bar|${review.reviewId}|${patchsetNumber ?? 'latest'}|${diff.headRevisionId}|${part.partId}|${measure.measureIndex}|${measure.signature}`,
-        );
+        const anchorId = this.buildScoreBarAnchor({
+          reviewId: review.reviewId,
+          patchsetNumber,
+          revisionId: diff.headRevisionId,
+          side: 'head',
+          partId: part.partId,
+          measureIndex: measure.measureIndex,
+          measureHash: measure.signature,
+        });
         const thread = diff.threads.find((candidate) =>
           candidate.diffAnchor.anchorId === anchorId
           || candidate.diffAnchor.anchorId === change?.anchorId
@@ -494,15 +507,16 @@ export class ChangeReviewsService {
     const diff = await this.getReviewDiff(review.reviewId, input.viewer, input.patchsetNumber);
     const scoreRegion = (diff as any).scoreRegions?.find((region: any) => region.anchorId === input.anchorId) || null;
     const anchor = scoreRegion ? null : this.findAnchor(diff.hunks, input.anchorId);
-    const scoreView = scoreRegion || anchor
+    const scoreBar = (diff as any).bars?.find((bar: any) => bar.anchorId === input.anchorId) || null;
+    const scoreView = scoreRegion || anchor || scoreBar
       ? null
       : await this.getReviewScoreView(review.reviewId, input.viewer, input.patchsetNumber);
-    const scoreBar = scoreView?.bars.find((bar) => bar.anchorId === input.anchorId) || null;
+    const singleScoreBar = scoreView?.bars.find((bar) => bar.anchorId === input.anchorId) || null;
     const removedRegion = scoreView?.removedRegions.find((region) => region.anchorId === input.anchorId) || null;
-    if (!scoreRegion && !scoreBar && !removedRegion && (!anchor || !anchor.commentable)) {
+    if (!scoreRegion && !scoreBar && !singleScoreBar && !removedRegion && (!anchor || !anchor.commentable)) {
       throw new BadRequestException('Invalid or non-commentable diff anchor');
     }
-    const scoreAnchor = scoreRegion || scoreBar || removedRegion;
+    const scoreAnchor = scoreRegion || scoreBar || singleScoreBar || removedRegion;
 
     const now = new Date();
     const threadId = randomUUID();
@@ -519,7 +533,7 @@ export class ChangeReviewsService {
         oldLineNumber: anchor?.oldLineNumber,
         newLineNumber: anchor?.newLineNumber,
         anchorId: scoreAnchor?.anchorId || anchor?.anchorId || input.anchorId,
-        lineHash: scoreRegion?.regionHash || scoreBar?.measureHash || removedRegion?.regionHash || anchor?.lineHash || this.hashText(input.anchorId),
+        lineHash: scoreRegion?.regionHash || scoreBar?.measureHash || singleScoreBar?.measureHash || removedRegion?.regionHash || anchor?.lineHash || this.hashText(input.anchorId),
         lineText: scoreAnchor?.label || anchor?.content || 'Score region',
         hunkHeader: scoreAnchor?.summary || anchor?.hunkHeader,
       },
@@ -650,6 +664,18 @@ export class ChangeReviewsService {
     (comment as any).deleted = true;
     (comment as any).deletedAt = new Date();
     await comment.save();
+    const remainingCommentCount = await this.commentModel
+      .countDocuments({
+        reviewId: input.reviewId,
+        threadId: (comment as any).threadId,
+        deleted: { $ne: true },
+      })
+      .exec();
+    if (remainingCommentCount === 0) {
+      await this.threadModel
+        .deleteOne({ reviewId: input.reviewId, threadId: (comment as any).threadId })
+        .exec();
+    }
     await this.syncReviewCounters(input.reviewId, new Date());
     return { ok: true };
   }
@@ -842,6 +868,7 @@ export class ChangeReviewsService {
 
     return {
       reviewId: review.reviewId,
+      viewerUserId: viewer.userId,
       workId: review.workId,
       sourceId: review.sourceId,
       branchName: review.branchName,
@@ -1323,14 +1350,70 @@ export class ChangeReviewsService {
     }
   }
 
-  private async buildScoreRegions(aLoc: { bucket: string; objectKey: string }, bLoc: { bucket: string; objectKey: string }) {
+  private async buildScoreComparison(
+    aLoc: { bucket: string; objectKey: string },
+    bLoc: { bucket: string; objectKey: string },
+    context: {
+      reviewId: string;
+      patchsetNumber?: number;
+      baseRevisionId: string;
+      headRevisionId: string;
+    },
+  ) {
     const [bufA, bufB] = await Promise.all([
       this.storageService.getObjectBuffer(aLoc.bucket, aLoc.objectKey),
       this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey),
     ]);
     const baseScore = this.extractScoreStructure(bufA.toString('utf8'));
     const headScore = this.extractScoreStructure(bufB.toString('utf8'));
-    return this.diffScoreStructures(baseScore, headScore);
+    const buildBars = (
+      score: typeof baseScore,
+      side: 'base' | 'head',
+      revisionId: string,
+    ) => score.parts.flatMap((part) => part.measures.map((measure) => ({
+      kind: 'score_bar' as const,
+      anchorId: this.buildScoreBarAnchor({
+        reviewId: context.reviewId,
+        patchsetNumber: context.patchsetNumber,
+        revisionId,
+        side,
+        partId: part.partId,
+        measureIndex: measure.measureIndex,
+        measureHash: measure.signature,
+      }),
+      patchsetNumber: context.patchsetNumber,
+      revisionId,
+      side,
+      partId: part.partId,
+      partIndex: part.partIndex,
+      partName: part.partName,
+      measureIndex: measure.measureIndex,
+      measureNumber: measure.measureNumber,
+      measureHash: measure.signature,
+      label: `${part.partName || `Part ${part.partIndex + 1}`} - m. ${measure.measureNumber}`,
+      commentable: true,
+    })));
+    return {
+      regions: this.diffScoreStructures(baseScore, headScore),
+      bars: [
+        ...buildBars(baseScore, 'base', context.baseRevisionId),
+        ...buildBars(headScore, 'head', context.headRevisionId),
+      ],
+    };
+  }
+
+  private buildScoreBarAnchor(input: {
+    reviewId: string;
+    patchsetNumber?: number;
+    revisionId: string;
+    side: 'base' | 'head';
+    partId: string;
+    measureIndex: number;
+    measureHash: string;
+  }) {
+    return this.hashText(
+      `score-bar|${input.reviewId}|${input.patchsetNumber ?? 'latest'}|${input.revisionId}|${input.side}|${input.partId}|${input.measureIndex}|${input.measureHash}`,
+    );
   }
 
   private parseUnifiedDiff(rawDiff: string) {
