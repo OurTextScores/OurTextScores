@@ -21,6 +21,10 @@ const nextConfig = {
               source: '/api/score-editor/llm/:path*',
               destination: `${SCORE_EDITOR_API_ORIGIN}/api/llm/:path*`,
             },
+            {
+              source: '/api/score-editor/fetch-score',
+              destination: `${SCORE_EDITOR_API_ORIGIN}/api/fetch-score`,
+            },
           ]
         : []),
       // MinIO file access
