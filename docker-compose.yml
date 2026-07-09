@@ -10,6 +10,9 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=/api
       - INTERNAL_API_URL=http://backend:4000/api
+      # Runtime secret injected by the score-editor music proxy as x-ots-api-token.
+      # Must match OTS_API_AUTH_TOKEN on the score_editor_api service.
+      - SCORE_EDITOR_API_TOKEN=${SCORE_EDITOR_API_TOKEN:-}
     container_name: ourtextscores_frontend
     ports:
       - "3000:3000"
@@ -126,6 +129,14 @@ services:
       MUSIC_TRANSCODA_TIMEOUT_MS: ${MUSIC_TRANSCODA_TIMEOUT_MS:-300000}
       MUSIC_NOTAGEN_SPACE_TOKEN: ${MUSIC_NOTAGEN_SPACE_TOKEN:-}
       MUSIC_NOTAGEN_DEFAULT_SPACE_ID: ${MUSIC_NOTAGEN_DEFAULT_SPACE_ID:-jhlusko/NotaGen-Space}
+      # API auth hardening (OTS_Web): server-credential routes (OMR, NotaGen space)
+      # require ALLOW_SERVER_LLM_KEYS=1 AND a matching OTS_API_AUTH_TOKEN. When a
+      # server HF token is configured above, SCORE_EDITOR_API_TOKEN MUST be set (and
+      # match the frontend) or those routes return 403/401. The frontend music proxy
+      # injects this token; the /api/llm/* user-key proxy stays open via the flag below.
+      ALLOW_SERVER_LLM_KEYS: ${ALLOW_SERVER_LLM_KEYS:-1}
+      OTS_API_AUTH_TOKEN: ${SCORE_EDITOR_API_TOKEN:-}
+      ALLOW_UNAUTHENTICATED_LLM_PROXY: ${ALLOW_UNAUTHENTICATED_LLM_PROXY:-1}
       NEXT_PUBLIC_SCORE_EDITOR_API_BASE: ${NEXT_PUBLIC_SCORE_EDITOR_API_BASE:-/api/score-editor}
       NEXT_PUBLIC_SOUNDFONT_CDN_URL: ${NEXT_PUBLIC_SOUNDFONT_CDN_URL:-https://cdn.ourtextscores.com/soundfonts/default.sf2}
       # OpenTelemetry pass-through for score editor API runtime (when enabled there)
