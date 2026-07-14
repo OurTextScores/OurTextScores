@@ -75,21 +75,15 @@ services:
         apt-get update
         apt-get install -y --no-install-recommends python3 python3-pip python3-pyparsing musescore3 mma xvfb xauth libopengl0 libpipewire-0.3-0 ca-certificates curl
         python3 -c "import music21" >/dev/null 2>&1 || python3 -m pip install --break-system-packages --no-cache-dir "music21>=9,!=9.9.2,<10"
-        if [ ! -x /usr/local/bin/musescore4 ] && [ -n "$$MUSESCORE4_APPIMAGE_URL" ]; then
+        # MuseScore 4 is cached in the musescore4_opt volume, so it is downloaded
+        # and extracted only once (not on every container recreate).
+        if [ ! -x /opt/musescore4/bin/mscore4portable ] && [ -n "$$MUSESCORE4_APPIMAGE_URL" ]; then
           echo "Installing MuseScore 4 from AppImage: $$MUSESCORE4_APPIMAGE_URL"
           if curl -fL --retry 3 --retry-delay 2 --retry-all-errors "$$MUSESCORE4_APPIMAGE_URL" -o /tmp/MuseScore-4.AppImage; then
             chmod +x /tmp/MuseScore-4.AppImage
-            if /tmp/MuseScore-4.AppImage --appimage-extract; then
-              rm -rf /opt/musescore4
-              mv squashfs-root /opt/musescore4
-              echo '#!/bin/sh' > /usr/local/bin/musescore4
-              echo 'TIMEOUT_SECONDS="$${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-300}"' >> /usr/local/bin/musescore4
-              echo 'XVFB_ARGS="-screen 0 640x480x24 -ac +extension GLX +render -noreset"' >> /usr/local/bin/musescore4
-              echo 'if [ "$${TIMEOUT_SECONDS}" = "0" ]; then' >> /usr/local/bin/musescore4
-              echo '  exec xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
-              echo 'fi' >> /usr/local/bin/musescore4
-              echo 'exec timeout "$${TIMEOUT_SECONDS}" xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
-              chmod +x /usr/local/bin/musescore4
+            if ( cd /tmp && /tmp/MuseScore-4.AppImage --appimage-extract ); then
+              mkdir -p /opt/musescore4
+              cp -a /tmp/squashfs-root/. /opt/musescore4/
             else
               echo "WARNING: MuseScore 4 AppImage extraction failed; continuing with musescore3 fallback." >&2
             fi
@@ -97,7 +91,18 @@ services:
             echo "WARNING: Failed to download MuseScore 4 AppImage; continuing with musescore3 fallback." >&2
           fi
           rm -f /tmp/MuseScore-4.AppImage
-          rm -rf squashfs-root
+          rm -rf /tmp/squashfs-root
+        fi
+        # (Re)create the wrapper each boot; /usr/local/bin is not persisted.
+        if [ -x /opt/musescore4/bin/mscore4portable ]; then
+          echo '#!/bin/sh' > /usr/local/bin/musescore4
+          echo 'TIMEOUT_SECONDS="$${MUSESCORE_WRAPPER_TIMEOUT_SECONDS:-300}"' >> /usr/local/bin/musescore4
+          echo 'XVFB_ARGS="-screen 0 640x480x24 -ac +extension GLX +render -noreset"' >> /usr/local/bin/musescore4
+          echo 'if [ "$${TIMEOUT_SECONDS}" = "0" ]; then' >> /usr/local/bin/musescore4
+          echo '  exec xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
+          echo 'fi' >> /usr/local/bin/musescore4
+          echo 'exec timeout "$${TIMEOUT_SECONDS}" xvfb-run -a -s "$${XVFB_ARGS}" /opt/musescore4/bin/mscore4portable "$$@"' >> /usr/local/bin/musescore4
+          chmod +x /usr/local/bin/musescore4
         fi
         npm install
         npm run dev -- --hostname 0.0.0.0 --port 3000
@@ -148,6 +153,7 @@ services:
     volumes:
       - ../OTS_Web:/app
       - ../NotaGen:/opt/notagen:ro
+      - musescore4_opt:/opt/musescore4
     ports:
       - "127.0.0.1:4010:3000"
     networks:
@@ -205,6 +211,11 @@ services:
       - "1025:1025"  # SMTP
     networks:
       - appnet
+
+volumes:
+  # Persists the extracted MuseScore 4 across score_editor_api recreates so the
+  # 172 MB AppImage is downloaded/extracted only once.
+  musescore4_opt:
 
 networks:
   appnet:
