@@ -10,17 +10,11 @@ const nextConfig = {
   },
   async rewrites() {
     const rewrites = [
-      // Optional local proxy to OTS editor API for embedded score-editor testing.
+      // Editor API proxy. /api/score-editor/music/* and /llm/* are handled by
+      // route handlers (app/api/score-editor/{music,llm}/[...segments]) so they
+      // can inject the app auth token; only fetch-score remains a plain rewrite.
       ...(SCORE_EDITOR_API_ORIGIN
         ? [
-            {
-              source: '/api/score-editor/music/:path*',
-              destination: `${SCORE_EDITOR_API_ORIGIN}/api/music/:path*`,
-            },
-            {
-              source: '/api/score-editor/llm/:path*',
-              destination: `${SCORE_EDITOR_API_ORIGIN}/api/llm/:path*`,
-            },
             {
               source: '/api/score-editor/fetch-score',
               destination: `${SCORE_EDITOR_API_ORIGIN}/api/fetch-score`,

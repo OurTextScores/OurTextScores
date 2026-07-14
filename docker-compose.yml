@@ -132,11 +132,12 @@ services:
       # API auth hardening (OTS_Web): server-credential routes (OMR, NotaGen space)
       # require ALLOW_SERVER_LLM_KEYS=1 AND a matching OTS_API_AUTH_TOKEN. When a
       # server HF token is configured above, SCORE_EDITOR_API_TOKEN MUST be set (and
-      # match the frontend) or those routes return 403/401. The frontend music proxy
-      # injects this token; the /api/llm/* user-key proxy stays open via the flag below.
+      # match the frontend) or those routes return 403/401. The frontend proxies both
+      # music and llm routes with this token injected, so the /api/llm/* relay is NOT
+      # left open (the editor API is publicly reachable). Keep the flag at 0.
       ALLOW_SERVER_LLM_KEYS: ${ALLOW_SERVER_LLM_KEYS:-1}
       OTS_API_AUTH_TOKEN: ${SCORE_EDITOR_API_TOKEN:-}
-      ALLOW_UNAUTHENTICATED_LLM_PROXY: ${ALLOW_UNAUTHENTICATED_LLM_PROXY:-1}
+      ALLOW_UNAUTHENTICATED_LLM_PROXY: ${ALLOW_UNAUTHENTICATED_LLM_PROXY:-0}
       NEXT_PUBLIC_SCORE_EDITOR_API_BASE: ${NEXT_PUBLIC_SCORE_EDITOR_API_BASE:-/api/score-editor}
       NEXT_PUBLIC_SOUNDFONT_CDN_URL: ${NEXT_PUBLIC_SOUNDFONT_CDN_URL:-https://cdn.ourtextscores.com/soundfonts/default.sf2}
       # OpenTelemetry pass-through for score editor API runtime (when enabled there)

@@ -41,10 +41,12 @@ services:
       # API auth hardening: server-credential routes (OMR, NotaGen space) require
       # ALLOW_SERVER_LLM_KEYS=1 AND a matching OTS_API_AUTH_TOKEN. Set
       # SCORE_EDITOR_API_TOKEN (same value as the frontend) whenever a server HF
-      # token above is configured, or those routes return 403/401.
+      # token above is configured, or those routes return 403/401. The frontend
+      # token-injecting proxy covers both music and llm, so the LLM relay is not
+      # left open on the public editor API. Keep the flag at 0.
       ALLOW_SERVER_LLM_KEYS: ${ALLOW_SERVER_LLM_KEYS:-1}
       OTS_API_AUTH_TOKEN: ${SCORE_EDITOR_API_TOKEN:-}
-      ALLOW_UNAUTHENTICATED_LLM_PROXY: ${ALLOW_UNAUTHENTICATED_LLM_PROXY:-1}
+      ALLOW_UNAUTHENTICATED_LLM_PROXY: ${ALLOW_UNAUTHENTICATED_LLM_PROXY:-0}
       NEXT_PUBLIC_SCORE_EDITOR_API_BASE: ${NEXT_PUBLIC_SCORE_EDITOR_API_BASE:-/api/score-editor}
       NEXT_PUBLIC_SOUNDFONT_CDN_URL: ${NEXT_PUBLIC_SOUNDFONT_CDN_URL:-https://cdn.ourtextscores.com/soundfonts/default.sf2}
       OTEL_ENABLED: ${SCORE_EDITOR_OTEL_ENABLED:-false}
