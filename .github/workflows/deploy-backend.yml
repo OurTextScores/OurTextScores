@@ -1,12 +1,10 @@
-name: Deploy VPS (backend + compose)
+name: Deploy Backend to VPS
 
 on:
   push:
     branches: [main]
     paths:
       - 'backend/**'
-      - 'docker-compose.yml'
-      - 'docker-compose.score-editor-image.yml'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
 
@@ -59,9 +57,6 @@ jobs:
     needs: build-and-push
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -69,48 +64,18 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      # Compose files contain NO secrets (only ${VAR} interpolation resolved from the VPS
-      # .env at runtime), so they are safe to ship. This closes the drift class where a
-      # committed compose change never reached /opt/ourtextscores (which is not a git checkout).
-      - name: Stage compose files on VPS
-        run: |
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            docker-compose.yml docker-compose.score-editor-image.yml \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
-
       - name: Deploy to VPS
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            set -e
             cd /opt/ourtextscores
 
-            # --- Reconcile compose files (never touch .env) ---
-            COMPOSE_CHANGED=0
-            for f in docker-compose.yml docker-compose.score-editor-image.yml; do
-              if ! sudo cmp -s "/tmp/$f" "/opt/ourtextscores/$f"; then
-                echo "Compose changed: $f"
-                sudo cp "/tmp/$f" "/opt/ourtextscores/$f"
-                COMPOSE_CHANGED=1
-              fi
-              rm -f "/tmp/$f"
-            done
-
-            # --- Backend image: always pull + recreate ---
+            # Pull latest image
             sudo docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Restart backend service
             sudo docker compose up -d backend
 
-            # --- Editor API: recreate ONLY when compose changed (avoid needless restarts).
-            #     Uses BOTH -f files so the prod override + env mapping apply. Image rollout
-            #     itself stays manual (see OTS_Web BUILD_EMBED.md / runbook Appendix A);
-            #     this only re-applies compose/env changes to the existing pinned image. ---
-            if [ "$COMPOSE_CHANGED" = "1" ]; then
-              echo "Recreating score_editor_api to apply compose changes..."
-              sudo docker compose \
-                -f docker-compose.yml -f docker-compose.score-editor-image.yml \
-                up -d score_editor_api
-            fi
-
-            # --- Health check (backend) ---
+            # Wait for health check
             echo "Waiting for backend to be healthy..."
             for i in {1..30}; do
               if sudo docker compose ps backend | grep -q "healthy"; then
@@ -133,5 +98,5 @@ jobs:
       - name: Verify deployment
         if: success()
         run: |
-          echo "✅ VPS deploy complete (backend + compose reconciled)!"
+          echo "✅ Backend deployed successfully!"
           echo "🔍 Check status at: https://api.ourtextscores.com/api/health"
