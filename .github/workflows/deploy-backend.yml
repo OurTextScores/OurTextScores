@@ -5,9 +5,7 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
-      # NOTE: base docker-compose.yml is intentionally NOT synced — the repo copy is
-      # dev-oriented (builds backend from ./backend, which does not exist on the VPS).
-      # Only the prod override below is repo-managed and safe to ship.
+      - 'docker-compose.yml'
       - 'docker-compose.score-editor-image.yml'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
@@ -71,14 +69,13 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      # Only the PROD OVERRIDE is synced. It contains no secrets (only ${VAR} interpolation
-      # resolved from the VPS .env at runtime). The base docker-compose.yml is deliberately
-      # NOT shipped: the repo copy builds the backend from ./backend, which does not exist on
-      # the VPS, so overwriting the bespoke prod base file breaks `up -d backend`.
-      - name: Stage prod override on VPS
+      # Compose files contain NO secrets (only ${VAR} interpolation resolved from the VPS
+      # .env at runtime), so they are safe to ship. This closes the drift class where a
+      # committed compose change never reached /opt/ourtextscores (which is not a git checkout).
+      - name: Stage compose files on VPS
         run: |
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-            docker-compose.score-editor-image.yml \
+            docker-compose.yml docker-compose.score-editor-image.yml \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/
 
       - name: Deploy to VPS
@@ -87,19 +84,18 @@ jobs:
             set -e
             cd /opt/ourtextscores
 
-            # --- Reconcile ONLY the prod override; back up before overwrite; never touch
-            #     .env or the bespoke base docker-compose.yml ---
+            # --- Reconcile compose files (never touch .env) ---
             COMPOSE_CHANGED=0
-            f=docker-compose.score-editor-image.yml
-            if ! sudo cmp -s "/tmp/$f" "/opt/ourtextscores/$f"; then
-              echo "Prod override changed: $f (backing up before overwrite)"
-              sudo cp -a "/opt/ourtextscores/$f" "/opt/ourtextscores/$f.bak.$(date +%Y%m%d%H%M%S)" || true
-              sudo cp "/tmp/$f" "/opt/ourtextscores/$f"
-              COMPOSE_CHANGED=1
-            fi
-            rm -f "/tmp/$f"
+            for f in docker-compose.yml docker-compose.score-editor-image.yml; do
+              if ! sudo cmp -s "/tmp/$f" "/opt/ourtextscores/$f"; then
+                echo "Compose changed: $f"
+                sudo cp "/tmp/$f" "/opt/ourtextscores/$f"
+                COMPOSE_CHANGED=1
+              fi
+              rm -f "/tmp/$f"
+            done
 
-            # --- Backend image: always pull + recreate (uses the bespoke base file as-is) ---
+            # --- Backend image: always pull + recreate ---
             sudo docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             sudo docker compose up -d backend
 
