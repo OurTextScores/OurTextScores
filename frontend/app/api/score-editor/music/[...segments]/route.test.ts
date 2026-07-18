@@ -146,6 +146,33 @@ describe("score-editor music proxy route", () => {
     expect(forwardedHeaders().get("x-ots-api-token")).toBe("shared-secret");
   });
 
+  it("passes patch progress streams through without buffering", async () => {
+    process.env.SCORE_EDITOR_API_TOKEN = "shared-secret";
+    const upstreamBody = { kind: "stream-body" } as unknown as ReadableStream<Uint8Array>;
+    (global.fetch as jest.Mock).mockResolvedValue({
+      body: upstreamBody,
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no"
+      })
+    } as unknown as Response);
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      makeRequest({ accept: "text/event-stream" }, "patch"),
+      { params: { segments: ["patch"] } }
+    );
+
+    expect(forwardedHeaders().get("accept")).toBe("text/event-stream");
+    expect(response.body).toBe(upstreamBody);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
+    expect(response.headers.get("x-accel-buffering")).toBe("no");
+  });
+
   it("proxies the deep edit endpoint", async () => {
     process.env.SCORE_EDITOR_API_TOKEN = "shared-secret";
     mockUpstreamOk();
