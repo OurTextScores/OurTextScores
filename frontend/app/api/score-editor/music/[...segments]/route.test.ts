@@ -145,4 +145,25 @@ describe("score-editor music proxy route", () => {
     );
     expect(forwardedHeaders().get("x-ots-api-token")).toBe("shared-secret");
   });
+
+  it("proxies the deep edit endpoint", async () => {
+    process.env.SCORE_EDITOR_API_TOKEN = "shared-secret";
+    mockUpstreamOk();
+
+    const { POST } = await import("./route");
+    await POST(makeRequest({}, "patch/deep"), {
+      params: { segments: ["patch", "deep"] }
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://score-editor-api:3000/api/music/patch/deep",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(ArrayBuffer),
+        cache: "no-store",
+        redirect: "manual"
+      })
+    );
+    expect(forwardedHeaders().get("x-ots-api-token")).toBe("shared-secret");
+  });
 });
