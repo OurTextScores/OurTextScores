@@ -34,9 +34,12 @@ describe("score-editor music proxy route", () => {
     global.Response = originalResponse;
   });
 
-  const makeRequest = (headers: Record<string, string> = {}) =>
+  const makeRequest = (
+    headers: Record<string, string> = {},
+    path = "omr/transcribe"
+  ) =>
     ({
-      url: "http://localhost:3000/api/score-editor/music/omr/transcribe",
+      url: `http://localhost:3000/api/score-editor/music/${path}`,
       method: "POST",
       headers: new Headers({ "content-type": "application/json", ...headers }),
       arrayBuffer: async () => Uint8Array.from([1]).buffer
@@ -122,5 +125,24 @@ describe("score-editor music proxy route", () => {
     expect(upstreamHeaders.get("content-type")).toBe("application/json");
     expect(upstreamHeaders.has("host")).toBe(false);
     expect(await response.json()).toEqual({ ok: true });
+  });
+
+  it("proxies the mandatory music patch endpoint", async () => {
+    process.env.SCORE_EDITOR_API_TOKEN = "shared-secret";
+    mockUpstreamOk();
+
+    const { POST } = await import("./route");
+    await POST(makeRequest({}, "patch"), { params: { segments: ["patch"] } });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://score-editor-api:3000/api/music/patch",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(ArrayBuffer),
+        cache: "no-store",
+        redirect: "manual"
+      })
+    );
+    expect(forwardedHeaders().get("x-ots-api-token")).toBe("shared-secret");
   });
 });
