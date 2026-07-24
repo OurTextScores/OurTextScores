@@ -134,6 +134,8 @@ services:
       MUSIC_TRANSCODA_TIMEOUT_MS: ${MUSIC_TRANSCODA_TIMEOUT_MS:-300000}
       MUSIC_NOTAGEN_SPACE_TOKEN: ${MUSIC_NOTAGEN_SPACE_TOKEN:-}
       MUSIC_NOTAGEN_DEFAULT_SPACE_ID: ${MUSIC_NOTAGEN_DEFAULT_SPACE_ID:-jhlusko/NotaGen-Space}
+      # Self-hosted Multitrack MusicVAE service (reached by service name on the app network).
+      MUSIC_MULTITRACK_VAE_SERVICE_URL: ${MUSIC_MULTITRACK_VAE_SERVICE_URL:-http://musicvae:7860}
       # API auth hardening (OTS_Web): server-credential routes (OMR, NotaGen space)
       # require ALLOW_SERVER_LLM_KEYS=1 AND a matching OTS_API_AUTH_TOKEN. When a
       # server HF token is configured above, SCORE_EDITOR_API_TOKEN MUST be set (and
