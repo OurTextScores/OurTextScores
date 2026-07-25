@@ -32,6 +32,17 @@ The prod compose is not synced from git and does not build from source. Instead:
 1. CI publishes the image to GHCR on a `musicvae-v*` tag or manual dispatch
    (`.github/workflows/publish-musicvae-image.yml`) → `ghcr.io/ourtextscores/musicvae`.
 2. Add a `musicvae` service to the prod compose referencing that image (not `build:`),
-   on the prod app network (verify its name), with the checkpoint volume.
-3. Set `MUSIC_MULTITRACK_VAE_SERVICE_URL: http://musicvae:7860` on prod `score_editor_api`.
+   on the **same** app network `score_editor_api` is on (verify with `docker inspect`; the
+   default project network won't be shared — put both on `appnet`), with the checkpoint
+   volume mounted at `/data/checkpoints`.
+3. Set `MUSIC_MULTITRACK_VAE_SERVICE_URL: http://musicvae:7860` on prod `score_editor_api`
+   (add to its `environment:` — a bare `.env` entry only works if the service has
+   `env_file`), then recreate it so the var loads.
 4. `docker compose pull musicvae && docker compose up -d musicvae score_editor_api`.
+
+**Volume ownership.** The container runs as uid 1000. A **named volume** provisioned from
+this image inherits uid-1000 ownership (Dockerfile pre-creates `/data/checkpoints`). A
+**bind mount** (`./volumes/musicvae_checkpoints:/data/checkpoints`) is created root-owned by
+Docker and the process can't write the GCS checkpoint download → `EACCES` HTTP 500 on the
+first call. Fix once on the host: `sudo chown -R 1000:1000 <bind-mount-path>` (or, for any
+mount type, `docker exec -u 0 ourtextscores_musicvae chown -R 1000:1000 /data/checkpoints`).

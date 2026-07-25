@@ -25,6 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # HF Spaces run as uid 1000.
 RUN useradd -m -u 1000 user
+
+# Pre-create the checkpoint dir owned by uid 1000 so a freshly-provisioned named volume
+# inherits uid-1000 ownership on first mount. Without this the volume comes up root-owned
+# and the (uid-1000) process can't write the ~1GB GCS checkpoint download → EACCES at
+# first /multitrack_vae call. (Bind mounts still need a host-side chown — see README.)
+RUN mkdir -p /data/checkpoints && chown -R 1000:1000 /data/checkpoints
+
 USER user
 ENV PATH="/home/user/.local/bin:$PATH"
 WORKDIR /home/user/app
