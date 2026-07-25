@@ -214,10 +214,34 @@ services:
     networks:
       - appnet
 
+  # Multitrack MusicVAE — self-hosted CPU service (Magenta MusicVAE via FastAPI).
+  # score_editor_api reaches it as http://musicvae:7860 (MUSIC_MULTITRACK_VAE_SERVICE_URL).
+  # Dev builds from the sibling repo; in prod swap `build:` for a pushed image, e.g.
+  #   image: ghcr.io/ourtextscores/musicvae:latest
+  musicvae:
+    build: ./musicvae
+    container_name: ourtextscores_musicvae
+    restart: unless-stopped
+    environment:
+      MUSIC_MULTITRACK_VAE_CKPT_DIR: /data/checkpoints
+    volumes:
+      - musicvae_checkpoints:/data/checkpoints
+    networks:
+      - appnet
+    mem_limit: 6g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
   # Persists the extracted MuseScore 4 across score_editor_api recreates so the
   # 172 MB AppImage is downloaded/extracted only once.
   musescore4_opt:
+  # Persists the ~1 GB MusicVAE checkpoints across musicvae recreates.
+  musicvae_checkpoints:
 
 networks:
   appnet:

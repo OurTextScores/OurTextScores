@@ -1,0 +1,13 @@
+# Legacy magenta MusicVAE stack, served as a plain FastAPI JSON API (no Gradio).
+# Python is pinned to 3.8 in the Dockerfile (magenta 2.1.4 pins numba==0.49.1 /
+# llvmlite==0.32.1, which only have wheels up to cp38). numpy<1.24 and protobuf<3.20 are
+# hard constraints of tensorflow 2.9. FastAPI/uvicorn/pydantic pinned to Python-3.8-
+# compatible versions (pydantic v1 keeps it lightweight and conflict-free with magenta).
+tensorflow==2.9.1
+protobuf<3.20
+numpy<1.24
+magenta==2.1.4
+fastapi==0.103.2
+uvicorn==0.23.2
+pydantic<2
+gsutil
