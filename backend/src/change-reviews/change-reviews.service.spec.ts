@@ -789,4 +789,113 @@ describe('ChangeReviewsService', () => {
     expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith('164349', 'src-1', 'trunk', 'open');
     expect(result).toEqual({ ok: true });
   });
+
+  describe('measure diff', () => {
+    // The measure diff decides which bars the compare panes highlight, so it is worth
+    // driving directly: going through getReviewDiff would need four storage mocks per
+    // case and would hide which normalization step a failure belongs to.
+    const diffMeasures = (baseXml: string, headXml: string) => {
+      const internals = service as any;
+      return internals.diffScoreStructures(
+        internals.extractScoreStructure(baseXml),
+        internals.extractScoreStructure(headXml),
+      );
+    };
+
+    const score = (measures: string, { divisions = 8 }: { divisions?: number } = {}) => `
+      <score-partwise>
+        <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+        <part id="P1">${measures.replace(/__DIV__/g, String(divisions))}</part>
+      </score-partwise>`;
+
+    const bar = (number: number, note: string) =>
+      `<measure number="${number}"><attributes><divisions>__DIV__</divisions></attributes>${note}</measure>`;
+
+    // One quarter note of C4, written in whatever divisions the score declares.
+    const quarter = (ticks: number) =>
+      `<note><pitch><step>C</step><octave>4</octave></pitch><duration>${ticks}</duration><type>quarter</type></note>`;
+
+    it('ignores a <divisions> rescale that renumbers every duration', () => {
+      const base = score(bar(1, quarter(16)) + bar(2, quarter(16)), { divisions: 16 });
+      const head = score(bar(1, quarter(8)) + bar(2, quarter(8)), { divisions: 8 });
+
+      // Identical music: an eighth is 8 ticks at divisions=16 and 4 at divisions=8.
+      expect(diffMeasures(base, head)).toHaveLength(0);
+    });
+
+    it('ignores spanner id renumbering caused by an unrelated edit', () => {
+      const withWedge = (id: number) =>
+        `<direction><direction-type><wedge type="diminuendo" number="${id}"/></direction-type></direction>`;
+      const base = score(bar(1, withWedge(1) + quarter(8)));
+      const head = score(bar(1, withWedge(3) + quarter(8)));
+
+      expect(diffMeasures(base, head)).toHaveLength(0);
+    });
+
+    it('ignores whether a silent bar is one whole-measure rest or several rests', () => {
+      const base = score(bar(1, '<note><rest measure="yes"/><duration>24</duration></note>'));
+      const head = score(bar(1, '<note><rest/><duration>8</duration></note>'.repeat(3)));
+
+      expect(diffMeasures(base, head)).toHaveLength(0);
+    });
+
+    it('ignores measure renumbering when the music is unchanged', () => {
+      const base = score(bar(1, quarter(8)) + bar(2, quarter(8)));
+      const head = score(bar(7, quarter(8)) + bar(8, quarter(8)));
+
+      expect(diffMeasures(base, head)).toHaveLength(0);
+    });
+
+    it('reports one added bar rather than every bar after the insertion', () => {
+      const d = (step: string) =>
+        `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>`;
+      const base = score(bar(1, d('C')) + bar(2, d('D')) + bar(3, d('E')));
+      const head = score(bar(1, d('C')) + bar(2, d('G')) + bar(3, d('D')) + bar(4, d('E')));
+
+      const regions = diffMeasures(base, head);
+
+      // Index pairing would have called m.2 and m.3 modified and m.4 added.
+      expect(regions).toHaveLength(1);
+      expect(regions[0]).toEqual(
+        expect.objectContaining({ changeType: 'added', headMeasureIndex: 1, baseMeasureIndex: undefined }),
+      );
+    });
+
+    it('reports one removed bar rather than every bar after the deletion', () => {
+      const d = (step: string) =>
+        `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>`;
+      const base = score(bar(1, d('C')) + bar(2, d('G')) + bar(3, d('D')));
+      const head = score(bar(1, d('C')) + bar(2, d('D')));
+
+      const regions = diffMeasures(base, head);
+
+      expect(regions).toHaveLength(1);
+      expect(regions[0]).toEqual(
+        expect.objectContaining({ changeType: 'removed', baseMeasureIndex: 1, headMeasureIndex: undefined }),
+      );
+    });
+
+    it('still reports a real edit, carrying both measure indices', () => {
+      const base = score(bar(1, quarter(8)));
+      const head = score(bar(1, '<note><pitch><step>D</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>'));
+
+      const regions = diffMeasures(base, head);
+
+      expect(regions).toHaveLength(1);
+      expect(regions[0]).toEqual(
+        expect.objectContaining({ changeType: 'modified', baseMeasureIndex: 0, headMeasureIndex: 0 }),
+      );
+    });
+
+    it('does not let a self-closing <print/> swallow the measures that follow it', () => {
+      // `<print\b[\s\S]*?</print>` skips past `<print/>` to the next closing tag, taking
+      // every measure in between with it.
+      const base = score(`<print new-system="yes"/>${bar(1, quarter(8))}<print><system-layout/></print>${bar(2, quarter(8))}`);
+      const head = base;
+
+      const internals = service as any;
+      expect(internals.extractScoreStructure(base).parts[0].measures).toHaveLength(2);
+      expect(diffMeasures(base, head)).toHaveLength(0);
+    });
+  });
 });

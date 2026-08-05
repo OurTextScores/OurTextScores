@@ -26,6 +26,35 @@ import type { RequestUser } from '../auth/types/auth-user';
 type ReviewRole = 'reviewer' | 'owner' | 'all';
 type ReviewStatusFilter = ChangeReviewStatus | 'all';
 
+type ScoreMeasure = {
+  measureIndex: number;
+  measureNumber: string;
+  /**
+   * Hash of the near-raw measure body. Bar and region anchor ids are derived from this,
+   * so it must keep its historical formula or every existing thread loses its anchor.
+   */
+  rawSignature: string;
+  /** Hash of the normalized body. This, and only this, decides whether a bar changed. */
+  signature: string;
+  /** Normalized body, used for the human-readable change summary. */
+  xml: string;
+};
+
+type ScorePart = {
+  partId: string;
+  partIndex: number;
+  partName?: string;
+  measures: ScoreMeasure[];
+};
+
+type ScoreStructure = { parts: ScorePart[] };
+
+type MeasureAlignmentOp = {
+  type: 'equal' | 'removed' | 'added';
+  baseIndex?: number;
+  headIndex?: number;
+};
+
 type RevisionLike = {
   revisionId: string;
   sequenceNumber: number;
@@ -444,12 +473,12 @@ export class ChangeReviewsService {
           side: 'head',
           partId: part.partId,
           measureIndex: measure.measureIndex,
-          measureHash: measure.signature,
+          measureHash: measure.rawSignature,
         });
         const thread = diff.threads.find((candidate) =>
           candidate.diffAnchor.anchorId === anchorId
           || candidate.diffAnchor.anchorId === change?.anchorId
-          || candidate.diffAnchor.lineHash === measure.signature
+          || candidate.diffAnchor.lineHash === measure.rawSignature
           || candidate.diffAnchor.lineText === label,
         );
         return {
@@ -1379,7 +1408,7 @@ export class ChangeReviewsService {
         side,
         partId: part.partId,
         measureIndex: measure.measureIndex,
-        measureHash: measure.signature,
+        measureHash: measure.rawSignature,
       }),
       patchsetNumber: context.patchsetNumber,
       revisionId,
@@ -1549,10 +1578,15 @@ export class ChangeReviewsService {
     return createHash('sha256').update(value).digest('hex').slice(0, 16);
   }
 
-  private extractScoreStructure(xml: string) {
+  private extractScoreStructure(xml: string): ScoreStructure {
     const cleaned = String(xml || '')
       .replace(/<!--[\s\S]*?-->/g, '')
+      // Self-closing forms must go first. `<print\b[\s\S]*?<\/print>` does not match
+      // `<print/>`, so on a score that mixes both it runs forward from the self-closing
+      // tag to the next closing tag and deletes every measure in between.
+      .replace(/<print\b[^>]*\/>/gi, '')
       .replace(/<print\b[\s\S]*?<\/print>/gi, '')
+      .replace(/<layout-break\b[^>]*\/>/gi, '')
       .replace(/<layout-break\b[\s\S]*?<\/layout-break>/gi, '')
       .replace(/>\s+</g, '><')
       .trim();
@@ -1569,25 +1603,29 @@ export class ChangeReviewsService {
       }
     }
 
-    const parts: Array<{
-      partId: string;
-      partIndex: number;
-      partName?: string;
-      measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }>;
-    }> = [];
+    const parts: ScorePart[] = [];
     const partRegex = /<part\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/part>/gi;
     let partMatch: RegExpExecArray | null;
     let partIndex = 0;
     while ((partMatch = partRegex.exec(scoreBody))) {
       const [, partId, body] = partMatch;
-      const measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }> = [];
+      const measures: ScoreMeasure[] = [];
       const measureRegex = /<measure\b([^>]*)>([\s\S]*?)<\/measure>/gi;
       let measureMatch: RegExpExecArray | null;
       let measureIndex = 0;
+      // `<divisions>` is declared in `<attributes>` and carries forward until redeclared.
+      let divisions = 1;
       while ((measureMatch = measureRegex.exec(body))) {
         const attrs = measureMatch[1] || '';
         const measureBody = measureMatch[2] || '';
         const numberMatch = attrs.match(/\bnumber="([^"]+)"/i);
+        const declaredDivisions = [...measureBody.matchAll(/<divisions>\s*(\d+)\s*<\/divisions>/gi)];
+        if (declaredDivisions.length) {
+          const declared = Number(declaredDivisions[declaredDivisions.length - 1][1]);
+          if (Number.isFinite(declared) && declared > 0) {
+            divisions = declared;
+          }
+        }
         const normalizedMeasureBody = measureBody
           .replace(/\s+/g, ' ')
           .replace(/\s+</g, '<')
@@ -1599,11 +1637,13 @@ export class ChangeReviewsService {
           /\s+(default-x|default-y|relative-x|relative-y)="[^"]*"/g,
           '',
         );
+        const comparableMeasureBody = this.buildComparableMeasureBody(semanticMeasureBody, divisions);
         measures.push({
           measureIndex,
           measureNumber: (numberMatch?.[1] || `${measureIndex + 1}`).trim(),
-          signature: this.hashText(semanticMeasureBody),
-          xml: semanticMeasureBody,
+          rawSignature: this.hashText(semanticMeasureBody),
+          signature: this.hashText(comparableMeasureBody),
+          xml: comparableMeasureBody,
         });
         measureIndex += 1;
       }
@@ -1619,24 +1659,108 @@ export class ChangeReviewsService {
     return { parts };
   }
 
-  private diffScoreStructures(
-    baseScore: {
-      parts: Array<{
-        partId: string;
-        partIndex: number;
-        partName?: string;
-        measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }>;
-      }>;
-    },
-    headScore: {
-      parts: Array<{
-        partId: string;
-        partIndex: number;
-        partName?: string;
-        measures: Array<{ measureIndex: number; measureNumber: string; signature: string; xml: string }>;
-      }>;
-    },
-  ) {
+  /**
+   * Reduce a measure to what a musician would call its content.
+   *
+   * MusicXML carries three kinds of noise that make bit-identical music hash
+   * differently, and each of them flags a whole score rather than a bar:
+   *  - `<duration>` counts `<divisions>` ticks, so re-exporting with a different
+   *    divisions value rescales every duration in the file (16 -> 8 turns every
+   *    eighth note from 8 to 4);
+   *  - `number=` on a spanner is a concurrency-slot id, so adding one hairpin
+   *    renumbers every later one;
+   *  - a silent bar may be written as one whole-measure rest or as several rests.
+   */
+  private buildComparableMeasureBody(measureBody: string, divisions: number) {
+    const safeDivisions = divisions > 0 ? divisions : 1;
+    const inQuarterNotes = measureBody
+      .replace(/<divisions>\s*\d+\s*<\/divisions>/gi, '')
+      .replace(/<duration>\s*(\d+)\s*<\/duration>/gi, (match, raw) => {
+        const ticks = Number(raw);
+        if (!Number.isFinite(ticks)) {
+          return match;
+        }
+        return `<duration>${this.formatQuarterNotes(ticks, safeDivisions)}</duration>`;
+      });
+    const withoutSpannerIds = inQuarterNotes.replace(
+      /<(wedge|slur|tied|tuplet|octave-shift|bracket|dashes|glissando|slide)\b([^>]*?)\s+number="\d+"/gi,
+      '<$1$2',
+    );
+    return this.canonicalizeSilentMeasure(withoutSpannerIds);
+  }
+
+  /** Exact rational so no divisions value can round two different durations together. */
+  private formatQuarterNotes(ticks: number, divisions: number) {
+    const divisor = this.greatestCommonDivisor(ticks, divisions) || 1;
+    const numerator = ticks / divisor;
+    const denominator = divisions / divisor;
+    return denominator === 1 ? `${numerator}` : `${numerator}/${denominator}`;
+  }
+
+  private greatestCommonDivisor(a: number, b: number): number {
+    return b === 0 ? Math.abs(a) : this.greatestCommonDivisor(b, a % b);
+  }
+
+  /**
+   * A bar whose every note is a rest is a bar of silence however it was chopped up.
+   * Only the note elements are collapsed; directions and attributes stay in place so a
+   * dynamic or clef added over a rest bar still reads as a change.
+   */
+  private canonicalizeSilentMeasure(measureBody: string) {
+    const notes = [...measureBody.matchAll(/<note\b[^>]*>([\s\S]*?)<\/note>/gi)];
+    if (!notes.length || !notes.every((note) => /<rest\b/.test(note[1]))) {
+      return measureBody;
+    }
+    return `${measureBody.replace(/<note\b[^>]*>[\s\S]*?<\/note>/gi, '')}<measure-rest/>`;
+  }
+
+  /**
+   * Longest-common-subsequence alignment of two measure runs.
+   *
+   * Pairing measures by array index instead makes a single inserted bar report every
+   * following bar as modified, for the rest of the movement. Scores run to a few
+   * hundred bars per part, so the quadratic table costs far less than a wrong answer.
+   */
+  private alignMeasures(baseSignatures: string[], headSignatures: string[]): MeasureAlignmentOp[] {
+    const rows = baseSignatures.length;
+    const cols = headSignatures.length;
+    const lengths: number[][] = Array.from({ length: rows + 1 }, () => new Array<number>(cols + 1).fill(0));
+    for (let i = rows - 1; i >= 0; i -= 1) {
+      for (let j = cols - 1; j >= 0; j -= 1) {
+        lengths[i][j] = baseSignatures[i] === headSignatures[j]
+          ? lengths[i + 1][j + 1] + 1
+          : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+      }
+    }
+
+    const ops: MeasureAlignmentOp[] = [];
+    let i = 0;
+    let j = 0;
+    while (i < rows && j < cols) {
+      if (baseSignatures[i] === headSignatures[j]) {
+        ops.push({ type: 'equal', baseIndex: i, headIndex: j });
+        i += 1;
+        j += 1;
+      } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
+        ops.push({ type: 'removed', baseIndex: i });
+        i += 1;
+      } else {
+        ops.push({ type: 'added', headIndex: j });
+        j += 1;
+      }
+    }
+    while (i < rows) {
+      ops.push({ type: 'removed', baseIndex: i });
+      i += 1;
+    }
+    while (j < cols) {
+      ops.push({ type: 'added', headIndex: j });
+      j += 1;
+    }
+    return ops;
+  }
+
+  private diffScoreStructures(baseScore: ScoreStructure, headScore: ScoreStructure) {
     const baseById = new Map(baseScore.parts.map((part) => [part.partId, part]));
     const headById = new Map(headScore.parts.map((part) => [part.partId, part]));
     const orderedPartIds = Array.from(new Set([...headScore.parts.map((part) => part.partId), ...baseScore.parts.map((part) => part.partId)]));
@@ -1664,44 +1788,65 @@ export class ChangeReviewsService {
       const headMeasures = headPart?.measures || [];
       const partName = headPart?.partName || basePart?.partName;
       const partIndex = headPart?.partIndex ?? basePart?.partIndex ?? 0;
-      const maxLength = Math.max(baseMeasures.length, headMeasures.length);
+      const ops = this.alignMeasures(
+        baseMeasures.map((measure) => measure.signature),
+        headMeasures.map((measure) => measure.signature),
+      );
 
-      for (let index = 0; index < maxLength; index += 1) {
-        const baseMeasure = baseMeasures[index];
-        const headMeasure = headMeasures[index];
-        const changed =
-          !baseMeasure ||
-          !headMeasure ||
-          baseMeasure.signature !== headMeasure.signature ||
-          baseMeasure.measureNumber !== headMeasure.measureNumber;
-        if (!changed) {
+      let opIndex = 0;
+      while (opIndex < ops.length) {
+        if (ops[opIndex].type === 'equal') {
+          opIndex += 1;
           continue;
         }
 
-        const changeType = !baseMeasure ? 'added' : !headMeasure ? 'removed' : 'modified';
-        const side = changeType === 'removed' ? 'base' : 'head';
-        const measureNumber = headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
-        const label = `${partName || `Part ${partIndex + 1}`} - m. ${measureNumber}`;
-        const xmlDiff = this.summarizeMeasureXmlDiff(baseMeasure?.xml, headMeasure?.xml);
-        const summaryPrefix = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
-        const summary = xmlDiff ? `${summaryPrefix}: ${xmlDiff}` : summaryPrefix;
-        const regionHash = this.hashText(`${partId}|${index}|${baseMeasure?.signature || ''}|${headMeasure?.signature || ''}|${changeType}`);
-        regions.push({
-          anchorId: this.hashText(`score-region|${partId}|${index}|${baseMeasure?.measureNumber || ''}|${headMeasure?.measureNumber || ''}|${regionHash}`),
-          partId,
-          partIndex,
-          partName,
-          side,
-          changeType,
-          baseMeasureIndex: baseMeasure?.measureIndex,
-          headMeasureIndex: headMeasure?.measureIndex,
-          baseMeasureNumber: baseMeasure?.measureNumber,
-          headMeasureNumber: headMeasure?.measureNumber,
-          label,
-          summary,
-          commentable: true,
-          regionHash,
-        });
+        // Zip each adjacent removed/added run so an edited bar reads as one "modified"
+        // region carrying both measure indices, which is what the compare panes need to
+        // highlight the same bar on the left and the right.
+        const removedIndices: number[] = [];
+        const addedIndices: number[] = [];
+        while (opIndex < ops.length && ops[opIndex].type !== 'equal') {
+          const op = ops[opIndex];
+          if (op.type === 'removed') {
+            removedIndices.push(op.baseIndex!);
+          } else {
+            addedIndices.push(op.headIndex!);
+          }
+          opIndex += 1;
+        }
+
+        const pairCount = Math.max(removedIndices.length, addedIndices.length);
+        for (let pair = 0; pair < pairCount; pair += 1) {
+          const baseMeasure = removedIndices[pair] !== undefined ? baseMeasures[removedIndices[pair]] : undefined;
+          const headMeasure = addedIndices[pair] !== undefined ? headMeasures[addedIndices[pair]] : undefined;
+          const index = headMeasure?.measureIndex ?? baseMeasure?.measureIndex ?? 0;
+          const changeType = !baseMeasure ? 'added' : !headMeasure ? 'removed' : 'modified';
+          const side = changeType === 'removed' ? 'base' : 'head';
+          const measureNumber = headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
+          const label = `${partName || `Part ${partIndex + 1}`} - m. ${measureNumber}`;
+          const xmlDiff = this.summarizeMeasureXmlDiff(baseMeasure?.xml, headMeasure?.xml);
+          const summaryPrefix = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
+          const summary = xmlDiff ? `${summaryPrefix}: ${xmlDiff}` : summaryPrefix;
+          // Anchors hash the raw signature, not the normalized one, so tightening the
+          // comparison does not silently re-anchor every thread on existing reviews.
+          const regionHash = this.hashText(`${partId}|${index}|${baseMeasure?.rawSignature || ''}|${headMeasure?.rawSignature || ''}|${changeType}`);
+          regions.push({
+            anchorId: this.hashText(`score-region|${partId}|${index}|${baseMeasure?.measureNumber || ''}|${headMeasure?.measureNumber || ''}|${regionHash}`),
+            partId,
+            partIndex,
+            partName,
+            side,
+            changeType,
+            baseMeasureIndex: baseMeasure?.measureIndex,
+            headMeasureIndex: headMeasure?.measureIndex,
+            baseMeasureNumber: baseMeasure?.measureNumber,
+            headMeasureNumber: headMeasure?.measureNumber,
+            label,
+            summary,
+            commentable: true,
+            regionHash,
+          });
+        }
       }
     }
 
