@@ -1825,6 +1825,11 @@ export class ChangeReviewsService {
           const measureNumber = headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
           const label = `${partName || `Part ${partIndex + 1}`} - m. ${measureNumber}`;
           const xmlDiff = this.summarizeMeasureXmlDiff(baseMeasure?.xml, headMeasure?.xml);
+          if (changeType === 'modified' && xmlDiff === null) {
+            // Reordering we cannot describe. An added or removed bar is always worth
+            // reporting, but a "modified" bar with nothing to say is noise.
+            continue;
+          }
           const summaryPrefix = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
           const summary = xmlDiff ? `${summaryPrefix}: ${xmlDiff}` : summaryPrefix;
           // Anchors hash the raw signature, not the normalized one, so tightening the
@@ -1906,7 +1911,10 @@ export class ChangeReviewsService {
     if (baseXml === headXml) {
       return '';
     }
-    return 'XML structure changed';
+    // Same elements and same start tags, in a different order. There is nothing to show a
+    // reviewer and it is almost always exporter churn, so the caller drops the region
+    // rather than reporting an unexplainable "XML structure changed".
+    return null;
   }
 
   private stripXmlText(value: string) {

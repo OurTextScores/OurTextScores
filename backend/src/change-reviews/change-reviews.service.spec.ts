@@ -887,6 +887,27 @@ describe('ChangeReviewsService', () => {
       );
     });
 
+    it('drops a modified bar whose only difference is element order', () => {
+      // Same elements, same start tags, different order: nothing to show a reviewer.
+      const note = '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>';
+      const words = '<direction><direction-type><words>cresc.</words></direction-type></direction>';
+      const base = score(bar(1, note + words));
+      const head = score(bar(1, words + note));
+
+      expect(diffMeasures(base, head)).toHaveLength(0);
+    });
+
+    it('still reports an added or removed bar that has no describable summary', () => {
+      const note = '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>';
+      const base = score(bar(1, note));
+      const head = score(bar(1, note) + bar(2, note));
+
+      const regions = diffMeasures(base, head);
+
+      expect(regions).toHaveLength(1);
+      expect(regions[0]).toEqual(expect.objectContaining({ changeType: 'added' }));
+    });
+
     it('does not let a self-closing <print/> swallow the measures that follow it', () => {
       // `<print\b[\s\S]*?</print>` skips past `<print/>` to the next closing tag, taking
       // every measure in between with it.
