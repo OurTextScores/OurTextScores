@@ -6,6 +6,7 @@ export type ScannerJobDocument = HydratedDocument<ScannerJob>;
 export const SCANNER_JOB_STATUSES = [
   'queued',
   'preparing',
+  'ready',
   'running',
   'rendering',
   'succeeded',
@@ -26,6 +27,9 @@ export interface ScannerStorageLocator {
 
 export interface ScannerPageResult {
   pageNumber: number;
+  ordinal: number;
+  rotationDegrees: 0 | 90 | 180 | 270;
+  included: boolean;
   status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped';
   attempts: number;
   idempotencyKey: string;
@@ -72,6 +76,9 @@ export class ScannerJob {
 
   @Prop({ type: [Number] })
   retryPageNumbers?: number[];
+
+  @Prop({ type: Date })
+  preparedAt?: Date;
 
   @Prop({ type: Object })
   musicXmlBundle?: ScannerStorageLocator;

@@ -22,6 +22,8 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const [selectedPage, setSelectedPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [draftPages, setDraftPages] = useState<ScannerJob["pages"]>([]);
+  const [pageSetupDirty, setPageSetupDirty] = useState(false);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   const refresh = useCallback(async () => {
@@ -55,6 +57,13 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
     }
   }, [job, selectedPage]);
 
+  useEffect(() => {
+    if (job?.status !== "ready" || pageSetupDirty) return;
+    setDraftPages(
+      [...job.pages].sort((left, right) => left.ordinal - right.ordinal),
+    );
+  }, [job, pageSetupDirty]);
+
   const artifactUrl = useCallback(
     (kind: "musicxml" | "pdf" | "thumbnail" | "zip", pageNumber?: number) =>
       `${base}/artifacts/${kind}${pageNumber ? `?page=${pageNumber}` : ""}`,
@@ -63,12 +72,15 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
 
   const editorUrl = (pageNumber?: number) => {
     const scoreUrl = artifactUrl("musicxml", pageNumber);
+    const displayPage = job?.pages.find(
+      (page) => page.pageNumber === pageNumber,
+    )?.ordinal;
     const params = new URLSearchParams({
       score: scoreUrl,
       launchContext: JSON.stringify({
         source: "scanner",
         sourceLabel: pageNumber
-          ? `${job?.originalFilename} — page ${pageNumber}`
+          ? `${job?.originalFilename} — page ${displayPage || pageNumber}`
           : job?.originalFilename,
         canonicalXmlUrl: scoreUrl,
       }),
@@ -111,6 +123,76 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
     }
   }
 
+  function updateDraft(
+    pageNumber: number,
+    update: (page: ScannerJob["pages"][number]) => ScannerJob["pages"][number],
+  ) {
+    setDraftPages((current) =>
+      current.map((page) =>
+        page.pageNumber === pageNumber ? update(page) : page,
+      ),
+    );
+    setPageSetupDirty(true);
+  }
+
+  function moveDraft(pageNumber: number, direction: -1 | 1) {
+    setDraftPages((current) => {
+      const pages = [...current];
+      const index = pages.findIndex((page) => page.pageNumber === pageNumber);
+      const destination = index + direction;
+      if (index < 0 || destination < 0 || destination >= pages.length)
+        return current;
+      [pages[index], pages[destination]] = [pages[destination], pages[index]];
+      return pages.map((page, pageIndex) => ({
+        ...page,
+        ordinal: pageIndex + 1,
+      }));
+    });
+    setPageSetupDirty(true);
+  }
+
+  async function savePageSetup(start: boolean) {
+    const action = start ? "start" : "save-pages";
+    setBusyAction(action);
+    setError(null);
+    try {
+      const configureResponse = await fetch(`${base}/pages`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pages: draftPages.map(
+            ({ pageNumber, ordinal, rotationDegrees, included }) => ({
+              pageNumber,
+              ordinal,
+              rotationDegrees,
+              included,
+            }),
+          ),
+        }),
+      });
+      if (!configureResponse.ok)
+        throw new Error(
+          await responseError(configureResponse, "Unable to save page setup"),
+        );
+      const configured: ScannerJob = await configureResponse.json();
+      setPageSetupDirty(false);
+      if (!start) {
+        setJob(configured);
+        return;
+      }
+      const startResponse = await fetch(`${base}/start`, { method: "POST" });
+      if (!startResponse.ok)
+        throw new Error(
+          await responseError(startResponse, "Unable to start scanning"),
+        );
+      setJob(await startResponse.json());
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   const selected = useMemo(
     () => job?.pages.find((page) => page.pageNumber === selectedPage),
     [job, selectedPage],
@@ -130,6 +212,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   }
 
   const active = activeScannerStatuses.includes(job.status);
+  const reviewing = job.status === "ready";
   const completedPages = job.pages.filter(
     (page) => page.status === "succeeded",
   ).length;
@@ -152,18 +235,22 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               {job.originalFilename}
             </h1>
             <p className="mt-2 text-sm text-slate-500" aria-live="polite">
-              {completedPages}/{job.pageCount} pages complete ·{" "}
+              {completedPages}/{job.includedPageCount} included pages complete ·{" "}
               {scannerStatusLabel(job.status)}
             </p>
           </div>
-          {active ? (
+          {active || reviewing ? (
             <button
               type="button"
               disabled={Boolean(busyAction)}
               onClick={() => void runAction("cancel", `${base}/cancel`)}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
             >
-              {busyAction === "cancel" ? "Cancelling…" : "Cancel"}
+              {busyAction === "cancel"
+                ? "Cancelling…"
+                : reviewing
+                  ? "Cancel draft"
+                  : "Cancel"}
             </button>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -195,13 +282,13 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             className="mt-5 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={job.pageCount}
+            aria-valuemax={job.includedPageCount}
             aria-valuenow={completedPages}
           >
             <div
               className="h-full bg-blue-600 transition-all"
               style={{
-                width: `${Math.max(5, (completedPages / job.pageCount) * 100)}%`,
+                width: `${Math.max(5, (completedPages / job.includedPageCount) * 100)}%`,
               }}
             />
           </div>
@@ -213,45 +300,188 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         )}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-wrap gap-3" aria-label="Scan pages">
-          {job.pages.map((page) => (
+      {reviewing ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                Review pages before scanning
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm text-slate-500">
+                Put pages in score order, rotate sideways pages, and exclude
+                covers or blanks. Provider usage does not begin until you start.
+              </p>
+            </div>
+            <p className="text-sm text-slate-500" aria-live="polite">
+              {draftPages.filter((page) => page.included).length} of{" "}
+              {draftPages.length} pages included
+            </p>
+          </div>
+          <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {draftPages.map((page, index) => (
+              <li
+                key={page.pageNumber}
+                className={`rounded-lg border p-3 ${page.included ? "border-slate-200 dark:border-slate-700" : "border-slate-200 bg-slate-50 opacity-70 dark:border-slate-800 dark:bg-slate-950"}`}
+              >
+                <div className="flex h-48 items-center justify-center overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
+                  {page.hasThumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={artifactUrl("thumbnail", page.pageNumber)}
+                      alt={`Source page ${page.pageNumber}`}
+                      className="h-full w-full bg-white object-contain transition-transform"
+                      style={{
+                        transform: `rotate(${page.rotationDegrees}deg)`,
+                      }}
+                    />
+                  ) : (
+                    <span className="text-xs text-slate-400">No preview</span>
+                  )}
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">Page {index + 1}</p>
+                    <p className="text-xs text-slate-500">
+                      Source page {page.pageNumber}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={page.included}
+                      onChange={(event) =>
+                        updateDraft(page.pageNumber, (current) => ({
+                          ...current,
+                          included: event.target.checked,
+                        }))
+                      }
+                    />
+                    Include
+                  </label>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateDraft(page.pageNumber, (current) => ({
+                        ...current,
+                        rotationDegrees: ((current.rotationDegrees + 270) %
+                          360) as ScannerJob["pages"][number]["rotationDegrees"],
+                      }))
+                    }
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700"
+                    aria-label={`Rotate source page ${page.pageNumber} left`}
+                  >
+                    Rotate left
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateDraft(page.pageNumber, (current) => ({
+                        ...current,
+                        rotationDegrees: ((current.rotationDegrees + 90) %
+                          360) as ScannerJob["pages"][number]["rotationDegrees"],
+                      }))
+                    }
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-xs dark:border-slate-700"
+                    aria-label={`Rotate source page ${page.pageNumber} right`}
+                  >
+                    Rotate right
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === 0}
+                    onClick={() => moveDraft(page.pageNumber, -1)}
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-xs disabled:opacity-40 dark:border-slate-700"
+                    aria-label={`Move source page ${page.pageNumber} earlier`}
+                  >
+                    Move earlier
+                  </button>
+                  <button
+                    type="button"
+                    disabled={index === draftPages.length - 1}
+                    onClick={() => moveDraft(page.pageNumber, 1)}
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-xs disabled:opacity-40 dark:border-slate-700"
+                    aria-label={`Move source page ${page.pageNumber} later`}
+                  >
+                    Move later
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
             <button
               type="button"
-              key={page.pageNumber}
-              onClick={() => setSelectedPage(page.pageNumber)}
-              aria-pressed={selectedPage === page.pageNumber}
-              className={`w-24 overflow-hidden rounded-lg border text-left transition ${selectedPage === page.pageNumber ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900" : "border-slate-200 dark:border-slate-700"}`}
+              disabled={
+                Boolean(busyAction) ||
+                !pageSetupDirty ||
+                !draftPages.some((page) => page.included)
+              }
+              onClick={() => void savePageSetup(false)}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50 dark:border-slate-700"
             >
-              {page.hasThumbnail ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={artifactUrl("thumbnail", page.pageNumber)}
-                  alt=""
-                  className="h-24 w-full bg-white object-contain"
-                />
-              ) : (
-                <span className="flex h-24 items-center justify-center bg-slate-100 text-xs text-slate-400 dark:bg-slate-800">
-                  No preview
-                </span>
-              )}
-              <span className="block px-2 py-2 text-xs font-medium">
-                Page {page.pageNumber}
-              </span>
-              <span className="block px-2 pb-2 text-[11px] capitalize text-slate-500">
-                {scannerStatusLabel(page.status)}
-              </span>
+              {busyAction === "save-pages" ? "Saving…" : "Save page setup"}
             </button>
-          ))}
-        </div>
-      </section>
+            <button
+              type="button"
+              disabled={
+                Boolean(busyAction) || !draftPages.some((page) => page.included)
+              }
+              onClick={() => void savePageSetup(true)}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busyAction === "start" ? "Starting…" : "Start scanning"}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex flex-wrap gap-3" aria-label="Scan pages">
+            {job.pages.map((page) => (
+              <button
+                type="button"
+                key={page.pageNumber}
+                onClick={() => setSelectedPage(page.pageNumber)}
+                aria-pressed={selectedPage === page.pageNumber}
+                className={`w-24 overflow-hidden rounded-lg border text-left transition ${selectedPage === page.pageNumber ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900" : "border-slate-200 dark:border-slate-700"}`}
+              >
+                {page.hasThumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={artifactUrl("thumbnail", page.pageNumber)}
+                    alt=""
+                    className="h-24 w-full bg-white object-contain"
+                    style={{ transform: `rotate(${page.rotationDegrees}deg)` }}
+                  />
+                ) : (
+                  <span className="flex h-24 items-center justify-center bg-slate-100 text-xs text-slate-400 dark:bg-slate-800">
+                    No preview
+                  </span>
+                )}
+                <span className="block px-2 py-2 text-xs font-medium">
+                  Page {page.ordinal}
+                </span>
+                {page.ordinal !== page.pageNumber && (
+                  <span className="block px-2 pb-1 text-[11px] text-slate-500">
+                    Source {page.pageNumber}
+                  </span>
+                )}
+                <span className="block px-2 pb-2 text-[11px] capitalize text-slate-500">
+                  {scannerStatusLabel(page.status)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {selected && (
+      {selected && !reviewing && (
         <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Page {selected.pageNumber}
+                Page {selected.ordinal}
               </h2>
               <p className="text-sm text-slate-500">
                 {scannerStatusLabel(selected.status)} · {selected.attempts}{" "}
@@ -321,6 +551,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                   src={artifactUrl("thumbnail", selected.pageNumber)}
                   alt={`Source preview for page ${selected.pageNumber}`}
                   className="max-h-[70vh] w-full object-contain"
+                  style={{
+                    transform: `rotate(${selected.rotationDegrees}deg)`,
+                  }}
                 />
               ) : (
                 <p className="p-5 text-sm text-slate-500">
@@ -398,7 +631,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         </section>
       )}
 
-      {!active && !job.hasMusicXml && (
+      {!active && !reviewing && !job.hasMusicXml && (
         <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500 dark:border-slate-700">
           No MusicXML result is available for this job.
         </p>

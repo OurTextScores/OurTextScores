@@ -1,4 +1,9 @@
-import { ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  ServiceUnavailableException
+} from '@nestjs/common';
 import { ScannerService } from './scanner.service';
 
 describe('ScannerService', () => {
@@ -254,5 +259,127 @@ describe('ScannerService', () => {
     jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
     const service = new ScannerService(jobs, storage, config);
     await expect(service.retryPage('user-1', 'job-1', 1)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('persists a complete page order, rotation, and inclusion setup while ready', async () => {
+    const existing = {
+      _id: 'mongo-id',
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'ready',
+      originalFilename: 'score.pdf',
+      pageCount: 2,
+      pages: [
+        {
+          pageNumber: 1,
+          ordinal: 1,
+          rotationDegrees: 0,
+          included: true,
+          status: 'pending',
+          attempts: 0
+        },
+        {
+          pageNumber: 2,
+          ordinal: 2,
+          rotationDegrees: 0,
+          included: true,
+          status: 'pending',
+          attempts: 0
+        }
+      ],
+      sourceExpiresAt: new Date(Date.now() + 60_000),
+      resultExpiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
+    jobs.findOneAndUpdate.mockImplementation((_query: any, update: any) => ({
+      exec: () => Promise.resolve({ ...existing, pages: update.$set.pages })
+    }));
+    const service = new ScannerService(jobs, storage, config);
+    const result = await service.configurePages('user-1', 'job-1', [
+      { pageNumber: 2, ordinal: 1, rotationDegrees: 90, included: true },
+      { pageNumber: 1, ordinal: 2, rotationDegrees: 180, included: false }
+    ]);
+
+    expect(result.pages).toEqual([
+      expect.objectContaining({
+        pageNumber: 2,
+        ordinal: 1,
+        rotationDegrees: 90,
+        included: true,
+        status: 'pending'
+      }),
+      expect.objectContaining({
+        pageNumber: 1,
+        ordinal: 2,
+        rotationDegrees: 180,
+        included: false,
+        status: 'skipped'
+      })
+    ]);
+  });
+
+  it('rejects an invalid page setup and requires an included page', async () => {
+    const existing = {
+      _id: 'mongo-id',
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'ready',
+      pageCount: 1,
+      pages: [{ pageNumber: 1, ordinal: 1, included: true, status: 'pending' }]
+    };
+    jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
+    const service = new ScannerService(jobs, storage, config);
+
+    await expect(
+      service.configurePages('user-1', 'job-1', [
+        { pageNumber: 1, ordinal: 1, rotationDegrees: 45, included: true }
+      ])
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.configurePages('user-1', 'job-1', [
+        { pageNumber: 1, ordinal: 1, rotationDegrees: 0, included: false }
+      ])
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('queues a ready job only after explicit start', async () => {
+    const existing = {
+      _id: 'mongo-id',
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'ready',
+      originalFilename: 'score.png',
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          ordinal: 1,
+          rotationDegrees: 0,
+          included: true,
+          status: 'pending',
+          attempts: 0
+        }
+      ],
+      sourceExpiresAt: new Date(Date.now() + 60_000),
+      resultExpiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
+    jobs.findOneAndUpdate.mockReturnValue({
+      exec: () => Promise.resolve({ ...existing, status: 'queued' })
+    });
+    const service = new ScannerService(jobs, storage, config);
+
+    await expect(service.startJob('user-1', 'job-1')).resolves.toMatchObject({
+      status: 'queued'
+    });
+    expect(jobs.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'ready' }),
+      expect.objectContaining({ $set: { status: 'queued' } }),
+      { new: true }
+    );
   });
 });

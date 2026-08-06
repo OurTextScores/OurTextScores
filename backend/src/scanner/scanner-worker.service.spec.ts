@@ -1,5 +1,9 @@
 import { ScannerProviderError } from './scanner.errors';
 import { ScannerWorkerService } from './scanner-worker.service';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp = require('sharp');
 
 describe('ScannerWorkerService retry policy', () => {
   const values: Record<string, string> = {
@@ -86,5 +90,66 @@ describe('ScannerWorkerService retry policy', () => {
     expect(scannerWorker.shouldPreservePriorFailure(transient, 'generation-1')).toBe(true);
     expect(scannerWorker.shouldPreservePriorFailure(transient, 'generation-2')).toBe(false);
     expect(scannerWorker.shouldPreservePriorFailure(deterministic, 'generation-2')).toBe(true);
+  });
+
+  it('materializes only included pages in saved order with saved rotation', async () => {
+    const image = await sharp({
+      create: { width: 10, height: 20, channels: 3, background: '#ffffff' }
+    })
+      .png()
+      .toBuffer();
+    const storage = { getObjectBuffer: jest.fn().mockResolvedValue(image) } as any;
+    const scannerWorker = new ScannerWorkerService(
+      {} as any,
+      storage,
+      provider,
+      {} as any,
+      {} as any,
+      config
+    ) as any;
+    const workspace = await fs.mkdtemp(join(tmpdir(), 'scanner-worker-test-'));
+    try {
+      const pages = await scannerWorker.materializeConfiguredPages(
+        {
+          pages: [
+            {
+              pageNumber: 1,
+              ordinal: 2,
+              rotationDegrees: 0,
+              included: true,
+              sourceImage: { bucket: 'aux', objectKey: 'one.png' }
+            },
+            {
+              pageNumber: 2,
+              ordinal: 1,
+              rotationDegrees: 90,
+              included: true,
+              sourceImage: { bucket: 'aux', objectKey: 'two.png' }
+            },
+            {
+              pageNumber: 3,
+              ordinal: 3,
+              rotationDegrees: 0,
+              included: false,
+              sourceImage: { bucket: 'aux', objectKey: 'three.png' }
+            }
+          ]
+        },
+        workspace
+      );
+
+      expect(pages.map((page: any) => page.pageNumber)).toEqual([2, 1]);
+      expect(storage.getObjectBuffer).toHaveBeenCalledTimes(2);
+      await expect(sharp(pages[0].path).metadata()).resolves.toMatchObject({
+        width: 20,
+        height: 10
+      });
+      await expect(sharp(pages[1].path).metadata()).resolves.toMatchObject({
+        width: 10,
+        height: 20
+      });
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
   });
 });

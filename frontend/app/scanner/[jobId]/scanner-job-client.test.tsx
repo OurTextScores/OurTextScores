@@ -10,9 +10,13 @@ const partialJob: ScannerJob = {
   status: "partial",
   originalFilename: "two-pages.pdf",
   pageCount: 2,
+  includedPageCount: 2,
   pages: [
     {
       pageNumber: 1,
+      ordinal: 1,
+      rotationDegrees: 0,
+      included: true,
       status: "succeeded",
       attempts: 1,
       manualRetries: 0,
@@ -23,6 +27,9 @@ const partialJob: ScannerJob = {
     },
     {
       pageNumber: 2,
+      ordinal: 2,
+      rotationDegrees: 0,
+      included: true,
       status: "failed",
       attempts: 2,
       manualRetries: 0,
@@ -92,6 +99,87 @@ describe("ScannerJobClient", () => {
     await waitFor(() =>
       expect(globalThis.fetch).toHaveBeenCalledWith(
         "/api/proxy/scanner/jobs/job-1/pages/2/retry",
+        { method: "POST" },
+      ),
+    );
+  });
+
+  it("saves page review choices before explicitly starting inference", async () => {
+    const readyJob: ScannerJob = {
+      ...partialJob,
+      status: "ready",
+      includedPageCount: 2,
+      pages: partialJob.pages.map((page) => ({
+        ...page,
+        status: "pending",
+        attempts: 0,
+        errorCode: undefined,
+        errorMessage: undefined,
+        hasMusicXml: false,
+        hasPdf: false,
+        canRetry: false,
+      })),
+      hasMusicXml: false,
+      hasPdf: false,
+      hasZip: false,
+      canRetry: false,
+    };
+    const queuedJob: ScannerJob = { ...readyJob, status: "queued" };
+    (globalThis.fetch as jest.Mock).mockImplementation(
+      async (url: string, init?: RequestInit) => ({
+        ok: true,
+        json: async () =>
+          init?.method === "POST" && url.endsWith("/start")
+            ? queuedJob
+            : readyJob,
+      }),
+    );
+
+    render(<ScannerJobClient jobId="job-1" />);
+    expect(
+      await screen.findByRole("heading", {
+        name: "Review pages before scanning",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Rotate source page 1 right" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move source page 2 earlier" }),
+    );
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Include" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Start scanning" }));
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/proxy/scanner/jobs/job-1/pages",
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    );
+    const configureCall = (globalThis.fetch as jest.Mock).mock.calls.find(
+      ([url, init]) =>
+        url === "/api/proxy/scanner/jobs/job-1/pages" &&
+        init?.method === "PATCH",
+    );
+    expect(JSON.parse(configureCall[1].body)).toEqual({
+      pages: [
+        {
+          pageNumber: 2,
+          ordinal: 1,
+          rotationDegrees: 0,
+          included: false,
+        },
+        {
+          pageNumber: 1,
+          ordinal: 2,
+          rotationDegrees: 90,
+          included: true,
+        },
+      ],
+    });
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/proxy/scanner/jobs/job-1/start",
         { method: "POST" },
       ),
     );

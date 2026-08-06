@@ -23,7 +23,7 @@ import { ScannerProviderService } from './scanner-provider.service';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
-const PROCESSING_STATUSES = ['preparing', 'running', 'rendering'];
+const PROCESSING_STATUSES = ['running', 'rendering'];
 
 @Injectable()
 export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
@@ -65,7 +65,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
       await this.deliverPendingTerminalNotification();
       const job = await this.claim();
-      if (job) await this.process(job);
+      if (job?.status === 'preparing') await this.prepare(job);
+      else if (job) await this.process(job);
     } catch (error) {
       this.logger.error(`Scanner worker tick failed: ${this.message(error)}`);
     } finally {
@@ -86,13 +87,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       .findOneAndUpdate(
         {
           $or: [
-            { status: 'queued' },
+            {
+              status: { $in: ['preparing', 'queued'] },
+              $or: [{ leaseExpiresAt: { $exists: false } }, { leaseExpiresAt: { $lt: now } }]
+            },
             { status: { $in: PROCESSING_STATUSES }, leaseExpiresAt: { $lt: now } }
           ]
         },
         {
           $set: {
-            status: 'preparing',
             leaseOwner: this.workerId,
             leaseExpiresAt,
             startedAt: now
@@ -103,16 +106,86 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       .exec();
   }
 
+  private async prepare(job: ScannerJobDocument): Promise<void> {
+    const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-prepare-'));
+    const storedLocators: ScannerStorageLocator[] = [];
+    try {
+      const input = await this.storage.getObjectBuffer(job.input.bucket, job.input.objectKey);
+      const pageFiles = await this.preparePages(job, input, workspace);
+      const priorResults = new Map(job.pages.map((page) => [page.pageNumber, page]));
+      const pages: ScannerPageResult[] = [];
+      for (const pageFile of pageFiles) {
+        if (await this.isCancelled(job.jobId)) {
+          await Promise.all(
+            storedLocators.map((locator) =>
+              this.storage.deleteObject(locator.bucket, locator.objectKey)
+            )
+          );
+          return;
+        }
+        const prior = priorResults.get(pageFile.pageNumber);
+        const image = await fs.readFile(pageFile.path);
+        const assets = await this.ensurePageAssets(job, pageFile.pageNumber, image, prior);
+        if (assets.sourceImage) storedLocators.push(assets.sourceImage);
+        if (assets.thumbnail) storedLocators.push(assets.thumbnail);
+        pages.push({
+          pageNumber: pageFile.pageNumber,
+          ordinal: prior?.ordinal || pageFile.pageNumber,
+          rotationDegrees: prior?.rotationDegrees || 0,
+          included: prior?.included !== false,
+          status: prior?.included === false ? 'skipped' : 'pending',
+          attempts: 0,
+          manualRetries: 0,
+          idempotencyKey: '',
+          ...assets
+        });
+      }
+      const updated = await this.jobs
+        .findOneAndUpdate(
+          { jobId: job.jobId, status: 'preparing', leaseOwner: this.workerId },
+          {
+            $set: { status: 'ready', pages, preparedAt: new Date() },
+            $unset: { leaseOwner: 1, leaseExpiresAt: 1 }
+          },
+          { new: true }
+        )
+        .exec();
+      if (!updated) {
+        await Promise.all(
+          storedLocators.map((locator) =>
+            this.storage.deleteObject(locator.bucket, locator.objectKey)
+          )
+        );
+      }
+    } catch (error) {
+      this.logger.error(`Scanner preparation ${job.jobId} failed: ${this.message(error)}`);
+      await Promise.all(
+        storedLocators.map((locator) =>
+          this.storage.deleteObject(locator.bucket, locator.objectKey)
+        )
+      );
+      if (!(await this.isCancelled(job.jobId))) {
+        await this.finish(job, 'failed', job.pages, {
+          errorCode: 'page_preparation_failed',
+          errorMessage: 'The scanner could not prepare pages from this file'
+        });
+      }
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  }
+
   private async process(job: ScannerJobDocument): Promise<void> {
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-worker-'));
     try {
       if (this.providerDisabledReason) {
         throw new ScannerProviderError(this.providerDisabledReason, 'provider_disabled', false);
       }
-      const input = await this.storage.getObjectBuffer(job.input.bucket, job.input.objectKey);
-      const pageFiles = await this.preparePages(job, input, workspace);
+      const pageFiles = await this.materializeConfiguredPages(job, workspace);
       const priorResults = new Map(job.pages.map((page) => [page.pageNumber, page]));
-      const results: ScannerPageResult[] = [];
+      const results: ScannerPageResult[] = job.pages
+        .filter((page) => page.included === false)
+        .map((page) => ({ ...page, status: 'skipped' }));
       const retryPageNumbers = job.retryPageNumbers?.length
         ? new Set(job.retryPageNumbers)
         : undefined;
@@ -122,20 +195,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
 
       await this.updateLease(job.jobId, 'running');
       for (let index = 0; index < pageFiles.length; index += 1) {
-        const pageNumber = index + 1;
-        const detectTitle = Boolean(job.options?.detectTitle) && pageNumber === 1;
+        const pageFile = pageFiles[index];
+        const pageNumber = pageFile.pageNumber;
+        const detectTitle = Boolean(job.options?.detectTitle) && index === 0;
         if (await this.isCancelled(job.jobId)) return;
         const prior = priorResults.get(pageNumber);
         if (retryPageNumbers && !retryPageNumbers.has(pageNumber)) {
           if (prior) results.push(prior);
           continue;
         }
-        const idempotencyKey = this.provider.createIdempotencyKey({
-          inputSha256: job.input.checksumSha256,
-          pageNumber,
-          detectTitle,
-          generation: job.generation
-        });
         if (prior?.status === 'succeeded' && prior.musicXml) {
           let resumed = prior;
           if (!prior.pdf) {
@@ -163,13 +231,19 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
+        const image = await fs.readFile(pageFile.path);
+        const idempotencyKey = this.provider.createIdempotencyKey({
+          inputSha256: createHash('sha256').update(image).digest('hex'),
+          pageNumber,
+          detectTitle,
+          generation: job.generation
+        });
         if (prior && this.shouldPreservePriorFailure(prior, idempotencyKey)) {
           results.push(prior);
           continue;
         }
 
-        const image = await fs.readFile(pageFiles[index].path);
-        const assets = await this.ensurePageAssets(job, pageNumber, image, prior);
+        const assets = { sourceImage: prior?.sourceImage, thumbnail: prior?.thumbnail };
         const manualRetries = prior?.manualRetries || 0;
         await this.persistPageProgress(
           job,
@@ -177,6 +251,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           priorResults,
           {
             pageNumber,
+            ordinal: prior?.ordinal || pageNumber,
+            rotationDegrees: prior?.rotationDegrees || 0,
+            included: true,
             status: 'running',
             attempts: prior?.attempts || 0,
             manualRetries,
@@ -190,7 +267,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         try {
           const scanned = await this.scanWithRetry({
             image,
-            contentType: pageFiles[index].contentType,
+            contentType: pageFile.contentType,
             pageNumber,
             generation: job.generation,
             detectTitle,
@@ -227,6 +304,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           }
           results.push({
             pageNumber,
+            ordinal: prior?.ordinal || pageNumber,
+            rotationDegrees: prior?.rotationDegrees || 0,
+            included: true,
             status: 'succeeded',
             attempts: scanned.attempts,
             manualRetries,
@@ -248,6 +328,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           }
           results.push({
             pageNumber,
+            ordinal: prior?.ordinal || pageNumber,
+            rotationDegrees: prior?.rotationDegrees || 0,
+            included: true,
             status: 'failed',
             attempts: (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1,
             manualRetries,
@@ -286,7 +369,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       const previewThumbnailLocator = previewThumbnail
         ? await this.store(`${this.baseKey(job)}/preview.png`, previewThumbnail, 'image/png')
         : job.previewThumbnail;
-      const status = successful.length === job.pageCount ? 'succeeded' : 'partial';
+      const status = successful.length === pageFiles.length ? 'succeeded' : 'partial';
       const resultsZip = await this.createResultsZip(job, results, {
         status,
         providerRevision,
@@ -419,6 +502,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         (pageNumber) =>
           priorResults.get(pageNumber) || {
             pageNumber,
+            ordinal: pageNumber,
+            rotationDegrees: 0 as const,
+            included: true,
             status: 'pending' as const,
             attempts: 0,
             manualRetries: 0,
@@ -440,7 +526,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     job: ScannerJobDocument,
     input: Buffer,
     workspace: string
-  ): Promise<Array<{ path: string; contentType: 'image/png' | 'image/jpeg' }>> {
+  ): Promise<Array<{ pageNumber: number; path: string; contentType: 'image/png' }>> {
     if (job.inputContentType !== 'application/pdf') {
       const path = join(workspace, 'page-001.png');
       await sharp(input)
@@ -450,6 +536,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         .toFile(path);
       return [
         {
+          pageNumber: 1,
           path,
           contentType: 'image/png'
         }
@@ -467,13 +554,60 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const pages = entries
       .filter((name) => /^page-\d+\.png$/.test(name))
       .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
-      .map((name) => ({ path: join(workspace, name), contentType: 'image/png' as const }));
+      .map((name, index) => ({
+        pageNumber: index + 1,
+        path: join(workspace, name),
+        contentType: 'image/png' as const
+      }));
     if (pages.length !== job.pageCount) {
       throw new ScannerProviderError(
         `Expected ${job.pageCount} PDF pages but rasterized ${pages.length}`,
         'pdf_rasterization_failed',
         false
       );
+    }
+    return pages;
+  }
+
+  private async materializeConfiguredPages(
+    job: ScannerJobDocument,
+    workspace: string
+  ): Promise<Array<{ pageNumber: number; path: string; contentType: 'image/png' }>> {
+    const configured = job.pages
+      .filter((page) => page.included !== false)
+      .sort(
+        (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
+      );
+    if (configured.length === 0) {
+      throw new ScannerProviderError(
+        'At least one page must be included',
+        'no_pages_included',
+        false
+      );
+    }
+    const pages: Array<{ pageNumber: number; path: string; contentType: 'image/png' }> = [];
+    for (const page of configured) {
+      if (!page.sourceImage) {
+        throw new ScannerProviderError(
+          'A prepared scanner page is unavailable',
+          'source_page_missing',
+          false
+        );
+      }
+      const source = await this.storage.getObjectBuffer(
+        page.sourceImage.bucket,
+        page.sourceImage.objectKey
+      );
+      const path = join(
+        workspace,
+        `configured-${String(page.ordinal || page.pageNumber).padStart(3, '0')}.png`
+      );
+      await sharp(source)
+        .rotate(page.rotationDegrees || 0)
+        .resize({ width: 1920, withoutEnlargement: true })
+        .png()
+        .toFile(path);
+      pages.push({ pageNumber: page.pageNumber, path, contentType: 'image/png' });
     }
     return pages;
   }
@@ -490,7 +624,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         page.musicXml.bucket,
         page.musicXml.objectKey
       );
-      zip.addFile(`page-${String(page.pageNumber).padStart(3, '0')}.musicxml`, contents);
+      zip.addFile(
+        `page-${String(page.ordinal || page.pageNumber).padStart(3, '0')}.musicxml`,
+        contents
+      );
     }
     return this.store(`${this.baseKey(job)}/musicxml-pages.zip`, zip.toBuffer(), 'application/zip');
   }
@@ -505,7 +642,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     if (pdfPages.length === 1 && pdfPages[0].pdf) return pdfPages[0].pdf;
     const paths: string[] = [];
     for (const page of pdfPages) {
-      const path = join(workspace, `rendered-${String(page.pageNumber).padStart(3, '0')}.pdf`);
+      const path = join(
+        workspace,
+        `rendered-${String(page.ordinal || page.pageNumber).padStart(3, '0')}.pdf`
+      );
       const locator = page.pdf!;
       await fs.writeFile(
         path,
@@ -538,7 +678,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<ScannerStorageLocator> {
     const zip = new AdmZip();
     for (const page of pages) {
-      const pageSegment = String(page.pageNumber).padStart(3, '0');
+      const pageSegment = String(page.ordinal || page.pageNumber).padStart(3, '0');
       if (page.musicXml) {
         zip.addFile(
           `page-${pageSegment}.musicxml`,
@@ -562,6 +702,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       createdAt: new Date().toISOString(),
       pages: pages.map((page) => ({
         pageNumber: page.pageNumber,
+        ordinal: page.ordinal || page.pageNumber,
+        rotationDegrees: page.rotationDegrees || 0,
+        included: page.included !== false,
         status: page.status,
         attempts: page.attempts,
         manualRetries: page.manualRetries || 0,
@@ -635,7 +778,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         status: job.status as 'succeeded' | 'partial' | 'failed',
         originalFilename: job.originalFilename,
         succeededPages: job.pages.filter((page) => page.status === 'succeeded').length,
-        pageCount: job.pageCount
+        pageCount: job.pages.filter((page) => page.included !== false).length
       });
       await this.jobs
         .updateOne(
@@ -692,6 +835,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       );
       const pages = job.pages.map((page) => ({
         pageNumber: page.pageNumber,
+        ordinal: page.ordinal || page.pageNumber,
+        rotationDegrees: page.rotationDegrees || 0,
+        included: page.included !== false,
         status: page.status,
         attempts: page.attempts,
         manualRetries: page.manualRetries || 0,

@@ -17,7 +17,7 @@ async function proxyScanner(request: Request, segments: string[]) {
     method: request.method,
     headers,
     cache: "no-store",
-    ...(hasBody ? { body: request.body, duplex: "half" } : {})
+    ...(hasBody ? { body: request.body, duplex: "half" } : {}),
   };
   const upstream = await proxyFetch(request, url, init);
   const responseHeaders = new Headers();
@@ -27,7 +27,7 @@ async function proxyScanner(request: Request, segments: string[]) {
   }
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: responseHeaders
+    headers: responseHeaders,
   });
 }
 
@@ -38,6 +38,10 @@ export function GET(request: Request, context: Context) {
 }
 
 export function POST(request: Request, context: Context) {
+  return proxyScanner(request, context.params.segments || []);
+}
+
+export function PATCH(request: Request, context: Context) {
   return proxyScanner(request, context.params.segments || []);
 }
 

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   ParseEnumPipe,
   ParseIntPipe,
   Post,
@@ -81,6 +82,26 @@ export class ScannerController {
   @Get(':jobId')
   get(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.getJob(user.userId, jobId);
+  }
+
+  @Patch(':jobId/pages')
+  configurePages(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Body('pages')
+    pages: Array<{
+      pageNumber: number;
+      ordinal: number;
+      rotationDegrees: number;
+      included: boolean;
+    }>
+  ) {
+    return this.scanner.configurePages(user.userId, jobId, pages);
+  }
+
+  @Post(':jobId/start')
+  start(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
+    return this.scanner.startJob(user.userId, jobId);
   }
 
   @Post(':jobId/cancel')

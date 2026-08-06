@@ -1,6 +1,7 @@
 export type ScannerStatus =
   | "queued"
   | "preparing"
+  | "ready"
   | "running"
   | "rendering"
   | "succeeded"
@@ -13,10 +14,19 @@ export interface ScannerJob {
   status: ScannerStatus;
   originalFilename: string;
   pageCount: number;
+  includedPageCount: number;
   pages: Array<{
     pageNumber: number;
+    ordinal: number;
+    rotationDegrees: 0 | 90 | 180 | 270;
+    included: boolean;
     status:
-      "pending" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
+      | "pending"
+      | "running"
+      | "succeeded"
+      | "failed"
+      | "cancelled"
+      | "skipped";
     attempts: number;
     manualRetries: number;
     errorCode?: string;

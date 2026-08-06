@@ -30,7 +30,7 @@ import { SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
-const ACTIVE_STATUSES = ['queued', 'preparing', 'running', 'rendering'];
+const ACTIVE_STATUSES = ['queued', 'preparing', 'ready', 'running', 'rendering'];
 
 @Injectable()
 export class ScannerService implements OnModuleInit {
@@ -146,7 +146,7 @@ export class ScannerService implements OnModuleInit {
       const job = await this.jobs.create({
         jobId,
         userId: input.userId,
-        status: 'queued',
+        status: 'preparing',
         originalFilename: this.safeFilename(input.file.originalname, extension),
         inputContentType: detected,
         pageCount,
@@ -155,6 +155,9 @@ export class ScannerService implements OnModuleInit {
         generation: 1,
         pages: Array.from({ length: pageCount }, (_value, index) => ({
           pageNumber: index + 1,
+          ordinal: index + 1,
+          rotationDegrees: 0,
+          included: true,
           status: 'pending',
           attempts: 0,
           manualRetries: 0,
@@ -183,6 +186,100 @@ export class ScannerService implements OnModuleInit {
   async getJob(userId: string, jobId: string): Promise<any> {
     this.assertAvailable(userId);
     return this.present(await this.ownedJob(userId, jobId));
+  }
+
+  async configurePages(
+    userId: string,
+    jobId: string,
+    requestedPages: Array<{
+      pageNumber: number;
+      ordinal: number;
+      rotationDegrees: number;
+      included: boolean;
+    }>
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    const existing = await this.ownedJob(userId, jobId);
+    if (existing.status !== 'ready') {
+      throw new ConflictException('Pages can only be configured before scanning starts');
+    }
+    if (!Array.isArray(requestedPages) || requestedPages.length !== existing.pageCount) {
+      throw new BadRequestException('A configuration is required for every page');
+    }
+    if (
+      requestedPages.some(
+        (page) =>
+          !Number.isInteger(page.pageNumber) ||
+          !Number.isInteger(page.ordinal) ||
+          !Number.isInteger(page.rotationDegrees) ||
+          typeof page.included !== 'boolean'
+      )
+    ) {
+      throw new BadRequestException('Page configuration is invalid');
+    }
+    const byPageNumber = new Map(requestedPages.map((page) => [page.pageNumber, page]));
+    if (byPageNumber.size !== existing.pageCount) {
+      throw new BadRequestException('Page numbers must be unique');
+    }
+    const rotations = new Set([0, 90, 180, 270]);
+    const ordinals = requestedPages.map((page) => page.ordinal).sort((left, right) => left - right);
+    if (ordinals.some((ordinal, index) => ordinal !== index + 1)) {
+      throw new BadRequestException('Page order must contain each position exactly once');
+    }
+    const pages = existing.pages.map((page) => {
+      const requested = byPageNumber.get(page.pageNumber);
+      if (!requested || !rotations.has(requested.rotationDegrees)) {
+        throw new BadRequestException('Page configuration is invalid');
+      }
+      return {
+        ...page,
+        ordinal: requested.ordinal,
+        rotationDegrees: requested.rotationDegrees as 0 | 90 | 180 | 270,
+        included: Boolean(requested.included),
+        status: requested.included ? 'pending' : 'skipped'
+      };
+    });
+    if (!pages.some((page) => page.included)) {
+      throw new BadRequestException('At least one page must be included');
+    }
+    const updated = await this.jobs
+      .findOneAndUpdate(
+        { _id: existing._id, userId, jobId, status: 'ready' },
+        { $set: { pages } },
+        { new: true }
+      )
+      .exec();
+    if (!updated) throw new ConflictException('Scanner job changed; refresh and try again');
+    return this.present(updated);
+  }
+
+  async startJob(userId: string, jobId: string): Promise<any> {
+    this.assertAvailable(userId);
+    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+      throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
+    }
+    const existing = await this.ownedJob(userId, jobId);
+    if (existing.status !== 'ready') {
+      throw new ConflictException('Scanner job is not ready to start');
+    }
+    if (existing.sourceDeletedAt || existing.sourceExpiresAt.getTime() <= Date.now()) {
+      throw new ConflictException('The retained source file has expired');
+    }
+    if (!existing.pages.some((page) => page.included)) {
+      throw new BadRequestException('At least one page must be included');
+    }
+    const updated = await this.jobs
+      .findOneAndUpdate(
+        { _id: existing._id, userId, jobId, status: 'ready' },
+        {
+          $set: { status: 'queued' },
+          $unset: { completedAt: 1, errorCode: 1, errorMessage: 1 }
+        },
+        { new: true }
+      )
+      .exec();
+    if (!updated) throw new ConflictException('Scanner job changed; refresh and try again');
+    return this.present(updated);
   }
 
   async cancelJob(userId: string, jobId: string): Promise<any> {
@@ -322,22 +419,30 @@ export class ScannerService implements OnModuleInit {
       status: job.status,
       originalFilename: job.originalFilename,
       pageCount: job.pageCount,
+      includedPageCount: job.pages.filter((page) => page.included !== false).length,
       options: job.options,
-      pages: job.pages.map((page) => ({
-        pageNumber: page.pageNumber,
-        status:
-          job.status === 'cancelled' && ['pending', 'running'].includes(page.status)
-            ? 'cancelled'
-            : page.status,
-        attempts: page.attempts,
-        manualRetries: page.manualRetries || 0,
-        errorCode: page.errorCode,
-        errorMessage: page.errorMessage,
-        hasThumbnail: Boolean(page.thumbnail),
-        hasMusicXml: Boolean(page.musicXml),
-        hasPdf: Boolean(page.pdf),
-        canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
-      })),
+      pages: [...job.pages]
+        .sort(
+          (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
+        )
+        .map((page) => ({
+          pageNumber: page.pageNumber,
+          ordinal: page.ordinal || page.pageNumber,
+          rotationDegrees: page.rotationDegrees || 0,
+          included: page.included !== false,
+          status:
+            job.status === 'cancelled' && ['pending', 'running'].includes(page.status)
+              ? 'cancelled'
+              : page.status,
+          attempts: page.attempts,
+          manualRetries: page.manualRetries || 0,
+          errorCode: page.errorCode,
+          errorMessage: page.errorMessage,
+          hasThumbnail: Boolean(page.thumbnail),
+          hasMusicXml: Boolean(page.musicXml),
+          hasPdf: Boolean(page.pdf),
+          canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
+        })),
       hasMusicXml: Boolean(job.musicXmlBundle || job.pages.some((page) => page.musicXml)),
       hasPdf: Boolean(job.previewPdf),
       hasThumbnail: Boolean(job.previewThumbnail),
