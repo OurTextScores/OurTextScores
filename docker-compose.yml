@@ -63,6 +63,7 @@ services:
       SCANNER_WORKER_ENABLED: "false"
       SCANNER_PROVIDER_KIND: ${SCANNER_PROVIDER_KIND:-modal}
       SCANNER_PROVIDER_URL: ${SCANNER_PROVIDER_URL:-}
+      SCANNER_PROVIDER_TOKEN: ${SCANNER_PROVIDER_TOKEN:-}
       SCANNER_MODAL_TOKEN_ID: ${SCANNER_MODAL_TOKEN_ID:-}
       SCANNER_MODAL_TOKEN_SECRET: ${SCANNER_MODAL_TOKEN_SECRET:-}
       SCANNER_PROVIDER_BUDGET_EXHAUSTED: ${SCANNER_PROVIDER_BUDGET_EXHAUSTED:-false}
@@ -93,7 +94,7 @@ services:
       - appnet
 
   scanner_worker:
-    profiles: ["scanner"]
+    profiles: ["scanner", "scanner-local"]
     build:
       context: ./backend
       dockerfile: Dockerfile

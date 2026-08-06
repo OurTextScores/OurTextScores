@@ -69,6 +69,8 @@ export class ScannerProviderService {
       'Idempotency-Key': input.idempotencyKey,
       Accept: 'application/json'
     });
+    const providerToken = this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim();
+    if (providerToken) headers.set('Authorization', `Bearer ${providerToken}`);
     const tokenId = this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim();
     const tokenSecret = this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim();
     if (tokenId && tokenSecret) {
@@ -151,7 +153,7 @@ export class ScannerProviderService {
       .trim();
     if (expectedExecutionProvider && executionProvider !== expectedExecutionProvider) {
       throw new ScannerProviderError(
-        'Scanner provider GPU verification failed',
+        'Scanner provider execution verification failed',
         'provider_execution_provider_mismatch',
         false
       );

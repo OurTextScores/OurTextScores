@@ -138,4 +138,51 @@ describe('ScannerProviderService', () => {
     delete values.SCANNER_EXPECTED_PROVIDER_REVISION;
     delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
   });
+
+  it('authenticates a CPU provider and accepts its explicit provenance', async () => {
+    values.SCANNER_PROVIDER_KIND = 'local';
+    values.SCANNER_PROVIDER_URL = 'http://homr_cpu:8000';
+    values.SCANNER_PROVIDER_TOKEN = 'local-token';
+    values.SCANNER_EXPECTED_PROVIDER_REVISION = 'ots-homr-cpu-v1';
+    values.SCANNER_EXPECTED_EXECUTION_PROVIDER = 'CPUExecutionProvider';
+    const image = Buffer.from('cpu-image');
+    const musicXml = Buffer.from(
+      '<score-partwise><part-list><score-part id="P1"/></part-list><part id="P1"><measure number="1"/></part></score-partwise>'
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer local-token');
+      return new Response(
+        JSON.stringify({
+          serviceRevision: 'ots-homr-cpu-v1',
+          modelRevision: 'homr-revision',
+          executionProvider: 'CPUExecutionProvider',
+          inputSha256: createHash('sha256').update(image).digest('hex'),
+          musicXmlBase64: musicXml.toString('base64')
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    });
+    const service = new ScannerProviderService(config);
+
+    await expect(
+      service.scanPage({
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'e'.repeat(64)
+      })
+    ).resolves.toMatchObject({
+      providerRevision: 'ots-homr-cpu-v1',
+      modelRevision: 'homr-revision',
+      musicXml
+    });
+
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+    delete values.SCANNER_PROVIDER_TOKEN;
+    delete values.SCANNER_EXPECTED_PROVIDER_REVISION;
+    delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
+  });
 });
