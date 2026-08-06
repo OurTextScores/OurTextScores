@@ -107,7 +107,12 @@ describe('ScannerService', () => {
     expect(jobs.findOneAndUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ generation: 1 }),
       expect.objectContaining({
-        $set: { status: 'queued', generation: 2 },
+        $set: expect.objectContaining({
+          status: 'queued',
+          generation: 2,
+          retryPageNumbers: [1],
+          pages: [expect.objectContaining({ pageNumber: 1, manualRetries: 1 })]
+        }),
         $unset: expect.objectContaining({ terminalNotifiedAt: 1 })
       }),
       { new: true }
@@ -170,5 +175,84 @@ describe('ScannerService', () => {
     await expect(service.retryJob('user-1', 'job-1')).resolves.toMatchObject({
       status: 'queued'
     });
+  });
+
+  it('queues only the selected transiently failed page', async () => {
+    const existing = {
+      _id: 'mongo-id',
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'partial',
+      generation: 1,
+      originalFilename: 'score.pdf',
+      pageCount: 2,
+      pages: [
+        {
+          pageNumber: 1,
+          status: 'succeeded',
+          attempts: 1,
+          manualRetries: 0,
+          idempotencyKey: 'page-1',
+          musicXml: { bucket: 'aux', objectKey: 'one.musicxml' },
+          pdf: { bucket: 'aux', objectKey: 'one.pdf' }
+        },
+        {
+          pageNumber: 2,
+          status: 'failed',
+          attempts: 2,
+          manualRetries: 0,
+          idempotencyKey: 'page-2',
+          errorCode: 'provider_http_503'
+        }
+      ],
+      sourceExpiresAt: new Date(Date.now() + 60_000),
+      resultExpiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
+    jobs.countDocuments.mockReturnValue({ exec: () => Promise.resolve(0) });
+    jobs.findOneAndUpdate.mockReturnValue({
+      exec: () => Promise.resolve({ ...existing, status: 'queued', generation: 2 })
+    });
+    const service = new ScannerService(jobs, storage, config);
+    await service.retryPage('user-1', 'job-1', 2);
+    expect(jobs.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          retryPageNumbers: [2],
+          pages: [
+            expect.objectContaining({ pageNumber: 1, manualRetries: 0 }),
+            expect.objectContaining({ pageNumber: 2, manualRetries: 1 })
+          ]
+        })
+      }),
+      { new: true }
+    );
+  });
+
+  it('rejects a second manual retry for the same page', async () => {
+    const existing = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'failed',
+      generation: 2,
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          status: 'failed',
+          attempts: 2,
+          manualRetries: 1,
+          idempotencyKey: 'page-1',
+          errorCode: 'provider_timeout'
+        }
+      ],
+      sourceExpiresAt: new Date(Date.now() + 60_000)
+    };
+    jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
+    const service = new ScannerService(jobs, storage, config);
+    await expect(service.retryPage('user-1', 'job-1', 1)).rejects.toBeInstanceOf(ConflictException);
   });
 });

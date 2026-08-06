@@ -18,10 +18,12 @@ import { Readable } from 'node:stream';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { extname } from 'node:path';
+import sharp = require('sharp');
 import { StorageService } from '../storage/storage.service';
 import {
   ScannerJob,
   ScannerJobDocument,
+  ScannerPageResult,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
@@ -93,16 +95,21 @@ export class ScannerService implements OnModuleInit {
 
     const detected = await this.detectInputType(input.file.path);
     if (detected !== 'application/pdf') {
-      const dimensions = await this.readImageDimensions(input.file.path, detected);
       const maxDimension = this.number('SCANNER_MAX_IMAGE_DIMENSION', 12_000);
       const maxPixels = this.number('SCANNER_MAX_IMAGE_PIXELS', 80_000_000);
+      const dimensions = await this.readImageDimensions(input.file.path, maxPixels);
+      const aspectRatio =
+        Math.max(dimensions.width, dimensions.height) /
+        Math.min(dimensions.width, dimensions.height);
+      const maxAspectRatio = this.number('SCANNER_MAX_IMAGE_ASPECT_RATIO', 20);
       if (
         dimensions.width > maxDimension ||
         dimensions.height > maxDimension ||
-        dimensions.width * dimensions.height > maxPixels
+        dimensions.width * dimensions.height > maxPixels ||
+        aspectRatio > maxAspectRatio
       ) {
         throw new PayloadTooLargeException(
-          `Image dimensions exceed the ${maxDimension}px/${maxPixels}-pixel limit`
+          `Image dimensions exceed the ${maxDimension}px/${maxPixels}-pixel/${maxAspectRatio}:1 aspect-ratio limit`
         );
       }
     }
@@ -146,7 +153,13 @@ export class ScannerService implements OnModuleInit {
         input: locator,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
-        pages: [],
+        pages: Array.from({ length: pageCount }, (_value, index) => ({
+          pageNumber: index + 1,
+          status: 'pending',
+          attempts: 0,
+          manualRetries: 0,
+          idempotencyKey: ''
+        })),
         sourceExpiresAt: new Date(
           now + this.number('SCANNER_SOURCE_RETENTION_DAYS', 7) * 86_400_000
         ),
@@ -201,40 +214,22 @@ export class ScannerService implements OnModuleInit {
     const existing = await this.ownedJob(userId, jobId);
     const eligibility = this.retryEligibility(existing);
     if (!eligibility.allowed) throw new ConflictException(eligibility.reason);
+    return this.queueRetry(existing, this.retryablePageNumbers(existing));
+  }
 
-    const activeLimit = this.number('SCANNER_MAX_ACTIVE_JOBS_PER_USER', 2);
-    const active = await this.jobs
-      .countDocuments({ userId, status: { $in: ACTIVE_STATUSES } })
-      .exec();
-    if (active >= activeLimit) {
-      throw new ConflictException(`At most ${activeLimit} scanner jobs may be active`);
+  async retryPage(userId: string, jobId: string, pageNumber: number): Promise<any> {
+    this.assertAvailable(userId);
+    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+      throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
-
-    const job = await this.jobs
-      .findOneAndUpdate(
-        {
-          _id: existing._id,
-          userId,
-          jobId,
-          status: existing.status,
-          generation: existing.generation
-        },
-        {
-          $set: { status: 'queued', generation: existing.generation + 1 },
-          $unset: {
-            completedAt: 1,
-            errorCode: 1,
-            errorMessage: 1,
-            leaseExpiresAt: 1,
-            leaseOwner: 1,
-            terminalNotifiedAt: 1
-          }
-        },
-        { new: true }
-      )
-      .exec();
-    if (!job) throw new ConflictException('Scanner job changed; refresh and try again');
-    return this.present(job);
+    const existing = await this.ownedJob(userId, jobId);
+    if (pageNumber < 1 || pageNumber > existing.pageCount) {
+      throw new NotFoundException('Scanner page not found');
+    }
+    const page = existing.pages.find((candidate) => candidate.pageNumber === pageNumber);
+    const eligibility = this.pageRetryEligibility(existing, pageNumber, page);
+    if (!eligibility.allowed) throw new ConflictException(eligibility.reason);
+    return this.queueRetry(existing, [pageNumber]);
   }
 
   async deleteJob(userId: string, jobId: string): Promise<{ ok: true }> {
@@ -251,20 +246,31 @@ export class ScannerService implements OnModuleInit {
   async getArtifact(
     userId: string,
     jobId: string,
-    kind: 'musicxml' | 'pdf' | 'thumbnail',
+    kind: 'musicxml' | 'pdf' | 'thumbnail' | 'zip',
     pageNumber?: number
   ): Promise<{ stream: Readable; contentType: string; filename: string }> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
+    if (pageNumber !== undefined && (pageNumber < 1 || pageNumber > job.pageCount)) {
+      throw new NotFoundException('Scanner page not found');
+    }
+    const pageRequested = pageNumber !== undefined;
     let locator: ScannerStorageLocator | undefined;
     let filename: string;
-    if (kind === 'pdf') {
-      locator = job.previewPdf;
-      filename = 'scan-preview.pdf';
+    if (kind === 'zip') {
+      locator = job.resultsZip;
+      filename = 'scan-results.zip';
+    } else if (kind === 'pdf') {
+      locator = pageRequested
+        ? job.pages.find((page) => page.pageNumber === pageNumber)?.pdf
+        : job.previewPdf;
+      filename = pageRequested ? `scan-page-${pageNumber}.pdf` : 'scan-preview.pdf';
     } else if (kind === 'thumbnail') {
-      locator = job.previewThumbnail;
-      filename = 'scan-preview.png';
-    } else if (pageNumber) {
+      locator = pageRequested
+        ? job.pages.find((page) => page.pageNumber === pageNumber)?.thumbnail
+        : job.previewThumbnail;
+      filename = pageRequested ? `scan-page-${pageNumber}.png` : 'scan-preview.png';
+    } else if (pageRequested) {
       locator = job.pages.find((page) => page.pageNumber === pageNumber)?.musicXml;
       filename = `scan-page-${pageNumber}.musicxml`;
     } else {
@@ -319,16 +325,23 @@ export class ScannerService implements OnModuleInit {
       options: job.options,
       pages: job.pages.map((page) => ({
         pageNumber: page.pageNumber,
-        status: page.status,
+        status:
+          job.status === 'cancelled' && ['pending', 'running'].includes(page.status)
+            ? 'cancelled'
+            : page.status,
         attempts: page.attempts,
+        manualRetries: page.manualRetries || 0,
         errorCode: page.errorCode,
         errorMessage: page.errorMessage,
+        hasThumbnail: Boolean(page.thumbnail),
         hasMusicXml: Boolean(page.musicXml),
-        hasPdf: Boolean(page.pdf)
+        hasPdf: Boolean(page.pdf),
+        canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
       })),
       hasMusicXml: Boolean(job.musicXmlBundle || job.pages.some((page) => page.musicXml)),
       hasPdf: Boolean(job.previewPdf),
       hasThumbnail: Boolean(job.previewThumbnail),
+      hasZip: Boolean(job.resultsZip),
       providerRevision: job.providerRevision,
       modelRevision: job.modelRevision,
       errorCode: job.errorCode,
@@ -370,46 +383,20 @@ export class ScannerService implements OnModuleInit {
 
   private async readImageDimensions(
     path: string,
-    contentType: string
+    maxPixels: number
   ): Promise<{ width: number; height: number }> {
-    const handle = await fs.open(path, 'r');
     try {
-      if (contentType === 'image/png') {
-        const header = Buffer.alloc(24);
-        await handle.read(header, 0, header.length, 0);
-        const width = header.readUInt32BE(16);
-        const height = header.readUInt32BE(20);
-        if (width > 0 && height > 0) return { width, height };
-      } else {
-        let offset = 2;
-        while (offset < Math.min((await handle.stat()).size, 1024 * 1024)) {
-          const marker = Buffer.alloc(4);
-          const read = await handle.read(marker, 0, marker.length, offset);
-          if (read.bytesRead < 4 || marker[0] !== 0xff) break;
-          const markerType = marker[1];
-          const segmentLength = marker.readUInt16BE(2);
-          if (
-            [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(
-              markerType
-            )
-          ) {
-            const dimensions = Buffer.alloc(5);
-            const value = await handle.read(dimensions, 0, dimensions.length, offset + 4);
-            if (value.bytesRead === 5) {
-              const height = dimensions.readUInt16BE(1);
-              const width = dimensions.readUInt16BE(3);
-              if (width > 0 && height > 0) return { width, height };
-            }
-            break;
-          }
-          if (segmentLength < 2) break;
-          offset += 2 + segmentLength;
-        }
-      }
-    } finally {
-      await handle.close();
+      const metadata = await sharp(path, {
+        failOn: 'error',
+        limitInputPixels: maxPixels
+      }).metadata();
+      const width = Number(metadata.width || 0);
+      const height = Number(metadata.height || 0);
+      if (width > 0 && height > 0) return { width, height };
+    } catch {
+      // Return the same safe client error for truncated images and decode-bomb limits.
     }
-    throw new BadRequestException('The image dimensions could not be read');
+    throw new BadRequestException('The image is invalid or its dimensions could not be read');
   }
 
   private hashFile(path: string): Promise<string> {
@@ -426,9 +413,10 @@ export class ScannerService implements OnModuleInit {
     const locators = [
       job.input,
       job.musicXmlBundle,
+      job.resultsZip,
       job.previewPdf,
       job.previewThumbnail,
-      ...job.pages.flatMap((page) => [page.musicXml, page.pdf])
+      ...job.pages.flatMap((page) => [page.sourceImage, page.thumbnail, page.musicXml, page.pdf])
     ].filter(Boolean) as ScannerStorageLocator[];
     await Promise.all(
       locators.map((item) => this.storage.deleteObject(item.bucket, item.objectKey))
@@ -443,10 +431,6 @@ export class ScannerService implements OnModuleInit {
   }
 
   private retryEligibility(job: ScannerJobDocument): { allowed: boolean; reason: string } {
-    const maxRetries = this.number('SCANNER_MAX_MANUAL_RETRIES', 1);
-    if (job.generation > maxRetries) {
-      return { allowed: false, reason: 'The manual retry limit has been reached' };
-    }
     if (
       !job.sourceExpiresAt ||
       job.sourceDeletedAt ||
@@ -454,21 +438,116 @@ export class ScannerService implements OnModuleInit {
     ) {
       return { allowed: false, reason: 'The retained source file has expired' };
     }
-    if (job.status === 'cancelled') return { allowed: true, reason: '' };
-    if (job.errorCode === 'preview_render_failed' && job.pages.some((page) => page.musicXml)) {
-      return { allowed: true, reason: '' };
-    }
-    if (!['failed', 'partial'].includes(job.status)) {
+    if (
+      !['cancelled', 'failed', 'partial'].includes(job.status) &&
+      !(
+        job.status === 'succeeded' &&
+        job.pages.some((page) => page.status === 'succeeded' && !page.pdf)
+      )
+    ) {
       return { allowed: false, reason: 'Only cancelled, failed, or partial jobs can be retried' };
     }
-    const retryableFailure = job.pages.some(
-      (page) =>
-        page.status === 'failed' &&
-        isRetryableScannerErrorCode(page.errorCode)
-    );
-    return retryableFailure
+    return this.retryablePageNumbers(job).length > 0
       ? { allowed: true, reason: '' }
-      : { allowed: false, reason: 'This failure is deterministic and cannot be retried safely' };
+      : {
+          allowed: false,
+          reason: 'No pages have a safe retry remaining'
+        };
+  }
+
+  private pageRetryEligibility(
+    job: ScannerJobDocument,
+    pageNumber: number,
+    page?: ScannerPageResult
+  ): { allowed: boolean; reason: string } {
+    if (
+      !job.sourceExpiresAt ||
+      job.sourceDeletedAt ||
+      job.sourceExpiresAt.getTime() <= Date.now()
+    ) {
+      return { allowed: false, reason: 'The retained source file has expired' };
+    }
+    if (!['cancelled', 'failed', 'partial', 'succeeded'].includes(job.status)) {
+      return { allowed: false, reason: 'The job is not in a retryable state' };
+    }
+    if (pageNumber < 1 || pageNumber > job.pageCount) {
+      return { allowed: false, reason: 'Scanner page not found' };
+    }
+    const manualRetries = page?.manualRetries || 0;
+    const maxRetries = this.number('SCANNER_MAX_MANUAL_RETRIES', 1);
+    if (manualRetries >= maxRetries) {
+      return { allowed: false, reason: 'The page retry limit has been reached' };
+    }
+    if (!page || ['pending', 'running', 'cancelled'].includes(page.status)) {
+      return job.status === 'cancelled'
+        ? { allowed: true, reason: '' }
+        : { allowed: false, reason: 'The page has not failed' };
+    }
+    if (page.status === 'succeeded' && !page.pdf) return { allowed: true, reason: '' };
+    if (page.status === 'failed' && isRetryableScannerErrorCode(page.errorCode)) {
+      return { allowed: true, reason: '' };
+    }
+    return { allowed: false, reason: 'This page failure cannot be retried safely' };
+  }
+
+  private retryablePageNumbers(job: ScannerJobDocument): number[] {
+    return Array.from({ length: job.pageCount }, (_value, index) => index + 1).filter(
+      (pageNumber) =>
+        this.pageRetryEligibility(
+          job,
+          pageNumber,
+          job.pages.find((page) => page.pageNumber === pageNumber)
+        ).allowed
+    );
+  }
+
+  private async queueRetry(existing: ScannerJobDocument, pageNumbers: number[]): Promise<any> {
+    const selected = [...new Set(pageNumbers)].sort((left, right) => left - right);
+    if (selected.length === 0) throw new ConflictException('No pages can be retried safely');
+    const activeLimit = this.number('SCANNER_MAX_ACTIVE_JOBS_PER_USER', 2);
+    const active = await this.jobs
+      .countDocuments({ userId: existing.userId, status: { $in: ACTIVE_STATUSES } })
+      .exec();
+    if (active >= activeLimit) {
+      throw new ConflictException(`At most ${activeLimit} scanner jobs may be active`);
+    }
+
+    const selectedSet = new Set(selected);
+    const pages = existing.pages.map((page) =>
+      selectedSet.has(page.pageNumber)
+        ? { ...page, manualRetries: (page.manualRetries || 0) + 1 }
+        : page
+    );
+    const job = await this.jobs
+      .findOneAndUpdate(
+        {
+          _id: existing._id,
+          userId: existing.userId,
+          jobId: existing.jobId,
+          status: existing.status,
+          generation: existing.generation
+        },
+        {
+          $set: {
+            status: 'queued',
+            generation: existing.generation + 1,
+            retryPageNumbers: selected,
+            pages
+          },
+          $unset: {
+            completedAt: 1,
+            errorCode: 1,
+            errorMessage: 1,
+            leaseExpiresAt: 1,
+            leaseOwner: 1,
+            terminalNotifiedAt: 1
+          }
+        },
+        { new: true }
+      )
+      .exec();
+    if (!job) throw new ConflictException('Scanner job changed; refresh and try again');
+    return this.present(job);
   }
 
   private number(key: string, fallback: number): number {

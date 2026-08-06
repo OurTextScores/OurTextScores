@@ -43,7 +43,7 @@ export class ScannerProviderService {
     idempotencyKey: string;
   }): Promise<ScanPageResult> {
     if (this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal') === 'fake') {
-      return this.fakeResult(input.idempotencyKey);
+      return this.fakeResult(input.idempotencyKey, input.filename);
     }
 
     const providerUrl = this.config.get<string>('SCANNER_PROVIDER_URL', '').trim();
@@ -95,12 +95,11 @@ export class ScannerProviderService {
     }
 
     if (!response.ok) {
-      const message =
-        (await response.text()).slice(0, 500) || `Provider returned ${response.status}`;
+      await response.body?.cancel().catch(() => undefined);
       const retryable =
         response.status === 408 || response.status === 429 || response.status >= 500;
       throw new ScannerProviderError(
-        message,
+        this.safeHttpErrorMessage(response.status),
         `provider_http_${response.status}`,
         retryable,
         response.status
@@ -125,7 +124,7 @@ export class ScannerProviderService {
     const receivedInputSha256 = String(result?.inputSha256 || '');
     if (receivedInputSha256 !== expectedInputSha256) {
       throw new ScannerProviderError(
-        `Scanner input digest mismatch: expected ${expectedInputSha256}, received ${receivedInputSha256 || '(missing)'}`,
+        'Scanner provider input verification failed',
         'provider_input_digest_mismatch',
         false
       );
@@ -135,14 +134,14 @@ export class ScannerProviderService {
       .trim();
     if (expectedProviderRevision && providerRevision !== expectedProviderRevision) {
       throw new ScannerProviderError(
-        `Scanner service revision mismatch: expected ${expectedProviderRevision}, received ${providerRevision || '(missing)'}`,
+        'Scanner provider service verification failed',
         'provider_service_revision_mismatch',
         false
       );
     }
     if (this.expectedRevision && modelRevision !== this.expectedRevision) {
       throw new ScannerProviderError(
-        `Scanner provider revision mismatch: expected ${this.expectedRevision}, received ${modelRevision || '(missing)'}`,
+        'Scanner provider model verification failed',
         'provider_model_revision_mismatch',
         false
       );
@@ -152,7 +151,7 @@ export class ScannerProviderService {
       .trim();
     if (expectedExecutionProvider && executionProvider !== expectedExecutionProvider) {
       throw new ScannerProviderError(
-        `Scanner execution provider mismatch: expected ${expectedExecutionProvider}, received ${executionProvider || '(missing)'}`,
+        'Scanner provider GPU verification failed',
         'provider_execution_provider_mismatch',
         false
       );
@@ -197,7 +196,29 @@ export class ScannerProviderService {
     return { musicXml, providerRevision, modelRevision };
   }
 
-  private fakeResult(key: string): ScanPageResult {
+  private safeHttpErrorMessage(status: number): string {
+    if (status === 408 || status === 504) return 'Scanner provider timed out';
+    if (status === 429) return 'Scanner provider capacity is temporarily unavailable';
+    if (status === 400) return 'Scanner provider rejected the page request';
+    if (status === 413) return 'Scanner page exceeds the provider size limit';
+    if (status === 415) return 'Scanner provider does not support this page format';
+    if (status === 422) return 'HOMR could not recognize a score on this page';
+    if (status >= 500) return 'Scanner provider is temporarily unavailable';
+    return `Scanner provider rejected the request (${status})`;
+  }
+
+  private fakeResult(key: string, filename: string): ScanPageResult {
+    const pageNumber = Number(filename.match(/page-(\d+)/)?.[1] || 0);
+    const generation = Number(filename.match(/generation-(\d+)/)?.[1] || 1);
+    const failedPage = Number(this.config.get<string>('SCANNER_FAKE_TRANSIENT_FAILURE_PAGE', '0'));
+    if (pageNumber > 0 && pageNumber === failedPage && generation === 1) {
+      throw new ScannerProviderError(
+        'Scanner test provider is temporarily unavailable',
+        'provider_http_503',
+        true,
+        503
+      );
+    }
     const title = `Scanner test ${key.slice(0, 8)}`;
     return {
       providerRevision: 'local-fake',

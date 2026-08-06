@@ -40,10 +40,32 @@ async function signInViaEmail(page, request, email) {
   throw new Error('Scanner smoke sign-in link was not received');
 }
 
+function twoPagePdf() {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources <<>> /Contents 5 0 R >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources <<>> /Contents 6 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream',
+    '<< /Length 0 >>\nstream\n\nendstream'
+  ];
+  let value = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(value));
+    value += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(value);
+  value += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  value += offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+  value += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(value);
+}
+
 test.describe('Scanner pilot', () => {
   test.skip(process.env.SCANNER_SMOKE !== '1', 'Run with the scanner smoke Compose override');
 
-  test('uploads an image and returns MusicXML, PDF, and one terminal notification', async ({ page, request }) => {
+  test('uploads an image and returns page previews, downloads, and one terminal notification', async ({ page, request }) => {
     const email = `scanner_${Date.now()}@example.test`;
     await signInViaEmail(page, request, email);
     await page.goto(`${BASE_URL}/scanner`);
@@ -61,17 +83,60 @@ test.describe('Scanner pilot', () => {
     await page.getByRole('button', { name: 'Start scan' }).click();
     await page.getByRole('link', { name: /scanner-smoke\.png/ }).click();
 
-    await expect(page.getByRole('link', { name: 'Download MusicXML' })).toBeVisible({ timeout: 120_000 });
-    await expect(page.getByRole('heading', { name: 'Rendered score' })).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole('heading', { name: 'Page 1' })).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole('link', { name: 'Download all results (.zip)' })).toBeVisible({ timeout: 120_000 });
+    await expect(page.locator('object[type="application/pdf"]')).toBeVisible();
+    await expect(page.getByAltText('Source preview for page 1')).toBeVisible();
 
-    const artifactStatus = await page.evaluate(async () => {
-      const link = document.querySelector('a[download]');
-      if (!(link instanceof HTMLAnchorElement)) return 0;
-      return (await fetch(link.href)).status;
+    const artifact = await page.evaluate(async () => {
+      const link = [...document.querySelectorAll('a')].find((candidate) => candidate.textContent?.includes('Download all results'));
+      if (!(link instanceof HTMLAnchorElement)) return { status: 0, contents: '' };
+      const response = await fetch(link.href);
+      const contents = new TextDecoder('latin1').decode(await response.arrayBuffer());
+      return { status: response.status, contents };
     });
-    expect(artifactStatus).toBe(200);
+    expect(artifact.status).toBe(200);
+    expect(artifact.contents).toContain('scanner-manifest.json');
+    expect(artifact.contents).toContain('page-001.musicxml');
 
     await page.goto(`${BASE_URL}/notifications`);
     await expect(page.getByText('Scan complete', { exact: true })).toHaveCount(1);
+  });
+
+  test('keeps a two-page partial result and retries only the failed page', async ({ page, request }) => {
+    const email = `scanner_pdf_${Date.now()}@example.test`;
+    await signInViaEmail(page, request, email);
+    await page.goto(`${BASE_URL}/scanner`);
+    await page.locator('#scanner-file').setInputFiles({
+      name: 'scanner-two-pages.pdf',
+      mimeType: 'application/pdf',
+      buffer: twoPagePdf()
+    });
+    await page.getByRole('button', { name: 'Start scan' }).click();
+    await page.getByRole('link', { name: /scanner-two-pages\.pdf/ }).click();
+
+    const pageTwo = page.getByRole('button', { name: /Page 2.*Failed/i });
+    await expect(pageTwo).toBeVisible({ timeout: 120_000 });
+    await pageTwo.click();
+    await expect(page.getByText('Scanner test provider is temporarily unavailable')).toBeVisible();
+    await page.getByRole('button', { name: 'Retry page' }).click();
+
+    await expect(page.getByRole('button', { name: /Page 2.*Succeeded/i })).toBeVisible({ timeout: 120_000 });
+    const attempts = await page.evaluate(async () => {
+      const response = await fetch(window.location.pathname.replace('/scanner/', '/api/proxy/scanner/jobs/'));
+      const job = await response.json();
+      return job.pages.map((item) => ({ pageNumber: item.pageNumber, attempts: item.attempts, manualRetries: item.manualRetries }));
+    });
+    expect(attempts).toEqual([
+      { pageNumber: 1, attempts: 1, manualRetries: 0 },
+      { pageNumber: 2, attempts: 1, manualRetries: 1 }
+    ]);
+    await expect(page.getByRole('link', { name: 'Download all results (.zip)' })).toBeVisible();
+    const zipContents = await page.evaluate(async () => {
+      const response = await fetch(`${window.location.pathname.replace('/scanner/', '/api/proxy/scanner/jobs/')}/artifacts/zip`);
+      return new TextDecoder('latin1').decode(await response.arrayBuffer());
+    });
+    expect(zipContents).toContain('page-001.musicxml');
+    expect(zipContents).toContain('page-002.musicxml');
   });
 });

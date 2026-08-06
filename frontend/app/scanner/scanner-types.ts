@@ -15,16 +15,21 @@ export interface ScannerJob {
   pageCount: number;
   pages: Array<{
     pageNumber: number;
-    status: "succeeded" | "failed";
+    status:
+      "pending" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
     attempts: number;
+    manualRetries: number;
     errorCode?: string;
     errorMessage?: string;
+    hasThumbnail: boolean;
     hasMusicXml: boolean;
     hasPdf: boolean;
+    canRetry: boolean;
   }>;
   hasMusicXml: boolean;
   hasPdf: boolean;
   hasThumbnail: boolean;
+  hasZip: boolean;
   errorCode?: string;
   errorMessage?: string;
   canRetry: boolean;
@@ -38,9 +43,13 @@ export const activeScannerStatuses: ScannerStatus[] = [
   "queued",
   "preparing",
   "running",
-  "rendering"
+  "rendering",
 ];
 
-export function scannerStatusLabel(status: ScannerStatus): string {
-  return status.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+export function scannerStatusLabel(
+  status: ScannerStatus | ScannerJob["pages"][number]["status"],
+): string {
+  return status
+    .replace(/_/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
 }

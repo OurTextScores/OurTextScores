@@ -29,7 +29,8 @@ import { SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
 const SCANNER_ARTIFACT_KINDS = {
   musicxml: 'musicxml',
   pdf: 'pdf',
-  thumbnail: 'thumbnail'
+  thumbnail: 'thumbnail',
+  zip: 'zip'
 } as const;
 
 @ApiTags('scanner')
@@ -92,6 +93,15 @@ export class ScannerController {
     return this.scanner.retryJob(user.userId, jobId);
   }
 
+  @Post(':jobId/pages/:pageNumber/retry')
+  retryPage(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number
+  ) {
+    return this.scanner.retryPage(user.userId, jobId, pageNumber);
+  }
+
   @Delete(':jobId')
   remove(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.deleteJob(user.userId, jobId);
@@ -102,7 +112,7 @@ export class ScannerController {
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
     @Param('kind', new ParseEnumPipe(SCANNER_ARTIFACT_KINDS))
-    kind: 'musicxml' | 'pdf' | 'thumbnail',
+    kind: 'musicxml' | 'pdf' | 'thumbnail' | 'zip',
     @Query('page', new ParseIntPipe({ optional: true })) page: number | undefined,
     @Res({ passthrough: true }) response: Response
   ) {

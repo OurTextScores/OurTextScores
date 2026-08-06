@@ -51,6 +51,24 @@ describe('ScannerProviderService', () => {
     expect(result.modelRevision).toBe('homr-revision');
   });
 
+  it('can deterministically model a transient first-generation page failure', async () => {
+    values.SCANNER_FAKE_TRANSIENT_FAILURE_PAGE = '2';
+    const service = new ScannerProviderService(config);
+    const input = {
+      image: Buffer.from('image'),
+      contentType: 'image/png',
+      detectTitle: false,
+      idempotencyKey: 'd'.repeat(64)
+    };
+    await expect(
+      service.scanPage({ ...input, filename: 'page-2-generation-1.png' })
+    ).rejects.toMatchObject({ code: 'provider_http_503', retryable: true });
+    await expect(
+      service.scanPage({ ...input, filename: 'page-2-generation-2.png' })
+    ).resolves.toMatchObject({ modelRevision: 'homr-revision' });
+    delete values.SCANNER_FAKE_TRANSIENT_FAILURE_PAGE;
+  });
+
   it('classifies provider capacity errors as retryable', async () => {
     values.SCANNER_PROVIDER_KIND = 'modal';
     values.SCANNER_PROVIDER_URL = 'https://scanner.example';

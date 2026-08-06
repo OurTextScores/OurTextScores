@@ -26,9 +26,12 @@ export interface ScannerStorageLocator {
 
 export interface ScannerPageResult {
   pageNumber: number;
-  status: 'succeeded' | 'failed';
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped';
   attempts: number;
   idempotencyKey: string;
+  manualRetries?: number;
+  sourceImage?: ScannerStorageLocator;
+  thumbnail?: ScannerStorageLocator;
   musicXml?: ScannerStorageLocator;
   pdf?: ScannerStorageLocator;
   errorCode?: string;
@@ -67,8 +70,14 @@ export class ScannerJob {
   @Prop({ type: [Object], default: [] })
   pages!: ScannerPageResult[];
 
+  @Prop({ type: [Number] })
+  retryPageNumbers?: number[];
+
   @Prop({ type: Object })
   musicXmlBundle?: ScannerStorageLocator;
+
+  @Prop({ type: Object })
+  resultsZip?: ScannerStorageLocator;
 
   @Prop({ type: Object })
   previewPdf?: ScannerStorageLocator;
