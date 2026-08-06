@@ -11,11 +11,11 @@ import {
   Query,
   Res,
   StreamableFile,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { mkdirSync } from 'node:fs';
@@ -44,7 +44,7 @@ export class ScannerController {
   @Post()
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
-    FileInterceptor('file', {
+    FilesInterceptor('file', 20, {
       storage: diskStorage({
         destination: (_request, _file, callback) => {
           mkdirSync(SCANNER_UPLOAD_DIRECTORY, { recursive: true });
@@ -52,25 +52,23 @@ export class ScannerController {
         },
         filename: (_request, _file, callback) => callback(null, randomUUID())
       }),
-      limits: { fileSize: 25 * 1024 * 1024, files: 1 }
+      limits: { fileSize: 25 * 1024 * 1024, files: 20 }
     })
   )
   async create(
     @CurrentUser() user: RequestUser,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() files: Express.Multer.File[],
     @Body('detectTitle') detectTitle?: string
   ) {
     try {
       return await this.scanner.createJob({
         userId: user.userId,
-        file,
+        files,
         detectTitle: detectTitle === 'true' || detectTitle === '1'
       });
     } finally {
-      if (file?.path) {
-        const { promises: fs } = await import('node:fs');
-        await fs.rm(file.path, { force: true });
-      }
+      const { promises: fs } = await import('node:fs');
+      await Promise.all((files || []).map((file) => fs.rm(file.path, { force: true })));
     }
   }
 

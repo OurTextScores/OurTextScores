@@ -92,6 +92,54 @@ describe('ScannerWorkerService retry policy', () => {
     expect(scannerWorker.shouldPreservePriorFailure(deterministic, 'generation-2')).toBe(true);
   });
 
+  it('prepares every retained image in its persisted page order', async () => {
+    const first = await sharp({
+      create: { width: 12, height: 8, channels: 3, background: '#ffffff' }
+    })
+      .png()
+      .toBuffer();
+    const second = await sharp({
+      create: { width: 7, height: 15, channels: 3, background: '#000000' }
+    })
+      .png()
+      .toBuffer();
+    const workspace = await fs.mkdtemp(join(tmpdir(), 'scanner-worker-test-'));
+    try {
+      const pages = await (service() as any).preparePages(
+        { pageCount: 2 },
+        [
+          {
+            source: {
+              originalFilename: 'page-2.png',
+              storage: { contentType: 'image/png' }
+            },
+            buffer: first
+          },
+          {
+            source: {
+              originalFilename: 'page-10.png',
+              storage: { contentType: 'image/png' }
+            },
+            buffer: second
+          }
+        ],
+        workspace
+      );
+
+      expect(pages.map((page: any) => page.pageNumber)).toEqual([1, 2]);
+      await expect(sharp(pages[0].path).metadata()).resolves.toMatchObject({
+        width: 12,
+        height: 8
+      });
+      await expect(sharp(pages[1].path).metadata()).resolves.toMatchObject({
+        width: 7,
+        height: 15
+      });
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it('materializes only included pages in saved order with saved rotation', async () => {
     const image = await sharp({
       create: { width: 10, height: 20, channels: 3, background: '#ffffff' }

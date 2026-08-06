@@ -19,13 +19,32 @@ async function readError(response: Response): Promise<string> {
   }
 }
 
+function uploadSelectionError(files: File[]): string | null {
+  if (files.length > 20) return "Select at most 20 image pages.";
+  if (
+    files.length > 1 &&
+    files.some(
+      (file) =>
+        file.type === "application/pdf" ||
+        file.name.toLowerCase().endsWith(".pdf"),
+    )
+  ) {
+    return "Upload one PDF by itself, or upload only PNG/JPEG images.";
+  }
+  if (files.reduce((sum, file) => sum + file.size, 0) > 25 * 1024 * 1024) {
+    return "The combined upload may not exceed 25 MB.";
+  }
+  return null;
+}
+
 export default function ScannerClient() {
   const [jobs, setJobs] = useState<ScannerJob[]>([]);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [detectTitle, setDetectTitle] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const selectionError = uploadSelectionError(files);
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/proxy/scanner/jobs", {
@@ -54,12 +73,16 @@ export default function ScannerClient() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!file) return;
+    if (files.length === 0) return;
+    if (selectionError) {
+      setError(selectionError);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const body = new FormData();
-      body.set("file", file);
+      for (const file of files) body.append("file", file);
       body.set("detectTitle", String(detectTitle));
       const response = await fetch("/api/proxy/scanner/jobs", {
         method: "POST",
@@ -68,7 +91,7 @@ export default function ScannerClient() {
       if (!response.ok) throw new Error(await readError(response));
       const created: ScannerJob = await response.json();
       setJobs((current) => [created, ...current]);
-      setFile(null);
+      setFiles([]);
       const input = document.getElementById(
         "scanner-file",
       ) as HTMLInputElement | null;
@@ -90,29 +113,64 @@ export default function ScannerClient() {
           Scan a score
         </h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Upload a PDF, PNG, or JPEG. PDFs may contain up to 20 pages; files may
+          Upload one PDF or up to 20 PNG/JPEG images. Image pages are ordered by
+          filename and can be rearranged during review. The combined upload may
           be up to 25 MB.
         </p>
         <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Score file
+            Score files
             <input
               id="scanner-file"
               type="file"
               accept="application/pdf,image/png,image/jpeg"
+              multiple
               required
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              onChange={(event) => {
+                const selected = Array.from(event.target.files || [])
+                  .map((file, index) => ({ file, index }))
+                  .sort(
+                    (left, right) =>
+                      left.file.name.localeCompare(right.file.name, "en", {
+                        numeric: true,
+                        sensitivity: "base",
+                      }) ||
+                      left.file.name.localeCompare(right.file.name, "en") ||
+                      left.index - right.index,
+                  )
+                  .map(({ file }) => file);
+                setFiles(selected);
+                setError(uploadSelectionError(selected));
+              }}
               className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
             />
           </label>
           <button
             type="submit"
-            disabled={!file || submitting}
+            disabled={
+              files.length === 0 || Boolean(selectionError) || submitting
+            }
             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Uploading…" : "Upload and review"}
           </button>
         </div>
+        {files.length > 1 && (
+          <div className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm dark:bg-slate-950">
+            <p className="font-medium text-slate-700 dark:text-slate-300">
+              Initial page order
+            </p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-600 dark:text-slate-400">
+              {files.map((file, index) => (
+                <li
+                  key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+                >
+                  {file.name}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
         <label className="mt-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
           <input
             type="checkbox"

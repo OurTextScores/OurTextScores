@@ -201,4 +201,64 @@ test.describe("Scanner pilot", () => {
     expect(zipContents).toContain("page-001.musicxml");
     expect(zipContents).toContain("page-002.musicxml");
   });
+
+  test("natural-sorts multiple images and preserves review order through retry", async ({
+    page,
+    request,
+  }) => {
+    const email = `scanner_images_${Date.now()}@example.test`;
+    await signInViaEmail(page, request, email);
+    await page.goto(`${BASE_URL}/scanner`);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    await page.locator("#scanner-file").setInputFiles([
+      { name: "page-10.png", mimeType: "image/png", buffer: png },
+      { name: "page-2.png", mimeType: "image/png", buffer: png },
+    ]);
+    await expect(
+      page.locator("li").filter({ hasText: "page-2.png" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Upload and review" }).click();
+    await page.getByRole("link", { name: /page-2\.png \+ 1 more/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "Review pages before scanning" }),
+    ).toBeVisible({ timeout: 120_000 });
+    await page
+      .getByRole("button", { name: "Move source page 2 earlier" })
+      .click();
+    await page.getByRole("button", { name: "Start scanning" }).click();
+
+    const failed = page.getByRole("button", {
+      name: /Page 1.*Source 2.*Failed/i,
+    });
+    await expect(failed).toBeVisible({ timeout: 120_000 });
+    await failed.click();
+    await page.getByRole("button", { name: "Retry page" }).click();
+    await expect(
+      page.getByRole("button", { name: /Page 1.*Source 2.*Succeeded/i }),
+    ).toBeVisible({ timeout: 120_000 });
+
+    const result = await page.evaluate(async () => {
+      const response = await fetch(
+        window.location.pathname.replace(
+          "/scanner/",
+          "/api/proxy/scanner/jobs/",
+        ),
+      );
+      return response.json();
+    });
+    expect(result.originalFilename).toBe("page-2.png + 1 more");
+    expect(
+      result.pages.map((item) => ({
+        pageNumber: item.pageNumber,
+        ordinal: item.ordinal,
+        status: item.status,
+      })),
+    ).toEqual([
+      { pageNumber: 2, ordinal: 1, status: "succeeded" },
+      { pageNumber: 1, ordinal: 2, status: "succeeded" },
+    ]);
+  });
 });

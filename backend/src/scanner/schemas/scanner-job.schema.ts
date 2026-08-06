@@ -25,6 +25,11 @@ export interface ScannerStorageLocator {
   checksumSha256: string;
 }
 
+export interface ScannerSourceInput {
+  originalFilename: string;
+  storage: ScannerStorageLocator;
+}
+
 export interface ScannerPageResult {
   pageNumber: number;
   ordinal: number;
@@ -62,8 +67,13 @@ export class ScannerJob {
   @Prop({ required: true, min: 1 })
   pageCount!: number;
 
-  @Prop({ required: true, type: Object })
-  input!: ScannerStorageLocator;
+  // `input` is retained for jobs created before multi-image uploads. New jobs
+  // use `inputs`, and the worker reads either representation.
+  @Prop({ type: Object })
+  input?: ScannerStorageLocator;
+
+  @Prop({ type: [Object], default: [] })
+  inputs!: ScannerSourceInput[];
 
   @Prop({ type: Object, default: {} })
   options!: { detectTitle?: boolean };

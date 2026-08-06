@@ -24,6 +24,7 @@ import {
   ScannerJob,
   ScannerJobDocument,
   ScannerPageResult,
+  ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
@@ -78,7 +79,7 @@ export class ScannerService implements OnModuleInit {
 
   async createJob(input: {
     userId: string;
-    file: Express.Multer.File;
+    files: Express.Multer.File[];
     detectTitle?: boolean;
   }): Promise<any> {
     this.assertAvailable(input.userId);
@@ -86,71 +87,102 @@ export class ScannerService implements OnModuleInit {
       throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
     const maxBytes = this.number('SCANNER_MAX_UPLOAD_BYTES', 25 * 1024 * 1024);
-    if (!input.file || !input.file.path) {
+    const files = this.sortUploadedFiles(input.files || []);
+    if (files.length === 0 || files.some((file) => !file.path)) {
       throw new BadRequestException('A score image or PDF is required');
     }
-    if (input.file.size > maxBytes) {
-      throw new PayloadTooLargeException(`Upload exceeds the ${maxBytes} byte limit`);
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalBytes > maxBytes) {
+      throw new PayloadTooLargeException(`Combined upload exceeds the ${maxBytes} byte limit`);
     }
 
-    const detected = await this.detectInputType(input.file.path);
-    if (detected !== 'application/pdf') {
-      const maxDimension = this.number('SCANNER_MAX_IMAGE_DIMENSION', 12_000);
-      const maxPixels = this.number('SCANNER_MAX_IMAGE_PIXELS', 80_000_000);
-      const dimensions = await this.readImageDimensions(input.file.path, maxPixels);
-      const aspectRatio =
-        Math.max(dimensions.width, dimensions.height) /
-        Math.min(dimensions.width, dimensions.height);
-      const maxAspectRatio = this.number('SCANNER_MAX_IMAGE_ASPECT_RATIO', 20);
-      if (
-        dimensions.width > maxDimension ||
-        dimensions.height > maxDimension ||
-        dimensions.width * dimensions.height > maxPixels ||
-        aspectRatio > maxAspectRatio
-      ) {
-        throw new PayloadTooLargeException(
-          `Image dimensions exceed the ${maxDimension}px/${maxPixels}-pixel/${maxAspectRatio}:1 aspect-ratio limit`
-        );
+    const maxDimension = this.number('SCANNER_MAX_IMAGE_DIMENSION', 12_000);
+    const maxPixels = this.number('SCANNER_MAX_IMAGE_PIXELS', 80_000_000);
+    const maxAspectRatio = this.number('SCANNER_MAX_IMAGE_ASPECT_RATIO', 20);
+    const detectedFiles: Array<{ file: Express.Multer.File; contentType: string }> = [];
+    for (const file of files) {
+      const contentType = await this.detectInputType(file.path);
+      if (contentType !== 'application/pdf') {
+        const dimensions = await this.readImageDimensions(file.path, maxPixels);
+        const aspectRatio =
+          Math.max(dimensions.width, dimensions.height) /
+          Math.min(dimensions.width, dimensions.height);
+        if (
+          dimensions.width > maxDimension ||
+          dimensions.height > maxDimension ||
+          dimensions.width * dimensions.height > maxPixels ||
+          aspectRatio > maxAspectRatio
+        ) {
+          throw new PayloadTooLargeException(
+            `Image dimensions exceed the ${maxDimension}px/${maxPixels}-pixel/${maxAspectRatio}:1 aspect-ratio limit`
+          );
+        }
       }
+      detectedFiles.push({ file, contentType });
     }
-    const pageCount =
-      detected === 'application/pdf' ? await this.readPdfPageCount(input.file.path) : 1;
+    const pdfFiles = detectedFiles.filter((item) => item.contentType === 'application/pdf');
+    if (pdfFiles.length > 0 && detectedFiles.length !== 1) {
+      throw new BadRequestException('Upload one PDF by itself, or upload only PNG/JPEG images');
+    }
+
+    const pageCount = pdfFiles.length
+      ? await this.readPdfPageCount(pdfFiles[0].file.path)
+      : detectedFiles.length;
     const maxPages = this.number('SCANNER_MAX_PAGES', 20);
     if (pageCount > maxPages) {
-      throw new PayloadTooLargeException(`PDF has ${pageCount} pages; the limit is ${maxPages}`);
+      const label = pdfFiles.length ? 'PDF' : 'Image selection';
+      throw new PayloadTooLargeException(
+        `${label} has ${pageCount} pages; the limit is ${maxPages}`
+      );
     }
 
     await this.assertQuota(input.userId, pageCount);
 
     const jobId = randomUUID();
-    const extension =
-      detected === 'application/pdf' ? '.pdf' : detected === 'image/png' ? '.png' : '.jpg';
-    const objectKey = `scanner/${input.userId}/${jobId}/source${extension}`;
-    const checksumSha256 = await this.hashFile(input.file.path);
-    const stored = await this.storage.putRawObject(
-      objectKey,
-      createReadStream(input.file.path),
-      input.file.size,
-      detected
-    );
-    const locator: ScannerStorageLocator = {
-      bucket: stored.bucket,
-      objectKey: stored.objectKey,
-      sizeBytes: input.file.size,
-      contentType: detected,
-      checksumSha256
-    };
+    const storedInputs: ScannerSourceInput[] = [];
     const now = Date.now();
 
     try {
+      for (let index = 0; index < detectedFiles.length; index += 1) {
+        const { file, contentType } = detectedFiles[index];
+        const extension =
+          contentType === 'application/pdf'
+            ? '.pdf'
+            : contentType === 'image/png'
+              ? '.png'
+              : '.jpg';
+        const objectKey = `scanner/${input.userId}/${jobId}/source-${String(index + 1).padStart(3, '0')}${extension}`;
+        const checksumSha256 = await this.hashFile(file.path);
+        const stored = await this.storage.putRawObject(
+          objectKey,
+          createReadStream(file.path),
+          file.size,
+          contentType
+        );
+        storedInputs.push({
+          originalFilename: this.safeFilename(file.originalname, extension),
+          storage: {
+            bucket: stored.bucket,
+            objectKey: stored.objectKey,
+            sizeBytes: file.size,
+            contentType,
+            checksumSha256
+          }
+        });
+      }
+      const originalFilename =
+        storedInputs.length === 1
+          ? storedInputs[0].originalFilename
+          : `${storedInputs[0].originalFilename} + ${storedInputs.length - 1} more`;
       const job = await this.jobs.create({
         jobId,
         userId: input.userId,
         status: 'preparing',
-        originalFilename: this.safeFilename(input.file.originalname, extension),
-        inputContentType: detected,
+        originalFilename,
+        inputContentType:
+          detectedFiles.length === 1 ? detectedFiles[0].contentType : 'multipart/mixed',
         pageCount,
-        input: locator,
+        inputs: storedInputs,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
         pages: Array.from({ length: pageCount }, (_value, index) => ({
@@ -172,7 +204,11 @@ export class ScannerService implements OnModuleInit {
       });
       return this.present(job);
     } catch (error) {
-      await this.storage.deleteObject(locator.bucket, locator.objectKey);
+      await Promise.all(
+        storedInputs.map((item) =>
+          this.storage.deleteObject(item.storage.bucket, item.storage.objectKey)
+        )
+      );
       throw error;
     }
   }
@@ -517,6 +553,7 @@ export class ScannerService implements OnModuleInit {
   private async deleteArtifacts(job: ScannerJobDocument): Promise<void> {
     const locators = [
       job.input,
+      ...(job.inputs || []).map((item) => item.storage),
       job.musicXmlBundle,
       job.resultsZip,
       job.previewPdf,
@@ -533,6 +570,21 @@ export class ScannerService implements OnModuleInit {
       .replace(/[^a-zA-Z0-9._ -]+/g, '_')
       .slice(0, 180);
     return extname(base) ? base : `${base}${fallbackExtension}`;
+  }
+
+  private sortUploadedFiles(files: Express.Multer.File[]): Express.Multer.File[] {
+    return files
+      .map((file, index) => ({ file, index }))
+      .sort(
+        (left, right) =>
+          left.file.originalname.localeCompare(right.file.originalname, 'en', {
+            numeric: true,
+            sensitivity: 'base'
+          }) ||
+          left.file.originalname.localeCompare(right.file.originalname, 'en') ||
+          left.index - right.index
+      )
+      .map(({ file }) => file);
   }
 
   private retryEligibility(job: ScannerJobDocument): { allowed: boolean; reason: string } {

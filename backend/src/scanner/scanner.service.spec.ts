@@ -4,6 +4,10 @@ import {
   ForbiddenException,
   ServiceUnavailableException
 } from '@nestjs/common';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp = require('sharp');
 import { ScannerService } from './scanner.service';
 
 describe('ScannerService', () => {
@@ -18,15 +22,114 @@ describe('ScannerService', () => {
     find: jest.fn(),
     findOne: jest.fn(),
     findOneAndUpdate: jest.fn(),
-    countDocuments: jest.fn()
+    countDocuments: jest.fn(),
+    aggregate: jest.fn(),
+    create: jest.fn()
   } as any;
-  const storage = {} as any;
+  const storage = {
+    putRawObject: jest.fn(),
+    deleteObject: jest.fn()
+  } as any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     values.SCANNER_ENABLED = 'true';
     values.SCANNER_BETA_USER_IDS = 'user-1';
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'false';
+    jobs.countDocuments.mockReturnValue({ exec: () => Promise.resolve(0) });
+    jobs.aggregate.mockReturnValue({ exec: () => Promise.resolve([]) });
+    jobs.create.mockImplementation((value: any) =>
+      Promise.resolve({
+        ...value,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+    );
+    storage.putRawObject.mockImplementation((objectKey: string) =>
+      Promise.resolve({ bucket: 'raw', objectKey })
+    );
+    storage.deleteObject.mockResolvedValue(undefined);
+  });
+
+  it('natural-sorts multiple image inputs and persists their private source locators', async () => {
+    const directory = await fs.mkdtemp(join(tmpdir(), 'scanner-service-test-'));
+    try {
+      const pageTwoPath = join(directory, 'upload-a');
+      const pageTenPath = join(directory, 'upload-b');
+      const image = await sharp({
+        create: { width: 10, height: 20, channels: 3, background: '#ffffff' }
+      })
+        .png()
+        .toBuffer();
+      await Promise.all([fs.writeFile(pageTwoPath, image), fs.writeFile(pageTenPath, image)]);
+      const multerFile = (path: string, originalname: string): Express.Multer.File =>
+        ({ path, originalname, size: image.length }) as Express.Multer.File;
+      const service = new ScannerService(jobs, storage, config);
+
+      const result = await service.createJob({
+        userId: 'user-1',
+        files: [multerFile(pageTenPath, 'page-10.png'), multerFile(pageTwoPath, 'page-2.png')]
+      });
+
+      expect(result).toMatchObject({
+        originalFilename: 'page-2.png + 1 more',
+        pageCount: 2
+      });
+      expect(jobs.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputContentType: 'multipart/mixed',
+          pageCount: 2,
+          inputs: [
+            expect.objectContaining({
+              originalFilename: 'page-2.png',
+              storage: expect.objectContaining({
+                objectKey: expect.stringMatching(/source-001\.png$/)
+              })
+            }),
+            expect.objectContaining({
+              originalFilename: 'page-10.png',
+              storage: expect.objectContaining({
+                objectKey: expect.stringMatching(/source-002\.png$/)
+              })
+            })
+          ]
+        })
+      );
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a PDF mixed with image inputs before storing either source', async () => {
+    const directory = await fs.mkdtemp(join(tmpdir(), 'scanner-service-test-'));
+    try {
+      const pdfPath = join(directory, 'upload-pdf');
+      const imagePath = join(directory, 'upload-image');
+      const image = await sharp({
+        create: { width: 10, height: 20, channels: 3, background: '#ffffff' }
+      })
+        .png()
+        .toBuffer();
+      await Promise.all([fs.writeFile(pdfPath, '%PDF-1.4\n'), fs.writeFile(imagePath, image)]);
+      const service = new ScannerService(jobs, storage, config);
+
+      await expect(
+        service.createJob({
+          userId: 'user-1',
+          files: [
+            { path: pdfPath, originalname: 'score.pdf', size: 9 } as Express.Multer.File,
+            {
+              path: imagePath,
+              originalname: 'page.png',
+              size: image.length
+            } as Express.Multer.File
+          ]
+        })
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(storage.putRawObject).not.toHaveBeenCalled();
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('is disabled by default unless explicitly enabled', () => {
@@ -64,6 +167,12 @@ describe('ScannerService', () => {
         }
       ],
       input: { bucket: 'raw', objectKey: 'private-source' },
+      inputs: [
+        {
+          originalFilename: 'private-page.png',
+          storage: { bucket: 'raw', objectKey: 'private-multi-source' }
+        }
+      ],
       resultExpiresAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date()
@@ -77,6 +186,8 @@ describe('ScannerService', () => {
     expect(result.pages[0]).not.toHaveProperty('idempotencyKey');
     expect(JSON.stringify(result)).not.toContain('private-key');
     expect(JSON.stringify(result)).not.toContain('private-source');
+    expect(JSON.stringify(result)).not.toContain('private-multi-source');
+    expect(JSON.stringify(result)).not.toContain('private-page.png');
   });
 
   it('queues one manual generation for a transiently failed page', async () => {

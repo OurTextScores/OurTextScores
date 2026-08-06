@@ -17,6 +17,7 @@ import {
   ScannerJob,
   ScannerJobDocument,
   ScannerPageResult,
+  ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { ScannerProviderService } from './scanner-provider.service';
@@ -110,8 +111,24 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-prepare-'));
     const storedLocators: ScannerStorageLocator[] = [];
     try {
-      const input = await this.storage.getObjectBuffer(job.input.bucket, job.input.objectKey);
-      const pageFiles = await this.preparePages(job, input, workspace);
+      const sourceInputs = this.sourceInputs(job);
+      if (sourceInputs.length === 0) {
+        throw new ScannerProviderError(
+          'The retained Scanner source is unavailable',
+          'source_input_missing',
+          false
+        );
+      }
+      const inputs = await Promise.all(
+        sourceInputs.map(async (source) => ({
+          source,
+          buffer: await this.storage.getObjectBuffer(
+            source.storage.bucket,
+            source.storage.objectKey
+          )
+        }))
+      );
+      const pageFiles = await this.preparePages(job, inputs, workspace);
       const priorResults = new Map(job.pages.map((page) => [page.pageNumber, page]));
       const pages: ScannerPageResult[] = [];
       for (const pageFile of pageFiles) {
@@ -524,27 +541,40 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
 
   private async preparePages(
     job: ScannerJobDocument,
-    input: Buffer,
+    inputs: Array<{ source: ScannerSourceInput; buffer: Buffer }>,
     workspace: string
   ): Promise<Array<{ pageNumber: number; path: string; contentType: 'image/png' }>> {
-    if (job.inputContentType !== 'application/pdf') {
-      const path = join(workspace, 'page-001.png');
-      await sharp(input)
-        .rotate()
-        .resize({ width: 1920, withoutEnlargement: true })
-        .png()
-        .toFile(path);
-      return [
-        {
-          pageNumber: 1,
-          path,
-          contentType: 'image/png'
-        }
-      ];
+    const isPdf = inputs[0]?.source.storage.contentType === 'application/pdf';
+    if (!isPdf) {
+      const pages: Array<{ pageNumber: number; path: string; contentType: 'image/png' }> = [];
+      for (let index = 0; index < inputs.length; index += 1) {
+        const path = join(workspace, `page-${String(index + 1).padStart(3, '0')}.png`);
+        await sharp(inputs[index].buffer)
+          .rotate()
+          .resize({ width: 1920, withoutEnlargement: true })
+          .png()
+          .toFile(path);
+        pages.push({ pageNumber: index + 1, path, contentType: 'image/png' });
+      }
+      if (pages.length !== job.pageCount) {
+        throw new ScannerProviderError(
+          `Expected ${job.pageCount} image pages but prepared ${pages.length}`,
+          'image_preparation_failed',
+          false
+        );
+      }
+      return pages;
+    }
+    if (inputs.length !== 1) {
+      throw new ScannerProviderError(
+        'A PDF Scanner job must retain exactly one source',
+        'pdf_rasterization_failed',
+        false
+      );
     }
     const pdfPath = join(workspace, 'source.pdf');
     const outputPrefix = join(workspace, 'page');
-    await fs.writeFile(pdfPath, input);
+    await fs.writeFile(pdfPath, inputs[0].buffer);
     await execFileAsync(
       'pdftoppm',
       ['-png', '-scale-to-x', '1920', '-scale-to-y', '-1', pdfPath, outputPrefix],
@@ -802,6 +832,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     for (const job of sources) {
       const locators = [
         job.input,
+        ...(job.inputs || []).map((item) => item.storage),
         ...job.pages.flatMap((page) => [page.sourceImage, page.thumbnail])
       ].filter(Boolean) as ScannerStorageLocator[];
       await Promise.all(
@@ -860,6 +891,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         )
         .exec();
     }
+  }
+
+  private sourceInputs(job: ScannerJobDocument): ScannerSourceInput[] {
+    if (job.inputs?.length) return job.inputs;
+    return job.input ? [{ originalFilename: job.originalFilename, storage: job.input }] : [];
   }
 
   private async updateLease(jobId: string, status: 'running' | 'rendering'): Promise<void> {
