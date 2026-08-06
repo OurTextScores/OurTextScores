@@ -11,6 +11,8 @@ backend/node_modules/
 backend/coverage/
 backend/scripts/private/
 backend/scripts/__pycache__/
+__pycache__/
+*.pyc
 docs/private/
 docs/agent/
 scripts/private/

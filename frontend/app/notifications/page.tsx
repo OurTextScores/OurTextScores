@@ -12,10 +12,12 @@ function getBackendApiBase(): string {
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
-  workId: string;
-  sourceId: string;
-  revisionId: string;
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity' | 'scanner_job_succeeded' | 'scanner_job_partial' | 'scanner_job_failed';
+  workId?: string;
+  sourceId?: string;
+  revisionId?: string;
+  resourceType?: string;
+  resourceId?: string;
   payload: Record<string, any>;
   actorUsername?: string;
   read: boolean;

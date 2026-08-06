@@ -64,6 +64,6 @@ import { ChangeReviewsModule } from '../change-reviews/change-reviews.module';
     WorksModerationController,
   ],
   providers: [WorksService, UploadSourceService, DerivativePipelineService],
-  exports: [WorksService, UploadSourceService]
+  exports: [WorksService, UploadSourceService, DerivativePipelineService]
 })
 export class WorksModule {}

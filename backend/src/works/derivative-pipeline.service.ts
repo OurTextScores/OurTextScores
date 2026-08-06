@@ -637,6 +637,31 @@ export class DerivativePipelineService {
     }
   }
 
+  /**
+   * Render standalone MusicXML with the same MuseScore and thumbnail path used
+   * by catalogue derivatives. Callers own persistence of the returned files.
+   */
+  async renderMusicXmlPdf(
+    musicXml: Buffer
+  ): Promise<{ pdf: Buffer; thumbnail?: Buffer }> {
+    const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-musicxml-render-'));
+    try {
+      const sourcePath = join(workspace, 'score.musicxml');
+      const outputPath = join(workspace, 'score.pdf');
+      await fs.writeFile(sourcePath, musicXml);
+      await this.runMuseScoreExport(
+        sourcePath,
+        outputPath,
+        'standalone MusicXML PDF export'
+      );
+      const pdf = await fs.readFile(outputPath);
+      const thumbnail = await this.generateThumbnail(pdf, workspace);
+      return { pdf, thumbnail };
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  }
+
   private async storeAuxiliary(
     objectKey: string,
     buffer: Buffer,

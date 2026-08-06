@@ -70,6 +70,9 @@ export default function Header() {
           <Link href="/catalogue" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">≡ </span>Catalogue</Link>
           <Link href="/projects" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">▦ </span>Projects</Link>
           <Link href="/score-editor" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">✎ </span>Score Editor</Link>
+          {process.env.NEXT_PUBLIC_SCANNER_ENABLED === "true" && user && (
+            <Link href="/scanner" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">⌁ </span>Scanner</Link>
+          )}
           <Link href="/legal" className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"><span aria-hidden="true">§ </span>Legal</Link>
           <ThemeToggle />
           {user ? (

@@ -11,7 +11,8 @@ describe('NotificationsService', () => {
   const inboxModel = {
     create: jest.fn(),
     find: jest.fn(),
-    updateMany: jest.fn()
+    updateMany: jest.fn(),
+    updateOne: jest.fn()
   } as any;
   const users = {
     findById: jest.fn()
@@ -30,7 +31,12 @@ describe('NotificationsService', () => {
         })
       })
     });
-    svc = new NotificationsService(outboxModel as any, inboxModel as any, users as any, config as any);
+    svc = new NotificationsService(
+      outboxModel as any,
+      inboxModel as any,
+      users as any,
+      config as any
+    );
     // force a mock transporter
     (svc as any).transporter = { sendMail: jest.fn().mockResolvedValue({}) };
   });
@@ -38,7 +44,12 @@ describe('NotificationsService', () => {
   describe('queuePushRequest', () => {
     it('enqueues owner notification with ownerUserId', async () => {
       outboxModel.create.mockResolvedValue({});
-      await svc.queuePushRequest({ workId: 'w', sourceId: 's', revisionId: 'r', ownerUserId: 'u1' });
+      await svc.queuePushRequest({
+        workId: 'w',
+        sourceId: 's',
+        revisionId: 'r',
+        ownerUserId: 'u1'
+      });
       expect(outboxModel.create).toHaveBeenCalledWith({
         type: 'push_request',
         workId: 'w',
@@ -66,14 +77,24 @@ describe('NotificationsService', () => {
   describe('queueNewRevision', () => {
     it('creates inbox notifications for each user', async () => {
       inboxModel.create.mockResolvedValue({});
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['u1', 'u2'] });
+      await svc.queueNewRevision({
+        workId: 'w',
+        sourceId: 's',
+        revisionId: 'r',
+        userIds: ['u1', 'u2']
+      });
       expect(inboxModel.create).toHaveBeenCalledTimes(2);
     });
 
     it('continues processing when a create fails', async () => {
       inboxModel.create.mockRejectedValueOnce(new Error('DB error'));
       inboxModel.create.mockResolvedValueOnce({});
-      await svc.queueNewRevision({ workId: 'w', sourceId: 's', revisionId: 'r', userIds: ['bad', 'good'] });
+      await svc.queueNewRevision({
+        workId: 'w',
+        sourceId: 's',
+        revisionId: 'r',
+        userIds: ['bad', 'good']
+      });
       expect(inboxModel.create).toHaveBeenCalledTimes(2);
     });
 
@@ -94,21 +115,50 @@ describe('NotificationsService', () => {
         recipientUserId: 'u1',
         actorUserId: 'u2',
         activityType: 'thread_created',
-        branchName: 'trunk',
+        branchName: 'trunk'
       });
-      expect(inboxModel.create).toHaveBeenCalledWith(expect.objectContaining({
-        userId: 'u1',
-        type: 'change_review_activity',
-        workId: 'w',
-        sourceId: 's',
-        revisionId: 'r',
-        payload: expect.objectContaining({
-          reviewId: 'cr-1',
-          actorUserId: 'u2',
-          activityType: 'thread_created',
-          branchName: 'trunk',
+      expect(inboxModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u1',
+          type: 'change_review_activity',
+          workId: 'w',
+          sourceId: 's',
+          revisionId: 'r',
+          payload: expect.objectContaining({
+            reviewId: 'cr-1',
+            actorUserId: 'u2',
+            activityType: 'thread_created',
+            branchName: 'trunk'
+          })
+        })
+      );
+    });
+  });
+
+  describe('queueScannerTerminal', () => {
+    it('upserts a stable dedupe key without fake work identifiers', async () => {
+      inboxModel.updateOne.mockReturnValue({ exec: () => Promise.resolve({}) });
+      await svc.queueScannerTerminal({
+        jobId: 'scan-1',
+        generation: 1,
+        recipientUserId: 'u1',
+        status: 'succeeded',
+        originalFilename: 'score.png',
+        succeededPages: 1,
+        pageCount: 1
+      });
+      expect(inboxModel.updateOne).toHaveBeenCalledWith(
+        { dedupeKey: 'scanner:scan-1:1:terminal' },
+        expect.objectContaining({
+          $setOnInsert: expect.objectContaining({
+            type: 'scanner_job_succeeded',
+            resourceType: 'scanner_job',
+            resourceId: 'scan-1',
+            workId: undefined
+          })
         }),
-      }));
+        { upsert: true }
+      );
     });
   });
 
@@ -319,7 +369,10 @@ describe('NotificationsService', () => {
           exec: () => Promise.resolve([digestDoc])
         })
       });
-      users.findById.mockResolvedValue({ email: 'user@example.com', notify: { watchPreference: 'daily' } });
+      users.findById.mockResolvedValue({
+        email: 'user@example.com',
+        notify: { watchPreference: 'daily' }
+      });
 
       await svc.processOutbox();
 
@@ -374,7 +427,9 @@ describe('NotificationsService', () => {
       const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       newSvc.onModuleInit();
 
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to configure email transporter'));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to configure email transporter')
+      );
 
       newSvc.onModuleDestroy();
       warnSpy.mockRestore();

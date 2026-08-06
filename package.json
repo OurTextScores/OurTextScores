@@ -11,6 +11,7 @@
     "smoke:install": "npx playwright install chromium",
     "smoke:up": "docker compose build backend frontend && docker compose up -d && node smoke/utils/wait.cjs",
     "smoke:run": "npx playwright test -c smoke/playwright.config.cjs --project=chromium",
+    "smoke:scanner": "docker compose --profile scanner down -v --remove-orphans && docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml build backend frontend scanner_worker && docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml up -d && node smoke/utils/wait.cjs && SCANNER_SMOKE=1 npx playwright test -c smoke/playwright.config.cjs --project=chromium scanner.spec.cjs; code=$?; docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml down -v --remove-orphans; exit $code",
     "smoke:trace": "node scripts/smoke-trace-continuity.cjs",
     "smoke:telemetry": "node scripts/smoke-editor-telemetry.cjs",
     "docker:clean": "docker compose down -v --remove-orphans",

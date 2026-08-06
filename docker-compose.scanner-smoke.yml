@@ -1,0 +1,22 @@
+services:
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_SCANNER_ENABLED: "true"
+    environment:
+      SCANNER_ENABLED: "true"
+      NEXT_PUBLIC_SCANNER_ENABLED: "true"
+
+  backend:
+    environment:
+      SCANNER_ENABLED: "true"
+      SCANNER_BETA_USER_IDS: "*"
+      SCANNER_WORKER_ENABLED: "false"
+      SCANNER_PROVIDER_KIND: fake
+      SCANNER_EXPECTED_HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465
+
+  scanner_worker:
+    environment:
+      SCANNER_ENABLED: "true"
+      SCANNER_PROVIDER_KIND: fake
+      SCANNER_EXPECTED_HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465

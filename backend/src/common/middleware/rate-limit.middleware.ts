@@ -46,7 +46,8 @@ const rules: RateLimitRule[] = [
       req.method === 'POST' &&
       (/^\/api\/works\/[^/]+\/sources(\/[^/]+\/revisions)?$/.test(req.path) ||
         /^\/api\/works\/[^/]+\/sources\/[^/]+\/reference\.pdf$/.test(req.path) ||
-        /^\/api\/projects\/[^/]+\/sources$/.test(req.path))
+        /^\/api\/projects\/[^/]+\/sources$/.test(req.path) ||
+        /^\/api\/scanner\/jobs$/.test(req.path))
   },
   {
     name: 'auth',

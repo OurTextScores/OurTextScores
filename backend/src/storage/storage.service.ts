@@ -132,6 +132,10 @@ export class StorageService {
     });
   }
 
+  async getObjectStream(bucket: string, objectKey: string): Promise<Readable> {
+    return this.client.getObject(bucket, objectKey);
+  }
+
   async getAuxObjectBuffer(objectKey: string): Promise<Buffer> {
     await this.ensureBucket(this.auxBucket);
     return this.getObjectBuffer(this.auxBucket, objectKey);

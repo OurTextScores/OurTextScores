@@ -3,6 +3,16 @@ import { Document } from 'mongoose';
 
 export type NotificationInboxDocument = NotificationInbox & Document;
 
+export type NotificationType =
+  | 'comment_reply'
+  | 'source_comment'
+  | 'new_revision'
+  | 'change_review_submitted'
+  | 'change_review_activity'
+  | 'scanner_job_succeeded'
+  | 'scanner_job_partial'
+  | 'scanner_job_failed';
+
 @Schema({
   collection: 'notification_inbox',
   timestamps: true
@@ -14,17 +24,38 @@ export class NotificationInbox {
   @Prop({ required: true, index: true, trim: true })
   userId!: string; // recipient user ID
 
-  @Prop({ required: true, enum: ['comment_reply', 'source_comment', 'new_revision', 'change_review_submitted', 'change_review_activity'] })
-  type!: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
+  @Prop({
+    required: true,
+    enum: [
+      'comment_reply',
+      'source_comment',
+      'new_revision',
+      'change_review_submitted',
+      'change_review_activity',
+      'scanner_job_succeeded',
+      'scanner_job_partial',
+      'scanner_job_failed'
+    ]
+  })
+  type!: NotificationType;
 
-  @Prop({ required: true, trim: true })
-  workId!: string;
+  @Prop({ trim: true })
+  workId?: string;
 
-  @Prop({ required: true, trim: true })
-  sourceId!: string;
+  @Prop({ trim: true })
+  sourceId?: string;
 
-  @Prop({ required: true, trim: true })
-  revisionId!: string;
+  @Prop({ trim: true })
+  revisionId?: string;
+
+  @Prop({ trim: true })
+  resourceType?: string;
+
+  @Prop({ trim: true })
+  resourceId?: string;
+
+  @Prop({ unique: true, sparse: true, trim: true })
+  dedupeKey?: string;
 
   @Prop({ type: Object, default: {} })
   payload!: Record<string, any>; // type-specific data (commentId, actorUserId, etc.)

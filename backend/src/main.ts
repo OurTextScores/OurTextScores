@@ -79,6 +79,7 @@ async function bootstrap() {
     .addTag('pdmx', 'PDMX dataset browsing, filtering, and import workflow')
     .addTag('users', 'User management')
     .addTag('search', 'Search operations')
+    .addTag('scanner', 'Optical music recognition jobs and artifacts')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

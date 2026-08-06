@@ -2,7 +2,11 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { NotificationOutbox, NotificationOutboxDocument } from './schemas/outbox.schema';
-import { NotificationInbox, NotificationInboxDocument } from './schemas/inbox.schema';
+import {
+  NotificationInbox,
+  NotificationInboxDocument,
+  NotificationType
+} from './schemas/inbox.schema';
 import { UsersService } from '../users/users.service';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
@@ -24,7 +28,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService
   ) {}
 
-  async queuePushRequest(params: { workId: string; sourceId: string; revisionId: string; ownerUserId?: string }) {
+  async queuePushRequest(params: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    ownerUserId?: string;
+  }) {
     const recipients: string[] = [];
     if (params.ownerUserId) recipients.push(`user:${params.ownerUserId}`);
     await this.outboxModel.create({
@@ -37,7 +46,13 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async queueNewRevision(params: { workId: string; sourceId: string; revisionId: string; userIds: string[]; actorUserId?: string }) {
+  async queueNewRevision(params: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    userIds: string[];
+    actorUserId?: string;
+  }) {
     // Create in-app notifications for all watchers
     for (const id of params.userIds) {
       try {
@@ -55,7 +70,15 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async queueCommentReply(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string; commentContent: string }) {
+  async queueCommentReply(params: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    commentId: string;
+    recipientUserId: string;
+    actorUserId: string;
+    commentContent: string;
+  }) {
     // Create in-app notification
     await this.createNotification({
       userId: params.recipientUserId,
@@ -63,11 +86,23 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
-      payload: { commentId: params.commentId, actorUserId: params.actorUserId, commentContent: params.commentContent }
+      payload: {
+        commentId: params.commentId,
+        actorUserId: params.actorUserId,
+        commentContent: params.commentContent
+      }
     });
   }
 
-  async queueSourceComment(params: { workId: string; sourceId: string; revisionId: string; commentId: string; recipientUserId: string; actorUserId: string; commentContent: string }) {
+  async queueSourceComment(params: {
+    workId: string;
+    sourceId: string;
+    revisionId: string;
+    commentId: string;
+    recipientUserId: string;
+    actorUserId: string;
+    commentContent: string;
+  }) {
     // Create in-app notification
     await this.createNotification({
       userId: params.recipientUserId,
@@ -75,7 +110,11 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
-      payload: { commentId: params.commentId, actorUserId: params.actorUserId, commentContent: params.commentContent }
+      payload: {
+        commentId: params.commentId,
+        actorUserId: params.actorUserId,
+        commentContent: params.commentContent
+      }
     });
   }
 
@@ -101,7 +140,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         actorUserId: params.actorUserId,
         unresolvedThreadCount: params.unresolvedThreadCount,
         baseRevisionId: params.baseRevisionId,
-        headRevisionId: params.headRevisionId,
+        headRevisionId: params.headRevisionId
       }
     });
   }
@@ -130,7 +169,31 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         activityType: params.activityType,
         branchName: params.branchName,
         threadId: params.threadId,
-        contentPreview: params.contentPreview,
+        contentPreview: params.contentPreview
+      }
+    });
+  }
+
+  async queueScannerTerminal(params: {
+    jobId: string;
+    generation: number;
+    recipientUserId: string;
+    status: 'succeeded' | 'partial' | 'failed';
+    originalFilename: string;
+    succeededPages: number;
+    pageCount: number;
+  }): Promise<void> {
+    await this.createNotification({
+      userId: params.recipientUserId,
+      type: `scanner_job_${params.status}` as NotificationType,
+      resourceType: 'scanner_job',
+      resourceId: params.jobId,
+      dedupeKey: `scanner:${params.jobId}:${params.generation}:terminal`,
+      payload: {
+        status: params.status,
+        originalFilename: params.originalFilename,
+        succeededPages: params.succeededPages,
+        pageCount: params.pageCount
       }
     });
   }
@@ -160,24 +223,37 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
    */
   async createNotification(params: {
     userId: string;
-    type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
-    workId: string;
-    sourceId: string;
-    revisionId: string;
+    type: NotificationType;
+    workId?: string;
+    sourceId?: string;
+    revisionId?: string;
+    resourceType?: string;
+    resourceId?: string;
+    dedupeKey?: string;
     payload: Record<string, any>;
   }): Promise<void> {
     const notificationId = randomUUID();
-    await this.inboxModel.create({
+    const document = {
       notificationId,
       userId: params.userId,
       type: params.type,
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
+      resourceType: params.resourceType,
+      resourceId: params.resourceId,
+      dedupeKey: params.dedupeKey,
       payload: params.payload,
       read: false,
       createdAt: new Date()
-    });
+    };
+    if (params.dedupeKey) {
+      await this.inboxModel
+        .updateOne({ dedupeKey: params.dedupeKey }, { $setOnInsert: document }, { upsert: true })
+        .exec();
+    } else {
+      await this.inboxModel.create(document);
+    }
   }
 
   /**
@@ -196,9 +272,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       .exec();
 
     // Get actor usernames
-    const actorIds = notifications
-      .map(n => n.payload?.actorUserId)
-      .filter(Boolean) as string[];
+    const actorIds = notifications.map((n) => n.payload?.actorUserId).filter(Boolean) as string[];
 
     const userMap = new Map<string, string>();
     for (const uid of actorIds) {
@@ -212,12 +286,14 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    return notifications.map(n => ({
+    return notifications.map((n) => ({
       notificationId: n.notificationId,
       type: n.type,
       workId: n.workId,
       sourceId: n.sourceId,
       revisionId: n.revisionId,
+      resourceType: n.resourceType,
+      resourceId: n.resourceId,
       payload: n.payload,
       actorUsername: n.payload?.actorUserId ? userMap.get(n.payload.actorUserId) : undefined,
       read: n.read,
@@ -236,10 +312,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
    * Mark notification as read
    */
   async markNotificationAsRead(notificationId: string, userId: string): Promise<{ ok: true }> {
-    await this.inboxModel.updateOne(
-      { notificationId, userId },
-      { $set: { read: true } }
-    ).exec();
+    await this.inboxModel.updateOne({ notificationId, userId }, { $set: { read: true } }).exec();
     return { ok: true };
   }
 
@@ -247,18 +320,20 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
    * Mark all notifications as read for a user
    */
   async markAllAsRead(userId: string): Promise<{ ok: true }> {
-    await this.inboxModel.updateMany(
-      { userId, read: false },
-      { $set: { read: true } }
-    ).exec();
+    await this.inboxModel.updateMany({ userId, read: false }, { $set: { read: true } }).exec();
     return { ok: true };
   }
 
   onModuleInit() {
-    // Simple polling loop without external deps
-    this.timer = setInterval(() => {
-      this.processOutbox().catch(() => {});
-    }, 10_000);
+    const processorEnabled =
+      (this.config.get<string>('NOTIFICATIONS_PROCESSOR_ENABLED', 'true') ?? 'true').toLowerCase() !==
+      'false';
+    if (processorEnabled) {
+      // Simple polling loop without external deps
+      this.timer = setInterval(() => {
+        this.processOutbox().catch(() => {});
+      }, 10_000);
+    }
     const emailServer = this.config.get<string>('EMAIL_SERVER');
     const from = this.config.get<string>('EMAIL_FROM');
     const web = this.config.get<string>('PUBLIC_WEB_BASE_URL');
@@ -280,7 +355,11 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   // Process outbox for approval requests only
   async processOutbox(): Promise<void> {
     // Process push_request notifications (approvals)
-    const batch = await this.outboxModel.find({ status: 'queued', type: 'push_request' }).sort({ createdAt: 1 }).limit(10).exec();
+    const batch = await this.outboxModel
+      .find({ status: 'queued', type: 'push_request' })
+      .sort({ createdAt: 1 })
+      .limit(10)
+      .exec();
     for (const n of batch) {
       try {
         const emails: string[] = [];
@@ -296,9 +375,16 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         if (emails.length > 0 && this.transporter) {
           const subject = this.renderSubject(n.type, n.workId, n.sourceId, n.revisionId);
           const html = this.renderHtml(n.type, n.workId, n.sourceId, n.revisionId);
-          await this.transporter.sendMail({ from: this.emailFrom, to: emails.join(','), subject, html });
+          await this.transporter.sendMail({
+            from: this.emailFrom,
+            to: emails.join(','),
+            subject,
+            html
+          });
         } else {
-          this.logger.log(`Outbox ${n.type} ${n.revisionId} -> ${emails.join(', ') || '(no recipients)'} (no transporter)`);
+          this.logger.log(
+            `Outbox ${n.type} ${n.revisionId} -> ${emails.join(', ') || '(no recipients)'} (no transporter)`
+          );
         }
         n.status = 'sent';
         n.sentAt = new Date();
@@ -364,12 +450,13 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           }
         } else {
           // Send digest (daily or weekly)
-          const threshold = preference === 'daily'
-            ? new Date(now.getTime() - 24 * 60 * 60 * 1000)
-            : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const threshold =
+            preference === 'daily'
+              ? new Date(now.getTime() - 24 * 60 * 60 * 1000)
+              : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
           // Only send digest if notifications are old enough
-          const oldNotifications = userNotifications.filter(n => n.createdAt <= threshold);
+          const oldNotifications = userNotifications.filter((n) => n.createdAt <= threshold);
           if (oldNotifications.length === 0) continue;
 
           if (this.transporter) {
@@ -397,8 +484,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-
-  private renderSubject(type: string, workId: string, sourceId: string, revisionId: string): string {
+  private renderSubject(
+    type: string,
+    workId: string,
+    sourceId: string,
+    revisionId: string
+  ): string {
     switch (type) {
       case 'push_request':
         return `Approval requested for ${workId}/${sourceId} (${revisionId})`;
@@ -459,6 +550,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         return `Change review submitted on ${notification.workId}/${notification.sourceId}`;
       case 'change_review_activity':
         return `Change review activity on ${notification.workId}/${notification.sourceId}`;
+      case 'scanner_job_succeeded':
+        return `Scan complete: ${notification.payload?.originalFilename || 'score'}`;
+      case 'scanner_job_partial':
+        return `Scan partially complete: ${notification.payload?.originalFilename || 'score'}`;
+      case 'scanner_job_failed':
+        return `Scan failed: ${notification.payload?.originalFilename || 'score'}`;
       default:
         return `New notification from OurTextScores`;
     }
@@ -504,6 +601,17 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           <p>Revision: <code>${notification.revisionId}</code></p>
           <p><a href="${this.publicWebBaseUrl}/change-reviews/${encodeURIComponent(String(notification.payload?.reviewId || ''))}">Open change review</a> • <a href="${notificationsUrl}">See all notifications</a></p>
         `;
+      case 'scanner_job_succeeded':
+      case 'scanner_job_partial':
+      case 'scanner_job_failed': {
+        const scannerUrl = `${this.publicWebBaseUrl}/scanner/${encodeURIComponent(String(notification.resourceId || ''))}`;
+        const status = String(notification.payload?.status || 'finished');
+        return `
+          <p>Your scan of <code>${notification.payload?.originalFilename || 'score'}</code> ${status}.</p>
+          <p>Pages completed: ${notification.payload?.succeededPages || 0}/${notification.payload?.pageCount || 0}</p>
+          <p><a href="${scannerUrl}">Open scan results</a> • <a href="${notificationsUrl}">See all notifications</a></p>
+        `;
+      }
       default:
         return `
           <p>You have a new notification from OurTextScores.</p>
@@ -515,28 +623,47 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private renderDigestHtml(notifications: NotificationInboxDocument[]): string {
     const notificationsUrl = `${this.publicWebBaseUrl}/notifications`;
 
-    const lines = notifications.map(n => {
-      const workUrl = `${this.publicWebBaseUrl}/works/${encodeURIComponent(n.workId)}`;
-      let typeLabel = '';
-      switch (n.type) {
-        case 'comment_reply':
-          typeLabel = 'Reply to your comment';
-          break;
-        case 'source_comment':
-          typeLabel = 'Comment on your source';
-          break;
-        case 'new_revision':
-          typeLabel = 'New revision';
-          break;
-        case 'change_review_submitted':
-          typeLabel = 'Change review submitted';
-          break;
-        case 'change_review_activity':
-          typeLabel = 'Change review activity';
-          break;
-      }
-      return `<li>${typeLabel}: <a href="${workUrl}">${n.workId}/${n.sourceId}</a> (${n.revisionId.slice(0, 8)}...)</li>`;
-    }).join('');
+    const lines = notifications
+      .map((n) => {
+        const workUrl =
+          n.resourceType === 'scanner_job'
+            ? `${this.publicWebBaseUrl}/scanner/${encodeURIComponent(String(n.resourceId || ''))}`
+            : `${this.publicWebBaseUrl}/works/${encodeURIComponent(String(n.workId || ''))}`;
+        let typeLabel = '';
+        switch (n.type) {
+          case 'comment_reply':
+            typeLabel = 'Reply to your comment';
+            break;
+          case 'source_comment':
+            typeLabel = 'Comment on your source';
+            break;
+          case 'new_revision':
+            typeLabel = 'New revision';
+            break;
+          case 'change_review_submitted':
+            typeLabel = 'Change review submitted';
+            break;
+          case 'change_review_activity':
+            typeLabel = 'Change review activity';
+            break;
+          case 'scanner_job_succeeded':
+            typeLabel = 'Scan complete';
+            break;
+          case 'scanner_job_partial':
+            typeLabel = 'Scan partially complete';
+            break;
+          case 'scanner_job_failed':
+            typeLabel = 'Scan failed';
+            break;
+        }
+        const label =
+          n.resourceType === 'scanner_job'
+            ? String(n.payload?.originalFilename || n.resourceId || 'scan')
+            : `${n.workId}/${n.sourceId}`;
+        const suffix = n.revisionId ? ` (${n.revisionId.slice(0, 8)}...)` : '';
+        return `<li>${typeLabel}: <a href="${workUrl}">${label}</a>${suffix}</li>`;
+      })
+      .join('');
 
     return `
       <p>You have ${notifications.length} new notification${notifications.length > 1 ? 's' : ''}:</p>

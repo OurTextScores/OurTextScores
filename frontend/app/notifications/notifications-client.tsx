@@ -5,10 +5,12 @@ import Link from "next/link";
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity';
-  workId: string;
-  sourceId: string;
-  revisionId: string;
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity' | 'scanner_job_succeeded' | 'scanner_job_partial' | 'scanner_job_failed';
+  workId?: string;
+  sourceId?: string;
+  revisionId?: string;
+  resourceType?: string;
+  resourceId?: string;
   payload: Record<string, any>;
   actorUsername?: string;
   read: boolean;
@@ -73,27 +75,36 @@ export default function NotificationsClient({ initialNotifications }: Props) {
           preview: previewText,
         };
       }
+      case 'scanner_job_succeeded':
+        return { title: "Scan complete", description: String(n.payload?.originalFilename || "Your score is ready") };
+      case 'scanner_job_partial':
+        return { title: "Scan partially complete", description: String(n.payload?.originalFilename || "Some pages are ready") };
+      case 'scanner_job_failed':
+        return { title: "Scan failed", description: String(n.payload?.originalFilename || "The score could not be scanned") };
       default:
         return {
           title: "Notification",
-          description: n.workId
+          description: n.workId || "OurTextScores"
         };
     }
   };
 
   const getNotificationLink = (n: Notification): string => {
+    if (n.resourceType === 'scanner_job' && n.resourceId) {
+      return `/scanner/${encodeURIComponent(n.resourceId)}`;
+    }
     if ((n.type === 'change_review_submitted' || n.type === 'change_review_activity') && n.payload?.reviewId) {
       return `/change-reviews/${encodeURIComponent(String(n.payload.reviewId))}`;
     }
     // Create deep link with URL parameters to open specific source/revision
     const params = new URLSearchParams({
-      source: n.sourceId,
-      revision: n.revisionId
+      source: n.sourceId || "",
+      revision: n.revisionId || ""
     });
     if (n.payload?.commentId) {
       params.set('comment', n.payload.commentId);
     }
-    return `/works/${encodeURIComponent(n.workId)}?${params.toString()}`;
+    return `/works/${encodeURIComponent(n.workId || "")}?${params.toString()}`;
   };
 
   const handleMarkAsRead = async (notificationId: string) => {
@@ -158,6 +169,10 @@ export default function NotificationsClient({ initialNotifications }: Props) {
         return '🧾';
       case 'change_review_activity':
         return '🗨️';
+      case 'scanner_job_succeeded':
+      case 'scanner_job_partial':
+      case 'scanner_job_failed':
+        return '🎼';
       default:
         return '🔔';
     }
