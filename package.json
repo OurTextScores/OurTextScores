@@ -14,6 +14,7 @@
     "smoke:scanner": "docker compose --profile scanner down -v --remove-orphans && docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml build backend frontend scanner_worker && docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml up -d && node smoke/utils/wait.cjs && SCANNER_SMOKE=1 npx playwright test -c smoke/playwright.config.cjs --project=chromium scanner.spec.cjs; code=$?; docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml down -v --remove-orphans; exit $code",
     "smoke:scanner:recovery": "node scripts/smoke-scanner-recovery.cjs",
     "smoke:scanner:load": "node scripts/smoke-scanner-load.cjs",
+    "smoke:scanner:merge": "node scripts/smoke-scanner-merge.cjs",
     "smoke:scanner:service-recovery": "node scripts/smoke-scanner-service-recovery.cjs",
     "scanner:local:up": "docker compose --profile scanner-local -f docker-compose.yml -f docker-compose.scanner-local.yml up -d --build && node scripts/wait-for-http.cjs http://127.0.0.1:${HOMR_LOCAL_PORT:-8010}/readyz 300000 && node smoke/utils/wait.cjs",
     "scanner:provider:test": "docker compose --profile scanner-local -f docker-compose.yml -f docker-compose.scanner-local.yml exec -T homr_cpu python -m unittest test_homr_provider -v",

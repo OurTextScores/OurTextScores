@@ -184,4 +184,78 @@ describe("ScannerJobClient", () => {
       ),
     );
   });
+  it("offers the combined score only when assembly succeeded", async () => {
+    const merged: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pages: partialJob.pages.map((page) => ({
+        ...page,
+        status: "succeeded",
+        hasMusicXml: true,
+        hasPdf: true,
+        canRetry: false,
+        errorCode: undefined,
+        errorMessage: undefined,
+      })),
+      mergeStatus: "succeeded",
+      hasCombinedMusicXml: true,
+      hasCombinedPdf: true,
+    };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => merged }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByRole("link", { name: "Download combined MusicXML" }),
+    ).toHaveAttribute(
+      "href",
+      "/api/proxy/scanner/jobs/job-1/artifacts/musicxml",
+    );
+    expect(
+      screen.getByRole("link", { name: "Open combined score in Score Editor" }),
+    ).toBeInTheDocument();
+    // The beta caveat must travel with the download, not be buried elsewhere.
+    expect(screen.getByText(/Page assembly is in beta/)).toBeInTheDocument();
+  });
+
+  it("explains a declined assembly without hiding the per-page results", async () => {
+    const declined: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pages: partialJob.pages.map((page) => ({
+        ...page,
+        status: "succeeded",
+        hasMusicXml: true,
+        hasPdf: true,
+        canRetry: false,
+        errorCode: undefined,
+        errorMessage: undefined,
+      })),
+      mergeStatus: "incompatible",
+      mergeReason: "Part 1 changes from 2 to 1 staves on page 2",
+      hasCombinedMusicXml: false,
+    };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => declined }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByRole("link", { name: "Download all results (.zip)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Download combined MusicXML" }),
+    ).toBeNull();
+    // The reason is interpolated, so the sentence spans several text nodes.
+    expect(
+      screen.getByText(
+        (_content, element) =>
+          element?.tagName === "P" &&
+          (element.textContent || "").includes(
+            "Part 1 changes from 2 to 1 staves on page 2",
+          ),
+      ),
+    ).toBeInTheDocument();
+  });
 });

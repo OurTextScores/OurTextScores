@@ -9,6 +9,7 @@ import { ScannerJob, ScannerJobSchema } from './schemas/scanner-job.schema';
 import { ScannerController } from './scanner.controller';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerService } from './scanner.service';
+import { ScannerMergeService } from './scanner-merge.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { ScannerWorkerService } from './scanner-worker.service';
 
@@ -24,6 +25,7 @@ import { ScannerWorkerService } from './scanner-worker.service';
   controllers: [ScannerController],
   providers: [
     ScannerService,
+    ScannerMergeService,
     ScannerProviderService,
     ScannerTelemetryService,
     ScannerWorkerService

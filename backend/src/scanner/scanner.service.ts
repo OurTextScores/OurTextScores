@@ -462,7 +462,7 @@ export class ScannerService implements OnModuleInit {
     } else if (kind === 'pdf') {
       locator = pageRequested
         ? job.pages.find((page) => page.pageNumber === pageNumber)?.pdf
-        : job.previewPdf;
+        : (job.combinedPdf ?? job.previewPdf);
       filename = pageRequested ? `scan-page-${pageNumber}.pdf` : 'scan-preview.pdf';
     } else if (kind === 'thumbnail') {
       locator = pageRequested
@@ -472,6 +472,11 @@ export class ScannerService implements OnModuleInit {
     } else if (pageRequested) {
       locator = job.pages.find((page) => page.pageNumber === pageNumber)?.musicXml;
       filename = `scan-page-${pageNumber}.musicxml`;
+    } else if (job.combinedMusicXml) {
+      // A validated assembly is the whole score, so it wins over the per-page
+      // bundle for the job-level MusicXML artifact.
+      locator = job.combinedMusicXml;
+      filename = 'scan-combined.musicxml';
     } else {
       locator =
         job.musicXmlBundle ?? job.pages.find((page) => page.status === 'succeeded')?.musicXml;
@@ -643,6 +648,10 @@ export class ScannerService implements OnModuleInit {
       hasPdf: Boolean(job.previewPdf),
       hasThumbnail: Boolean(job.previewThumbnail),
       hasZip: Boolean(job.resultsZip),
+      mergeStatus: job.mergeStatus || 'not-requested',
+      mergeReason: job.mergeReason,
+      hasCombinedMusicXml: Boolean(job.combinedMusicXml),
+      hasCombinedPdf: Boolean(job.combinedPdf),
       providerRevision: job.providerRevision,
       modelRevision: job.modelRevision,
       errorCode: job.errorCode,
@@ -732,6 +741,8 @@ export class ScannerService implements OnModuleInit {
       job.input,
       ...(job.inputs || []).map((item) => item.storage),
       job.musicXmlBundle,
+      job.combinedMusicXml,
+      job.combinedPdf,
       job.resultsZip,
       job.previewPdf,
       job.previewThumbnail,

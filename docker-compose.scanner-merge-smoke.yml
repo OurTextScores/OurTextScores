@@ -1,0 +1,9 @@
+services:
+  scanner_worker:
+    environment:
+      # Design section 6: whole-score assembly, beta and off by default. This
+      # override is the only place it is on.
+      SCANNER_MULTIPAGE_MERGE_ENABLED: "true"
+      # Assembly requires every page to succeed, so the transient-failure
+      # injection would make this suite test the refusal path instead.
+      SCANNER_FAKE_TRANSIENT_FAILURE_PAGE: "0"

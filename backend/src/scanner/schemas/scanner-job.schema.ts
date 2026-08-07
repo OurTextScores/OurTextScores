@@ -124,6 +124,19 @@ export class ScannerJob {
   @Prop({ type: Object })
   musicXmlBundle?: ScannerStorageLocator;
 
+  /** Design section 6: validated whole-score assembly, or an honest reason. */
+  @Prop({ type: Object })
+  combinedMusicXml?: ScannerStorageLocator;
+
+  @Prop({ type: Object })
+  combinedPdf?: ScannerStorageLocator;
+
+  @Prop({ type: String, default: 'not-requested' })
+  mergeStatus!: 'not-requested' | 'succeeded' | 'incompatible' | 'failed';
+
+  @Prop({ trim: true })
+  mergeReason?: string;
+
   @Prop({ type: Object })
   resultsZip?: ScannerStorageLocator;
 

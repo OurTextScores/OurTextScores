@@ -16,6 +16,7 @@ describe('ScannerWorkerService', () => {
   const provider = {
     scanPage: jest.fn()
   } as any;
+  const merger = { enabled: false, merge: jest.fn() } as any;
   const telemetry = {
     emit: jest.fn(),
     userHash: jest.fn(() => 'user-hash'),
@@ -28,6 +29,7 @@ describe('ScannerWorkerService', () => {
       {} as any,
       provider,
       {} as any,
+      merger,
       {} as any,
       telemetry,
       config
@@ -118,6 +120,7 @@ describe('ScannerWorkerService', () => {
       {} as any,
       provider,
       {} as any,
+      merger,
       {} as any,
       telemetry,
       config
@@ -153,6 +156,7 @@ describe('ScannerWorkerService', () => {
       {} as any,
       provider,
       {} as any,
+      merger,
       {} as any,
       telemetry,
       config
@@ -172,6 +176,58 @@ describe('ScannerWorkerService', () => {
       expect.anything(),
       { new: true }
     );
+  });
+
+  describe('page assembly gating', () => {
+    const worker = () =>
+      new ScannerWorkerService(
+        {} as any,
+        {} as any,
+        provider,
+        {} as any,
+        merger,
+        {} as any,
+        telemetry,
+        config
+      ) as any;
+    const job = { jobId: 'job-1', userId: 'user-1' } as any;
+    const succeeded = (count: number) =>
+      Array.from({ length: count }, (_value, index) => ({
+        pageNumber: index + 1,
+        ordinal: index + 1,
+        status: 'succeeded',
+        musicXml: { bucket: 'aux', objectKey: `page-${index + 1}.musicxml` }
+      }));
+
+    beforeEach(() => {
+      merger.enabled = false;
+      merger.merge.mockReset();
+    });
+
+    it('does not attempt assembly while the flag is off', async () => {
+      await expect(worker().combinePages(job, succeeded(3), 3)).resolves.toEqual({
+        status: 'not-requested'
+      });
+      expect(merger.merge).not.toHaveBeenCalled();
+    });
+
+    it('refuses a partial job so a gap cannot be silently closed up', async () => {
+      merger.enabled = true;
+      // Two of three pages succeeded: combining them would produce a score that
+      // looks complete but is missing a page of music.
+      await expect(worker().combinePages(job, succeeded(2), 3)).resolves.toMatchObject({
+        status: 'incompatible'
+      });
+      expect(merger.merge).not.toHaveBeenCalled();
+    });
+
+    it('does not assemble a single page', async () => {
+      merger.enabled = true;
+      await expect(worker().combinePages(job, succeeded(1), 1)).resolves.toEqual({
+        status: 'not-requested'
+      });
+      expect(merger.merge).not.toHaveBeenCalled();
+    });
   });
 
   it('allows a short lease only for fake-provider recovery tests', () => {
@@ -243,6 +299,7 @@ describe('ScannerWorkerService', () => {
       storage,
       provider,
       {} as any,
+      merger,
       {} as any,
       telemetry,
       config

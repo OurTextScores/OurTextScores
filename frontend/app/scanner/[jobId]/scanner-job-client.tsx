@@ -603,13 +603,26 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                 Download all results (.zip)
               </a>
             )}
-            {job.pageCount === 1 && job.hasMusicXml && (
+            {(job.pageCount === 1 || job.hasCombinedMusicXml) &&
+              job.hasMusicXml && (
+                <a
+                  href={artifactUrl("musicxml")}
+                  download
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-700"
+                >
+                  {job.hasCombinedMusicXml
+                    ? "Download combined MusicXML"
+                    : "Download MusicXML"}
+                </a>
+              )}
+            {job.hasCombinedMusicXml && (
               <a
-                href={artifactUrl("musicxml")}
-                download
+                href={editorUrl()}
+                target="_blank"
+                rel="noreferrer"
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-700"
               >
-                Download MusicXML
+                Open combined score in Score Editor
               </a>
             )}
             {job.hasPdf && (
@@ -623,10 +636,26 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               </a>
             )}
           </div>
+          {job.hasCombinedMusicXml ? (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Page assembly is in beta. Measure numbering is made continuous and
+              page breaks are preserved, but ties, slurs, and lyrics that cross
+              a page boundary are not reconstructed. The per-page files remain
+              authoritative.
+            </p>
+          ) : job.mergeStatus === "incompatible" ||
+            job.mergeStatus === "failed" ? (
+            <p className="mt-4 text-xs text-slate-500">
+              The pages were not combined
+              {job.mergeReason ? `: ${job.mergeReason}` : ""}. Every page file
+              below is complete and unaffected.
+            </p>
+          ) : null}
           <p className="mt-4 text-xs text-slate-500">
             Results expire {new Date(job.resultExpiresAt).toLocaleString()}.
-            Multi-page MusicXML is not assembled; the ZIP preserves independent
-            page files. Results are not added to the catalogue automatically.
+            {!job.hasCombinedMusicXml &&
+              " The ZIP preserves independent page files."}{" "}
+            Results are not added to the catalogue automatically.
           </p>
         </section>
       )}

@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
-import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { providerErrorFromCode, ScannerProviderError } from './scanner.errors';
+import { assertValidMusicXml } from './scanner-musicxml';
 
 export interface ScannerModelProvenance {
   segmentationModel?: string;
@@ -237,61 +237,11 @@ export class ScannerProviderService {
     };
   }
 
-  /**
-   * Design section 5.5: parse rather than pattern-match, with DTDs, external
-   * entities, and network access unavailable, plus node and depth ceilings so a
-   * corrupt or hostile document cannot be expanded by a later consumer.
-   */
   private assertValidMusicXml(musicXml: Buffer): void {
-    const invalid = (): never => {
-      throw new ScannerProviderError(
-        'Scanner provider returned invalid MusicXML',
-        'invalid_musicxml',
-        false
-      );
-    };
-    const xmlText = musicXml.toString('utf8');
-    // fast-xml-parser has no DTD support, so a DOCTYPE would be silently
-    // dropped rather than rejected. Refuse it outright instead.
-    if (/<!DOCTYPE/i.test(xmlText) || /<!ENTITY/i.test(xmlText)) invalid();
-    if (XMLValidator.validate(xmlText) !== true) invalid();
-
-    let parsed: any;
-    try {
-      parsed = new XMLParser({
-        ignoreAttributes: false,
-        processEntities: false,
-        parseTagValue: false,
-        parseAttributeValue: false
-      }).parse(xmlText);
-    } catch {
-      invalid();
-    }
-    const root = parsed?.['score-partwise'] ?? parsed?.['score-timewise'];
-    if (!root || typeof root !== 'object') invalid();
-
-    const maxNodes = this.number('SCANNER_MAX_MUSICXML_NODES', 500_000);
-    const maxDepth = this.number('SCANNER_MAX_MUSICXML_DEPTH', 100);
-    let nodes = 0;
-    const walk = (value: unknown, depth: number): void => {
-      if (depth > maxDepth) invalid();
-      if (Array.isArray(value)) {
-        for (const item of value) walk(item, depth);
-        return;
-      }
-      if (!value || typeof value !== 'object') return;
-      for (const child of Object.values(value as Record<string, unknown>)) {
-        nodes += 1;
-        if (nodes > maxNodes) invalid();
-        walk(child, depth + 1);
-      }
-    };
-    walk(root, 1);
-
-    const partList = root['part-list'];
-    const parts = root.part;
-    if (!partList || !parts) invalid();
-    if (!/<measure\b/.test(xmlText)) invalid();
+    assertValidMusicXml(musicXml, {
+      maxNodes: this.number('SCANNER_MAX_MUSICXML_NODES', 500_000),
+      maxDepth: this.number('SCANNER_MAX_MUSICXML_DEPTH', 100)
+    });
   }
 
   private text(value: unknown): string | undefined {

@@ -21,6 +21,7 @@ import {
   ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
+import { ScannerMergeService } from './scanner-merge.service';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { scannerUserHash } from './scanner.constants';
@@ -44,6 +45,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly storage: StorageService,
     private readonly provider: ScannerProviderService,
     private readonly renderer: DerivativePipelineService,
+    private readonly merger: ScannerMergeService,
     private readonly notifications: NotificationsService,
     private readonly telemetry: ScannerTelemetryService,
     private readonly config: ConfigService
@@ -500,6 +502,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       const musicXmlBundle = await this.createBundle(job, successful);
+      const combined = await this.combinePages(job, successful, pageFiles.length);
       const previewPdf = await this.createPreviewPdf(job, successful, workspace);
       const previewThumbnailLocator = previewThumbnail
         ? await this.store(`${this.baseKey(job)}/preview.png`, previewThumbnail, 'image/png')
@@ -509,10 +512,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         status,
         providerRevision,
         modelRevision,
-        engineProvenance
+        engineProvenance,
+        combined
       });
       await this.finish(job, status, results, {
         musicXmlBundle,
+        combinedMusicXml: combined.musicXml,
+        combinedPdf: combined.pdf,
+        mergeStatus: combined.status,
+        mergeReason: combined.reason,
         resultsZip,
         previewPdf,
         previewThumbnail: previewThumbnailLocator,
@@ -774,6 +782,81 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     return pages;
   }
 
+  /**
+   * Design section 6.3. Assembly is attempted only when every included page
+   * succeeded, and a refusal is never fatal: the per-page MusicXML, PDFs, and
+   * ZIP all stand on their own, and the job records why no combined file exists.
+   */
+  private async combinePages(
+    job: ScannerJobDocument,
+    successful: ScannerPageResult[],
+    expectedPages: number
+  ): Promise<{
+    status: 'not-requested' | 'succeeded' | 'incompatible' | 'failed';
+    reason?: string;
+    musicXml?: ScannerStorageLocator;
+    pdf?: ScannerStorageLocator;
+  }> {
+    if (!this.merger.enabled) return { status: 'not-requested' };
+    if (successful.length !== expectedPages) {
+      return {
+        status: 'incompatible',
+        reason: 'Every page must succeed before pages can be combined'
+      };
+    }
+    if (expectedPages < 2) return { status: 'not-requested' };
+
+    try {
+      const pages = await Promise.all(
+        successful.map(async (page) => ({
+          ordinal: page.ordinal || page.pageNumber,
+          pageNumber: page.pageNumber,
+          musicXml: await this.storage.getObjectBuffer(
+            page.musicXml!.bucket,
+            page.musicXml!.objectKey
+          )
+        }))
+      );
+      const merged = this.merger.merge(pages);
+      if (merged.status !== 'succeeded') {
+        this.logger.log(`Scanner assembly declined for ${job.jobId}: ${merged.reason}`);
+        return { status: merged.status, reason: merged.reason };
+      }
+
+      const musicXml = await this.store(
+        `${this.baseKey(job)}/combined.musicxml`,
+        merged.musicXml,
+        'application/vnd.recordare.musicxml+xml'
+      );
+      // A render failure does not invalidate good MusicXML (section 3.5), but
+      // MuseScore refusing to load the assembly is the strongest signal we have
+      // that it is not musically usable, so it downgrades to 'failed'.
+      let pdf: ScannerStorageLocator | undefined;
+      try {
+        const rendered = await this.renderer.renderMusicXmlPdf(merged.musicXml);
+        pdf = await this.store(
+          `${this.baseKey(job)}/combined.pdf`,
+          rendered.pdf,
+          'application/pdf'
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Scanner combined PDF render failed for ${job.jobId}: ${this.message(error)}`
+        );
+        // The combined MusicXML is not offered, so do not leave it behind.
+        await this.storage.deleteObject(musicXml.bucket, musicXml.objectKey);
+        return {
+          status: 'failed',
+          reason: 'The combined score could not be rendered, so it is not offered'
+        };
+      }
+      return { status: 'succeeded', musicXml, pdf };
+    } catch (error) {
+      this.logger.warn(`Scanner assembly failed for ${job.jobId}: ${this.message(error)}`);
+      return { status: 'failed', reason: 'Pages could not be combined' };
+    }
+  }
+
   private async createBundle(
     job: ScannerJobDocument,
     pages: ScannerPageResult[]
@@ -837,6 +920,12 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       providerRevision?: string;
       modelRevision?: string;
       engineProvenance?: ScannerEngineProvenance;
+      combined?: {
+        status: 'not-requested' | 'succeeded' | 'incompatible' | 'failed';
+        reason?: string;
+        musicXml?: ScannerStorageLocator;
+        pdf?: ScannerStorageLocator;
+      };
     }
   ): Promise<ScannerStorageLocator> {
     const zip = new AdmZip();
@@ -855,10 +944,20 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
     }
+    for (const [name, locator] of [
+      ['combined.musicxml', summary.combined?.musicXml],
+      ['combined.pdf', summary.combined?.pdf]
+    ] as const) {
+      if (locator) {
+        zip.addFile(name, await this.storage.getObjectBuffer(locator.bucket, locator.objectKey));
+      }
+    }
     const manifest = {
       version: 1,
       jobId: job.jobId,
       status: summary.status,
+      mergeStatus: summary.combined?.status ?? 'not-requested',
+      mergeReason: summary.combined?.reason,
       engine: 'homr',
       serviceRevision: summary.providerRevision,
       modelRevision: summary.modelRevision,
@@ -883,13 +982,23 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }))
     };
     zip.addFile('scanner-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
-    zip.addFile(
-      'README.txt',
-      Buffer.from(
-        'OurTextScores Scanner results\n\nEach page is transcribed independently. Review all MusicXML before use. Multi-page MusicXML assembly is not enabled in this pilot, so page files are intentionally kept separate.\n'
-      )
-    );
+    zip.addFile('README.txt', Buffer.from(this.readmeText(summary.combined)));
     return this.store(`${this.baseKey(job)}/results.zip`, zip.toBuffer(), 'application/zip');
+  }
+
+  private readmeText(combined?: {
+    status: 'not-requested' | 'succeeded' | 'incompatible' | 'failed';
+    reason?: string;
+  }): string {
+    const header =
+      'OurTextScores Scanner results\n\nEach page is transcribed independently. Review all MusicXML before use.\n\n';
+    if (combined?.status === 'succeeded') {
+      return `${header}combined.musicxml joins every page into one score. Page assembly is a beta convenience: measure numbering is made continuous and page breaks are preserved, but ties, slurs, and lyrics that cross a page boundary are NOT reconstructed. The per-page files remain authoritative.\n`;
+    }
+    if (combined?.status === 'incompatible' || combined?.status === 'failed') {
+      return `${header}The pages were not combined: ${combined.reason ?? 'they are not compatible'}. The per-page files below are complete and unaffected.\n`;
+    }
+    return `${header}Multi-page MusicXML assembly is not enabled, so page files are intentionally kept separate.\n`;
   }
 
   private async finish(
@@ -1028,6 +1137,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     for (const job of results) {
       const locators = [
         job.musicXmlBundle,
+        job.combinedMusicXml,
+        job.combinedPdf,
         job.resultsZip,
         job.previewPdf,
         job.previewThumbnail,
@@ -1056,6 +1167,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             $inc: { statusVersion: 1 },
             $unset: {
               musicXmlBundle: 1,
+              combinedMusicXml: 1,
+              combinedPdf: 1,
               resultsZip: 1,
               previewPdf: 1,
               previewThumbnail: 1

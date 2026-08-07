@@ -37,6 +37,11 @@ export interface ScannerJob {
   hasPdf: boolean;
   hasThumbnail: boolean;
   hasZip: boolean;
+  /** Design section 6 assembly outcome. */
+  mergeStatus?: "not-requested" | "succeeded" | "incompatible" | "failed";
+  mergeReason?: string;
+  hasCombinedMusicXml?: boolean;
+  hasCombinedPdf?: boolean;
   errorCode?: string;
   errorMessage?: string;
   canRetry: boolean;
