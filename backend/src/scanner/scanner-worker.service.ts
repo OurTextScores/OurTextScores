@@ -942,6 +942,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private leaseMs(): number {
+    if (this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal') === 'fake') {
+      const testLease = Number(this.config.get<string>('SCANNER_TEST_WORKER_LEASE_MS', ''));
+      if (Number.isFinite(testLease) && testLease > 0) return Math.max(5_000, testLease);
+    }
     const timeout = Number(this.config.get<string>('SCANNER_PROVIDER_TIMEOUT_MS', '600000'));
     return Math.max(1_200_000, (Number.isFinite(timeout) ? timeout : 600_000) + 300_000);
   }

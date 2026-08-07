@@ -1,0 +1,7 @@
+services:
+  scanner_worker:
+    environment:
+      SCANNER_FAKE_TRANSIENT_FAILURE_PAGE: "0"
+      # Fake-provider-only override: keep production lease sizing unchanged while
+      # making crash/reclaim verification fast and repeatable.
+      SCANNER_TEST_WORKER_LEASE_MS: "8000"

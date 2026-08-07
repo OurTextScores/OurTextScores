@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp = require('sharp');
 
-describe('ScannerWorkerService retry policy', () => {
+describe('ScannerWorkerService', () => {
   const values: Record<string, string> = {
+    SCANNER_ENABLED: 'true',
     SCANNER_PROVIDER_BUDGET_EXHAUSTED: 'false'
   };
   const config = {
@@ -23,6 +24,8 @@ describe('ScannerWorkerService retry policy', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'false';
+    delete values.SCANNER_PROVIDER_KIND;
+    delete values.SCANNER_TEST_WORKER_LEASE_MS;
   });
 
   it('retries one transient failure with exactly the same idempotency key', async () => {
@@ -90,6 +93,49 @@ describe('ScannerWorkerService retry policy', () => {
     expect(scannerWorker.shouldPreservePriorFailure(transient, 'generation-1')).toBe(true);
     expect(scannerWorker.shouldPreservePriorFailure(transient, 'generation-2')).toBe(false);
     expect(scannerWorker.shouldPreservePriorFailure(deterministic, 'generation-2')).toBe(true);
+  });
+
+  it('claims expired processing jobs and replaces the prior worker lease', async () => {
+    const recovered = { jobId: 'job-1', status: 'running' };
+    const findOneAndUpdate = jest.fn().mockReturnValue({
+      exec: () => Promise.resolve(recovered)
+    });
+    const scannerWorker = new ScannerWorkerService(
+      { findOneAndUpdate } as any,
+      {} as any,
+      provider,
+      {} as any,
+      {} as any,
+      config
+    ) as any;
+
+    await expect(scannerWorker.claim()).resolves.toBe(recovered);
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([
+          expect.objectContaining({
+            status: { $in: ['running', 'rendering'] },
+            leaseExpiresAt: expect.objectContaining({ $lt: expect.any(Date) })
+          })
+        ])
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          leaseOwner: expect.any(String),
+          leaseExpiresAt: expect.any(Date)
+        })
+      }),
+      { new: true, sort: { createdAt: 1 } }
+    );
+  });
+
+  it('allows a short lease only for fake-provider recovery tests', () => {
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    values.SCANNER_TEST_WORKER_LEASE_MS = '1000';
+    expect((service() as any).leaseMs()).toBe(5_000);
+
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    expect((service() as any).leaseMs()).toBe(1_200_000);
   });
 
   it('prepares every retained image in its persisted page order', async () => {
