@@ -1,0 +1,13 @@
+services:
+  frontend:
+    environment:
+      NEXTAUTH_SECRET: ${SCANNER_LOAD_AUTH_SECRET:-scanner-load-smoke-secret}
+
+  backend:
+    environment:
+      NEXTAUTH_SECRET: ${SCANNER_LOAD_AUTH_SECRET:-scanner-load-smoke-secret}
+
+  scanner_worker:
+    environment:
+      # The load suite measures queueing/rendering, not retry behavior.
+      SCANNER_FAKE_TRANSIENT_FAILURE_PAGE: "0"

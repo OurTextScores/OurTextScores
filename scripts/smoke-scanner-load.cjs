@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+
+const { spawnSync } = require("node:child_process");
+
+const composePrefix = [
+  "compose",
+  "--profile",
+  "scanner",
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "docker-compose.scanner-smoke.yml",
+  "-f",
+  "docker-compose.scanner-load-smoke.yml",
+];
+
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: process.cwd(),
+    env: { ...process.env, ...options.env },
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${command} exited with status ${result.status}`);
+  }
+}
+
+function compose(args) {
+  run("docker", [...composePrefix, ...args]);
+}
+
+let failed = false;
+try {
+  compose(["down", "-v", "--remove-orphans"]);
+  compose(["build", "backend", "frontend", "scanner_worker"]);
+  compose(["up", "-d"]);
+  run("node", ["smoke/utils/wait.cjs"]);
+  run(
+    "npx",
+    [
+      "playwright",
+      "test",
+      "-c",
+      "smoke/playwright.config.cjs",
+      "--project=chromium",
+      "scanner-load.spec.cjs",
+    ],
+    {
+      env: {
+        SCANNER_LOAD: "1",
+        NEXTAUTH_SECRET:
+          process.env.SCANNER_LOAD_AUTH_SECRET || "scanner-load-smoke-secret",
+      },
+    },
+  );
+} catch (error) {
+  failed = true;
+  console.error(error instanceof Error ? error.message : String(error));
+} finally {
+  try {
+    compose(["down", "-v", "--remove-orphans"]);
+  } catch (error) {
+    failed = true;
+    console.error(
+      `Scanner load teardown failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+if (failed) process.exitCode = 1;
