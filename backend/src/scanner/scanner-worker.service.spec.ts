@@ -129,6 +129,36 @@ describe('ScannerWorkerService', () => {
     );
   });
 
+  it('scopes progress and terminal writes to the lease it still holds', async () => {
+    // A worker that stalls past its lease must not overwrite the work of
+    // whichever worker reclaimed the job.
+    const updateOne = jest.fn().mockReturnValue({ exec: () => Promise.resolve({}) });
+    const findOneAndUpdate = jest.fn().mockReturnValue({ exec: () => Promise.resolve(null) });
+    const scannerWorker = new ScannerWorkerService(
+      { updateOne, findOneAndUpdate } as any,
+      {} as any,
+      provider,
+      {} as any,
+      {} as any,
+      config
+    ) as any;
+    const workerId = scannerWorker.workerId;
+    const job = { jobId: 'job-1', pageCount: 1, pages: [] };
+
+    await scannerWorker.persistPageProgress(job, [], new Map(), undefined, 'service', 'model');
+    expect(updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'job-1', leaseOwner: workerId }),
+      expect.anything()
+    );
+
+    await scannerWorker.finish(job, 'failed', [], {});
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'job-1', leaseOwner: workerId }),
+      expect.anything(),
+      { new: true }
+    );
+  });
+
   it('allows a short lease only for fake-provider recovery tests', () => {
     values.SCANNER_PROVIDER_KIND = 'fake';
     values.SCANNER_TEST_WORKER_LEASE_MS = '1000';

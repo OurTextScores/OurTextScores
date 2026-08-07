@@ -1,0 +1,79 @@
+# Shared HOMR provider
+
+`homr_engine.py` and `homr_provider.py` implement the whole Scanner page
+inference contract. The two deployments — `../homr-cpu` (local development and
+benchmarks) and `../homr-modal` (the L4 pilot) — differ only in their execution
+provider and defaults. Keeping one implementation is deliberate: when the two
+were separate copies, the GPU one drifted and reported a missing CUDA execution
+provider as an unrecognisable page, which OTS classifies as non-retryable.
+
+## Warm inference child
+
+HOMR caches its ONNX sessions in process-level globals, so a fresh `homr`
+process per page discards every warm session. `HomrEngine` keeps one long-lived
+child process that owns those sessions and answers one request at a time. The
+parent supervises it: an `asyncio` timeout cannot interrupt native ONNX/OpenCV
+work, so a page that exceeds the hard timeout causes the child to be killed and
+replaced on the next request.
+
+## Health, readiness, warm-up
+
+- `GET /healthz` — liveness only. The HTTP process is running.
+- `GET /readyz` — the child is alive, the expected execution provider is
+  present, any pinned model SHA-256 matches, and the startup warm-up inference
+  has completed. Container health checks and `depends_on` must use this.
+- `GET /v1/capabilities` — service and HOMR revisions, model identities and
+  hashes, limits, effective ONNX providers, source URL, and licences.
+
+Warm-up runs one real inference over a generated five-line staff so readiness
+implies a working pipeline rather than merely a loaded process. If that page
+yields no staff, the ONNX stack is still proven, so the service reports ready
+and records `degradedReason` for operators instead of refusing all traffic.
+
+## Timeout ladder
+
+The provider must give up before its caller does, or an abandoned page keeps
+billing compute after OTS has already classified the call as failed:
+
+```
+provider hard timeout  <  OTS SCANNER_PROVIDER_TIMEOUT_MS  <  platform timeout
+```
+
+Modal ships 540 s / 600 s / 660 s. The local CPU provider ships 1500 s against
+the 1860 s worker timeout set in `docker-compose.scanner-local.yml`.
+
+## Error taxonomy
+
+Status codes are the contract; OTS derives its entire retry classification from
+them. `inference_failed` is `500`, never `422`: a 4xx tells OTS the page itself
+is at fault and must not be retried, which would hide infrastructure faults as
+bad pages. Failure detail is logged under `requestId` and never returned.
+
+| Code | HTTP | Meaning |
+|---|---:|---|
+| `invalid_media_type` | 415 | not a supported image |
+| `image_too_large` | 413 | bytes exceeded |
+| `invalid_image` | 422 | decode failed or magic bytes did not match |
+| `no_staff_detected` | 422 | valid image, no usable notation |
+| `invalid_option` | 400 | bad idempotency key, or key reused for other input |
+| `busy` | 429 | another page is in flight |
+| `model_not_ready` | 503 | cold start, failed warm-up, or provenance mismatch |
+| `inference_timeout` | 504 | hard page timeout; the child was replaced |
+| `inference_failed` | 500 | unexpected HOMR or provider failure |
+
+## Supply chain
+
+`HomrEngine` reports the SHA-256 of the segmentation, encoder, and decoder
+weights it actually loaded. Capture them from `/v1/capabilities` after the first
+build and pin them (`HOMR_EXPECTED_SEGMENTATION_SHA256` and friends) so a
+silently changed weight file fails readiness instead of altering results.
+
+## Tests
+
+`test_homr_provider.py` covers the HTTP contract with the engine faked, so it
+needs no models or GPU. Run it inside the CPU image:
+
+```
+npm run scanner:local:up
+npm run scanner:provider:test
+```

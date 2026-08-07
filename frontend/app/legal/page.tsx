@@ -83,6 +83,53 @@ export default function LegalPage() {
           </p>
         </div>
       </section>
+
+      <section className="mt-8">
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+          Open Source and Attribution
+        </h2>
+        <div className="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-300">
+          <p>
+            OurTextScores is free software distributed under the{" "}
+            <a
+              href="https://www.gnu.org/licenses/agpl-3.0.en.html"
+              className="text-cyan-700 underline dark:text-cyan-300"
+              rel="noreferrer noopener"
+              target="_blank"
+            >
+              GNU Affero General Public License, version 3
+            </a>
+            . Because AGPL section 13 covers software you interact with over a network, the corresponding source of the
+            services described here is published rather than merely available on request.
+          </p>
+
+          <h3 className="font-semibold text-slate-900 dark:text-slate-100">Scanner and HOMR</h3>
+          <p>
+            The Scanner feature performs optical music recognition with{" "}
+            <a
+              href="https://github.com/liebharc/homr"
+              className="text-cyan-700 underline dark:text-cyan-300"
+              rel="noreferrer noopener"
+              target="_blank"
+            >
+              HOMR
+            </a>
+            , which is licensed under AGPL-3.0 and is copyright its own authors. OurTextScores runs a modified,
+            authenticated wrapper around it as a separate inference service; that wrapper is also AGPL-3.0-or-later.
+          </p>
+          <p>
+            The exact deployed revision, the HOMR commit, and the SHA-256 of every model file in use are reported by the
+            inference service&rsquo;s <code className="font-mono text-xs">/v1/capabilities</code> endpoint, together with a
+            link to the corresponding source. Page images are sent to that service for processing and are not retained by
+            it after a request completes.
+          </p>
+          <p>
+            Scanner output is a machine-generated draft. Recognition can misread notes, rhythms, voices, lyrics, and
+            page-boundary notation, and results are not published to the catalogue unless you choose to upload them
+            through the normal contribution flow.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }

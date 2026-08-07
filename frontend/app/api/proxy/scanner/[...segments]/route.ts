@@ -21,10 +21,18 @@ async function proxyScanner(request: Request, segments: string[]) {
   };
   const upstream = await proxyFetch(request, url, init);
   const responseHeaders = new Headers();
-  for (const name of ["content-type", "content-disposition", "cache-control"]) {
+  for (const name of [
+    "content-type",
+    "content-disposition",
+    "cache-control",
+    "x-content-type-options",
+  ]) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
   }
+  // Belt and braces: artifacts are unreviewed provider output, so refuse
+  // sniffing even if the backend header were ever dropped upstream.
+  responseHeaders.set("X-Content-Type-Options", "nosniff");
   return new Response(upstream.body, {
     status: upstream.status,
     headers: responseHeaders,

@@ -142,6 +142,9 @@ export class ScannerController {
       `${kind === 'pdf' || kind === 'thumbnail' ? 'inline' : 'attachment'}; filename="${artifact.filename}"`
     );
     response.setHeader('Cache-Control', 'private, no-store');
+    // Provider output is never trusted as active content: stop a browser from
+    // sniffing MusicXML or a manifest into something it will execute.
+    response.setHeader('X-Content-Type-Options', 'nosniff');
     return new StreamableFile(artifact.stream);
   }
 }

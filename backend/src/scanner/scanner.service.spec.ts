@@ -132,6 +132,22 @@ describe('ScannerService', () => {
     }
   });
 
+  it('rejects encrypted PDFs at intake rather than during rasterization', () => {
+    const service = new ScannerService(jobs, storage, config);
+    expect(() =>
+      service.parsePdfInfo(
+        'Title:          Score\nPages:          4\nEncrypted:      yes (print:yes)\n'
+      )
+    ).toThrow(BadRequestException);
+    expect(service.parsePdfInfo('Pages:          4\nEncrypted:      no\n')).toBe(4);
+  });
+
+  it('rejects pdfinfo output with no usable page count', () => {
+    const service = new ScannerService(jobs, storage, config);
+    expect(() => service.parsePdfInfo('Encrypted:      no\n')).toThrow(BadRequestException);
+    expect(() => service.parsePdfInfo('Pages:          0\n')).toThrow(BadRequestException);
+  });
+
   it('is disabled by default unless explicitly enabled', () => {
     values.SCANNER_ENABLED = 'false';
     const service = new ScannerService(jobs, storage, config);

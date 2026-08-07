@@ -511,15 +511,32 @@ export class ScannerService implements OnModuleInit {
   }
 
   private async readPdfPageCount(path: string): Promise<number> {
+    let stdout: string;
     try {
-      const { stdout } = await execFileAsync('pdfinfo', [path], { timeout: 15_000 });
-      const match = stdout.match(/^Pages:\s+(\d+)\s*$/im);
-      const count = Number(match?.[1]);
-      if (!Number.isInteger(count) || count < 1) throw new Error('page count missing');
-      return count;
+      // A user-password PDF makes pdfinfo itself fail, which lands here.
+      ({ stdout } = await execFileAsync('pdfinfo', [path], { timeout: 15_000 }));
     } catch {
       throw new BadRequestException('The PDF is invalid or its page count could not be read');
     }
+    return this.parsePdfInfo(stdout);
+  }
+
+  /** Split out from the `pdfinfo` call so the acceptance rules stay testable. */
+  parsePdfInfo(stdout: string): number {
+    // Design section 5.1 rejects encrypted PDFs in the beta. An owner-password
+    // PDF still reports a page count, so it has to be refused explicitly rather
+    // than left to fail later during rasterization.
+    if (/^Encrypted:\s+yes/im.test(stdout)) {
+      throw new BadRequestException(
+        'Encrypted or password-protected PDFs are not supported; remove the protection and try again'
+      );
+    }
+    const match = stdout.match(/^Pages:\s+(\d+)\s*$/im);
+    const count = Number(match?.[1]);
+    if (!Number.isInteger(count) || count < 1) {
+      throw new BadRequestException('The PDF is invalid or its page count could not be read');
+    }
+    return count;
   }
 
   private async readImageDimensions(

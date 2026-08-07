@@ -30,19 +30,36 @@ export interface ScannerSourceInput {
   storage: ScannerStorageLocator;
 }
 
+/**
+ * Design section 7.1: the exact engine identity behind a result. The HOMR
+ * commit alone is not enough — the weights are versioned separately from it.
+ */
+export interface ScannerEngineProvenance {
+  segmentationModel?: string;
+  segmentationModelSha256?: string;
+  transformerModel?: string;
+  encoderModelSha256?: string;
+  decoderModelSha256?: string;
+  executionProvider?: string;
+}
+
 export interface ScannerPageResult {
   pageNumber: number;
   ordinal: number;
   rotationDegrees: 0 | 90 | 180 | 270;
   included: boolean;
   status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped';
+  /** Provider calls in the current generation; this is what the UI shows. */
   attempts: number;
+  /** Provider calls across every generation and worker recovery (13.4). */
+  providerAttempts?: number;
   idempotencyKey: string;
   manualRetries?: number;
   sourceImage?: ScannerStorageLocator;
   thumbnail?: ScannerStorageLocator;
   musicXml?: ScannerStorageLocator;
   pdf?: ScannerStorageLocator;
+  providerRequestId?: string;
   errorCode?: string;
   errorMessage?: string;
 }
@@ -107,6 +124,9 @@ export class ScannerJob {
 
   @Prop({ trim: true })
   modelRevision?: string;
+
+  @Prop({ type: Object })
+  engineProvenance?: ScannerEngineProvenance;
 
   @Prop({ trim: true })
   errorCode?: string;

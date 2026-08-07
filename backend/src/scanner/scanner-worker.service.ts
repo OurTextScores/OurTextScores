@@ -14,6 +14,7 @@ import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DerivativePipelineService } from '../works/derivative-pipeline.service';
 import {
+  ScannerEngineProvenance,
   ScannerJob,
   ScannerJobDocument,
   ScannerPageResult,
@@ -208,6 +209,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         : undefined;
       let providerRevision = job.providerRevision;
       let modelRevision = job.modelRevision;
+      let engineProvenance = job.engineProvenance;
       let previewThumbnail: Buffer | undefined;
 
       await this.updateLease(job.jobId, 'running');
@@ -278,7 +280,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             ...assets
           },
           providerRevision,
-          modelRevision
+          modelRevision,
+          engineProvenance
         );
 
         try {
@@ -293,6 +296,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           if (await this.isCancelled(job.jobId)) return;
           providerRevision = scanned.result.providerRevision;
           modelRevision = scanned.result.modelRevision;
+          engineProvenance = scanned.result.provenance;
           const musicXml = await this.store(
             `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.musicxml`,
             scanned.result.musicXml,
@@ -325,9 +329,14 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             rotationDegrees: prior?.rotationDegrees || 0,
             included: true,
             status: 'succeeded',
+            // `attempts` counts this generation, which is what the UI shows.
+            // `providerAttempts` accumulates across generations and worker
+            // recoveries so provenance reflects real provider calls (13.4).
             attempts: scanned.attempts,
+            providerAttempts: (prior?.providerAttempts || 0) + scanned.attempts,
             manualRetries,
             idempotencyKey,
+            providerRequestId: scanned.result.requestId,
             ...assets,
             musicXml,
             pdf
@@ -350,6 +359,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             included: true,
             status: 'failed',
             attempts: (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1,
+            providerAttempts:
+              (prior?.providerAttempts || 0) +
+              ((providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1),
             manualRetries,
             idempotencyKey,
             ...assets,
@@ -363,7 +375,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           priorResults,
           undefined,
           providerRevision,
-          modelRevision
+          modelRevision,
+          engineProvenance
         );
         await this.updateLease(job.jobId, 'running');
       }
@@ -376,7 +389,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           errorCode: firstFailure?.errorCode || 'scan_failed',
           errorMessage: firstFailure?.errorMessage || 'No pages could be scanned',
           providerRevision,
-          modelRevision
+          modelRevision,
+          engineProvenance
         });
         return;
       }
@@ -390,7 +404,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       const resultsZip = await this.createResultsZip(job, results, {
         status,
         providerRevision,
-        modelRevision
+        modelRevision,
+        engineProvenance
       });
       await this.finish(job, status, results, {
         musicXmlBundle,
@@ -399,6 +414,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         previewThumbnail: previewThumbnailLocator,
         providerRevision,
         modelRevision,
+        engineProvenance,
         ...(!previewPdf
           ? {
               errorCode: 'preview_render_failed',
@@ -509,7 +525,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     priorResults: Map<number, ScannerPageResult>,
     current: ScannerPageResult | undefined,
     providerRevision?: string,
-    modelRevision?: string
+    modelRevision?: string,
+    engineProvenance?: ScannerEngineProvenance
   ): Promise<void> {
     const completedNumbers = new Set(completed.map((page) => page.pageNumber));
     if (current) completedNumbers.add(current.pageNumber);
@@ -531,10 +548,12 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const pages = [...completed, ...(current ? [current] : []), ...remaining].sort(
       (left, right) => left.pageNumber - right.pageNumber
     );
+    // Scoped to this worker's lease: a worker that stalled past its lease must
+    // not overwrite the progress of whichever worker reclaimed the job.
     await this.jobs
       .updateOne(
-        { jobId: job.jobId, status: { $ne: 'cancelled' } },
-        { $set: { pages, providerRevision, modelRevision } }
+        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
+        { $set: { pages, providerRevision, modelRevision, engineProvenance } }
       )
       .exec();
   }
@@ -704,6 +723,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       status: 'succeeded' | 'partial';
       providerRevision?: string;
       modelRevision?: string;
+      engineProvenance?: ScannerEngineProvenance;
     }
   ): Promise<ScannerStorageLocator> {
     const zip = new AdmZip();
@@ -729,6 +749,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       engine: 'homr',
       serviceRevision: summary.providerRevision,
       modelRevision: summary.modelRevision,
+      // Design section 7.1/17: the weights are versioned separately from the
+      // HOMR commit, so a result is only reproducible with both recorded.
+      engineProvenance: summary.engineProvenance,
       createdAt: new Date().toISOString(),
       pages: pages.map((page) => ({
         pageNumber: page.pageNumber,
@@ -737,6 +760,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         included: page.included !== false,
         status: page.status,
         attempts: page.attempts,
+        providerAttempts: page.providerAttempts ?? page.attempts,
+        providerRequestId: page.providerRequestId,
         manualRetries: page.manualRetries || 0,
         errorCode: page.errorCode,
         errorMessage: page.errorMessage,
@@ -761,9 +786,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     values: Record<string, any>
   ): Promise<void> {
     const completedAt = new Date();
+    // Lease-scoped for the same reason as persistPageProgress: only the worker
+    // that currently holds the job may terminalise it.
     const updated = await this.jobs
       .findOneAndUpdate(
-        { jobId: job.jobId, status: { $ne: 'cancelled' } },
+        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
         {
           $set: {
             status,

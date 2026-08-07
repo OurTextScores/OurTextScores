@@ -185,4 +185,158 @@ describe('ScannerProviderService', () => {
     delete values.SCANNER_EXPECTED_PROVIDER_REVISION;
     delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
   });
+
+  describe('provider response contract', () => {
+    const image = Buffer.from('envelope-image');
+    const validMusicXml =
+      '<score-partwise version="4.0"><part-list><score-part id="P1"/></part-list>' +
+      '<part id="P1"><measure number="1"/></part></score-partwise>';
+
+    const respond = (body: Record<string, unknown>) =>
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      );
+
+    const scan = () =>
+      new ScannerProviderService(config).scanPage({
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'f'.repeat(64)
+      });
+
+    const envelope = (overrides: Record<string, unknown> = {}) => ({
+      schemaVersion: 'ots-homr-provider.v1',
+      requestId: 'req-1',
+      engine: {
+        name: 'homr',
+        homrCommit: 'homr-revision',
+        serviceRevision: 'ots-homr-modal-v1',
+        segmentationModel: 'segnet_308-abc',
+        segmentationModelSha256: '1'.repeat(64),
+        transformerModel: 'encoder_426-def.onnx',
+        encoderModelSha256: '2'.repeat(64),
+        decoderModelSha256: '3'.repeat(64),
+        executionProvider: 'CUDAExecutionProvider'
+      },
+      result: {
+        mediaType: 'application/vnd.recordare.musicxml+xml',
+        musicXmlBase64: Buffer.from(validMusicXml).toString('base64'),
+        sha256: createHash('sha256').update(Buffer.from(validMusicXml)).digest('hex')
+      },
+      inputSha256: createHash('sha256').update(image).digest('hex'),
+      ...overrides
+    });
+
+    beforeEach(() => {
+      values.SCANNER_PROVIDER_KIND = 'modal';
+      values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+      values.SCANNER_EXPECTED_PROVIDER_REVISION = 'ots-homr-modal-v1';
+      values.SCANNER_EXPECTED_EXECUTION_PROVIDER = 'CUDAExecutionProvider';
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      values.SCANNER_PROVIDER_KIND = 'fake';
+      delete values.SCANNER_PROVIDER_URL;
+      delete values.SCANNER_EXPECTED_PROVIDER_REVISION;
+      delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
+    });
+
+    it('records the segmentation and transformer identities from the v1 envelope', async () => {
+      respond(envelope());
+      await expect(scan()).resolves.toMatchObject({
+        providerRevision: 'ots-homr-modal-v1',
+        modelRevision: 'homr-revision',
+        requestId: 'req-1',
+        provenance: {
+          segmentationModel: 'segnet_308-abc',
+          segmentationModelSha256: '1'.repeat(64),
+          transformerModel: 'encoder_426-def.onnx',
+          encoderModelSha256: '2'.repeat(64),
+          decoderModelSha256: '3'.repeat(64),
+          executionProvider: 'CUDAExecutionProvider'
+        }
+      });
+    });
+
+    it('fails closed when the declared output digest does not match', async () => {
+      respond(envelope({ result: { ...envelope().result, sha256: '0'.repeat(64) } }));
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_output_digest_mismatch',
+        retryable: false
+      });
+    });
+
+    it('rejects a DOCTYPE or entity declaration outright', async () => {
+      const hostile =
+        '<!DOCTYPE score [<!ENTITY a "aaaa">]>' +
+        '<score-partwise><part-list><score-part id="P1"/></part-list>' +
+        '<part id="P1"><measure number="1">&a;</measure></part></score-partwise>';
+      respond(
+        envelope({
+          result: {
+            musicXmlBase64: Buffer.from(hostile).toString('base64'),
+            sha256: createHash('sha256').update(Buffer.from(hostile)).digest('hex')
+          }
+        })
+      );
+      await expect(scan()).rejects.toMatchObject({ code: 'invalid_musicxml' });
+    });
+
+    it('rejects XML that is not well formed rather than pattern matching it', async () => {
+      // Contains every substring the old check looked for, but never closes
+      // the measure element.
+      const malformed =
+        '<score-partwise><part-list><score-part id="P1"/></part-list>' +
+        '<part id="P1"><measure number="1"></part></score-partwise>';
+      respond(
+        envelope({
+          result: {
+            musicXmlBase64: Buffer.from(malformed).toString('base64'),
+            sha256: createHash('sha256').update(Buffer.from(malformed)).digest('hex')
+          }
+        })
+      );
+      await expect(scan()).rejects.toMatchObject({ code: 'invalid_musicxml' });
+    });
+
+    it('rejects a document nested past the configured depth limit', async () => {
+      values.SCANNER_MAX_MUSICXML_DEPTH = '5';
+      const deep =
+        '<score-partwise><part-list><score-part id="P1"/></part-list><part id="P1">' +
+        '<measure number="1">' +
+        '<a>'.repeat(40) +
+        '<b/>' +
+        '</a>'.repeat(40) +
+        '</measure></part></score-partwise>';
+      respond(
+        envelope({
+          result: {
+            musicXmlBase64: Buffer.from(deep).toString('base64'),
+            sha256: createHash('sha256').update(Buffer.from(deep)).digest('hex')
+          }
+        })
+      );
+      await expect(scan()).rejects.toMatchObject({ code: 'invalid_musicxml' });
+      delete values.SCANNER_MAX_MUSICXML_DEPTH;
+    });
+
+    it('rejects a well formed document with the wrong root element', async () => {
+      const wrongRoot = '<html><body><measure/></body></html>';
+      respond(
+        envelope({
+          result: {
+            musicXmlBase64: Buffer.from(wrongRoot).toString('base64'),
+            sha256: createHash('sha256').update(Buffer.from(wrongRoot)).digest('hex')
+          }
+        })
+      );
+      await expect(scan()).rejects.toMatchObject({ code: 'invalid_musicxml' });
+    });
+  });
 });

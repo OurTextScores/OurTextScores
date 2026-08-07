@@ -1,12 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { ScannerProviderError } from './scanner.errors';
+
+export interface ScannerModelProvenance {
+  segmentationModel?: string;
+  segmentationModelSha256?: string;
+  transformerModel?: string;
+  encoderModelSha256?: string;
+  decoderModelSha256?: string;
+  executionProvider?: string;
+}
 
 export interface ScanPageResult {
   musicXml: Buffer;
   providerRevision: string;
   modelRevision: string;
+  provenance: ScannerModelProvenance;
+  requestId?: string;
+  musicXmlSha256: string;
 }
 
 @Injectable()
@@ -119,9 +132,18 @@ export class ScannerProviderService {
       );
     }
 
-    const providerRevision = String(result?.serviceRevision || result?.providerRevision || '');
-    const modelRevision = String(result?.modelRevision || result?.homrRevision || '');
-    const executionProvider = String(result?.executionProvider || '');
+    // Prefer the `ots-homr-provider.v1` envelope, falling back to the flat
+    // aliases so a provider deployed before that contract still works.
+    const engine = (
+      result?.engine && typeof result.engine === 'object' ? result.engine : {}
+    ) as any;
+    const providerRevision = String(
+      engine.serviceRevision || result?.serviceRevision || result?.providerRevision || ''
+    );
+    const modelRevision = String(
+      engine.homrCommit || result?.modelRevision || result?.homrRevision || ''
+    );
+    const executionProvider = String(engine.executionProvider || result?.executionProvider || '');
     const expectedInputSha256 = createHash('sha256').update(input.image).digest('hex');
     const receivedInputSha256 = String(result?.inputSha256 || '');
     if (receivedInputSha256 !== expectedInputSha256) {
@@ -161,7 +183,10 @@ export class ScannerProviderService {
 
     let musicXml: Buffer;
     try {
-      musicXml = Buffer.from(String(result?.musicXmlBase64 || ''), 'base64');
+      musicXml = Buffer.from(
+        String(result?.musicXmlBase64 || result?.result?.musicXmlBase64 || ''),
+        'base64'
+      );
     } catch {
       throw new ScannerProviderError(
         'Scanner provider returned invalid MusicXML',
@@ -169,7 +194,6 @@ export class ScannerProviderService {
         false
       );
     }
-    const xmlText = musicXml.toString('utf8');
     const maxMusicXmlBytes = Math.max(
       1024,
       Number(this.config.get<string>('SCANNER_MAX_MUSICXML_BYTES', '10485760'))
@@ -181,21 +205,99 @@ export class ScannerProviderService {
         false
       );
     }
-    if (
-      (!xmlText.includes('<score-partwise') && !xmlText.includes('<score-timewise')) ||
-      (!xmlText.includes('</score-partwise>') && !xmlText.includes('</score-timewise>')) ||
-      !/<(score-part|part)\b/.test(xmlText) ||
-      !/<measure\b/.test(xmlText) ||
-      /<!ENTITY\b/i.test(xmlText)
-    ) {
+    const musicXmlSha256 = createHash('sha256').update(musicXml).digest('hex');
+    const declaredSha256 = String(result?.result?.sha256 || '');
+    if (declaredSha256 && declaredSha256 !== musicXmlSha256) {
+      throw new ScannerProviderError(
+        'Scanner provider output verification failed',
+        'provider_output_digest_mismatch',
+        false
+      );
+    }
+    this.assertValidMusicXml(musicXml);
+
+    return {
+      musicXml,
+      providerRevision,
+      modelRevision,
+      musicXmlSha256,
+      requestId: result?.requestId ? String(result.requestId) : undefined,
+      provenance: {
+        segmentationModel: this.text(engine.segmentationModel),
+        segmentationModelSha256: this.text(engine.segmentationModelSha256),
+        transformerModel: this.text(engine.transformerModel),
+        encoderModelSha256: this.text(engine.encoderModelSha256),
+        decoderModelSha256: this.text(engine.decoderModelSha256),
+        executionProvider: this.text(executionProvider)
+      }
+    };
+  }
+
+  /**
+   * Design section 5.5: parse rather than pattern-match, with DTDs, external
+   * entities, and network access unavailable, plus node and depth ceilings so a
+   * corrupt or hostile document cannot be expanded by a later consumer.
+   */
+  private assertValidMusicXml(musicXml: Buffer): void {
+    const invalid = (): never => {
       throw new ScannerProviderError(
         'Scanner provider returned invalid MusicXML',
         'invalid_musicxml',
         false
       );
-    }
+    };
+    const xmlText = musicXml.toString('utf8');
+    // fast-xml-parser has no DTD support, so a DOCTYPE would be silently
+    // dropped rather than rejected. Refuse it outright instead.
+    if (/<!DOCTYPE/i.test(xmlText) || /<!ENTITY/i.test(xmlText)) invalid();
+    if (XMLValidator.validate(xmlText) !== true) invalid();
 
-    return { musicXml, providerRevision, modelRevision };
+    let parsed: any;
+    try {
+      parsed = new XMLParser({
+        ignoreAttributes: false,
+        processEntities: false,
+        parseTagValue: false,
+        parseAttributeValue: false
+      }).parse(xmlText);
+    } catch {
+      invalid();
+    }
+    const root = parsed?.['score-partwise'] ?? parsed?.['score-timewise'];
+    if (!root || typeof root !== 'object') invalid();
+
+    const maxNodes = this.number('SCANNER_MAX_MUSICXML_NODES', 500_000);
+    const maxDepth = this.number('SCANNER_MAX_MUSICXML_DEPTH', 100);
+    let nodes = 0;
+    const walk = (value: unknown, depth: number): void => {
+      if (depth > maxDepth) invalid();
+      if (Array.isArray(value)) {
+        for (const item of value) walk(item, depth);
+        return;
+      }
+      if (!value || typeof value !== 'object') return;
+      for (const child of Object.values(value as Record<string, unknown>)) {
+        nodes += 1;
+        if (nodes > maxNodes) invalid();
+        walk(child, depth + 1);
+      }
+    };
+    walk(root, 1);
+
+    const partList = root['part-list'];
+    const parts = root.part;
+    if (!partList || !parts) invalid();
+    if (!/<measure\b/.test(xmlText)) invalid();
+  }
+
+  private text(value: unknown): string | undefined {
+    const result = typeof value === 'string' ? value.trim() : '';
+    return result || undefined;
+  }
+
+  private number(key: string, fallback: number): number {
+    const parsed = Number(this.config.get<string>(key, String(fallback)));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
   }
 
   private safeHttpErrorMessage(status: number): string {
@@ -222,13 +324,24 @@ export class ScannerProviderService {
       );
     }
     const title = `Scanner test ${key.slice(0, 8)}`;
+    const musicXml = Buffer.from(
+      `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>${title}</work-title></work><part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><rest/><duration>4</duration><type>whole</type></note></measure></part></score-partwise>`,
+      'utf8'
+    );
     return {
       providerRevision: 'local-fake',
       modelRevision: this.expectedRevision || 'local-fake',
-      musicXml: Buffer.from(
-        `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><work><work-title>${title}</work-title></work><part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><rest/><duration>4</duration><type>whole</type></note></measure></part></score-partwise>`,
-        'utf8'
-      )
+      musicXml,
+      musicXmlSha256: createHash('sha256').update(musicXml).digest('hex'),
+      requestId: key.slice(0, 16),
+      provenance: {
+        segmentationModel: 'local-fake-segnet',
+        segmentationModelSha256: 'f'.repeat(64),
+        transformerModel: 'local-fake-transformer',
+        encoderModelSha256: 'e'.repeat(64),
+        decoderModelSha256: 'd'.repeat(64),
+        executionProvider: 'CPUExecutionProvider'
+      }
     };
   }
 }
