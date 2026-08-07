@@ -47,11 +47,20 @@ WORKDIR /app
 COPY homr-provider/homr_engine.py /app/homr_engine.py
 COPY homr-provider/homr_provider.py /app/homr_provider.py
 COPY homr-provider/test_homr_provider.py /app/test_homr_provider.py
+COPY homr-provider/warmup-page.png /app/warmup-page.png
+COPY homr-provider/warmup-page.musicxml /app/warmup-page.musicxml
 COPY homr-provider/LICENSE-NOTICE.md /app/LICENSE-NOTICE.md
 COPY homr-cpu/app.py /app/app.py
 
 RUN useradd --create-home --uid 10001 homr && chown -R homr:homr /app
 USER homr
+
+# RapidOCR caches its weights outside the HOMR package, so populate that cache
+# as the runtime user while the filesystem is still writable. Optional: title
+# detection is opt-in per page and the engine treats a missing OCR cache as a
+# warning rather than a readiness failure.
+RUN python -c "from homr.title_detection import download_ocr_weights; download_ocr_weights()" || \
+      echo "OCR pre-warm skipped; title detection will initialise on first use"
 
 EXPOSE 8000
 # Readiness, not liveness: the worker must not be pointed at a container whose

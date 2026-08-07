@@ -112,6 +112,7 @@ def create_provider_app(
     app.state.busy = False
     app.state.warming = False
     app.state.warm_up_error = ""
+    app.state.background: set[Any] = set()
     # Successful results only. A transient failure must never poison a key.
     app.state.result_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
     cache_limit = max(1, idempotency_cache_size)
@@ -125,6 +126,12 @@ def create_provider_app(
         expected = f"Bearer {provider_token}"
         if not authorization or not hmac.compare_digest(authorization, expected):
             raise HTTPException(status_code=401, detail="Provider authentication is required")
+
+    def schedule_warm() -> None:
+        """Fire-and-forget re-warm, keeping a reference so it is not GC'd."""
+        task = asyncio.get_running_loop().create_task(ensure_warm())
+        app.state.background.add(task)
+        task.add_done_callback(app.state.background.discard)
 
     async def ensure_warm() -> None:
         """Re-warm after a timeout kill so one bad page cannot wedge the service.
@@ -184,7 +191,7 @@ def create_provider_app(
         if not ready:
             body["reason"] = app.state.warm_up_error or engine.last_error or "warming up"
             # A polling health check doubles as the recovery trigger.
-            asyncio.get_running_loop().create_task(ensure_warm())
+            schedule_warm()
             return JSONResponse(status_code=503, content=body)
         return body
 
@@ -250,7 +257,7 @@ def create_provider_app(
         if not engine.is_ready():
             # 503 is retryable for OTS, and this recovers the child in the
             # background so the retry has somewhere to land.
-            asyncio.get_running_loop().create_task(ensure_warm())
+            schedule_warm()
             return _error(request_id, CODE_NOT_READY, "The inference worker is not ready")
         # Checked and set without an await so admission stays atomic here.
         if app.state.busy:

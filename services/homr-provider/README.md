@@ -25,10 +25,24 @@ replaced on the next request.
 - `GET /v1/capabilities` — service and HOMR revisions, model identities and
   hashes, limits, effective ONNX providers, source URL, and licences.
 
-Warm-up runs one real inference over a generated five-line staff so readiness
-implies a working pipeline rather than merely a loaded process. If that page
-yields no staff, the ONNX stack is still proven, so the service reports ready
-and records `degradedReason` for operators instead of refusing all traffic.
+Warm-up runs one real inference over `warmup-page.png` so readiness implies a
+working pipeline rather than merely a loaded process. That fixture is
+`warmup-page.musicxml` — a four-bar C major scale written for this purpose —
+engraved with MuseScore and scaled to the 1,920 px working width. HOMR
+recognises it (4 measures, 12 notes), so segmentation, staff detection, and
+transformer decoding are all exercised, and it carries no third-party rights.
+
+Regenerate it with:
+
+```
+xvfb-run -a musescore4 -o warmup.png warmup-page.musicxml   # in the OTS backend image
+# then scale the result to 1920 px wide and save as warmup-page.png
+```
+
+If the fixture is missing, the engine falls back to a crude generated staff.
+That usually yields no staff — the ONNX stack is still proven, so the service
+reports ready and records `degradedReason` rather than refusing all traffic,
+but the transformer is not warmed in that case.
 
 ## Timeout ladder
 

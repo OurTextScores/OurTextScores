@@ -30,6 +30,26 @@ CODE_TIMEOUT = "inference_timeout"
 CODE_FAILED = "inference_failed"
 CODE_NOT_READY = "model_not_ready"
 
+# Messages HOMR raises when the image decoded fine but holds no usable notation
+# (homr/main.py, `No noteheads found` and `No staffs found`). Verified against
+# the pinned commit with a blank page; keep in step when repinning HOMR.
+_NO_NOTATION_MARKERS = ("No staffs found", "No noteheads found")
+
+
+def classify_homr_error(text: str) -> str:
+    """Map a HOMR exception message onto a stable provider code.
+
+    Getting this wrong is expensive in both directions: a deterministic failure
+    classified as `inference_failed` becomes a retryable 500 and OTS burns a
+    second provider call on a page that can never succeed, while an
+    infrastructure failure classified as deterministic is hidden as a bad page.
+    """
+    if any(marker in text for marker in _NO_NOTATION_MARKERS):
+        return CODE_NO_STAFF
+    if "Failed to read" in text:
+        return CODE_INVALID_IMAGE
+    return CODE_FAILED
+
 
 class InferenceError(RuntimeError):
     """A classified inference failure carrying a stable code."""
@@ -80,12 +100,28 @@ def _sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
-def _synthetic_warmup_page() -> bytes:
-    """A generated five-line staff used to warm every model at startup.
+WARMUP_PAGE = Path(__file__).resolve().parent / "warmup-page.png"
 
-    Deliberately synthetic so the image ships with no third-party rights
-    attached. It is a warm-up, not a recognition-quality fixture.
+
+def _warmup_page() -> bytes:
+    """The page used to warm every model at startup (design section 9.3).
+
+    `warmup-page.png` is `warmup-page.musicxml` — a four-bar C major scale
+    written for this purpose — engraved with MuseScore and scaled to the 1,920 px
+    working width. HOMR recognises it (4 measures, 12 notes), so the warm-up
+    exercises segmentation, staff detection, *and* transformer decoding rather
+    than stopping at the first stage. It carries no third-party rights.
+
+    Falls back to a crude generated staff if the fixture is ever missing; that
+    fallback usually yields no staff, which the engine reports as degraded.
     """
+    if WARMUP_PAGE.is_file():
+        return WARMUP_PAGE.read_bytes()
+    return _synthetic_warmup_page()
+
+
+def _synthetic_warmup_page() -> bytes:
+    """Last-resort generated staff when the bundled fixture is unavailable."""
     import cv2  # imported in the child, where OpenCV is installed
     import numpy as np
 
@@ -111,6 +147,7 @@ def _synthetic_warmup_page() -> bytes:
 
 def _child_main(connection: Any, use_gpu: bool) -> None:
     """Long-lived inference loop. Owns the cached ONNX sessions."""
+    warnings: list[str] = []
     try:
         import onnxruntime as ort
 
@@ -127,7 +164,14 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
         ort.set_default_logger_severity(3)
         # The images bake the weights in, so this verifies rather than downloads.
         download_weights(use_gpu, use_gpu, False)
-        download_ocr_weights()
+        try:
+            # Title detection is opt-in per page and RapidOCR caches outside the
+            # HOMR package, which a read-only rootfs may refuse. Warming it is
+            # worth doing but must not be able to hold back readiness for the
+            # segmentation and transformer models, which is what pages need.
+            download_ocr_weights()
+        except Exception as error:
+            warnings.append(f"OCR warm-up unavailable: {error!r}"[:500])
 
         paths = default_config.filepaths
         provenance = EngineProvenance(
@@ -146,7 +190,9 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
                 paths.decoder_path_fp16 if use_gpu else paths.decoder_path
             ),
         )
-        connection.send({"kind": "ready", "provenance": provenance.as_dict()})
+        connection.send(
+            {"kind": "ready", "provenance": provenance.as_dict(), "warnings": warnings}
+        )
     except Exception as error:  # pragma: no cover - startup failure path
         connection.send({"kind": "startup_failed", "detail": repr(error)[:2000]})
         return
@@ -160,7 +206,7 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
             return
         if request.get("kind") == "warmup_page":
             try:
-                connection.send({"ok": True, "page": _synthetic_warmup_page()})
+                connection.send({"ok": True, "page": _warmup_page()})
             except Exception as error:
                 connection.send(
                     {"ok": False, "code": CODE_FAILED, "detail": repr(error)[:2000]}
@@ -200,14 +246,13 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
         except InferenceError as error:
             connection.send({"ok": False, "code": error.code, "detail": error.detail})
         except Exception as error:
-            text = str(error)
-            if "No staffs found" in text:
-                code = CODE_NO_STAFF
-            elif "Failed to read" in text:
-                code = CODE_INVALID_IMAGE
-            else:
-                code = CODE_FAILED
-            connection.send({"ok": False, "code": code, "detail": repr(error)[:2000]})
+            connection.send(
+                {
+                    "ok": False,
+                    "code": classify_homr_error(str(error)),
+                    "detail": repr(error)[:2000],
+                }
+            )
 
 
 class HomrEngine:
@@ -240,6 +285,7 @@ class HomrEngine:
         self._warm = False
         self._degraded_reason = ""
         self._last_error = ""
+        self._startup_warnings: list[str] = []
 
     @property
     def expected_execution_provider(self) -> str:
@@ -251,7 +297,9 @@ class HomrEngine:
 
     @property
     def degraded_reason(self) -> str:
-        return self._degraded_reason
+        return "; ".join(
+            part for part in (self._degraded_reason, *self._startup_warnings) if part
+        )
 
     @property
     def last_error(self) -> str:
@@ -299,6 +347,7 @@ class HomrEngine:
             self._teardown_locked()
             raise InferenceError(CODE_NOT_READY, "The inference worker is not ready")
 
+        self._startup_warnings = list(message.get("warnings") or [])
         values = message["provenance"]
         self._provenance = EngineProvenance(
             homr_commit=self._homr_commit,

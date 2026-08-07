@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
-import { ScannerProviderError } from './scanner.errors';
+import { providerErrorFromCode, ScannerProviderError } from './scanner.errors';
 
 export interface ScannerModelProvenance {
   segmentationModel?: string;
@@ -110,7 +110,11 @@ export class ScannerProviderService {
     }
 
     if (!response.ok) {
-      await response.body?.cancel().catch(() => undefined);
+      // The provider's stable code is more precise than the status, so prefer
+      // it when the response carries one (design section 9.4).
+      const envelope = await response.json().catch(() => undefined as any);
+      const classified = providerErrorFromCode(envelope?.error?.code);
+      if (classified) throw classified;
       const retryable =
         response.status === 408 || response.status === 429 || response.status >= 500;
       throw new ScannerProviderError(

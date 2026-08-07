@@ -186,6 +186,70 @@ describe('ScannerProviderService', () => {
     delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
   });
 
+  describe('provider error taxonomy', () => {
+    beforeEach(() => {
+      values.SCANNER_PROVIDER_KIND = 'modal';
+      values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+      values.SCANNER_PROVIDER_KIND = 'fake';
+      delete values.SCANNER_PROVIDER_URL;
+    });
+
+    const failWith = (status: number, body: unknown) =>
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' }
+        })
+      );
+
+    const scan = () =>
+      new ScannerProviderService(config).scanPage({
+        image: Buffer.from('image'),
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: '9'.repeat(64)
+      });
+
+    it('prefers the stable provider code over the HTTP status', async () => {
+      // A blank page really returns this on the pinned HOMR commit.
+      failWith(422, { error: { code: 'no_staff_detected', message: 'ignored' } });
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_no_staff_detected',
+        retryable: false,
+        message: 'No staff lines were detected on this page'
+      });
+    });
+
+    it('keeps an infrastructure failure retryable even though HOMR ran', async () => {
+      failWith(500, { error: { code: 'inference_failed', message: 'ignored' } });
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_inference_failed',
+        retryable: true
+      });
+    });
+
+    it('never surfaces provider-supplied error text to the caller', async () => {
+      failWith(422, {
+        error: { code: 'invalid_image', message: '<script>alert(1)</script> /tmp/secret' }
+      });
+      await expect(scan()).rejects.toMatchObject({
+        message: 'This page image could not be read'
+      });
+    });
+
+    it('falls back to status classification for an unknown code', async () => {
+      failWith(503, { error: { code: 'something_new' } });
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_http_503',
+        retryable: true
+      });
+    });
+  });
+
   describe('provider response contract', () => {
     const image = Buffer.from('envelope-image');
     const validMusicXml =

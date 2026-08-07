@@ -27,12 +27,16 @@ MAX_PAGE_BYTES = 25 * 1024 * 1024
 HARD_TIMEOUT_SECONDS = int(os.environ.get("HOMR_HARD_TIMEOUT_SECONDS", "540"))
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("HOMR_FUNCTION_TIMEOUT_SECONDS", "660"))
 
-# Supply chain (design section 9.5). Pin the base by digest before the pilot;
-# capture it with `docker buildx imagetools inspect` and set HOMR_CUDA_BASE.
-# The tag below is the tested default, not a reproducible pin.
+# Supply chain (design section 9.5). The base is pinned by manifest-list digest
+# so a rebuild cannot silently pick up a different CUDA runtime; the digest still
+# resolves per-platform. Refresh it deliberately with:
+#   docker buildx imagetools inspect nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+CUDA_BASE_TAG = "nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04"
+CUDA_BASE_DIGEST = "sha256:17e2934e1fa96152b14f78078bfbafd0f00f391df995dc6c641a720fce1202bb"
 CUDA_BASE = os.environ.get(
-    "HOMR_CUDA_BASE", "nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04"
+    "HOMR_CUDA_BASE", f"{CUDA_BASE_TAG.split(':')[0]}@{CUDA_BASE_DIGEST}"
 )
+POETRY_VERSION = "2.3.2"
 # Set after the first build from /v1/capabilities so a silently changed weight
 # file fails readiness instead of quietly altering results.
 EXPECTED_MODEL_SHA256 = {
@@ -54,13 +58,39 @@ image = (
         "git clone https://github.com/liebharc/homr.git /opt/homr",
         f"cd /opt/homr && git checkout --detach {HOMR_COMMIT}",
         f"cd /opt/homr && test \"$(git rev-parse HEAD)\" = {HOMR_COMMIT}",
-        "python -m pip install --no-cache-dir '/opt/homr[gpu]' 'fastapi[standard]' python-multipart",
+        f"python -m pip install --no-cache-dir 'poetry=={POETRY_VERSION}'",
+        # Resolve from HOMR's committed poetry.lock rather than letting pip
+        # re-resolve the ranges in pyproject.toml, so the dependency set is
+        # pinned by the same commit as the source (design section 9.5).
+        "cd /opt/homr && poetry config virtualenvs.create false && "
+        "poetry install --only main --extras gpu --no-interaction",
+        "python -m pip install --no-cache-dir "
+        "'fastapi==0.116.1' 'httpx==0.28.1' 'python-multipart==0.0.20'",
         # Bake the weights in so readiness never waits on a download.
         "cd /opt/homr && homr --init --gpu force",
     )
-    .env({"PYTHONUNBUFFERED": "1", "HOMR_COMMIT": HOMR_COMMIT})
-    .add_local_dir(SHARED, remote_path="/opt/ots-homr-provider", copy=True)
-    .env({"PYTHONPATH": "/opt/ots-homr-provider"})
+    .env(
+        {
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPATH": "/opt/ots-homr-provider",
+            "HOMR_COMMIT": HOMR_COMMIT,
+            # Modal re-imports this module inside the container, so anything
+            # read from the deploy-time environment has to be baked in or the
+            # container would silently fall back to the defaults.
+            "HOMR_HARD_TIMEOUT_SECONDS": str(HARD_TIMEOUT_SECONDS),
+            **{
+                f"HOMR_EXPECTED_{name.upper()}_SHA256": value
+                for name, value in EXPECTED_MODEL_SHA256.items()
+            },
+        }
+    )
+    .add_local_dir(
+        SHARED,
+        remote_path="/opt/ots-homr-provider",
+        copy=True,
+        ignore=["__pycache__", "*.pyc"],
+    )
 )
 
 app = modal.App("ourtextscores-homr-scanner")

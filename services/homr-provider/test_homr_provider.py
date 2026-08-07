@@ -171,6 +171,23 @@ class ProviderContractTest(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["error"]["code"], CODE_NO_STAFF)
 
+    def test_classifies_homr_no_notation_messages_as_deterministic(self) -> None:
+        # Regression: HOMR raises at two stages for "valid image, nothing to
+        # transcribe". Missing either one sends OTS a retryable 500 for a page
+        # that can never succeed. Verified live against a blank page.
+        from homr_engine import CODE_INVALID_IMAGE, classify_homr_error
+
+        # A blank page really produces "No noteheads found" on the pinned commit.
+        self.assertEqual(classify_homr_error("No noteheads found"), CODE_NO_STAFF)
+        self.assertEqual(classify_homr_error("No staffs found"), CODE_NO_STAFF)
+        self.assertEqual(
+            classify_homr_error("Failed to read /tmp/page.png"), CODE_INVALID_IMAGE
+        )
+        # Infrastructure faults must stay retryable, not masquerade as bad pages.
+        self.assertEqual(
+            classify_homr_error("CUDAExecutionProvider is unavailable"), CODE_FAILED
+        )
+
     def test_timeout_is_504(self) -> None:
         self.engine.raises = InferenceError(CODE_TIMEOUT, "too slow")
         self.assertEqual(post(self.client).status_code, 504)
