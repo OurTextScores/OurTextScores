@@ -1,0 +1,5 @@
+services:
+  scanner_worker:
+    environment:
+      # Service restart coverage should not also exercise provider retries.
+      SCANNER_FAKE_TRANSIENT_FAILURE_PAGE: "0"
