@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp = require('sharp');
 import { ScannerService } from './scanner.service';
+import { scannerUserHash } from './scanner.constants';
 
 describe('ScannerService', () => {
   const values: Record<string, string> = {
@@ -132,6 +133,64 @@ describe('ScannerService', () => {
     }
   });
 
+  it('never puts the user id in an object key and honours the salt', () => {
+    const plain = scannerUserHash('507f1f77bcf86cd799439011');
+    const salted = scannerUserHash('507f1f77bcf86cd799439011', 'deployment-salt');
+    expect(plain).toMatch(/^[a-f0-9]{32}$/);
+    expect(plain).not.toContain('507f1f77bcf86cd799439011');
+    expect(salted).not.toBe(plain);
+    // Deterministic, or previously written keys would become unreachable.
+    expect(scannerUserHash('507f1f77bcf86cd799439011')).toBe(plain);
+  });
+
+  it('pages the job list with a cursor that survives same-millisecond ties', async () => {
+    const createdAt = new Date('2026-08-07T10:00:00.000Z');
+    const rows = ['job-c', 'job-b', 'job-a'].map((jobId) => ({
+      jobId,
+      userId: 'user-1',
+      status: 'succeeded',
+      statusVersion: 3,
+      originalFilename: 'score.pdf',
+      pageCount: 1,
+      pages: [],
+      createdAt,
+      updatedAt: createdAt,
+      resultExpiresAt: new Date()
+    }));
+    let captured: any;
+    jobs.find.mockImplementation((filter: any) => {
+      captured = filter;
+      return { sort: () => ({ limit: () => ({ exec: () => Promise.resolve(rows) }) }) };
+    });
+    const service = new ScannerService(jobs, storage, config);
+
+    const first = await service.listJobs('user-1', { limit: 2 });
+    expect(first.items.map((job: any) => job.jobId)).toEqual(['job-c', 'job-b']);
+    // A third row existed, so a cursor is offered.
+    expect(first.nextCursor).toBeTruthy();
+
+    await service.listJobs('user-1', { limit: 2, cursor: first.nextCursor! });
+    // Ties on createdAt fall back to jobId so nothing is skipped or repeated.
+    expect(captured.$or).toEqual([
+      { createdAt: { $lt: createdAt } },
+      { createdAt, jobId: { $lt: 'job-b' } }
+    ]);
+  });
+
+  it('omits the cursor on the last page and rejects a malformed one', async () => {
+    jobs.find.mockReturnValue({
+      sort: () => ({ limit: () => ({ exec: () => Promise.resolve([]) }) })
+    });
+    const service = new ScannerService(jobs, storage, config);
+    await expect(service.listJobs('user-1', { limit: 5 })).resolves.toMatchObject({
+      items: [],
+      nextCursor: null
+    });
+    await expect(
+      service.listJobs('user-1', { cursor: Buffer.from('nonsense').toString('base64url') })
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rejects encrypted PDFs at intake rather than during rasterization', () => {
     const service = new ScannerService(jobs, storage, config);
     expect(() =>
@@ -197,7 +256,8 @@ describe('ScannerService', () => {
       sort: () => ({ limit: () => ({ exec: () => Promise.resolve([document]) }) })
     });
     const service = new ScannerService(jobs, storage, config);
-    const [result] = await service.listJobs('user-1');
+    const { items } = await service.listJobs('user-1');
+    const [result] = items;
     expect(result.hasMusicXml).toBe(true);
     expect(result.pages[0]).not.toHaveProperty('idempotencyKey');
     expect(JSON.stringify(result)).not.toContain('private-key');

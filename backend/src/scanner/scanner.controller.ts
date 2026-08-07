@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   ParseEnumPipe,
@@ -55,17 +56,23 @@ export class ScannerController {
       limits: { fileSize: 25 * 1024 * 1024, files: 20 }
     })
   )
+  // 202, not 201: the job is accepted for asynchronous preparation and is not
+  // yet a complete resource (design section 8.1).
+  @HttpCode(202)
   async create(
     @CurrentUser() user: RequestUser,
     @UploadedFiles() files: Express.Multer.File[],
+    @Res({ passthrough: true }) response: Response,
     @Body('detectTitle') detectTitle?: string
   ) {
     try {
-      return await this.scanner.createJob({
+      const job = await this.scanner.createJob({
         userId: user.userId,
         files,
         detectTitle: detectTitle === 'true' || detectTitle === '1'
       });
+      response.setHeader('Location', `/api/scanner/jobs/${job.jobId}`);
+      return job;
     } finally {
       const { promises: fs } = await import('node:fs');
       await Promise.all((files || []).map((file) => fs.rm(file.path, { force: true })));
@@ -73,8 +80,12 @@ export class ScannerController {
   }
 
   @Get()
-  list(@CurrentUser() user: RequestUser) {
-    return this.scanner.listJobs(user.userId);
+  list(
+    @CurrentUser() user: RequestUser,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('cursor') cursor?: string
+  ) {
+    return this.scanner.listJobs(user.userId, { limit, cursor });
   }
 
   @Get(':jobId')

@@ -22,6 +22,7 @@ import {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { ScannerProviderService } from './scanner-provider.service';
+import { scannerUserHash } from './scanner.constants';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
@@ -101,7 +102,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             leaseOwner: this.workerId,
             leaseExpiresAt,
             startedAt: now
-          }
+          },
+          $inc: { statusVersion: 1 }
         },
         { new: true, sort: { createdAt: 1 } }
       )
@@ -163,6 +165,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           { jobId: job.jobId, status: 'preparing', leaseOwner: this.workerId },
           {
             $set: { status: 'ready', pages, preparedAt: new Date() },
+            $inc: { statusVersion: 1 },
             $unset: { leaseOwner: 1, leaseExpiresAt: 1 }
           },
           { new: true }
@@ -553,7 +556,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     await this.jobs
       .updateOne(
         { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
-        { $set: { pages, providerRevision, modelRevision, engineProvenance } }
+        {
+          $set: { pages, providerRevision, modelRevision, engineProvenance },
+          $inc: { statusVersion: 1 }
+        }
       )
       .exec();
   }
@@ -800,6 +806,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             leaseOwner: null,
             ...values
           },
+          $inc: { statusVersion: 1 },
           $unset: { retryPageNumbers: 1 }
         },
         { new: true }
@@ -871,7 +878,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       await this.jobs
         .updateOne(
           { _id: job._id, sourceDeletedAt: { $exists: false } },
-          { $set: { sourceDeletedAt: now, pages } }
+          { $set: { sourceDeletedAt: now, pages }, $inc: { statusVersion: 1 } }
         )
         .exec();
     }
@@ -908,6 +915,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           { _id: job._id, resultsDeletedAt: { $exists: false } },
           {
             $set: { pages, resultsDeletedAt: now },
+            $inc: { statusVersion: 1 },
             $unset: {
               musicXmlBundle: 1,
               resultsZip: 1,
@@ -929,7 +937,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     await this.jobs
       .updateOne(
         { jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
-        { $set: { status, leaseExpiresAt: new Date(Date.now() + this.leaseMs()) } }
+        {
+          $set: { status, leaseExpiresAt: new Date(Date.now() + this.leaseMs()) },
+          $inc: { statusVersion: 1 }
+        }
       )
       .exec();
   }
@@ -961,11 +972,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private baseKey(job: ScannerJobDocument): string {
-    return `scanner/${job.userId}/${job.jobId}/results`;
+    return `scanner/${this.userHash(job.userId)}/${job.jobId}/results`;
   }
 
   private sourceBaseKey(job: ScannerJobDocument): string {
-    return `scanner/${job.userId}/${job.jobId}/pages`;
+    return `scanner/${this.userHash(job.userId)}/${job.jobId}/pages`;
+  }
+
+  private userHash(userId: string): string {
+    return scannerUserHash(userId, this.config.get<string>('SCANNER_OBJECT_KEY_SALT', ''));
   }
 
   private leaseMs(): number {

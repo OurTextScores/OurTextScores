@@ -193,7 +193,9 @@ test.describe("Scanner multi-user load", () => {
         },
         timeout: 120_000,
       });
-      expect(response.status(), `create Scanner job for ${email}`).toBe(201);
+      // 202 Accepted: the job is queued for asynchronous preparation.
+      expect(response.status(), `create Scanner job for ${email}`).toBe(202);
+      expect(response.headers()["location"]).toContain("/api/scanner/jobs/");
       const job = await response.json();
       await response.dispose();
       expect(job).toMatchObject({ status: "preparing", pageCount: PAGE_COUNT });

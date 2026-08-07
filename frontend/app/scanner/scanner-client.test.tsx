@@ -7,6 +7,24 @@ import {
 } from "@testing-library/react";
 import ScannerClient from "./scanner-client";
 
+const job = (jobId: string) => ({
+  jobId,
+  status: "succeeded",
+  statusVersion: 4,
+  originalFilename: "listed.pdf",
+  pageCount: 1,
+  includedPageCount: 1,
+  pages: [],
+  hasMusicXml: true,
+  hasPdf: true,
+  hasThumbnail: true,
+  hasZip: true,
+  canRetry: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  resultExpiresAt: new Date().toISOString(),
+});
+
 describe("ScannerClient", () => {
   beforeEach(() => {
     global.fetch = jest.fn(
@@ -34,6 +52,23 @@ describe("ScannerClient", () => {
         }
         return { ok: true, json: async () => [] } as Response;
       },
+    );
+  });
+
+  it.each([
+    ["paginated envelope", { items: [job("job-listed")], nextCursor: null }],
+    ["pre-pagination array", [job("job-listed")]],
+  ])("renders Recent scans from a %s", async (_label, body) => {
+    // The array shape keeps a rolling deploy working when the frontend ships
+    // ahead of the backend.
+    global.fetch = jest.fn(
+      async () => ({ ok: true, json: async () => body }) as Response,
+    );
+    render(<ScannerClient />);
+    expect(await screen.findByText("listed.pdf")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith(
+      "/api/proxy/scanner/jobs?limit=20",
+      expect.anything(),
     );
   });
 

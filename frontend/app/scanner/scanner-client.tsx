@@ -47,11 +47,14 @@ export default function ScannerClient() {
   const selectionError = uploadSelectionError(files);
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/proxy/scanner/jobs", {
+    const response = await fetch("/api/proxy/scanner/jobs?limit=20", {
       cache: "no-store",
     });
     if (!response.ok) throw new Error(await readError(response));
-    setJobs(await response.json());
+    const body = await response.json();
+    // Tolerate the pre-pagination array shape so a rolling deploy where the
+    // frontend leads the backend still renders Recent scans.
+    setJobs(Array.isArray(body) ? body : (body.items ?? []));
   }, []);
 
   useEffect(() => {

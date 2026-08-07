@@ -75,6 +75,14 @@ export class ScannerJob {
   @Prop({ required: true, enum: SCANNER_JOB_STATUSES, index: true })
   status!: ScannerJobStatus;
 
+  /**
+   * Design section 7.1: incremented on every externally visible change, so a
+   * client can tell a stale snapshot from a current one without diffing, and so
+   * a later SSE stream has a resume token (section 8.6 `Last-Event-ID`).
+   */
+  @Prop({ required: true, default: 1 })
+  statusVersion!: number;
+
   @Prop({ required: true, trim: true })
   originalFilename!: string;
 

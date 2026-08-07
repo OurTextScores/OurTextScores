@@ -27,7 +27,7 @@ import {
   ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
-import { SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
+import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
@@ -151,7 +151,7 @@ export class ScannerService implements OnModuleInit {
             : contentType === 'image/png'
               ? '.png'
               : '.jpg';
-        const objectKey = `scanner/${input.userId}/${jobId}/source-${String(index + 1).padStart(3, '0')}${extension}`;
+        const objectKey = `scanner/${this.userHash(input.userId)}/${jobId}/source-${String(index + 1).padStart(3, '0')}${extension}`;
         const checksumSha256 = await this.hashFile(file.path);
         const stored = await this.storage.putRawObject(
           objectKey,
@@ -213,10 +213,50 @@ export class ScannerService implements OnModuleInit {
     }
   }
 
-  async listJobs(userId: string): Promise<any[]> {
+  /**
+   * Design section 8.2. Newest first, with an opaque cursor that carries both
+   * `createdAt` and `jobId` so jobs created in the same millisecond cannot be
+   * skipped or repeated across pages.
+   */
+  async listJobs(
+    userId: string,
+    options: { limit?: number; cursor?: string } = {}
+  ): Promise<{ items: any[]; nextCursor: string | null }> {
     this.assertAvailable(userId);
-    const jobs = await this.jobs.find({ userId }).sort({ createdAt: -1 }).limit(50).exec();
-    return jobs.map((job) => this.present(job));
+    const limit = Math.min(Math.max(Math.floor(options.limit || 20), 1), 100);
+    const filter: Record<string, any> = { userId };
+    const after = this.decodeCursor(options.cursor);
+    if (after) {
+      filter.$or = [
+        { createdAt: { $lt: after.createdAt } },
+        { createdAt: after.createdAt, jobId: { $lt: after.jobId } }
+      ];
+    }
+    const jobs = await this.jobs
+      .find(filter)
+      .sort({ createdAt: -1, jobId: -1 })
+      // One extra row tells us whether another page exists without a count.
+      .limit(limit + 1)
+      .exec();
+    const page = jobs.slice(0, limit);
+    const last = page[page.length - 1];
+    return {
+      items: page.map((job) => this.present(job)),
+      nextCursor:
+        jobs.length > limit && last
+          ? Buffer.from(`${last.createdAt.toISOString()}|${last.jobId}`).toString('base64url')
+          : null
+    };
+  }
+
+  private decodeCursor(cursor?: string): { createdAt: Date; jobId: string } | undefined {
+    if (!cursor) return undefined;
+    const [timestamp, jobId] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+    const createdAt = new Date(timestamp);
+    if (!jobId || Number.isNaN(createdAt.getTime())) {
+      throw new BadRequestException('Invalid pagination cursor');
+    }
+    return { createdAt, jobId };
   }
 
   async getJob(userId: string, jobId: string): Promise<any> {
@@ -281,7 +321,7 @@ export class ScannerService implements OnModuleInit {
     const updated = await this.jobs
       .findOneAndUpdate(
         { _id: existing._id, userId, jobId, status: 'ready' },
-        { $set: { pages } },
+        { $set: { pages }, $inc: { statusVersion: 1 } },
         { new: true }
       )
       .exec();
@@ -309,6 +349,7 @@ export class ScannerService implements OnModuleInit {
         { _id: existing._id, userId, jobId, status: 'ready' },
         {
           $set: { status: 'queued' },
+          $inc: { statusVersion: 1 },
           $unset: { completedAt: 1, errorCode: 1, errorMessage: 1 }
         },
         { new: true }
@@ -329,7 +370,8 @@ export class ScannerService implements OnModuleInit {
             completedAt: new Date(),
             leaseExpiresAt: null,
             leaseOwner: null
-          }
+          },
+          $inc: { statusVersion: 1 }
         },
         { new: true }
       )
@@ -453,6 +495,7 @@ export class ScannerService implements OnModuleInit {
     return {
       jobId: job.jobId,
       status: job.status,
+      statusVersion: job.statusVersion || 1,
       originalFilename: job.originalFilename,
       pageCount: job.pageCount,
       includedPageCount: job.pages.filter((page) => page.included !== false).length,
@@ -708,6 +751,7 @@ export class ScannerService implements OnModuleInit {
             retryPageNumbers: selected,
             pages
           },
+          $inc: { statusVersion: 1 },
           $unset: {
             completedAt: 1,
             errorCode: 1,
@@ -722,6 +766,10 @@ export class ScannerService implements OnModuleInit {
       .exec();
     if (!job) throw new ConflictException('Scanner job changed; refresh and try again');
     return this.present(job);
+  }
+
+  private userHash(userId: string): string {
+    return scannerUserHash(userId, this.config.get<string>('SCANNER_OBJECT_KEY_SALT', ''));
   }
 
   private number(key: string, fallback: number): number {

@@ -26,6 +26,7 @@ async function proxyScanner(request: Request, segments: string[]) {
     "content-disposition",
     "cache-control",
     "x-content-type-options",
+    "location",
   ]) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);

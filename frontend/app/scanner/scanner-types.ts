@@ -12,6 +12,8 @@ export type ScannerStatus =
 export interface ScannerJob {
   jobId: string;
   status: ScannerStatus;
+  /** Increments on every visible change; see design section 7.1. */
+  statusVersion?: number;
   originalFilename: string;
   pageCount: number;
   includedPageCount: number;
@@ -21,12 +23,7 @@ export interface ScannerJob {
     rotationDegrees: 0 | 90 | 180 | 270;
     included: boolean;
     status:
-      | "pending"
-      | "running"
-      | "succeeded"
-      | "failed"
-      | "cancelled"
-      | "skipped";
+      "pending" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
     attempts: number;
     manualRetries: number;
     errorCode?: string;
