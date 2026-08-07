@@ -60,6 +60,8 @@ export interface ScannerPageResult {
   musicXml?: ScannerStorageLocator;
   pdf?: ScannerStorageLocator;
   providerRequestId?: string;
+  /** Wall-clock time of the provider call that produced this result (13.4). */
+  durationMs?: number;
   errorCode?: string;
   errorMessage?: string;
 }
@@ -115,6 +117,10 @@ export class ScannerJob {
   @Prop({ type: Date })
   preparedAt?: Date;
 
+  /** Set when the job enters the provider queue; starts the queue-wait clock. */
+  @Prop({ type: Date })
+  queuedAt?: Date;
+
   @Prop({ type: Object })
   musicXmlBundle?: ScannerStorageLocator;
 
@@ -135,6 +141,19 @@ export class ScannerJob {
 
   @Prop({ type: Object })
   engineProvenance?: ScannerEngineProvenance;
+
+  /**
+   * Design section 13.4 durations, kept on the job so the Phase 0 benchmark can
+   * be answered from the collection rather than by scraping logs.
+   */
+  @Prop({ type: Object, default: {} })
+  timings!: {
+    queueWaitMs?: number;
+    prepareMs?: number;
+    providerMs?: number;
+    renderMs?: number;
+    totalMs?: number;
+  };
 
   @Prop({ trim: true })
   errorCode?: string;

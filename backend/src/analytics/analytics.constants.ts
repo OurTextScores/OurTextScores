@@ -16,18 +16,16 @@ export const ANALYTICS_EVENT_NAMES = [
   'score_editor_document_load_failed',
   'score_editor_ai_request',
   'score_editor_patch_applied',
-  'score_editor_session_summary'
+  'score_editor_session_summary',
+  'scanner_job_created',
+  'scanner_job_finished'
 ] as const;
 
 export type AnalyticsEventName = (typeof ANALYTICS_EVENT_NAMES)[number];
 
 export const ANALYTICS_EVENT_NAME_SET = new Set<string>(ANALYTICS_EVENT_NAMES);
 
-export const ANALYTICS_SOURCE_APPS = [
-  'frontend',
-  'backend',
-  'score_editor_api'
-] as const;
+export const ANALYTICS_SOURCE_APPS = ['frontend', 'backend', 'score_editor_api'] as const;
 
 export type AnalyticsSourceApp = (typeof ANALYTICS_SOURCE_APPS)[number];
 

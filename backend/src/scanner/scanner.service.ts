@@ -28,6 +28,7 @@ import {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
+import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
@@ -41,6 +42,7 @@ export class ScannerService implements OnModuleInit {
     @InjectModel(ScannerJob.name)
     private readonly jobs: Model<ScannerJobDocument>,
     private readonly storage: StorageService,
+    private readonly telemetry: ScannerTelemetryService,
     private readonly config: ConfigService
   ) {}
 
@@ -202,6 +204,18 @@ export class ScannerService implements OnModuleInit {
           now + this.number('SCANNER_RESULT_RETENTION_DAYS', 30) * 86_400_000
         )
       });
+      this.telemetry.emit('job_created', {
+        jobId,
+        userHash: this.userHash(input.userId),
+        status: 'preparing',
+        pageCount,
+        inputBytes: totalBytes
+      });
+      await this.telemetry.trackJobCreated({
+        userId: input.userId,
+        pageCount,
+        inputContentType: String(job.inputContentType)
+      });
       return this.present(job);
     } catch (error) {
       await Promise.all(
@@ -348,7 +362,9 @@ export class ScannerService implements OnModuleInit {
       .findOneAndUpdate(
         { _id: existing._id, userId, jobId, status: 'ready' },
         {
-          $set: { status: 'queued' },
+          // `queuedAt` starts the queue-wait clock. `createdAt` would also count
+          // the time the user spent on the review screen, which is not waiting.
+          $set: { status: 'queued', queuedAt: new Date() },
           $inc: { statusVersion: 1 },
           $unset: { completedAt: 1, errorCode: 1, errorMessage: 1 }
         },
@@ -376,7 +392,15 @@ export class ScannerService implements OnModuleInit {
         { new: true }
       )
       .exec();
-    if (job) return this.present(job);
+    if (job) {
+      this.telemetry.emit('job_cancelled', {
+        jobId,
+        userHash: this.userHash(userId),
+        status: 'cancelled',
+        pageCount: job.pageCount
+      });
+      return this.present(job);
+    }
     const existing = await this.ownedJob(userId, jobId);
     throw new ConflictException(`Job cannot be cancelled from status ${existing.status}`);
   }
@@ -459,6 +483,99 @@ export class ScannerService implements OnModuleInit {
       contentType: locator.contentType,
       filename
     };
+  }
+
+  /**
+   * Design section 13.4 metrics, and the numbers the section 13.4 alerts would
+   * fire on. Aggregates only: no filenames, no score content, no per-user
+   * identity, so operational access stays distinct from content access (12.1).
+   */
+  async metrics(windowHours = 24): Promise<any> {
+    const hours = Math.min(Math.max(Math.floor(windowHours) || 24, 1), 24 * 30);
+    const since = new Date(Date.now() - hours * 3_600_000);
+    const now = Date.now();
+
+    const [byStatus, oldestQueued, recent] = await Promise.all([
+      this.jobs
+        .aggregate([
+          { $match: { createdAt: { $gte: since } } },
+          { $group: { _id: '$status', jobs: { $sum: 1 }, pages: { $sum: '$pageCount' } } }
+        ])
+        .exec(),
+      this.jobs.find({ status: 'queued' }).sort({ queuedAt: 1 }).limit(1).exec(),
+      this.jobs
+        .find({ createdAt: { $gte: since } })
+        .select({ pages: 1, timings: 1 })
+        .lean()
+        .exec()
+    ]);
+
+    const pageDurations: number[] = [];
+    const failuresByCode: Record<string, number> = {};
+    let pagesSucceeded = 0;
+    let pagesFailed = 0;
+    let pagesRendered = 0;
+    let providerCalls = 0;
+    let providerMsTotal = 0;
+
+    for (const job of recent as any[]) {
+      providerMsTotal += Number(job.timings?.providerMs || 0);
+      for (const page of job.pages || []) {
+        if (page.status === 'succeeded') {
+          pagesSucceeded += 1;
+          if (page.pdf) pagesRendered += 1;
+          if (Number.isFinite(page.durationMs)) pageDurations.push(page.durationMs);
+        } else if (page.status === 'failed') {
+          pagesFailed += 1;
+          const code = String(page.errorCode || 'unknown');
+          failuresByCode[code] = (failuresByCode[code] || 0) + 1;
+        }
+        providerCalls += Number(page.providerAttempts || page.attempts || 0);
+      }
+    }
+
+    const queueDepth = byStatus
+      .filter((row: any) => ['queued', 'running', 'rendering'].includes(row._id))
+      .reduce((sum: number, row: any) => sum + row.jobs, 0);
+
+    return {
+      windowHours: hours,
+      generatedAt: new Date().toISOString(),
+      jobs: Object.fromEntries(byStatus.map((row: any) => [row._id, row.jobs])),
+      pagesByStatus: { succeeded: pagesSucceeded, failed: pagesFailed },
+      queue: {
+        depth: queueDepth,
+        oldestQueuedAgeMs: oldestQueued[0]?.queuedAt
+          ? now - oldestQueued[0].queuedAt.getTime()
+          : null
+      },
+      pageLatencyMs: {
+        samples: pageDurations.length,
+        p50: this.percentile(pageDurations, 0.5),
+        p95: this.percentile(pageDurations, 0.95),
+        max: pageDurations.length ? Math.max(...pageDurations) : null
+      },
+      failureRate:
+        pagesSucceeded + pagesFailed > 0
+          ? Number((pagesFailed / (pagesSucceeded + pagesFailed)).toFixed(4))
+          : 0,
+      failuresByCode,
+      renderSuccessRate:
+        pagesSucceeded > 0 ? Number((pagesRendered / pagesSucceeded).toFixed(4)) : null,
+      provider: {
+        calls: providerCalls,
+        // Approximate: wall-clock time OTS spent inside provider calls, which
+        // is an upper bound on billable GPU seconds, not a billing figure.
+        approximateSeconds: Math.round(providerMsTotal / 1000)
+      }
+    };
+  }
+
+  private percentile(values: number[], fraction: number): number | null {
+    if (values.length === 0) return null;
+    const sorted = [...values].sort((left, right) => left - right);
+    const index = Math.min(sorted.length - 1, Math.floor(fraction * sorted.length));
+    return sorted[index];
   }
 
   private async assertQuota(userId: string, pages: number): Promise<void> {

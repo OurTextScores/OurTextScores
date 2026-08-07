@@ -22,6 +22,7 @@ import { diskStorage } from 'multer';
 import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
+import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequestUser } from '../auth/types/auth-user';
@@ -86,6 +87,15 @@ export class ScannerController {
     @Query('cursor') cursor?: string
   ) {
     return this.scanner.listJobs(user.userId, { limit, cursor });
+  }
+
+  // Operational aggregates only, and admin-only: section 12.1 keeps admin
+  // operational access distinct from access to score content. Declared before
+  // ':jobId' so the literal path is not captured as a job id.
+  @Get('metrics')
+  @UseGuards(AdminRequiredGuard)
+  metrics(@Query('windowHours', new ParseIntPipe({ optional: true })) windowHours?: number) {
+    return this.scanner.metrics(windowHours);
   }
 
   @Get(':jobId')

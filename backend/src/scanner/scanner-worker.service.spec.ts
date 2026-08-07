@@ -16,9 +16,22 @@ describe('ScannerWorkerService', () => {
   const provider = {
     scanPage: jest.fn()
   } as any;
+  const telemetry = {
+    emit: jest.fn(),
+    userHash: jest.fn(() => 'user-hash'),
+    trackJobFinished: jest.fn().mockResolvedValue(undefined)
+  } as any;
 
   function service() {
-    return new ScannerWorkerService({} as any, {} as any, provider, {} as any, {} as any, config);
+    return new ScannerWorkerService(
+      {} as any,
+      {} as any,
+      provider,
+      {} as any,
+      {} as any,
+      telemetry,
+      config
+    );
   }
 
   beforeEach(() => {
@@ -106,6 +119,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       {} as any,
+      telemetry,
       config
     ) as any;
 
@@ -140,6 +154,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       {} as any,
+      telemetry,
       config
     ) as any;
     const workerId = scannerWorker.workerId;
@@ -229,6 +244,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       {} as any,
+      telemetry,
       config
     ) as any;
     const workspace = await fs.mkdtemp(join(tmpdir(), 'scanner-worker-test-'));

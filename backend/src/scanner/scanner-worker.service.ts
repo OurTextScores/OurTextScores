@@ -22,6 +22,7 @@ import {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { ScannerProviderService } from './scanner-provider.service';
+import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { scannerUserHash } from './scanner.constants';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 
@@ -44,6 +45,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly provider: ScannerProviderService,
     private readonly renderer: DerivativePipelineService,
     private readonly notifications: NotificationsService,
+    private readonly telemetry: ScannerTelemetryService,
     private readonly config: ConfigService
   ) {}
 
@@ -68,6 +70,19 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
       await this.deliverPendingTerminalNotification();
       const job = await this.claim();
+      if (job) {
+        this.telemetry.emit('job_claimed', {
+          jobId: job.jobId,
+          userHash: this.telemetry.userHash(job.userId),
+          workerId: this.workerId,
+          status: job.status,
+          generation: job.generation,
+          pageCount: job.pageCount,
+          // A claim of an already-processing job means the previous lease lapsed.
+          leaseReclaimed: PROCESSING_STATUSES.includes(job.status) || undefined,
+          queueWaitMs: job.queuedAt ? Date.now() - job.queuedAt.getTime() : undefined
+        });
+      }
       if (job?.status === 'preparing') await this.prepare(job);
       else if (job) await this.process(job);
     } catch (error) {
@@ -111,6 +126,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async prepare(job: ScannerJobDocument): Promise<void> {
+    const prepareStartedAt = Date.now();
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-prepare-'));
     const storedLocators: ScannerStorageLocator[] = [];
     try {
@@ -164,7 +180,12 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         .findOneAndUpdate(
           { jobId: job.jobId, status: 'preparing', leaseOwner: this.workerId },
           {
-            $set: { status: 'ready', pages, preparedAt: new Date() },
+            $set: {
+              status: 'ready',
+              pages,
+              preparedAt: new Date(),
+              'timings.prepareMs': Date.now() - prepareStartedAt
+            },
             $inc: { statusVersion: 1 },
             $unset: { leaseOwner: 1, leaseExpiresAt: 1 }
           },
@@ -177,6 +198,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             this.storage.deleteObject(locator.bucket, locator.objectKey)
           )
         );
+      } else {
+        this.telemetry.emit('job_prepared', {
+          jobId: job.jobId,
+          userHash: this.telemetry.userHash(job.userId),
+          workerId: this.workerId,
+          status: 'ready',
+          pageCount: pages.length,
+          prepareMs: Date.now() - prepareStartedAt
+        });
       }
     } catch (error) {
       this.logger.error(`Scanner preparation ${job.jobId} failed: ${this.message(error)}`);
@@ -197,6 +227,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async process(job: ScannerJobDocument): Promise<void> {
+    const jobStartedAt = Date.now();
+    const userHash = this.telemetry.userHash(job.userId);
+    let providerMsTotal = 0;
+    let renderMsTotal = 0;
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-worker-'));
     try {
       if (this.providerDisabledReason) {
@@ -215,6 +249,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       let engineProvenance = job.engineProvenance;
       let previewThumbnail: Buffer | undefined;
 
+      const queueWaitMs = job.queuedAt ? jobStartedAt - job.queuedAt.getTime() : undefined;
       await this.updateLease(job.jobId, 'running');
       for (let index = 0; index < pageFiles.length; index += 1) {
         const pageFile = pageFiles[index];
@@ -287,6 +322,17 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           engineProvenance
         );
 
+        this.telemetry.emit('page_started', {
+          jobId: job.jobId,
+          userHash,
+          pageNumber,
+          ordinal: prior?.ordinal || pageNumber,
+          generation: job.generation,
+          manualRetries,
+          inputBytes: image.length,
+          providerKind: this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal')
+        });
+        const pageStartedAt = Date.now();
         try {
           const scanned = await this.scanWithRetry({
             image,
@@ -306,7 +352,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             'application/vnd.recordare.musicxml+xml'
           );
 
+          const providerMs = Date.now() - pageStartedAt;
+          providerMsTotal += providerMs;
+
           let pdf: ScannerStorageLocator | undefined;
+          const renderStartedAt = Date.now();
           try {
             await this.updateLease(job.jobId, 'rendering');
             const rendered = await this.renderer.renderMusicXmlPdf(scanned.result.musicXml);
@@ -320,7 +370,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             this.logger.warn(
               `PDF rendering failed for ${job.jobId} page ${pageNumber}: ${this.message(error)}`
             );
+            this.telemetry.emit('page_render_failed', {
+              jobId: job.jobId,
+              userHash,
+              pageNumber,
+              errorCode: 'render_failed',
+              retryable: true
+            });
           }
+          renderMsTotal += Date.now() - renderStartedAt;
           if (await this.isCancelled(job.jobId)) {
             await this.storage.deleteObject(musicXml.bucket, musicXml.objectKey);
             if (pdf) await this.storage.deleteObject(pdf.bucket, pdf.objectKey);
@@ -340,9 +398,26 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             manualRetries,
             idempotencyKey,
             providerRequestId: scanned.result.requestId,
+            durationMs: providerMs,
             ...assets,
             musicXml,
             pdf
+          });
+          this.telemetry.emit('page_succeeded', {
+            jobId: job.jobId,
+            userHash,
+            pageNumber,
+            ordinal: prior?.ordinal || pageNumber,
+            attempt: scanned.attempts,
+            providerAttempts: (prior?.providerAttempts || 0) + scanned.attempts,
+            providerRequestId: scanned.result.requestId,
+            providerRevision: scanned.result.providerRevision,
+            modelRevision: scanned.result.modelRevision,
+            executionProvider: scanned.result.provenance?.executionProvider,
+            providerMs,
+            renderMs: Date.now() - renderStartedAt,
+            inputBytes: image.length,
+            outputBytes: scanned.result.musicXml.length
           });
         } catch (error) {
           const providerError = this.asProviderError(error);
@@ -354,6 +429,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           ) {
             this.providerDisabledReason = providerError.message;
             this.logger.error(`Disabling scanner provider: ${providerError.message}`);
+            this.telemetry.emit('provider_disabled', {
+              jobId: job.jobId,
+              userHash,
+              pageNumber,
+              errorCode: providerError.code,
+              retryable: false
+            });
           }
           results.push({
             pageNumber,
@@ -367,9 +449,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               ((providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1),
             manualRetries,
             idempotencyKey,
+            durationMs: Date.now() - pageStartedAt,
             ...assets,
             errorCode: providerError.code,
             errorMessage: providerError.message
+          });
+          providerMsTotal += Date.now() - pageStartedAt;
+          this.telemetry.emit('page_failed', {
+            jobId: job.jobId,
+            userHash,
+            pageNumber,
+            ordinal: prior?.ordinal || pageNumber,
+            attempt: (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1,
+            providerMs: Date.now() - pageStartedAt,
+            inputBytes: image.length,
+            errorCode: providerError.code,
+            retryable: providerError.retryable
           });
         }
         await this.persistPageProgress(
@@ -393,7 +488,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           errorMessage: firstFailure?.errorMessage || 'No pages could be scanned',
           providerRevision,
           modelRevision,
-          engineProvenance
+          engineProvenance,
+          timings: {
+            queueWaitMs,
+            providerMs: providerMsTotal,
+            renderMs: renderMsTotal,
+            totalMs: Date.now() - jobStartedAt
+          }
         });
         return;
       }
@@ -418,6 +519,12 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         providerRevision,
         modelRevision,
         engineProvenance,
+        timings: {
+          queueWaitMs,
+          providerMs: providerMsTotal,
+          renderMs: renderMsTotal,
+          totalMs: Date.now() - jobStartedAt
+        },
         ...(!previewPdf
           ? {
               errorCode: 'preview_render_failed',
@@ -812,7 +919,38 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         { new: true }
       )
       .exec();
-    if (updated) await this.notifyTerminal(updated);
+    if (!updated) return;
+    const succeededPages = pages.filter((page) => page.status === 'succeeded').length;
+    const failedPages = pages.filter((page) => page.status === 'failed').length;
+    this.telemetry.emit('job_finished', {
+      jobId: job.jobId,
+      userHash: this.telemetry.userHash(job.userId),
+      workerId: this.workerId,
+      status,
+      generation: job.generation,
+      pageCount: job.pageCount,
+      includedPageCount: pages.filter((page) => page.included !== false).length,
+      succeededPages,
+      failedPages,
+      providerRevision: values.providerRevision,
+      modelRevision: values.modelRevision,
+      queueWaitMs: values.timings?.queueWaitMs,
+      providerMs: values.timings?.providerMs,
+      renderMs: values.timings?.renderMs,
+      totalMs: values.timings?.totalMs,
+      errorCode: values.errorCode
+    });
+    await this.telemetry.trackJobFinished({
+      userId: job.userId,
+      status,
+      pageCount: job.pageCount,
+      succeededPages,
+      failedPages,
+      providerRevision: values.providerRevision,
+      modelRevision: values.modelRevision,
+      totalMs: values.timings?.totalMs
+    });
+    await this.notifyTerminal(updated);
   }
 
   private async deliverPendingTerminalNotification(): Promise<void> {
