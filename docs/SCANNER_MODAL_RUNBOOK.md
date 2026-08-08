@@ -44,7 +44,18 @@ first page of a cold job as a cold sample rather than a warm one.
   hard stop, not the credit.
 - A checkout of this branch. `modal_app.py` copies `../homr-provider/` into the
   image via `add_local_dir`, so **deploy from the repo**, not from a copied file.
-- Python with the Modal CLI: `python -m pip install -r services/homr-modal/requirements.txt`
+- The Modal CLI. It is a standalone tool, and most distributions now ship a
+  PEP 668 "externally managed" Python that refuses `pip install` into the system
+  interpreter, so install it in its own environment:
+
+  ```bash
+  pipx install 'modal>=1.2,<2'     # or: uv tool install 'modal>=1.2,<2'
+  modal --version                  # verified against 1.5.3
+  ```
+
+  `services/homr-modal/requirements.txt` carries the same constraint if you
+  prefer a venv (`python3 -m venv .venv && .venv/bin/pip install -r ...`).
+  Note `python3`, not `python` — many systems no longer provide the latter.
 - Shell access to the OTS VPS.
 
 > **VPS reality check.** `/opt/ourtextscores` is not a git checkout, the Compose
@@ -99,10 +110,15 @@ Modal rejects unauthenticated traffic before the app sees it.
 
 ```bash
 modal workspace proxy-tokens create
+modal workspace proxy-tokens list      # confirm it exists
 ```
 
-> Modal's CLI surface moves; if that subcommand has been renamed, check
-> `modal --help` and the proxy-token docs rather than guessing.
+If your workspace uses environments, authorise the token for the one you
+deployed into:
+
+```bash
+modal workspace proxy-tokens allow <token-id> --environment <name>
+```
 
 Save the token id and secret. They go **only** into the scanner worker's
 environment — never the frontend, never the browser, never a committed file.
@@ -151,10 +167,20 @@ build still reaches ready.
 <details>
 <summary>Manual equivalent, if you would rather curl it</summary>
 
+`modal curl` signs requests with your local Modal credentials, so you do not
+have to assemble proxy headers by hand — handy for poking at the endpoint,
+though it does not exercise the proxy token the worker will actually use:
+
 ```bash
 export MODAL_URL="https://<your-deployment>.modal.run"
-export AUTH=(-H "Modal-Key: <token id>" -H "Modal-Secret: <token secret>")
+modal curl "$MODAL_URL/readyz"
+modal curl "$MODAL_URL/v1/capabilities"
+```
 
+With the proxy token, exactly as the worker sends it:
+
+```bash
+AUTH=(-H "Modal-Key: <token id>" -H "Modal-Secret: <token secret>")
 curl -sS "${AUTH[@]}" "$MODAL_URL/healthz"    # liveness, answers immediately
 curl -sS "${AUTH[@]}" "$MODAL_URL/readyz"     # 503 until warm-up succeeded
 curl -sS "${AUTH[@]}" "$MODAL_URL/v1/capabilities" | python3 -m json.tool
@@ -311,7 +337,12 @@ curl -sS -H "Authorization: Bearer <admin token>" \
 Design §10.3 requires proving the cap works *before* trusting it.
 
 1. With the tiny staging budget from step 2 still in place, run scans until
-   Modal reports the budget exhausted.
+   Modal reports the budget exhausted. Track spend as you go:
+
+   ```bash
+   modal billing summary
+   modal billing report
+   ```
 2. Confirm Modal actually refuses further compute rather than merely warning.
 3. Confirm OTS degrades honestly: queued jobs stay durable, and the user is told
    capacity is exhausted rather than seeing a hard failure.
@@ -376,7 +407,7 @@ In descending order of bluntness:
 |---|---|
 | Bad scans, provider healthy | `SCANNER_ENABLED=false` in `.env`, restart backend and worker |
 | Cost concern | `SCANNER_PROVIDER_BUDGET_EXHAUSTED=true`, restart worker. Queued jobs stay durable |
-| Bad provider deploy | `modal app rollback` (check `modal app --help`), or redeploy the previous commit |
+| Bad provider deploy | `modal app history` then `modal app rollback`, or redeploy the previous commit |
 | Suspected credential exposure | Revoke the proxy token in Modal, rotate, update `.env`, restart worker |
 | Stop everything | `docker compose --profile scanner stop scanner_worker` — the API stays up, jobs stay queued |
 

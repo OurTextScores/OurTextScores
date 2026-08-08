@@ -24,11 +24,14 @@ The condensed version:
 1. Create a Modal workspace and set its hard monthly budget in the Modal
    dashboard. Test the budget-exhaustion behavior with a small staging budget
    before setting the pilot budget to $30.
-2. Install and authenticate the CLI: `python -m pip install -r requirements.txt`
-   and `modal setup`.
+2. Install and authenticate the CLI. It is a standalone tool and most systems
+   now ship a PEP 668 "externally managed" Python, so install it in its own
+   environment: `pipx install 'modal>=1.2,<2'` (or `uv tool install`), then
+   `modal setup`. Verified against CLI 1.5.3.
 3. Deploy with `modal deploy modal_app.py`.
-4. Create a proxy token with `modal workspace proxy-tokens create`. If RBAC is
-   enabled, authorize it for the deployment environment.
+4. Create a proxy token with `modal workspace proxy-tokens create`. If your
+   workspace uses environments, authorise it with
+   `modal workspace proxy-tokens allow <token-id> --environment <name>`.
 5. Configure the backend with the emitted URL plus
    `SCANNER_MODAL_TOKEN_ID`/`SCANNER_MODAL_TOKEN_SECRET`. Do not expose these
    credentials to the browser.
