@@ -1,0 +1,58 @@
+# Point a LOCAL OTS stack at a real Modal provider deployment.
+#
+# This is the pre-flight rehearsal for the VPS: everything except where OTS runs
+# is identical to production, so a page really does go to the L4 and really is
+# checked against the production provenance expectations.
+#
+#   npm run scanner:modal:check    # credentials, readiness, provenance
+#   npm run scanner:modal:up
+#   npm run scanner:modal:logs
+#   npm run scanner:modal:down
+#
+# Requires in .env (or the environment):
+#   SCANNER_PROVIDER_URL, SCANNER_MODAL_TOKEN_ID, SCANNER_MODAL_TOKEN_SECRET
+#
+# This bills real GPU time. Do it while the small staging budget from runbook
+# step 2 is still in place — the drill and the rehearsal are the same exercise.
+services:
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_SCANNER_ENABLED: "true"
+    environment:
+      SCANNER_ENABLED: "true"
+      NEXT_PUBLIC_SCANNER_ENABLED: "true"
+
+  backend:
+    environment:
+      SCANNER_ENABLED: "true"
+      # Local rehearsal only. On the VPS this is a real allowlist of user ids.
+      SCANNER_BETA_USER_IDS: "*"
+      # The API container never leases jobs or holds provider credentials.
+      SCANNER_WORKER_ENABLED: "false"
+      SCANNER_PROVIDER_KIND: modal
+      SCANNER_PROVIDER_URL: ${SCANNER_PROVIDER_URL:?set SCANNER_PROVIDER_URL to the deployed Modal URL}
+      SCANNER_EXPECTED_HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465
+      SCANNER_EXPECTED_PROVIDER_REVISION: ots-homr-modal-v1
+      SCANNER_EXPECTED_EXECUTION_PROVIDER: CUDAExecutionProvider
+
+  scanner_worker:
+    depends_on:
+      minio:
+        condition: service_started
+      mongo:
+        condition: service_started
+    environment:
+      SCANNER_ENABLED: "true"
+      SCANNER_PROVIDER_KIND: modal
+      SCANNER_PROVIDER_URL: ${SCANNER_PROVIDER_URL:?set SCANNER_PROVIDER_URL to the deployed Modal URL}
+      SCANNER_MODAL_TOKEN_ID: ${SCANNER_MODAL_TOKEN_ID:?set SCANNER_MODAL_TOKEN_ID}
+      SCANNER_MODAL_TOKEN_SECRET: ${SCANNER_MODAL_TOKEN_SECRET:?set SCANNER_MODAL_TOKEN_SECRET}
+      # Production values, not the local CPU ones: the ladder is
+      # 150s ready wait + 400s hard timeout < 600s here < 660s Modal timeout.
+      SCANNER_PROVIDER_TIMEOUT_MS: ${SCANNER_PROVIDER_TIMEOUT_MS:-600000}
+      SCANNER_EXPECTED_HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465
+      SCANNER_EXPECTED_PROVIDER_REVISION: ots-homr-modal-v1
+      # Fail closed: if the provider ever reports CPU, the worker disables it
+      # rather than quietly serving slow, differently-produced results.
+      SCANNER_EXPECTED_EXECUTION_PROVIDER: CUDAExecutionProvider

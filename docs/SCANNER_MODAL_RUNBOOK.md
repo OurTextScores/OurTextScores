@@ -49,7 +49,7 @@ first page of a cold job as a cold sample rather than a warm one.
 
 > **VPS reality check.** `/opt/ourtextscores` is not a git checkout, the Compose
 > files there are unmanaged, and `deploy-backend.yml` only deploys the backend
-> image. Every Compose and `.env` change in steps 6–7 is a **manual** edit on the
+> image. Every Compose and `.env` change in steps 7–8 is a **manual** edit on the
 > VPS and will not arrive via CI.
 
 ---
@@ -63,11 +63,11 @@ a misconfiguration and a ~$300 compute bill.
    unrelated apps in the same workspace can consume the same budget.
 2. In the Modal dashboard, set the workspace budget to a **deliberately tiny
    staging value** — a few cents. Do not set $30 yet.
-3. Keep that tiny budget through steps 3–5, then run the exhaustion drill in
-   step 9 to prove the cap actually stops compute.
+3. Keep that tiny budget through the local rehearsal in step 6, then run the
+   exhaustion drill in step 10 to prove the cap actually stops compute.
 4. Only after the drill passes, raise it to **$30/month**.
 
-Record the budget page URL; you will need it again in step 9.
+Record the budget page URL; you will need it again in step 10.
 
 ---
 
@@ -112,58 +112,102 @@ Use a Scanner-specific token so revoking it cannot affect Transcoda (§12.2).
 
 ## 5. Verify the provider, then pin the models
 
-Call the provider directly with the proxy headers:
+Put the endpoint and token in your **local** `.env` first:
+
+```bash
+SCANNER_PROVIDER_URL=https://<your-deployment>.modal.run
+SCANNER_MODAL_TOKEN_ID=<token id>
+SCANNER_MODAL_TOKEN_SECRET=<token secret>
+```
+
+Then run the pre-flight check, which sends exactly the headers the scanner
+worker will send — so a pass here means the worker will authenticate too:
+
+```bash
+npm run scanner:modal:check
+```
+
+It verifies proxy auth, waits for readiness, compares the provider's reported
+HOMR commit / service revision / execution provider against what OTS will
+require (these are fail-closed at runtime, so a mismatch would disable the
+provider mid-scan), checks the AGPL disclosure fields, and prints the model
+hashes as ready-to-paste export lines. Exit code is non-zero if anything failed.
+
+Pin the hashes it prints and redeploy, so a silently changed weight file fails
+readiness instead of quietly altering results:
+
+```bash
+export HOMR_EXPECTED_SEGMENTATION_SHA256=<printed value>
+export HOMR_EXPECTED_ENCODER_SHA256=<printed value>
+export HOMR_EXPECTED_DECODER_SHA256=<printed value>
+cd services/homr-modal && modal deploy modal_app.py
+```
+
+They are read at deploy time and baked into the image environment, because Modal
+re-imports the module inside the container where your shell's variables do not
+exist. Re-run `npm run scanner:modal:check` afterwards to confirm the pinned
+build still reaches ready.
+
+<details>
+<summary>Manual equivalent, if you would rather curl it</summary>
 
 ```bash
 export MODAL_URL="https://<your-deployment>.modal.run"
-export MODAL_KEY="<token id>"
-export MODAL_SECRET="<token secret>"
+export AUTH=(-H "Modal-Key: <token id>" -H "Modal-Secret: <token secret>")
 
-# Liveness — answers immediately, even while models load.
-curl -sS -H "Modal-Key: $MODAL_KEY" -H "Modal-Secret: $MODAL_SECRET" \
-  "$MODAL_URL/healthz"
-
-# Readiness — 503 until the warm-up inference has actually succeeded.
-curl -sS -o /dev/null -w '%{http_code}\n' \
-  -H "Modal-Key: $MODAL_KEY" -H "Modal-Secret: $MODAL_SECRET" \
-  "$MODAL_URL/readyz"
+curl -sS "${AUTH[@]}" "$MODAL_URL/healthz"    # liveness, answers immediately
+curl -sS "${AUTH[@]}" "$MODAL_URL/readyz"     # 503 until warm-up succeeded
+curl -sS "${AUTH[@]}" "$MODAL_URL/v1/capabilities" | python3 -m json.tool
 ```
 
-Poll `/readyz` until it returns 200. Then check the body:
+`/readyz` should report `"ready": true`, `"executionProvider":
+"CUDAExecutionProvider"`, and an empty `"degradedReason"` — anything else means
+warm-up ran without exercising the full pipeline. **Never gate anything on
+`/healthz`;** it is liveness only, by design.
 
-- `"ready": true`
-- `"executionProvider": "CUDAExecutionProvider"`
-- `"availableExecutionProviders"` contains `CUDAExecutionProvider`
-- `"degradedReason": ""` — anything else means warm-up ran but did not exercise
-  the full pipeline; investigate before benchmarking.
-
-**Never gate anything on `/healthz`.** It is liveness only, by design.
-
-Now capture the model identities:
-
-```bash
-curl -sS -H "Modal-Key: $MODAL_KEY" -H "Modal-Secret: $MODAL_SECRET" \
-  "$MODAL_URL/v1/capabilities" | python3 -m json.tool
-```
-
-Take `segmentationModelSha256`, `encoderModelSha256`, and `decoderModelSha256`,
-then redeploy with them pinned so a silently changed weight file fails readiness
-instead of quietly altering results:
-
-```bash
-export HOMR_EXPECTED_SEGMENTATION_SHA256=<segmentationModelSha256>
-export HOMR_EXPECTED_ENCODER_SHA256=<encoderModelSha256>
-export HOMR_EXPECTED_DECODER_SHA256=<decoderModelSha256>
-modal deploy modal_app.py
-```
-
-These are read at deploy time and baked into the image environment, because
-Modal re-imports the module inside the container where your shell's variables do
-not exist. Confirm `/readyz` still returns 200 after the redeploy.
+</details>
 
 ---
 
-## 6. Wire OurTextScores
+## 6. Rehearse from local, before touching the VPS
+
+Point a local OTS stack at the real Modal deployment. Everything except where
+OTS runs is identical to production — same provider, same fail-closed provenance
+checks, same timeout ladder — so this catches configuration and provenance
+problems while the blast radius is your laptop.
+
+```bash
+npm run scanner:modal:up      # builds and starts, scanner profile, no CPU provider
+npm run scanner:modal:logs    # follow the worker
+```
+
+The override reads `SCANNER_PROVIDER_URL`, `SCANNER_MODAL_TOKEN_ID`, and
+`SCANNER_MODAL_TOKEN_SECRET` from your `.env` and refuses to start if any is
+missing, rather than bringing up a stack that cannot scan. It enables Scanner
+for all local users (`SCANNER_BETA_USER_IDS: "*"`) — that is a local-only
+convenience; the VPS uses a real allowlist.
+
+Sign in locally, upload a real score page at http://localhost:3000/scanner, and
+work through §9's verification against this stack. When you are done:
+
+```bash
+npm run scanner:modal:down
+```
+
+**This bills real GPU time.** Do it while the small staging budget from step 2 is
+still in place — the rehearsal and the budget drill in §9 are the same exercise,
+and finding out here that the cap works is exactly the point.
+
+Only move on once a page has round-tripped end to end with
+`executionProvider: CUDAExecutionProvider` in the logs.
+
+---
+
+## 7. Wire the VPS
+
+Only once step 6 has round-tripped a page. These are the same values you proved
+locally, plus the two that differ in production: a real beta allowlist instead of
+`*`, and an object-key salt.
 
 On the VPS, edit `/opt/ourtextscores/.env`:
 
@@ -211,7 +255,7 @@ one, change all of them (the provider-side values live in
 
 ---
 
-## 7. Start the worker
+## 8. Start the worker
 
 The worker is profile-gated and does not run by default:
 
@@ -226,7 +270,7 @@ jobs and holds the Modal credentials.
 
 ---
 
-## 8. End-to-end verification
+## 9. End-to-end verification
 
 Sign in as an allowlisted user, go to `/scanner`, upload one real score page,
 review, and start.
@@ -262,7 +306,7 @@ curl -sS -H "Authorization: Bearer <admin token>" \
 
 ---
 
-## 9. Budget-exhaustion drill
+## 10. Budget-exhaustion drill
 
 Design §10.3 requires proving the cap works *before* trusting it.
 
@@ -285,7 +329,7 @@ Design §10.3 requires proving the cap works *before* trusting it.
 
 ---
 
-## 10. Phase 0 benchmark
+## 11. Phase 0 benchmark
 
 The §13.4 timings are stored on the job documents, so the §11.4 gate is a Mongo
 aggregate rather than a log scrape:
@@ -324,7 +368,7 @@ design doc's §11 section.
 
 ---
 
-## 11. Rollback
+## 12. Rollback
 
 In descending order of bluntness:
 
@@ -341,7 +385,7 @@ the above.
 
 ---
 
-## 12. Known gaps
+## 13. Known gaps
 
 - **Cold-start latency** — absorbed rather than eliminated; see §0. The first
   page of an idle-period job pays warm-up on top of inference.
