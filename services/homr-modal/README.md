@@ -17,6 +17,10 @@ notifications remain in the OurTextScores backend.
 
 ## Deploy
 
+Full operational runbook, including the OTS-side wiring, the budget drill, and
+the Phase 0 benchmark queries: [`docs/SCANNER_MODAL_RUNBOOK.md`](../../docs/SCANNER_MODAL_RUNBOOK.md).
+The condensed version:
+
 1. Create a Modal workspace and set its hard monthly budget in the Modal
    dashboard. Test the budget-exhaustion behavior with a small staging budget
    before setting the pilot budget to $30.
