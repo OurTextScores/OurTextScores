@@ -61,8 +61,10 @@ services:
       HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465
       HOMR_SERVICE_REVISION: ots-homr-cpu-v1
       HOMR_PROVIDER_TOKEN: ${HOMR_LOCAL_PROVIDER_TOKEN:-ots-local-development}
-      # Must stay below the worker's SCANNER_PROVIDER_TIMEOUT_MS above so the
-      # provider aborts first and never orphans a run the caller has abandoned.
+      # Ready wait + process timeout must stay below the worker's
+      # SCANNER_PROVIDER_TIMEOUT_MS above, so the provider aborts first and
+      # never orphans a run the caller has abandoned.
+      HOMR_READY_WAIT_SECONDS: ${HOMR_LOCAL_READY_WAIT_SECONDS:-300}
       HOMR_PROCESS_TIMEOUT_SECONDS: ${HOMR_LOCAL_PROCESS_TIMEOUT_SECONDS:-1500}
       HOMR_IDEMPOTENCY_CACHE_SIZE: ${HOMR_LOCAL_IDEMPOTENCY_CACHE_SIZE:-16}
     ports:

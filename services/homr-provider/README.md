@@ -47,14 +47,22 @@ but the transformer is not warmed in that case.
 ## Timeout ladder
 
 The provider must give up before its caller does, or an abandoned page keeps
-billing compute after OTS has already classified the call as failed:
+billing compute after OTS has already classified the call as failed. A cold
+request may spend the readiness wait *and then* the hard timeout, so it is their
+sum that has to fit:
 
 ```
-provider hard timeout  <  OTS SCANNER_PROVIDER_TIMEOUT_MS  <  platform timeout
+ready wait + hard timeout  <  OTS SCANNER_PROVIDER_TIMEOUT_MS  <  platform timeout
 ```
 
-Modal ships 540 s / 600 s / 660 s. The local CPU provider ships 1500 s against
-the 1860 s worker timeout set in `docker-compose.scanner-local.yml`.
+Modal ships 150 + 400 < 600 < 660. The local CPU provider ships 300 + 1500
+against the 1860 s worker timeout set in `docker-compose.scanner-local.yml`.
+
+`/v1/scan-page` waits up to the readiness deadline for a cold container to warm
+rather than refusing immediately: Modal scales to zero, and a 503 there would be
+retried by the caller inside the same warm-up window. A warm-up attempt that
+completes *without* becoming ready — no CUDA, a bad model pin — ends the wait
+straight away rather than sitting on the deadline.
 
 ## Error taxonomy
 

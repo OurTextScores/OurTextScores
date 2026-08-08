@@ -80,6 +80,7 @@ def create_provider_app(
     service_revision: str,
     max_page_bytes: int,
     hard_timeout_seconds: int,
+    ready_wait_seconds: int = 150,
     provider_token: str = "",
     idempotency_cache_size: int = 16,
     expected_model_sha256: dict[str, str] | None = None,
@@ -112,6 +113,9 @@ def create_provider_app(
     app.state.busy = False
     app.state.warming = False
     app.state.warm_up_error = ""
+    # Counts completed warm-up attempts so a waiting request can tell "still
+    # loading" from "tried and failed" instead of waiting out the full deadline.
+    app.state.warm_attempts = 0
     app.state.background: set[Any] = set()
     # Successful results only. A transient failure must never poison a key.
     app.state.result_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -148,6 +152,34 @@ def create_provider_app(
             await warm_up()
         finally:
             app.state.warming = False
+            app.state.warm_attempts += 1
+
+    async def await_ready(deadline_seconds: int) -> bool:
+        """Wait for a cold container to finish warming, rather than 503-ing at it.
+
+        Modal scales to zero, so the container is cold whenever traffic pauses.
+        The app deliberately serves before warm-up completes (design section 9.3
+        wants /healthz available first), which previously meant the first request
+        after any idle period got `model_not_ready` — and the caller's single
+        immediate retry landed in the same window, losing the page. Modal is
+        already holding this request while the container boots, so waiting a
+        little longer here is the natural place to absorb the cold start.
+        """
+        if engine.is_ready():
+            return True
+        attempts_before = app.state.warm_attempts
+        schedule_warm()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0, deadline_seconds)
+        while loop.time() < deadline:
+            if engine.is_ready():
+                return True
+            # A completed attempt that left us unready is a real failure (no
+            # CUDA, bad model pin); waiting out the deadline would just delay it.
+            if app.state.warm_attempts > attempts_before and not app.state.warming:
+                return False
+            await asyncio.sleep(0.5)
+        return engine.is_ready()
 
     async def warm_up() -> None:
         """Start the child and run one inference before reporting readiness."""
@@ -254,10 +286,8 @@ def create_provider_app(
             logger.info("requestId=%s idempotent replay", request_id)
             return cached
 
-        if not engine.is_ready():
-            # 503 is retryable for OTS, and this recovers the child in the
-            # background so the retry has somewhere to land.
-            schedule_warm()
+        if not await await_ready(ready_wait_seconds):
+            # Still 503 (retryable for OTS) once waiting has not helped.
             return _error(request_id, CODE_NOT_READY, "The inference worker is not ready")
         # Checked and set without an await so admission stays atomic here.
         if app.state.busy:

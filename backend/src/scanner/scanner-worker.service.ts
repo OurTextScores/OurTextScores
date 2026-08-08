@@ -591,9 +591,33 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           (scannerError as ScannerProviderError & { attempts?: number }).attempts = attempt;
           throw scannerError;
         }
+        // Design section 13.1: retry transient failures with exponential
+        // backoff and jitter. Retrying instantly means the second attempt hits
+        // whatever transient condition failed the first — a busy provider, a
+        // cold container, a platform blip — while it is still true.
+        await this.sleep(this.retryDelayMs(attempt));
       }
     }
     throw new ScannerProviderError('Scanner provider failed', 'provider_failed', false);
+  }
+
+  /** Equal jitter: half the exponential delay, plus a random half. */
+  private retryDelayMs(attempt: number): number {
+    const base = this.number('SCANNER_RETRY_BASE_DELAY_MS', 2_000);
+    const capped = Math.min(
+      base * 2 ** (attempt - 1),
+      this.number('SCANNER_RETRY_MAX_DELAY_MS', 30_000)
+    );
+    return Math.round(capped / 2 + Math.random() * (capped / 2));
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private number(key: string, fallback: number): number {
+    const parsed = Number(this.config.get<string>(key, String(fallback)));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
   }
 
   private shouldPreservePriorFailure(

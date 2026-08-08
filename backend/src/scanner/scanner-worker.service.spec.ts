@@ -63,6 +63,60 @@ describe('ScannerWorkerService', () => {
     expect(provider.scanPage.mock.calls[1][0].idempotencyKey).toBe('stable-key');
   });
 
+  it('waits with jittered exponential backoff before retrying a transient failure', async () => {
+    // Section 13.1. Retrying instantly means the second attempt hits whatever
+    // transient condition failed the first while it is still true — which is
+    // exactly how a cold provider container used to lose a page.
+    const delays: number[] = [];
+    const sleepSpy = jest.spyOn(global, 'setTimeout').mockImplementation(((
+      callback: () => void,
+      ms?: number
+    ) => {
+      delays.push(Number(ms));
+      callback();
+      return 0 as any;
+    }) as any);
+    provider.scanPage
+      .mockRejectedValueOnce(new ScannerProviderError('cold', 'provider_model_not_ready', true))
+      .mockResolvedValueOnce({
+        musicXml: Buffer.from('<score-partwise/>'),
+        providerRevision: 'service',
+        modelRevision: 'model'
+      });
+
+    const result = await (service() as any).scanWithRetry({
+      image: Buffer.from('image'),
+      pageNumber: 1,
+      detectTitle: false,
+      idempotencyKey: 'stable-key'
+    });
+
+    expect(result.attempts).toBe(2);
+    expect(delays).toHaveLength(1);
+    // Equal jitter around a 2s base: never zero, never more than the base.
+    expect(delays[0]).toBeGreaterThanOrEqual(1_000);
+    expect(delays[0]).toBeLessThanOrEqual(2_000);
+    sleepSpy.mockRestore();
+  });
+
+  it('does not sleep when the failure is not retryable', async () => {
+    const sleepSpy = jest.spyOn(global, 'setTimeout');
+    provider.scanPage.mockRejectedValue(
+      new ScannerProviderError('no staff', 'provider_no_staff_detected', false)
+    );
+    await expect(
+      (service() as any).scanWithRetry({
+        image: Buffer.from('image'),
+        pageNumber: 1,
+        detectTitle: false,
+        idempotencyKey: 'stable-key'
+      })
+    ).rejects.toMatchObject({ code: 'provider_no_staff_detected' });
+    expect(sleepSpy).not.toHaveBeenCalled();
+    expect(provider.scanPage).toHaveBeenCalledTimes(1);
+    sleepSpy.mockRestore();
+  });
+
   it('does not retry deterministic input/model errors', async () => {
     provider.scanPage.mockRejectedValue(
       new ScannerProviderError('invalid', 'invalid_musicxml', false)

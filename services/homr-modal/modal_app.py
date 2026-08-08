@@ -20,11 +20,14 @@ MAX_PAGE_BYTES = 25 * 1024 * 1024
 
 # Timeout ladder (design section 9.3). The provider must give up before the
 # caller does, or an abandoned page keeps billing GPU time after OTS has already
-# classified the call as failed:
+# classified the call as failed. A cold request may spend READY_WAIT waiting for
+# warm-up and then HARD_TIMEOUT on inference, so it is their SUM that has to stay
+# under the caller's timeout:
 #
-#   HARD_TIMEOUT_SECONDS  <  OTS SCANNER_PROVIDER_TIMEOUT_MS  <  FUNCTION_TIMEOUT
-#            540                        600                            660
-HARD_TIMEOUT_SECONDS = int(os.environ.get("HOMR_HARD_TIMEOUT_SECONDS", "540"))
+#   READY_WAIT + HARD_TIMEOUT  <  OTS SCANNER_PROVIDER_TIMEOUT_MS  <  FUNCTION_TIMEOUT
+#      150     +     400       <             600                   <       660
+READY_WAIT_SECONDS = int(os.environ.get("HOMR_READY_WAIT_SECONDS", "150"))
+HARD_TIMEOUT_SECONDS = int(os.environ.get("HOMR_HARD_TIMEOUT_SECONDS", "400"))
 FUNCTION_TIMEOUT_SECONDS = int(os.environ.get("HOMR_FUNCTION_TIMEOUT_SECONDS", "660"))
 
 # Supply chain (design section 9.5). The base is pinned by manifest-list digest
@@ -79,6 +82,7 @@ image = (
             # read from the deploy-time environment has to be baked in or the
             # container would silently fall back to the defaults.
             "HOMR_HARD_TIMEOUT_SECONDS": str(HARD_TIMEOUT_SECONDS),
+            "HOMR_READY_WAIT_SECONDS": str(READY_WAIT_SECONDS),
             **{
                 f"HOMR_EXPECTED_{name.upper()}_SHA256": value
                 for name, value in EXPECTED_MODEL_SHA256.items()
@@ -118,6 +122,7 @@ def homr_api():
         service_revision=SERVICE_REVISION,
         max_page_bytes=MAX_PAGE_BYTES,
         hard_timeout_seconds=HARD_TIMEOUT_SECONDS,
+        ready_wait_seconds=READY_WAIT_SECONDS,
         # Modal proxy authentication fronts the app; no second shared secret.
         provider_token="",
         expected_model_sha256=EXPECTED_MODEL_SHA256,

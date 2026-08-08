@@ -14,46 +14,28 @@ The workspace budget in step 2 is the thing that actually stops overspend.
 
 ---
 
-## 0. Read this first — one known defect
-
-**On a cold container, the first page of a job will fail.**
+## 0. Cold starts
 
 Modal runs with `min_containers=0`, so the container is cold whenever traffic has
-paused for longer than `scaledown_window` (60 s). On a cold start:
+paused for longer than `scaledown_window` (60 s). Two things make that safe:
 
-1. Modal boots the container and the ASGI app begins serving immediately.
-2. The app's lifespan kicks off warm-up (model load + one smoke inference) *in
-   the background*, so `/healthz` answers at once — design §9.3 wants health
-   available before warm-up completes.
-3. A `/v1/scan-page` request arriving during that window gets
-   `503 model_not_ready`.
-4. OTS treats 503 as retryable and retries — but `scanWithRetry` retries
-   **immediately, with no backoff**, so the retry lands inside the same warm-up
-   window and also fails.
+- **The provider waits.** `/v1/scan-page` waits up to `HOMR_READY_WAIT_SECONDS`
+  (150) for warm-up to finish rather than returning `503 model_not_ready` at a
+  cold container. Modal is already holding the request while the container boots,
+  so this is the natural place to absorb the cold start. `/healthz` still answers
+  immediately, per design §9.3.
+- **The client backs off.** `scanWithRetry` waits with exponential backoff and
+  equal jitter before its one retry, as design §13.1 specifies. It previously
+  retried instantly, so both attempts landed inside the same warm-up window and
+  the first page of every idle-period job was lost.
 
-Net effect: page 1 of the first job after an idle period fails with
-`provider_model_not_ready`; pages 2..N succeed on the now-warm container; the
-user must manually retry page 1. Nothing is lost, but it looks broken and it
-will inflate the failure rate in your Phase 0 numbers.
+A warm-up attempt that *completes without becoming ready* — no CUDA, a bad model
+pin — ends the wait immediately rather than sitting out the deadline, so real
+faults still surface fast.
 
-This is also a design deviation I did not catch in the original review: §13.1
-specifies "retry once with exponential backoff and jitter" for transient and
-capacity errors, and the implementation has the retry but neither the backoff
-nor the jitter.
-
-**Options, in order of preference:**
-
-| Option | Effect | Cost |
-|---|---|---|
-| Make `/v1/scan-page` *wait* for readiness up to a bound instead of returning 503 immediately | Cold start is absorbed by the request Modal is already holding; §9.3 health-first behaviour preserved | Small code change |
-| Add backoff and jitter to `scanWithRetry` | Brings the client in line with §13.1; helps every transient class, not just cold start | Small code change |
-| `min_containers=1` | No cold starts at all | ~$0.80/hour ≈ $584/month — blows the $30 budget. Not viable for the pilot |
-| Accept it for the pilot | Works, but every idle-period job loses its first page | Free, noisy benchmark |
-
-I'd do the first two together before you deploy. Say the word and I'll implement
-them; the rest of this runbook is unaffected either way.
-
----
+**What you will still see:** the first page after an idle period pays warm-up
+time on top of its inference time. Expect it in the benchmark, and treat the
+first page of a cold job as a cold sample rather than a warm one.
 
 ## 1. Prerequisites
 
@@ -217,10 +199,15 @@ ladder that must stay ordered, or an abandoned page keeps billing GPU time after
 OTS has already given up on it:
 
 ```
-HOMR_HARD_TIMEOUT_SECONDS (540)  <  SCANNER_PROVIDER_TIMEOUT_MS (600 s)  <  Modal function timeout (660)
+HOMR_READY_WAIT_SECONDS (150) + HOMR_HARD_TIMEOUT_SECONDS (400)
+    <  SCANNER_PROVIDER_TIMEOUT_MS (600 s)
+    <  Modal function timeout (660)
 ```
 
-Change one, change all three (the outer two live in `services/homr-modal/modal_app.py`).
+A cold request can spend the readiness wait *and then* the full inference
+timeout, so it is their **sum** that must stay under the caller's timeout. Change
+one, change all of them (the provider-side values live in
+`services/homr-modal/modal_app.py`).
 
 ---
 
@@ -356,8 +343,8 @@ the above.
 
 ## 12. Known gaps
 
-- **Cold start** — see §0. Fix before benchmarking if you want clean numbers.
-- **No retry backoff** — `scanWithRetry` retries immediately, against §13.1.
+- **Cold-start latency** — absorbed rather than eliminated; see §0. The first
+  page of an idle-period job pays warm-up on top of inference.
 - **Modal runs as root**, and Modal builds its own image, so the non-root /
   read-only-rootfs half of §9.5 and the CI SBOM+Trivy scan cover the CPU image
   only. The CUDA base layer and the `gpu` extra are unscanned.

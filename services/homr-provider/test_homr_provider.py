@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import time
 import unittest
 import zlib
 
@@ -44,6 +45,10 @@ class FakeEngine:
         self.last_error = ""
         self.calls = 0
         self.raises: InferenceError | None = None
+        # `warms` False models a permanently broken engine (no CUDA, bad model
+        # pin); `warm_delay` models a cold container that will come good.
+        self.warms = True
+        self.warm_delay = 0.0
         self.provenance = EngineProvenance(
             homr_commit="c0ffee",
             execution_provider="CPUExecutionProvider",
@@ -61,7 +66,10 @@ class FakeEngine:
         return self.ready
 
     def warm_up(self) -> None:
-        self.ready = True
+        if self.warm_delay:
+            time.sleep(self.warm_delay)
+        if self.warms:
+            self.ready = True
 
     def shutdown(self) -> None:
         self.ready = False
@@ -94,7 +102,9 @@ def post(
     key: str = KEY,
     token: str | None = "test-token",
     content_type: str = "image/png",
+    ready_wait_seconds: int | None = None,
 ):
+    del ready_wait_seconds  # accepted for readability at call sites
     headers = {"Idempotency-Key": key}
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
@@ -194,30 +204,48 @@ class ProviderContractTest(unittest.TestCase):
 
     def test_not_ready_is_503_and_never_reaches_the_engine(self) -> None:
         self.engine.ready = False
-        response = post(self.client)
+        self.engine.warms = False  # warm_up() will not make it ready
+        response = post(self.client, ready_wait_seconds=1)
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["error"]["code"], CODE_NOT_READY)
         self.assertEqual(self.engine.calls, 0)
 
+    def test_a_cold_container_waits_for_warm_up_instead_of_refusing(self) -> None:
+        # Modal scales to zero, so the first request after an idle period lands
+        # on a cold container. Returning 503 there used to lose the page: the
+        # caller's retry arrived inside the same warm-up window.
+        engine = FakeEngine()
+        engine.ready = False
+        engine.warm_delay = 0.3
+        with build(engine, ready_wait_seconds=30) as client:
+            response = post(client)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(engine.calls, 1)
+
+    def test_a_failing_warm_up_gives_up_early_rather_than_waiting_it_out(self) -> None:
+        # No CUDA or a bad model pin is not going to fix itself, so the request
+        # must not sit on the deadline before reporting it.
+        engine = FakeEngine()
+        engine.ready = False
+        engine.warms = False
+        started = time.monotonic()
+        with build(engine, ready_wait_seconds=30) as client:
+            response = post(client)
+        self.assertEqual(response.status_code, 503)
+        self.assertLess(time.monotonic() - started, 10)
+
     def test_a_timeout_kill_does_not_wedge_the_provider(self) -> None:
         # The supervisor replaces a killed child, but the replacement is cold.
-        # A 503 must trigger re-warming so the caller's retry can succeed rather
-        # than the provider staying unready until an operator restarts it.
+        # The next request re-warms and succeeds in place, so one bad page
+        # cannot leave the provider unready until an operator restarts it.
         with build(self.engine) as client:
             self.engine.raises = InferenceError(CODE_TIMEOUT, "too slow")
             self.assertEqual(post(client).status_code, 504)
 
             self.engine.ready = False  # as _teardown_locked leaves it
             self.engine.raises = None
-            self.assertEqual(post(client).status_code, 503)
-
-            # ensure_warm ran in the background and called warm_up.
-            for _ in range(50):
-                if self.engine.ready:
-                    break
-                client.get("/readyz")
-            self.assertTrue(self.engine.ready)
             self.assertEqual(post(client, key=OTHER_KEY).status_code, 200)
+            self.assertTrue(self.engine.ready)
 
     def test_busy_returns_429(self) -> None:
         with build(self.engine) as client:
