@@ -626,33 +626,6 @@ export interface PaginatedProjectsResponse {
   offset: number;
 }
 
-export interface ProjectRow {
-  projectId: string;
-  rowId: string;
-  externalScoreUrl?: string;
-  imslpUrl?: string;
-  linkedWorkId?: string;
-  linkedSourceId?: string;
-  linkedRevisionId?: string;
-  hasReferencePdf: boolean;
-  verified: boolean;
-  verifiedAt?: string;
-  verifiedBy?: string;
-  notes?: string;
-  createdBy: string;
-  updatedBy: string;
-  rowVersion: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface PaginatedProjectRowsResponse {
-  rows: ProjectRow[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
 export interface ProjectSourceSummary {
   workId: string;
   sourceId: string;
@@ -717,26 +690,6 @@ export async function fetchProjectDetail(projectId: string): Promise<ProjectSumm
   }
 }
 
-export async function fetchProjectRows(
-  projectId: string,
-  options?: { limit?: number; offset?: number }
-): Promise<PaginatedProjectRowsResponse> {
-  try {
-    const params = new URLSearchParams();
-    if (options?.limit !== undefined) params.set("limit", String(options.limit));
-    if (options?.offset !== undefined) params.set("offset", String(options.offset));
-    const url = `${getApiBase()}/projects/${encodeURIComponent(projectId)}/rows${params.toString() ? `?${params.toString()}` : ""}`;
-    return await fetchJson<PaginatedProjectRowsResponse>(url, {
-      cache: "no-store",
-      next: { revalidate: 0 }
-    });
-  } catch (error) {
-    if (process.env.NODE_ENV === "production") {
-      return { rows: [], total: 0, limit: options?.limit ?? 50, offset: options?.offset ?? 0 };
-    }
-    throw error;
-  }
-}
 
 export async function fetchProjectSources(
   projectId: string,
