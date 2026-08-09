@@ -117,11 +117,33 @@ export class ScannerProviderService {
     }
 
     if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      let envelope: any;
+      try {
+        envelope = raw ? JSON.parse(raw) : undefined;
+      } catch {
+        envelope = undefined;
+      }
       // The provider's stable code is more precise than the status, so prefer
       // it when the response carries one (design section 9.4).
-      const envelope = await response.json().catch(() => undefined as any);
       const classified = providerErrorFromCode(envelope?.error?.code);
       if (classified) throw classified;
+      // Modal enforces a workspace budget by disabling the whole workspace, and
+      // answers with a plain-text `404 modal-http: workspace … is disabled`.
+      // Verified 2026-08-08 by running a $0.25 cap to exhaustion. Without this
+      // the page fails as "rejected the request (404)", and because 404 is not
+      // in the retryable set it could not be retried even after the operator
+      // raised the budget — design §13.1 wants capacity exhaustion to stop
+      // provider retries but stay recoverable by hand.
+      if (/workspace\s+\S+\s+is disabled/i.test(raw)) {
+        throw new ScannerProviderError(
+          'Scanner monthly capacity has been reached',
+          'provider_budget_exhausted',
+          // Not auto-retryable: capacity is gone until an operator acts. The
+          // code is in the manual-retry set, so the page can be retried after.
+          false
+        );
+      }
       const retryable =
         response.status === 408 || response.status === 429 || response.status >= 500;
       throw new ScannerProviderError(

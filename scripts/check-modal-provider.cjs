@@ -71,13 +71,21 @@ async function get(path) {
     headers,
     signal: AbortSignal.timeout(30_000),
   });
+  const raw = await response.text().catch(() => "");
   let body;
   try {
-    body = await response.json();
+    body = raw ? JSON.parse(raw) : undefined;
   } catch {
     body = undefined;
   }
-  return { status: response.status, body };
+  return { status: response.status, body, raw };
+}
+
+// Modal enforces a workspace budget by disabling the workspace and answering
+// with a plain-text 404. Recognise it, because "HTTP 404" on its own sends you
+// looking for a deployment problem that is not there.
+function budgetDisabled(response) {
+  return /workspace\s+\S+\s+is disabled/i.test(response.raw || "");
 }
 
 async function main() {
@@ -89,6 +97,14 @@ async function main() {
     health = await get("/healthz");
   } catch (error) {
     bad(`could not reach the provider: ${error.message}`);
+    return;
+  }
+  if (budgetDisabled(health)) {
+    bad(
+      "the Modal workspace is disabled — its budget cap has been reached.\n" +
+        "        Raise the workspace budget in the Modal dashboard to restore service.\n" +
+        "        Check current spend with: modal billing summary",
+    );
     return;
   }
   if (health.status === 401 || health.status === 403) {

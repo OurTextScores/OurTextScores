@@ -384,33 +384,51 @@ re-submission and without burning an extra provider call, and `queueWaitMs`
 (28,593 ms in the run above) accounts for the hold. Re-run this after any change
 to the worker's claim path.
 
-### 10b. The Modal half — needs the dashboard
+### 10b. The Modal half — verified 2026-08-08
 
 `modal` has no budget command (`modal workspace settings` only exposes
-`default-environment` and `image-builder-version`), so this is a dashboard
-action and it is yours to take.
+`default-environment` and `image-builder-version`), so the cap is set in the
+dashboard.
 
-**Do not try to burn the budget down.** With $0.77 remaining that is about
-3,470 s of L4 uptime; at roughly 81 s per cold burst (≈20 s start + ~1 s scan +
-60 s `scaledown_window` idle) it needs ~43 bursts and about an hour of wall
-clock — an hour spent proving a setting, with the budget you would rather spend
-on the §11.1 corpus.
+**Do not try to burn a large budget down.** At roughly 81 s per cold burst
+(≈20 s start + ~1 s scan + 60 s `scaledown_window` idle ≈ $0.018), clearing
+$0.77 needs ~43 bursts and about an hour of wall clock — spent proving a
+setting, with budget the §11.1 corpus needs. Lower the cap to just above current
+spend instead and it costs a handful of scans.
 
-Instead, bring the cap down to the spend:
+**Result of the drill.** With the cap at $0.25 and metered spend at $0.18,
+repeated cold starts reached the cap and Modal stopped serving:
 
-1. In the Modal dashboard, set the workspace budget to just above current
-   metered spend — with $0.23 used, **$0.25** leaves roughly one cold burst of
-   headroom.
-2. Run `npm run scanner:modal:check`, then one scan.
-3. Confirm Modal *refuses* further compute rather than only warning. That is the
-   property being tested; a warning-only cap is not a cap.
-4. Flip `SCANNER_PROVIDER_BUDGET_EXHAUSTED=true` so OTS stops admitting work,
-   using 10a's expected behaviour as the reference.
-5. Only now raise the budget to **$30/month** and clear the switch.
+```
+iteration 6 | metered=$0.25   /readyz -> HTTP 503   (still warming, still serving)
+iteration 7 | metered=$0.27   /readyz -> HTTP 404
+                              modal-http: workspace ac-… is disabled
+```
 
-If Modal turns out to warn rather than block, the §10.3 recommendation does not
-hold and the OTS switch plus a billing alert become the real control — record
-that outcome here, because it changes what the pilot is relying on.
+Three things this establishes, all load-bearing for the pilot:
+
+1. **The cap is a hard stop, not a warning.** §10.3's core assumption holds.
+2. **It is enforced on *metered* cost, not billed cost.** Billed cost was $0.00
+   throughout — the included credit covered everything — yet the cap still fired.
+   So a $30 budget fires at $30 of *gross* usage, which is what §10.3 intends.
+   Had it tracked billed cost, a $30 budget behind $30 of credit would never
+   have triggered at all.
+3. **Enforcement overshoots slightly** — $0.27 against a $0.25 cap, about $0.02,
+   presumably billing lag. Budget for a small overrun; it is not to the cent.
+
+**The failure mode is a plain-text `404`, not a structured error**, and it
+disables the *whole workspace*, not just the GPU function. OTS now recognises
+that signature and reports `provider_budget_exhausted` ("Scanner monthly
+capacity has been reached") rather than "rejected the request (404)". That
+mapping matters twice over: a bare 404 is not in the retryable set, so affected
+pages could not have been retried by hand even after the budget was raised,
+which is what §13.1 asks for. `npm run scanner:modal:check` recognises it too.
+
+**To restore service:** raise the workspace budget in the dashboard. Nothing in
+OTS needs restarting; queued jobs are durable and resume.
+
+Then set the pilot budget to **$30/month** and clear
+`SCANNER_PROVIDER_BUDGET_EXHAUSTED` if you set it.
 
 ## 11. Phase 0 benchmark
 

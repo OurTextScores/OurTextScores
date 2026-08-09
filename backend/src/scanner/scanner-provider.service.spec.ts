@@ -1,5 +1,5 @@
 import { ScannerProviderService } from './scanner-provider.service';
-import { ScannerProviderError } from './scanner.errors';
+import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 import { createHash } from 'node:crypto';
 
 describe('ScannerProviderService', () => {
@@ -239,6 +239,26 @@ describe('ScannerProviderService', () => {
       await expect(scan()).rejects.toMatchObject({
         message: 'This page image could not be read'
       });
+    });
+
+    it('recognises a Modal workspace disabled by its budget cap', async () => {
+      // Verified live: Modal answers a budget-exhausted workspace with a
+      // plain-text 404, not a structured error. Left to status classification
+      // that is a non-retryable provider_http_404, which would also block the
+      // manual retry the operator needs after raising the budget.
+      jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response('modal-http: workspace ac-TPVb2sfO1mlTGNEzLL7vH3 is disabled', {
+          status: 404
+        })
+      );
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_budget_exhausted',
+        // No automatic retry: capacity is gone until an operator acts...
+        retryable: false,
+        message: 'Scanner monthly capacity has been reached'
+      });
+      // ...but the page must still be retryable by hand afterwards.
+      expect(isRetryableScannerErrorCode('provider_budget_exhausted')).toBe(true);
     });
 
     it('falls back to status classification for an unknown code', async () => {
