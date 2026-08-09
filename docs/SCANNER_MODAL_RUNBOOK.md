@@ -71,7 +71,8 @@ Do this before deploying anything. The budget is the only thing standing between
 a misconfiguration and a ~$300 compute bill.
 
 1. Create a Modal workspace **dedicated to Scanner**. Design §10.3 is explicit:
-   unrelated apps in the same workspace can consume the same budget.
+   unrelated apps in the same workspace can consume the same budget. The
+   *workspace* is the budget boundary; the environment inside it can stay `main`.
 2. In the Modal dashboard, set the workspace budget to a **deliberately tiny
    staging value** — a few cents. Do not set $30 yet.
 3. Keep that tiny budget through the local rehearsal in step 6, then run the
@@ -114,12 +115,24 @@ modal workspace proxy-tokens create
 modal workspace proxy-tokens list      # confirm it exists
 ```
 
-If your workspace uses environments, authorise the token for the one you
-deployed into:
+`modal workspace proxy-tokens list` shows `Scoped: False` for a token that is
+not restricted to an environment — that is the default, and such a token already
+authenticates across the whole workspace, so **no further step is needed.**
+
+Only if you deliberately scope a token do you need to authorise it, and the
+argument is an *environment* name, not the workspace name. A new workspace has
+one environment called `main`:
 
 ```bash
-modal workspace proxy-tokens allow <token-id> --environment <name>
+modal environment list                                        # usually just: main
+modal workspace proxy-tokens allow <token-id> --environment main
 ```
+
+> **Workspace is not environment.** The workspace is the billing and budget
+> boundary — the thing design §10.3 wants dedicated to Scanner. An environment is
+> a namespace inside it. Naming your workspace `scanner` does not create an
+> environment called `scanner`, and passing one that does not exist fails with
+> `Environment 'scanner' not found`.
 
 Save the token id and secret. They go **only** into the scanner worker's
 environment — never the frontend, never the browser, never a committed file.
