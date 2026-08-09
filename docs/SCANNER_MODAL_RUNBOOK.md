@@ -310,15 +310,64 @@ one, change all of them (the provider-side values live in
 
 ---
 
-## 8. Start the worker
+## 8. Add and start the worker
 
-The worker is profile-gated and does not run by default:
+`/opt/ourtextscores` is not a git checkout and its Compose file is never synced
+from the repository, so **the `scanner_worker` service does not exist there** —
+`up -d scanner_worker` fails with `no such service` until you add it by hand.
+
+Add this to the VPS `docker-compose.yml`, as a sibling of `backend` (two-space
+indent, same as the other services):
+
+```yaml
+  scanner_worker:
+    profiles: ["scanner"]
+    # The VPS has no source tree, so reuse the deployed backend image rather
+    # than the repo's `build:` stanza. Keep this reference identical to the
+    # `backend` service: the two share the job schema and the object-key hash.
+    image: ghcr.io/ourtextscores/ourtextscores-backend:latest
+    container_name: ourtextscores_scanner_worker
+    command: ["node", "dist/scanner-worker.main.js"]
+    restart: unless-stopped
+    # Keep CPU-side rasterization/rendering from competing with the public API.
+    cpus: ${SCANNER_WORKER_CPUS:-1.0}
+    cpu_shares: 256
+    mem_limit: ${SCANNER_WORKER_MEMORY_LIMIT:-2g}
+    env_file:
+      - .env
+    environment:
+      SCANNER_WORKER_ENABLED: "true"
+      MUSESCORE_EXPORT_TIMEOUT_MS: ${SCANNER_RENDER_TIMEOUT_MS:-300000}
+      MUSESCORE_WRAPPER_TIMEOUT_SECONDS: ${SCANNER_RENDER_WRAPPER_TIMEOUT_SECONDS:-300}
+      # The API process owns inbox/outbox email polling; this one only writes
+      # deduplicated Scanner terminal notifications.
+      NOTIFICATIONS_PROCESSOR_ENABLED: "false"
+    networks:
+      - appnet
+```
+
+Two ways this differs from the repository's definition, both because production
+is not the dev stack:
+
+- **No `depends_on`.** Mongo and MinIO are Compose services locally but external
+  in production, reached through `.env`. Naming them here fails the config with
+  `depends on undefined service`.
+- **No volumes.** The worker touches neither the Fossil tree nor the PDMX mount.
+
+Confirm `appnet` matches the network the `backend` service uses, then validate
+before starting anything — this catches indentation and undefined-service
+mistakes without touching containers:
 
 ```bash
 cd /opt/ourtextscores
-docker compose --profile scanner up -d scanner_worker
+docker compose --profile scanner config >/dev/null && echo OK
+docker compose --profile scanner up -d backend scanner_worker
 docker compose --profile scanner logs -f scanner_worker
 ```
+
+`backend` is recreated alongside it deliberately: `docker compose restart` does
+not reload `env_file`, so the API would otherwise keep running without the
+`SCANNER_OBJECT_KEY_SALT` set in step 7.
 
 The API containers keep `SCANNER_WORKER_ENABLED=false`; only this process leases
 jobs and holds the Modal credentials.
