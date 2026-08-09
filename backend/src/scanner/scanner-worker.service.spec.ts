@@ -17,6 +17,10 @@ describe('ScannerWorkerService', () => {
     scanPage: jest.fn()
   } as any;
   const merger = { enabled: false, merge: jest.fn() } as any;
+  const alerts = {
+    check: jest.fn().mockResolvedValue([]),
+    evaluate: jest.fn().mockResolvedValue([])
+  } as any;
   const telemetry = {
     emit: jest.fn(),
     userHash: jest.fn(() => 'user-hash'),
@@ -30,6 +34,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       merger,
+      alerts,
       {} as any,
       telemetry,
       config
@@ -175,6 +180,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       merger,
+      alerts,
       {} as any,
       telemetry,
       config
@@ -211,6 +217,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       merger,
+      alerts,
       {} as any,
       telemetry,
       config
@@ -240,6 +247,7 @@ describe('ScannerWorkerService', () => {
         provider,
         {} as any,
         merger,
+        alerts,
         {} as any,
         telemetry,
         config
@@ -354,6 +362,7 @@ describe('ScannerWorkerService', () => {
       provider,
       {} as any,
       merger,
+      alerts,
       {} as any,
       telemetry,
       config

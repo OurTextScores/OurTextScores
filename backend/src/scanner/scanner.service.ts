@@ -28,6 +28,7 @@ import {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
+import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
@@ -43,6 +44,7 @@ export class ScannerService implements OnModuleInit {
     private readonly jobs: Model<ScannerJobDocument>,
     private readonly storage: StorageService,
     private readonly telemetry: ScannerTelemetryService,
+    private readonly alerts: ScannerAlertService,
     private readonly config: ConfigService
   ) {}
 
@@ -500,7 +502,7 @@ export class ScannerService implements OnModuleInit {
     const since = new Date(Date.now() - hours * 3_600_000);
     const now = Date.now();
 
-    const [byStatus, oldestQueued, recent] = await Promise.all([
+    const [byStatus, oldestQueued, recent, alerts] = await Promise.all([
       this.jobs
         .aggregate([
           { $match: { createdAt: { $gte: since } } },
@@ -512,7 +514,10 @@ export class ScannerService implements OnModuleInit {
         .find({ createdAt: { $gte: since } })
         .select({ pages: 1, timings: 1 })
         .lean()
-        .exec()
+        .exec(),
+      // The same evaluation the worker pushes on, so the admin panel and any
+      // alert channel can never disagree about what is firing.
+      this.alerts.evaluate()
     ]);
 
     const pageDurations: number[] = [];
@@ -546,6 +551,7 @@ export class ScannerService implements OnModuleInit {
     return {
       windowHours: hours,
       generatedAt: new Date().toISOString(),
+      alerts,
       jobs: Object.fromEntries(byStatus.map((row: any) => [row._id, row.jobs])),
       pagesByStatus: { succeeded: pagesSucceeded, failed: pagesFailed },
       queue: {

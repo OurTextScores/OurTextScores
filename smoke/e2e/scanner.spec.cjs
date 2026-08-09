@@ -100,8 +100,8 @@ test.describe("Scanner pilot", () => {
       mimeType: "image/png",
       buffer: png,
     });
-    await page.getByRole("button", { name: "Upload and review" }).click();
-    await page.getByRole("link", { name: /scanner-smoke\.png/ }).click();
+    await page.getByRole("button", { name: "Scan" }).click();
+    await page.waitForURL(/\/scanner\/[0-9a-f-]{36}/, { timeout: 120000 });
     await expect(
       page.getByRole("heading", { name: "Review pages before scanning" }),
     ).toBeVisible({ timeout: 120_000 });
@@ -150,8 +150,8 @@ test.describe("Scanner pilot", () => {
       mimeType: "application/pdf",
       buffer: twoPagePdf(),
     });
-    await page.getByRole("button", { name: "Upload and review" }).click();
-    await page.getByRole("link", { name: /scanner-two-pages\.pdf/ }).click();
+    await page.getByRole("button", { name: "Scan" }).click();
+    await page.waitForURL(/\/scanner\/[0-9a-f-]{36}/, { timeout: 120000 });
     await expect(
       page.getByRole("heading", { name: "Review pages before scanning" }),
     ).toBeVisible({ timeout: 120_000 });
@@ -220,8 +220,8 @@ test.describe("Scanner pilot", () => {
     await expect(
       page.locator("li").filter({ hasText: "page-2.png" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Upload and review" }).click();
-    await page.getByRole("link", { name: /page-2\.png \+ 1 more/ }).click();
+    await page.getByRole("button", { name: "Scan" }).click();
+    await page.waitForURL(/\/scanner\/[0-9a-f-]{36}/, { timeout: 120000 });
     await expect(
       page.getByRole("heading", { name: "Review pages before scanning" }),
     ).toBeVisible({ timeout: 120_000 });

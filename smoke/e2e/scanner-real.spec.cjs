@@ -68,8 +68,8 @@ test.describe("Scanner real HOMR CPU provider", () => {
       mimeType,
       buffer: readFileSync(FIXTURE),
     });
-    await page.getByRole("button", { name: "Upload and review" }).click();
-    await page.getByRole("link", { name: /homr-real/ }).click();
+    await page.getByRole("button", { name: "Scan" }).click();
+    await page.waitForURL(/\/scanner\/[0-9a-f-]{36}/, { timeout: 120000 });
     await expect(
       page.getByRole("heading", { name: "Review pages before scanning" }),
     ).toBeVisible({

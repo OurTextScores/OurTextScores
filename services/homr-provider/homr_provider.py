@@ -15,6 +15,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import os
 import time
 import uuid
 from collections import OrderedDict
@@ -244,7 +245,10 @@ def create_provider_app(
             # AGPL section 12.6: network users must be able to reach the
             # corresponding source of the exact deployed service.
             "source": source_url(),
-            "providerSource": "https://github.com/OurTextScores/OurTextScores/tree/main/services",
+            "providerSource": (
+                "https://github.com/OurTextScores/OurTextScores/tree/"
+                f"{os.environ.get('OTS_SOURCE_COMMIT', 'main')}/services"
+            ),
             "providerLicense": LICENSE,
             "homrLicense": "AGPL-3.0",
         }

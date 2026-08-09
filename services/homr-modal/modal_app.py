@@ -80,6 +80,33 @@ EXPECTED_MODEL_SHA256 = {
 
 SHARED = Path(__file__).resolve().parent.parent / "homr-provider"
 
+
+def _source_commit() -> str:
+    """The OTS commit being deployed, for the AGPL section 13 source link.
+
+    Pointing at `main` would name whatever main happens to be later, not the
+    revision actually serving. Falls back to `main` outside a git checkout.
+    """
+    import subprocess
+
+    override = os.environ.get("OTS_SOURCE_COMMIT", "").strip()
+    if override:
+        return override
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(Path(__file__).resolve().parent),
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        ).stdout.strip()
+    except Exception:
+        return "main"
+
+
+SOURCE_COMMIT = _source_commit()
+
 image = (
     modal.Image.from_registry(CUDA_BASE, add_python="3.12")
     .apt_install("git", "libgl1", "libglib2.0-0", "libgomp1", "ca-certificates")
@@ -133,6 +160,8 @@ image = (
             # container would silently fall back to the defaults.
             "HOMR_HARD_TIMEOUT_SECONDS": str(HARD_TIMEOUT_SECONDS),
             "HOMR_READY_WAIT_SECONDS": str(READY_WAIT_SECONDS),
+            # Resolved at deploy time; the container has no git checkout.
+            "OTS_SOURCE_COMMIT": SOURCE_COMMIT,
             **{
                 f"HOMR_EXPECTED_{name.upper()}_SHA256": value
                 for name, value in EXPECTED_MODEL_SHA256.items()

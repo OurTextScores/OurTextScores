@@ -74,8 +74,8 @@ test.describe("Scanner page assembly", () => {
         buffer: PNG,
       })),
     );
-    await page.getByRole("button", { name: "Upload and review" }).click();
-    await page.getByRole("link", { name: /merge-page-1\.png/ }).click();
+    await page.getByRole("button", { name: "Scan" }).click();
+    await page.waitForURL(/\/scanner\/[0-9a-f-]{36}/, { timeout: 120000 });
     await expect(
       page.getByRole("heading", { name: "Review pages before scanning" }),
     ).toBeVisible({ timeout: 120_000 });

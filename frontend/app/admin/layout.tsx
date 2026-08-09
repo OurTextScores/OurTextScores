@@ -9,9 +9,14 @@ const ADMIN_NAV_LINKS = [
   { href: "/admin/flagged-sources", label: "Flagged Sources" },
   { href: "/admin/dmca-cases", label: "DMCA Cases" },
   { href: "/admin/beta-requests", label: "Beta Requests" },
+  { href: "/admin/scanner", label: "Scanner" },
 ] as const;
 
-export default async function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const session = await fetchBackendSession();
   if (!session?.user?.roles?.includes("admin")) {
     redirect("/");

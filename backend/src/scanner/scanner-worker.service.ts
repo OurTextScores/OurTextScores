@@ -21,6 +21,7 @@ import {
   ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
+import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerMergeService } from './scanner-merge.service';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
@@ -38,6 +39,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   private busy = false;
   private providerDisabledReason?: string;
   private lastCleanupAt = 0;
+  private lastAlertCheckAt = 0;
 
   constructor(
     @InjectModel(ScannerJob.name)
@@ -46,6 +48,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly provider: ScannerProviderService,
     private readonly renderer: DerivativePipelineService,
     private readonly merger: ScannerMergeService,
+    private readonly alerts: ScannerAlertService,
     private readonly notifications: NotificationsService,
     private readonly telemetry: ScannerTelemetryService,
     private readonly config: ConfigService
@@ -69,6 +72,16 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       if (Date.now() - this.lastCleanupAt > 60 * 60 * 1000) {
         await this.cleanupExpiredArtifacts();
         this.lastCleanupAt = Date.now();
+      }
+      const alertIntervalMs = this.number('SCANNER_ALERT_INTERVAL_MS', 60_000);
+      if (Date.now() - this.lastAlertCheckAt > alertIntervalMs) {
+        this.lastAlertCheckAt = Date.now();
+        // Never let alerting interfere with scanning.
+        await this.alerts
+          .check(this.providerDisabledReason)
+          .catch((error) =>
+            this.logger.error(`Scanner alert check failed: ${this.message(error)}`)
+          );
       }
       await this.deliverPendingTerminalNotification();
       const job = await this.claim();
