@@ -424,8 +424,10 @@ mapping matters twice over: a bare 404 is not in the retryable set, so affected
 pages could not have been retried by hand even after the budget was raised,
 which is what §13.1 asks for. `npm run scanner:modal:check` recognises it too.
 
-**To restore service:** raise the workspace budget in the dashboard. Nothing in
-OTS needs restarting; queued jobs are durable and resume.
+**To restore service:** raise the workspace budget in the dashboard. Verified —
+the endpoint answers again with no redeploy, the CLI works, and the deployed app
+picks straight back up. Nothing in OTS needs restarting; queued jobs are durable
+and resume.
 
 Then set the pilot budget to **$30/month** and clear
 `SCANNER_PROVIDER_BUDGET_EXHAUSTED` if you set it.

@@ -36,19 +36,23 @@ export default async function ScannerPage() {
           Scanner
         </h1>
         <p className="mt-2 max-w-3xl text-slate-600 dark:text-slate-400">
-          Convert printed sheet music to MusicXML with HOMR. Results remain
-          separate from the catalogue; download them here and upload them to a
-          work manually if you choose.
+          Convert printed sheet music to MusicXML with{" "}
+          <a
+            href="https://github.com/liebharc/homr"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            HOMR
+          </a>
+          .
         </p>
         <div className="mt-4 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           Scanner output is a draft and may contain significant notation errors.
           Review every result before relying on it.
         </div>
         <p className="mt-3 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-          Score pages are sent to the configured external inference provider.
-          Source pages are retained for 7 days and results for 30 days unless
-          you delete the scan sooner. Only scan material you are permitted to
-          process; see the{" "}
+          Only scan material you are permitted to process; see the{" "}
           <Link
             href="/legal"
             className="text-blue-600 hover:underline dark:text-blue-400"

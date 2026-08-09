@@ -72,6 +72,23 @@ describe("ScannerClient", () => {
     );
   });
 
+  it.each([
+    [503, "Scanner is not enabled on this deployment."],
+    [403, "Your account is not on the Scanner beta allowlist."],
+  ])(
+    "explains a %s from the backend instead of offering an upload",
+    async (status, expected) => {
+      // NEXT_PUBLIC_SCANNER_ENABLED is inlined at image build time, so it can
+      // outlive the backend being enabled; the UI must follow the backend.
+      global.fetch = jest.fn(
+        async () => ({ ok: false, status, json: async () => ({}) }) as Response,
+      );
+      render(<ScannerClient />);
+      expect(await screen.findByText(expected)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Score files")).toBeNull();
+    },
+  );
+
   it("shows and submits multiple images in natural filename order", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());

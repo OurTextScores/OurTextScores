@@ -44,12 +44,25 @@ export default function ScannerClient() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Design section 13.5: the UI must not claim Scanner is available just
+  // because the build-time public flag is on. NEXT_PUBLIC_* is inlined when the
+  // image is built, so it can outlive the backend actually being enabled.
+  const [unavailable, setUnavailable] = useState<string | null>(null);
   const selectionError = uploadSelectionError(files);
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/proxy/scanner/jobs?limit=20", {
       cache: "no-store",
     });
+    if (response.status === 503 || response.status === 403) {
+      setUnavailable(
+        response.status === 403
+          ? "Your account is not on the Scanner beta allowlist."
+          : "Scanner is not enabled on this deployment.",
+      );
+      return;
+    }
+    setUnavailable(null);
     if (!response.ok) throw new Error(await readError(response));
     const body = await response.json();
     // Tolerate the pre-pagination array shape so a rolling deploy where the
@@ -104,6 +117,19 @@ export default function ScannerClient() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (unavailable) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          Scanner is unavailable
+        </h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          {unavailable}
+        </p>
+      </div>
+    );
   }
 
   return (
