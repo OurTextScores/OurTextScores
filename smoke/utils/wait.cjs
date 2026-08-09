@@ -27,7 +27,12 @@ function waitFor(url, timeoutMs = 60000) {
   const targets = [
     'http://localhost:3000',
     'http://localhost:3000/api/diagnostics/email',
-    'http://localhost:4000/api/works'
+    'http://localhost:4000/api/works',
+    // score_editor_api is the slowest to come up: it runs a Next dev build and
+    // extracts a MuseScore AppImage. Specs that convert ABC go through it, so
+    // without this they raced the service and failed with an opaque upload
+    // error. A 405 here means the route exists and Next has compiled it.
+    'http://localhost:4010/api/music/convert'
   ];
   for (const t of targets) {
     process.stdout.write(`Waiting for ${t} ...\n`);
