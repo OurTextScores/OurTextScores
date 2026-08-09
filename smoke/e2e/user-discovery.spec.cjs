@@ -138,8 +138,8 @@ test.describe('User profile discovery', () => {
     // Verify user profile page
     await expect(page.locator(`h1:has-text("${username}")`)).toBeVisible({ timeout: 10000 });
 
-    // The contributed source should appear in the user's list
-    const sourceItem = page.locator(`li:has-text("${label}")`).first();
+    // Contributions render as a table row per source, not a list item.
+    const sourceItem = page.locator('tr', { hasText: label }).first();
     await expect(sourceItem).toBeVisible({ timeout: 15000 });
 
     // Click contribution link and ensure source opens on work page

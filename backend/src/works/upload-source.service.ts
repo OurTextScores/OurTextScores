@@ -305,6 +305,13 @@ export class UploadSourceService {
       } catch (error) {
         pendingStatus = true;
         notes.push(`Fossil commit failed: ${this.readableError(error)}`);
+        // The revision is still stored, so the request succeeds and the failure
+        // used to leave no trace outside the response body: the revision lands
+        // without a fossilBranch and nothing says why. Log it.
+        this.logger.error(
+          `Fossil commit failed for ${trimmedWorkId}/${trimmedSourceId} revision ${revisionId} ` +
+            `on branch ${requestedBranchName ?? 'trunk'}: ${this.readableError(error)}`
+        );
         this.progress.publish(progressId, 'Fossil commit failed', 'fossil.failed');
       }
     } else {
@@ -717,6 +724,13 @@ export class UploadSourceService {
       } catch (error) {
         pendingStatus = true;
         notes.push(`Fossil commit failed: ${this.readableError(error)}`);
+        // The revision is still stored, so the request succeeds and the failure
+        // used to leave no trace outside the response body: the revision lands
+        // without a fossilBranch and nothing says why. Log it.
+        this.logger.error(
+          `Fossil commit failed for ${work.workId}/${sourceId} revision ${revisionId} ` +
+            `on branch ${this.sanitizeBranchName(request.branchName) ?? 'trunk'}: ${this.readableError(error)}`
+        );
         this.progress.publish(progressId, 'Fossil commit failed', 'fossil.failed');
       }
     } else {

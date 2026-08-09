@@ -16,11 +16,30 @@ async function listMessages(request) {
   return [];
 }
 
-async function findMagicLinkFor(request, toEmail, subjectIncludes = 'Sign in to OurTextScores', timeoutMs = 30000) {
+async function seenMessageIds(request) {
+  const ids = new Set();
+  for (const m of await listMessages(request)) {
+    const id = m.ID || m.Id || m.id || m.MessageID || m.messageId;
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * `ignoreIds` must hold every message that existed before the sign-in was
+ * requested. Unlike the other specs this one signs in as a fixed address, so
+ * Mailpit still holds magic links from earlier runs. Without the gate the first
+ * poll could return one of those — already consumed, so the callback silently
+ * failed and the session never appeared, which surfaced 15s later as a missing
+ * heading rather than as a sign-in error.
+ */
+async function findMagicLinkFor(request, toEmail, subjectIncludes = 'Sign in to OurTextScores', timeoutMs = 30000, ignoreIds = new Set()) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const msgs = await listMessages(request);
     for (const m of msgs) {
+      const messageId = m.ID || m.Id || m.id || m.MessageID || m.messageId;
+      if (messageId && ignoreIds.has(messageId)) continue;
       const toList = (m.To || m.to || []).map((t) => (typeof t === 'string' ? t : t.Address || t.address)).filter(Boolean);
       const subj = m.Subject || m.subject || '';
       if (toList.find((t) => String(t).toLowerCase().includes(toEmail.toLowerCase())) && String(subj).includes(subjectIncludes)) {
@@ -46,6 +65,7 @@ async function findMagicLinkFor(request, toEmail, subjectIncludes = 'Sign in to 
 test.describe('Email auth (magic link)', () => {
   test('sign in via email and see session UI', async ({ page, request }) => {
     const email = process.env.SMOKE_EMAIL || 'smoke@example.test';
+    const alreadyDelivered = await seenMessageIds(request);
 
     // Go to NextAuth sign-in
     await page.goto(`${BASE_URL}/api/auth/signin`);
@@ -64,7 +84,7 @@ test.describe('Email auth (magic link)', () => {
     if (await submit.count()) await submit.first().click(); else await input.press('Enter');
 
     // Poll Mailpit for the magic link
-    const magicUrl = await findMagicLinkFor(request, email);
+    const magicUrl = await findMagicLinkFor(request, email, undefined, undefined, alreadyDelivered);
     expect(magicUrl).toContain('/api/auth/callback/email');
 
     // Complete sign-in and go to home to assert header session state

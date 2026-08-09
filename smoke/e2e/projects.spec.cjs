@@ -78,7 +78,7 @@ async function signInViaEmail(page, request, email) {
 test.describe('Projects flow', () => {
   test.setTimeout(180000);
 
-  test('create project, edit row, create internal source, and open linked source', async ({ page, request }) => {
+  test('create project, add a row, create an internal source, and open it from the sources table', async ({ page, request }) => {
     const email = `projects_${Date.now()}@example.test`;
     await signInViaEmail(page, request, email);
 
@@ -95,21 +95,22 @@ test.describe('Projects flow', () => {
     const projectId = projectUrl.pathname.split('/').filter(Boolean).pop();
     expect(projectId).toBeTruthy();
 
-    await page.getByRole('button', { name: 'Add Row' }).click();
-
-    const externalInputs = page.locator('input[placeholder="https://..."]');
-    await expect(externalInputs.first()).toBeVisible();
-    await externalInputs.first().fill('https://example.com/scores/sample.xml');
-
-    const imslpInputs = page.locator('input[placeholder="https://imslp.org/wiki/..."]');
-    await imslpInputs.first().fill('https://imslp.org/wiki/Nocturne%2C_Op.9_No.2_(Chopin%2C_Fr%C3%A9d%C3%A9ric)');
-
-    const notes = page.locator('textarea').first();
-    await notes.fill('Needs manual verification');
-
-    await page.getByRole('button', { name: 'Save' }).first().click();
-
+    // Row editing moved out of the UI in "Projects have spreadsheets": the detail
+    // page now shows a spreadsheet panel plus the linked-sources table, and rows
+    // are managed through the API. Drive the rows API directly, then assert the
+    // result through the UI that replaced it.
     const token = makeJwt(email);
+    const authed = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const createRowResp = await request.post(`${PUBLIC_API}/projects/${encodeURIComponent(projectId)}/rows`, {
+      headers: authed,
+      data: {
+        externalScoreUrl: 'https://example.com/scores/sample.xml',
+        imslpUrl: 'https://imslp.org/wiki/Nocturne%2C_Op.9_No.2_(Chopin%2C_Fr%C3%A9d%C3%A9ric)',
+        notes: 'Needs manual verification'
+      }
+    });
+    expect(createRowResp.ok()).toBeTruthy();
+
     const rowsResp = await request.get(`${PUBLIC_API}/projects/${encodeURIComponent(projectId)}/rows`, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -119,29 +120,26 @@ test.describe('Projects flow', () => {
     expect(rowsJson.rows.length).toBeGreaterThan(0);
     const rowId = rowsJson.rows[0].rowId;
     expect(rowId).toBeTruthy();
+    expect(rowsJson.rows[0].notes).toBe('Needs manual verification');
 
     const workId = String(Date.now());
     const createSourceResp = await request.post(
       `${PUBLIC_API}/projects/${encodeURIComponent(projectId)}/rows/${encodeURIComponent(rowId)}/create-source`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        data: { workId }
-      }
+      { headers: authed, data: { workId } }
     );
     expect(createSourceResp.ok()).toBeTruthy();
     const created = await createSourceResp.json();
     expect(created.workId).toBe(workId);
     expect(created.sourceId).toBeTruthy();
 
+    // The source created from the row is tagged with the project, so it belongs
+    // in the Project Sources table and links through to the work.
     await page.reload();
-    const openSourceLink = page.getByRole('link', { name: 'Open Source' }).first();
-    await expect(openSourceLink).toBeVisible({ timeout: 15000 });
-    await openSourceLink.click();
+    const sourceRow = page.locator('tr', { hasText: created.sourceId }).first();
+    await expect(sourceRow).toBeVisible({ timeout: 15000 });
+    await sourceRow.getByRole('link').first().click();
 
-    await page.waitForURL(new RegExp(`/works/${workId}`));
-    await expect(page.getByText('Project').first()).toBeVisible({ timeout: 15000 });
+    await page.waitForURL(new RegExp(`/works/${workId}\\?source=${created.sourceId}`));
+    await expect(page.locator(`#source-${created.sourceId}`)).toBeVisible({ timeout: 15000 });
   });
 });

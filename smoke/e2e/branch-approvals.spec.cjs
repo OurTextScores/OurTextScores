@@ -115,14 +115,16 @@ test.describe('Owned branch + approvals flow', () => {
       }
     }
 
-    // Back to work page and verify branch filter includes our branch (auto-open the source card)
+    // Back to the work page and verify the branch is listed (auto-open the source
+    // card). The per-revision `#branch-filter` select went away when change
+    // reviews moved to the shared branch flow; the branches panel inside the
+    // source card is the surface that replaced it.
     await page.goto(`${BASE_URL}/works/${encodeURIComponent(work.workId)}?source=${encodeURIComponent(sourceId)}`);
     const card = page.locator('article', { hasText: sourceLabel }).first();
     await expect(card).toBeVisible({ timeout: 20000 });
-    const filter = card.locator('#branch-filter').first();
-    await expect(filter).toBeVisible({ timeout: 20000 });
-    const opts = await filter.evaluate((sel) => Array.from(sel.options).map(o => o.value));
-    expect(opts).toContain(branchName);
+    const branchesPanel = card.locator('section', { hasText: 'Branches' }).last();
+    await expect(branchesPanel).toBeVisible({ timeout: 20000 });
+    await expect(branchesPanel.getByText(branchName, { exact: true }).first()).toBeVisible({ timeout: 20000 });
     } finally {
       await cleanup();
     }

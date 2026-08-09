@@ -188,80 +188,77 @@ test.describe('Nested comments (3 levels deep)', () => {
 
     const workResp = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(workId)}`);
     const work = await workResp.json();
-    const sourceId = work.sources[0].sourceId;
-    const revisionId = work.sources[0].revisions[0].revisionId;
-
-    // Create nested comments via API
-    const comment1Resp = await request.post(
-      `${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/revisions/${encodeURIComponent(revisionId)}/comments`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token1}`
-        },
-        data: { content: 'UI test: top level comment' }
+    // Comments render per branch now: `RevisionHistory`, which hosted the
+    // revision comment thread, is no longer mounted anywhere since change
+    // reviews moved to the shared branch flow. The branches panel inside the
+    // source card is the live nesting UI.
+    //
+    // Take the branch from the branches endpoint rather than from the revision:
+    // posting a comment requires the branch to be registered, and a revision
+    // carries a `fossilBranch` only once its Fossil commit has landed, so
+    // deriving the name from the revision fails on a freshly seeded stack.
+    let source;
+    let branchName;
+    for (const candidate of work.sources) {
+      const resp = await request.get(
+        `${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(candidate.sourceId)}/branches`
+      );
+      if (!resp.ok()) continue;
+      const names = ((await resp.json()).branches || []).map((b) => b.name);
+      if (names.length > 0) {
+        source = candidate;
+        branchName = names[0];
+        break;
       }
-    );
+    }
+    expect(source, 'no source on this work has a registered branch').toBeTruthy();
+    const sourceId = source.sourceId;
+    const commentsUrl = `${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches/${encodeURIComponent(branchName)}/comments`;
+
+    const comment1Resp = await request.post(commentsUrl, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token1}` },
+      data: { content: 'UI test: top level comment' }
+    });
+    expect(comment1Resp.ok()).toBeTruthy();
     const comment1 = await comment1Resp.json();
     const comment1Id = comment1.commentId;
+    expect(comment1Id).toBeTruthy();
 
-    const comment2Resp = await request.post(
-      `${PUBLIC_API}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/revisions/${encodeURIComponent(revisionId)}/comments`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token2}`
-        },
-        data: {
-          content: 'UI test: nested reply',
-          parentCommentId: comment1Id
-        }
-      }
-    );
+    const comment2Resp = await request.post(commentsUrl, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token2}` },
+      data: { content: 'UI test: nested reply', parentCommentId: comment1Id }
+    });
+    expect(comment2Resp.ok()).toBeTruthy();
+    const comment2 = await comment2Resp.json();
+    expect(comment2.commentId).toBeTruthy();
 
-    // Navigate to the work page
-    await page.goto(`${BASE_URL}/works/${encodeURIComponent(workId)}`);
+    // `?source=` auto-opens the card, which is what mounts the branches panel.
+    await page.goto(`${BASE_URL}/works/${encodeURIComponent(workId)}?source=${encodeURIComponent(sourceId)}`);
 
-    // Wait for page to load
-    await page.waitForLoadState('networkidle');
-
-    // Find and click on the source card to expand it
-    const sourceCard = page.locator(`text=${work.sources[0].label}`).first();
-    await sourceCard.click();
-
-    // Wait for source details to appear
-    await page.waitForTimeout(500);
-
-    // Look for "Revision history" and click it
-    const revisionHistory = page.locator('text=Revision history');
-    if (await revisionHistory.count() > 0) {
-      await revisionHistory.first().click();
-      await page.waitForTimeout(500);
+    // The thread is collapsed until its "Branch comments (N)" toggle is clicked.
+    // The label is prefixed with a disclosure glyph and uppercased in CSS.
+    const toggles = page.getByRole('button', { name: /branch comments \(/i });
+    await expect(toggles.first()).toBeVisible({ timeout: 20000 });
+    for (let i = 0; i < (await toggles.count()); i += 1) {
+      await toggles.nth(i).click();
     }
 
-    // Check if comments are visible
-    const topComment = page.locator(`text=UI test: top level comment`);
-    await expect(topComment).toBeVisible({ timeout: 5000 });
-    console.log('✓ Top-level comment visible in UI');
+    const topComment = page.locator(`#comment-${comment1Id}`);
+    await expect(topComment).toBeVisible({ timeout: 20000 });
+    await expect(topComment).toContainText('UI test: top level comment');
 
-    const nestedComment = page.locator(`text=UI test: nested reply`);
-    await expect(nestedComment).toBeVisible({ timeout: 5000 });
-    console.log('✓ Nested comment visible in UI');
+    const nestedComment = page.locator(`#comment-${comment2.commentId}`);
+    await expect(nestedComment).toBeVisible({ timeout: 10000 });
+    await expect(nestedComment).toContainText('UI test: nested reply');
 
-    const usernameLink1 = page.locator(`a:has-text("${username1}")`).first();
-    const usernameLink2 = page.locator(`a:has-text("${username2}")`).first();
-    await expect(usernameLink1).toBeVisible({ timeout: 5000 });
-    await expect(usernameLink2).toBeVisible({ timeout: 5000 });
-    await expect(usernameLink1).toHaveAttribute('href', `/users/${username1}`);
-    await expect(usernameLink2).toHaveAttribute('href', `/users/${username2}`);
+    // Both authors are attributed. Branch comments show the username as text,
+    // unlike the revision thread, which linked it to the profile.
+    await expect(topComment).toContainText(username1);
+    await expect(nestedComment).toContainText(username2);
 
-    // Verify indentation (nested comment should have marginLeft applied)
-    const nestedCommentElement = await nestedComment.locator('..').locator('..').first();
-    const marginLeft = await nestedCommentElement.evaluate(el => el.style.marginLeft);
-    expect(marginLeft).toBeTruthy();
-    expect(marginLeft).not.toBe('0');
-    expect(marginLeft).not.toBe('0px');
-    console.log(`✓ Nested comment has indentation: ${marginLeft}`);
+    // A reply is indented; its parent is not.
+    await expect(nestedComment).toHaveClass(/\bml-4\b/);
+    await expect(topComment).not.toHaveClass(/\bml-4\b/);
 
     console.log('✅ Nested comments display correctly in UI!');
   });
