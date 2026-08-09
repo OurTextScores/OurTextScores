@@ -401,6 +401,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             idempotencyKey,
             providerRequestId: scanned.result.requestId,
             durationMs: providerMs,
+            inferenceMs: scanned.result.inferenceMs,
             ...assets,
             musicXml,
             pdf
@@ -417,6 +418,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             modelRevision: scanned.result.modelRevision,
             executionProvider: scanned.result.provenance?.executionProvider,
             providerMs,
+            inferenceMs: scanned.result.inferenceMs,
             renderMs: Date.now() - renderStartedAt,
             inputBytes: image.length,
             outputBytes: scanned.result.musicXml.length

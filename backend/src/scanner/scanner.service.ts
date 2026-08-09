@@ -654,6 +654,7 @@ export class ScannerService implements OnModuleInit {
       hasCombinedPdf: Boolean(job.combinedPdf),
       providerRevision: job.providerRevision,
       modelRevision: job.modelRevision,
+      timings: job.timings || {},
       errorCode: job.errorCode,
       errorMessage: job.errorMessage,
       canRetry: this.retryEligibility(job).allowed,

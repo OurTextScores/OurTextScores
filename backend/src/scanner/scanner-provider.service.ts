@@ -19,6 +19,13 @@ export interface ScanPageResult {
   modelRevision: string;
   provenance: ScannerModelProvenance;
   requestId?: string;
+  /**
+   * Recognition time as measured inside the provider. Design section 11.3
+   * requires separating this from provider start and network time: on a cold
+   * container the caller's wall clock is dominated by the readiness wait, so
+   * using it as "recognition time" overstates it by an order of magnitude.
+   */
+  inferenceMs?: number;
   musicXmlSha256: string;
 }
 
@@ -226,6 +233,9 @@ export class ScannerProviderService {
       modelRevision,
       musicXmlSha256,
       requestId: result?.requestId ? String(result.requestId) : undefined,
+      inferenceMs: Number.isFinite(Number(result?.timing?.inferenceMs))
+        ? Number(result.timing.inferenceMs)
+        : undefined,
       provenance: {
         segmentationModel: this.text(engine.segmentationModel),
         segmentationModelSha256: this.text(engine.segmentationModelSha256),
@@ -288,6 +298,7 @@ export class ScannerProviderService {
       musicXml,
       musicXmlSha256: createHash('sha256').update(musicXml).digest('hex'),
       requestId: key.slice(0, 16),
+      inferenceMs: 1,
       provenance: {
         segmentationModel: 'local-fake-segnet',
         segmentationModelSha256: 'f'.repeat(64),

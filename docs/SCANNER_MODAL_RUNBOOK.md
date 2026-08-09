@@ -394,17 +394,35 @@ Design §10.3 requires proving the cap works *before* trusting it.
 The §13.4 timings are stored on the job documents, so the §11.4 gate is a Mongo
 aggregate rather than a log scrape:
 
+**Use `inferenceMs`, not `durationMs`, for recognition time.** Each page records
+both: `durationMs` is the caller's wall clock and includes any cold-start wait,
+while `inferenceMs` is recognition measured inside the provider. On a cold
+container these differ by more than an order of magnitude — 21,117 ms against
+928 ms in a measured run — so using wall clock as "recognition time" would
+report the GPU as ~20× slower than it is. Design §11.3 requires the separation.
+
 ```js
-// Per-page provider latency: p50/p95 against the "warm p95 under 60 s" gate.
+// Recognition latency: p50/p95 against the "warm p95 under 60 s" gate.
 db.scanner_jobs.aggregate([
   { $match: { createdAt: { $gte: new Date(Date.now() - 24*3600*1000) } } },
   { $unwind: "$pages" },
-  { $match: { "pages.status": "succeeded", "pages.durationMs": { $gt: 0 } } },
+  { $match: { "pages.status": "succeeded", "pages.inferenceMs": { $gt: 0 } } },
   { $group: { _id: null,
       samples: { $sum: 1 },
-      p50: { $percentile: { input: "$pages.durationMs", p: [0.5], method: "approximate" } },
-      p95: { $percentile: { input: "$pages.durationMs", p: [0.95], method: "approximate" } },
-      max: { $max: "$pages.durationMs" } } }
+      p50: { $percentile: { input: "$pages.inferenceMs", p: [0.5], method: "approximate" } },
+      p95: { $percentile: { input: "$pages.inferenceMs", p: [0.95], method: "approximate" } },
+      max: { $max: "$pages.inferenceMs" } } }
+])
+
+// Cold-start cost: how much wall clock is not recognition. A large gap means
+// the page waited on a cold container, so treat it as a cold sample.
+db.scanner_jobs.aggregate([
+  { $unwind: "$pages" },
+  { $match: { "pages.status": "succeeded", "pages.inferenceMs": { $gt: 0 } } },
+  { $project: { jobId: 1, _id: 0,
+      inferenceMs: "$pages.inferenceMs",
+      waitMs: { $subtract: ["$pages.durationMs", "$pages.inferenceMs"] } } },
+  { $sort: { waitMs: -1 } }
 ])
 
 // Whole-job wall clock against the "10-page job within 10 minutes warm" gate.
@@ -419,9 +437,10 @@ db.scanner_jobs.aggregate([
 ])
 ```
 
-Separate cold from warm runs yourself — nothing currently records which a page
-was. If that split matters for the gate, it needs a `cold` flag threading from
-the provider response; the telemetry field already exists but is never set.
+The second query gives you the cold/warm split in practice: a page whose
+`waitMs` is seconds rather than milliseconds waited on a cold container. There
+is no explicit `cold` boolean — the telemetry field exists but is never set —
+so use that gap as the discriminator.
 
 Run the §11.1 corpus, not just a few convenient pages, and record results in the
 design doc's §11 section.

@@ -311,6 +311,19 @@ describe('ScannerProviderService', () => {
       delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
     });
 
+    it('separates provider recognition time from the caller wall clock', async () => {
+      // Section 11.3. On a cold container the caller's wall clock is dominated
+      // by the readiness wait — measured at 11,502 ms against 821 ms of actual
+      // recognition — so the provider's own figure has to be carried through.
+      respond(envelope({ timing: { totalMs: 11_502, inferenceMs: 821 } }));
+      await expect(scan()).resolves.toMatchObject({ inferenceMs: 821 });
+    });
+
+    it('tolerates a provider that reports no timing block', async () => {
+      respond(envelope());
+      await expect(scan()).resolves.toMatchObject({ inferenceMs: undefined });
+    });
+
     it('records the segmentation and transformer identities from the v1 envelope', async () => {
       respond(envelope());
       await expect(scan()).resolves.toMatchObject({

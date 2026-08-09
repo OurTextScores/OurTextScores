@@ -31,6 +31,7 @@ export interface ScannerTelemetryFields {
   queueWaitMs?: number;
   prepareMs?: number;
   providerMs?: number;
+  inferenceMs?: number;
   renderMs?: number;
   totalMs?: number;
   inputBytes?: number;
@@ -67,6 +68,7 @@ const ALLOWED_FIELDS: ReadonlyArray<keyof ScannerTelemetryFields> = [
   'queueWaitMs',
   'prepareMs',
   'providerMs',
+  'inferenceMs',
   'renderMs',
   'totalMs',
   'inputBytes',

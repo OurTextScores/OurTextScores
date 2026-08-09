@@ -60,8 +60,10 @@ export interface ScannerPageResult {
   musicXml?: ScannerStorageLocator;
   pdf?: ScannerStorageLocator;
   providerRequestId?: string;
-  /** Wall-clock time of the provider call that produced this result (13.4). */
+  /** Wall-clock time of the provider call, including any cold-start wait. */
   durationMs?: number;
+  /** Recognition time inside the provider, excluding cold start (11.3). */
+  inferenceMs?: number;
   errorCode?: string;
   errorMessage?: string;
 }
