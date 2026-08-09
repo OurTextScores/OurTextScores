@@ -110,6 +110,13 @@ SOURCE_COMMIT = _source_commit()
 image = (
     modal.Image.from_registry(CUDA_BASE, add_python="3.12")
     .apt_install("git", "libgl1", "libglib2.0-0", "libgomp1", "ca-certificates")
+    # Must precede run_commands: the install below reads it. The shared provider
+    # directory is mounted at the end of the build, too late for this.
+    .add_local_file(
+        SHARED / "security-overrides.txt",
+        remote_path="/tmp/security-overrides.txt",
+        copy=True,
+    )
     .run_commands(
         "git clone https://github.com/liebharc/homr.git /opt/homr",
         f"cd /opt/homr && git checkout --detach {HOMR_COMMIT}",
@@ -136,6 +143,12 @@ image = (
         "&& mv /tmp/homr-gpu-requirements.txt /tmp/homr-requirements.txt",
         "python -m pip install --no-cache-dir --require-hashes "
         "-r /tmp/homr-requirements.txt",
+        # Lifts the HOMR-pinned packages carrying known HIGH advisories, with the
+        # same hash verification. Shared with the CPU image so both providers run
+        # the same versions.
+        "python -m pip install --no-cache-dir --require-hashes "
+        "-r /tmp/security-overrides.txt",
+        "rm -f /tmp/security-overrides.txt",
         # Fail the build, not a scan, if the CPU distribution ever returns.
         "python -m pip show onnxruntime-gpu > /dev/null",
         "if python -m pip show onnxruntime > /dev/null 2>&1; then "
@@ -145,7 +158,7 @@ image = (
         "python -m pip uninstall -y poetry poetry-plugin-export && "
         "rm -f /tmp/homr-requirements.txt",
         "python -m pip install --no-cache-dir "
-        "'fastapi==0.116.1' 'httpx==0.28.1' 'python-multipart==0.0.20'",
+        "'fastapi==0.116.1' 'httpx==0.28.1' 'python-multipart==0.0.30'",
         # Bake the weights in so readiness never waits on a download.
         "cd /opt/homr && homr --init --gpu force",
     )

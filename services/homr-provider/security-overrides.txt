@@ -1,0 +1,28 @@
+# Security overrides applied on top of HOMR's committed poetry.lock.
+#
+# The provider installs HOMR's dependencies from that lock under
+# --require-hashes, which is what we want for reproducibility, but it also means
+# we inherit whatever versions HOMR pinned at commit 1ddc6fc. This file lifts
+# the packages whose pinned versions carry known HIGH advisories, with the same
+# hash verification, and is installed after HOMR's requirements so it wins.
+#
+# Only packages reachable from an untrusted page belong here. The provider
+# accepts image/png and image/jpeg only and verifies the magic bytes, so the
+# format-specific Pillow advisories (PSD, JPEG2000, FITS, McIdas, BDF, PCF,
+# GD 2.x, PDF) cannot be triggered through it; these bumps cover the decoder
+# and allocation issues that a crafted PNG or JPEG could reach, since HOMR runs
+# the page through Pillow in resize and staff dewarping.
+#
+# Versions are the highest fix any one advisory requires, not the lowest that
+# clears a single CVE: the advisories against a package are fixed in different
+# releases, so the lowest leaves some of them standing.
+#
+# Drop an entry once the pinned HOMR revision ships an equal or newer version.
+
+# CVE-2026-59197, CVE-2026-59199, CVE-2026-59205, CVE-2026-54060 (12.1.1)
+pillow==12.3.0 \
+    --hash=sha256:78cb2c6865a35ab8ff8b75fd122f6033b92a62c82801110e48ddd6c936a45d91
+
+# CVE-2026-44431, CVE-2026-44432 (2.6.3)
+urllib3==2.7.0 \
+    --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897

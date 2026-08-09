@@ -29,6 +29,10 @@ RUN git clone https://github.com/liebharc/homr.git /opt/homr && \
     git checkout --detach "${HOMR_COMMIT}" && \
     test "$(git rev-parse HEAD)" = "${HOMR_COMMIT}"
 
+# Lifts the HOMR-pinned packages that carry known HIGH advisories, with the same
+# hash verification. Copied before the install so it layers with it.
+COPY homr-provider/security-overrides.txt /tmp/security-overrides.txt
+
 # Resolve dependencies from HOMR's committed poetry.lock, but install them with
 # pip under --require-hashes rather than `poetry install`. Two reasons: it
 # verifies every artifact against the lockfile hashes (design section 9.5), and
@@ -39,13 +43,14 @@ RUN python -m pip install --no-cache-dir \
     cd /opt/homr && \
     poetry export --only main -f requirements.txt -o /tmp/homr-requirements.txt && \
     python -m pip install --no-cache-dir --require-hashes -r /tmp/homr-requirements.txt && \
+    python -m pip install --no-cache-dir --require-hashes -r /tmp/security-overrides.txt && \
     python -m pip install --no-cache-dir --no-deps /opt/homr && \
     python -m pip uninstall -y poetry poetry-plugin-export && \
-    rm -f /tmp/homr-requirements.txt && \
+    rm -f /tmp/homr-requirements.txt /tmp/security-overrides.txt && \
     python -m pip install --no-cache-dir \
       "fastapi==0.116.1" \
       "httpx==0.28.1" \
-      "python-multipart==0.0.20" \
+      "python-multipart==0.0.30" \
       "uvicorn==0.35.0"
 
 # Bake the pinned CPU models into the image so readiness never depends on a
