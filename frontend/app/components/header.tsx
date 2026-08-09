@@ -76,10 +76,10 @@ export default function Header() {
           borderBottomWidth: toolbarOpen ? undefined : 0,
         }}
       >
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-3 py-2 pl-24">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 overflow-x-auto px-3 py-2 pl-24">
           <Link
             href="/welcome"
-            className="text-sm font-semibold text-slate-800 hover:underline dark:text-slate-100"
+            className="whitespace-nowrap text-sm font-semibold text-slate-800 hover:underline dark:text-slate-100"
           >
             OurTextScores
           </Link>
@@ -107,7 +107,7 @@ export default function Header() {
                 href="/scanner"
                 className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
               >
-                <span aria-hidden="true">⌁</span>Scanner
+                <span aria-hidden="true">⎙</span>Scanner
               </Link>
             )}
             <Link
@@ -122,20 +122,24 @@ export default function Header() {
                 {effectiveUsername ? (
                   <Link
                     href={`/users/${encodeURIComponent(effectiveUsername)}`}
-                    className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                    title={userDisplay ?? undefined}
+                    className="max-w-[10rem] truncate whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
                   >
                     {userDisplay}
                   </Link>
                 ) : (
-                  <span className="text-xs text-slate-700 dark:text-slate-300">
+                  <span
+                    title={userDisplay ?? undefined}
+                    className="max-w-[10rem] truncate whitespace-nowrap text-xs text-slate-700 dark:text-slate-300"
+                  >
                     {userDisplay}
                   </span>
                 )}
                 <Link
                   href="/notifications"
-                  className="relative text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                  className="relative inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
                 >
-                  <span aria-hidden="true">◉ </span>Notifications
+                  <span aria-hidden="true">◉</span>Notifications
                   {unreadCount > 0 && (
                     <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                       {unreadCount > 9 ? "9+" : unreadCount}
@@ -144,35 +148,35 @@ export default function Header() {
                 </Link>
                 <Link
                   href="/change-reviews"
-                  className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
                 >
-                  <span aria-hidden="true">☰ </span>Change Reviews
+                  <span aria-hidden="true">☰</span>Change Reviews
                 </Link>
                 <Link
                   href="/approvals"
-                  className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
                 >
-                  <span aria-hidden="true">✓ </span>Approvals
+                  <span aria-hidden="true">✓</span>Approvals
                 </Link>
                 <Link
                   href="/settings"
-                  className="text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
                 >
-                  <span aria-hidden="true">⚙ </span>Settings
+                  <span aria-hidden="true">⚙</span>Settings
                 </Link>
                 <button
                   onClick={() => signOut()}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
                 >
-                  <span aria-hidden="true">↪ </span>Sign out
+                  <span aria-hidden="true">↪</span>Sign out
                 </button>
               </>
             ) : (
               <Link
                 href="/signin"
-                className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
               >
-                <span aria-hidden="true">↩ </span>Sign in
+                <span aria-hidden="true">↩</span>Sign in
               </Link>
             )}
           </div>

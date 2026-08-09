@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -6,6 +7,32 @@ import {
   within,
 } from "@testing-library/react";
 import ScannerClient from "./scanner-client";
+
+const push = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+
+/** Minimal XMLHttpRequest double that can also emit upload progress. */
+class FakeXhr {
+  static last: FakeXhr | null = null;
+  status = 202;
+  responseText = JSON.stringify({ jobId: "job-new", status: "preparing" });
+  upload: { onprogress?: (e: { lengthComputable: boolean; loaded: number; total: number }) => void } = {};
+  onload?: () => void;
+  onerror?: () => void;
+  onabort?: () => void;
+  body: FormData | null = null;
+  open() {}
+  send(body: FormData) {
+    this.body = body;
+    FakeXhr.last = this;
+  }
+  finish() {
+    this.onload?.();
+  }
+  progress(loaded: number, total: number) {
+    this.upload.onprogress?.({ lengthComputable: true, loaded, total });
+  }
+}
 
 const job = (jobId: string) => ({
   jobId,
@@ -27,6 +54,9 @@ const job = (jobId: string) => ({
 
 describe("ScannerClient", () => {
   beforeEach(() => {
+    push.mockClear();
+    FakeXhr.last = null;
+    (globalThis as any).XMLHttpRequest = FakeXhr;
     global.fetch = jest.fn(
       async (_url: RequestInfo | URL, init?: RequestInit) => {
         if (init?.method === "POST") {
@@ -106,21 +136,39 @@ describe("ScannerClient", () => {
         .map((item) => item.textContent),
     ).toEqual(["page-2.png", "page-10.png"]);
 
-    const submit = screen.getByRole("button", { name: "Upload and review" });
+    const submit = screen.getByRole("button", { name: "Scan" });
     fireEvent.submit(submit.closest("form")!);
-    await waitFor(() =>
-      expect(global.fetch).toHaveBeenCalledWith(
-        "/api/proxy/scanner/jobs",
-        expect.objectContaining({ method: "POST" }),
-      ),
-    );
-    const post = (global.fetch as jest.Mock).mock.calls.find(
-      ([, init]) => init?.method === "POST",
-    );
-    const submitted = (post?.[1].body as FormData).getAll("file") as File[];
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    const submitted = FakeXhr.last!.body!.getAll("file") as File[];
     expect(submitted.map((file) => file.name)).toEqual([
       "page-2.png",
       "page-10.png",
     ]);
+  });
+
+  it("reports real upload progress and then opens the new scan", async () => {
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: { files: [new File(["x".repeat(2048)], "page.png", { type: "image/png" })] },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Scan" }).closest("form")!);
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+
+    // Bytes sent, not a spinner: fetch cannot report this, which is why the
+    // upload uses XMLHttpRequest.
+    act(() => FakeXhr.last!.progress(1024, 2048));
+    expect(
+      await screen.findByText(/Uploading to OurTextScores/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/50% sent/)).toBeInTheDocument();
+
+    // At 100% the bytes stall while the server stores the upload, so the copy
+    // switches rather than sitting on a finished-looking bar.
+    act(() => FakeXhr.last!.progress(2048, 2048));
+    expect(await screen.findByText(/Upload complete/)).toBeInTheDocument();
+
+    act(() => FakeXhr.last!.finish());
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/scanner/job-new"));
   });
 });
