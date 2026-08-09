@@ -72,8 +72,23 @@ image = (
         # path (/build/pip-*.whl) that does not exist in the image.
         "cd /opt/homr && poetry export --only main --extras gpu "
         "-f requirements.txt -o /tmp/homr-requirements.txt",
+        # HOMR depends on `onnxruntime`, and its `gpu` extra adds
+        # `onnxruntime-gpu`, so the lockfile export contains both. They install
+        # the same import name over the same files: whichever pip writes last
+        # wins, and the CPU wheel sorts after the GPU one, which silently strips
+        # CUDAExecutionProvider. `onnxruntime-gpu` is a superset — it still
+        # offers CPUExecutionProvider — so drop the CPU-only distribution.
+        # Entries start at column 0; hash lines are indented continuations.
+        "awk '/^onnxruntime==/{drop=1;next} /^[^[:space:]]/{drop=0} !drop' "
+        "/tmp/homr-requirements.txt > /tmp/homr-gpu-requirements.txt "
+        "&& mv /tmp/homr-gpu-requirements.txt /tmp/homr-requirements.txt",
         "python -m pip install --no-cache-dir --require-hashes "
         "-r /tmp/homr-requirements.txt",
+        # Fail the build, not a scan, if the CPU distribution ever returns.
+        "python -m pip show onnxruntime-gpu > /dev/null",
+        "if python -m pip show onnxruntime > /dev/null 2>&1; then "
+        "echo 'onnxruntime (CPU) must not be installed beside onnxruntime-gpu'; "
+        "exit 1; fi",
         "python -m pip install --no-cache-dir --no-deps /opt/homr",
         "python -m pip uninstall -y poetry poetry-plugin-export && "
         "rm -f /tmp/homr-requirements.txt",

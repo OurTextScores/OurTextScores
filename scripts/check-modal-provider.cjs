@@ -118,6 +118,14 @@ async function main() {
   if (process.stdout.isTTY) process.stdout.write("".padEnd(100) + "\r");
   if (ready.status !== 200) {
     bad(`not ready after ${Math.round((Date.now() - startedAt) / 1000)}s: ${ready.body?.reason}`);
+    // The usual cause of a CUDA-unavailable readiness failure is the CPU
+    // onnxruntime distribution shadowing onnxruntime-gpu, so show what the
+    // runtime can actually see rather than making that a separate dig.
+    const available = ready.body?.availableExecutionProviders;
+    if (Array.isArray(available)) {
+      console.log(`        ONNX Runtime sees: ${available.join(", ") || "(none)"}`);
+      console.log(`        it needs:          ${expectedExecutionProvider}`);
+    }
   } else {
     ok(`ready after ${Math.round((Date.now() - startedAt) / 1000)}s`);
     if (ready.body?.degradedReason) {
