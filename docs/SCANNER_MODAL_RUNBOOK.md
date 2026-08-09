@@ -363,31 +363,54 @@ curl -sS -H "Authorization: Bearer <admin token>" \
 
 ## 10. Budget-exhaustion drill
 
-Design §10.3 requires proving the cap works *before* trusting it.
+Design §10.3 requires proving the cap works *before* trusting it. The drill has
+two halves: what OTS does when capacity is gone, and whether Modal actually
+stops compute.
 
-1. With the tiny staging budget from step 2 still in place, run scans until
-   Modal reports the budget exhausted. Track spend as you go:
+### 10a. The OTS half — verified 2026-08-08
 
-   ```bash
-   modal billing summary
-   modal billing report
-   ```
-2. Confirm Modal actually refuses further compute rather than merely warning.
-3. Confirm OTS degrades honestly: queued jobs stay durable, and the user is told
-   capacity is exhausted rather than seeing a hard failure.
-4. Exercise the OTS kill switch independently:
+Run with `SCANNER_PROVIDER_BUDGET_EXHAUSTED`, which costs nothing and needs no
+Modal spend. Sequence, and what each step proved:
 
-   ```bash
-   # In .env, then restart the worker:
-   SCANNER_PROVIDER_BUDGET_EXHAUSTED=true
-   ```
+| Step | Result |
+|---|---|
+| Job started with the worker stopped | sits `queued` |
+| Switch **on**, worker running for 20 s | still `queued` — held, not failed |
+| `POST /scanner/jobs` while exhausted | `503 Scanner monthly capacity has been reached` |
+| Switch **off**, worker restarted | resumed to `succeeded` with **one** provider attempt |
 
-   The worker stops claiming jobs and the API refuses new ones with
-   "Scanner monthly capacity has been reached". Set it back to `false` and
-   confirm queued work resumes.
-5. Only now raise the workspace budget to $30/month.
+The important property is the last one: held work resumes without
+re-submission and without burning an extra provider call, and `queueWaitMs`
+(28,593 ms in the run above) accounts for the hold. Re-run this after any change
+to the worker's claim path.
 
----
+### 10b. The Modal half — needs the dashboard
+
+`modal` has no budget command (`modal workspace settings` only exposes
+`default-environment` and `image-builder-version`), so this is a dashboard
+action and it is yours to take.
+
+**Do not try to burn the budget down.** With $0.77 remaining that is about
+3,470 s of L4 uptime; at roughly 81 s per cold burst (≈20 s start + ~1 s scan +
+60 s `scaledown_window` idle) it needs ~43 bursts and about an hour of wall
+clock — an hour spent proving a setting, with the budget you would rather spend
+on the §11.1 corpus.
+
+Instead, bring the cap down to the spend:
+
+1. In the Modal dashboard, set the workspace budget to just above current
+   metered spend — with $0.23 used, **$0.25** leaves roughly one cold burst of
+   headroom.
+2. Run `npm run scanner:modal:check`, then one scan.
+3. Confirm Modal *refuses* further compute rather than only warning. That is the
+   property being tested; a warning-only cap is not a cap.
+4. Flip `SCANNER_PROVIDER_BUDGET_EXHAUSTED=true` so OTS stops admitting work,
+   using 10a's expected behaviour as the reference.
+5. Only now raise the budget to **$30/month** and clear the switch.
+
+If Modal turns out to warn rather than block, the §10.3 recommendation does not
+hold and the OTS switch plus a billing alert become the real control — record
+that outcome here, because it changes what the pilot is relying on.
 
 ## 11. Phase 0 benchmark
 
