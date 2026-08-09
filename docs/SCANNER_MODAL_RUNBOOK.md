@@ -163,8 +163,21 @@ require (these are fail-closed at runtime, so a mismatch would disable the
 provider mid-scan), checks the AGPL disclosure fields, and prints the model
 hashes as ready-to-paste export lines. Exit code is non-zero if anything failed.
 
-Pin the hashes it prints and redeploy, so a silently changed weight file fails
-readiness instead of quietly altering results:
+The hashes for the pinned HOMR commit are already committed as
+`DEFAULT_MODEL_SHA256` in `services/homr-modal/modal_app.py`, so a normal deploy
+is pinned with nothing further to do. The check should print exactly those
+values; if it does not, the weights have moved and you should find out why
+before going further.
+
+**Do not put these in `.env`.** They are read at *deploy time* by
+`modal_app.py`, and baked into the image environment because Modal re-imports
+the module inside the container where your shell's variables do not exist. OTS
+never reads them, so `.env` would have no effect. They belong in the file beside
+`HOMR_COMMIT` and `CUDA_BASE_DIGEST` — they are pins, not secrets.
+
+Only when `HOMR_COMMIT` moves do you re-capture them: run the check against the
+new build, then either update `DEFAULT_MODEL_SHA256` (preferred — committed and
+reviewable) or override for one deploy:
 
 ```bash
 export HOMR_EXPECTED_SEGMENTATION_SHA256=<printed value>
@@ -173,10 +186,12 @@ export HOMR_EXPECTED_DECODER_SHA256=<printed value>
 cd services/homr-modal && modal deploy modal_app.py
 ```
 
-They are read at deploy time and baked into the image environment, because Modal
-re-imports the module inside the container where your shell's variables do not
-exist. Re-run `npm run scanner:modal:check` afterwards to confirm the pinned
-build still reaches ready.
+Prefer the committed form: a forgotten `export` silently produces an *unpinned*
+image, because an empty value is dropped and nothing fails.
+
+> The GPU image loads **fp16** weights, so these hashes differ from the CPU
+> image's. That also means CPU and GPU benchmark results are not directly
+> comparable — different models, not just different hardware.
 
 <details>
 <summary>Manual equivalent, if you would rather curl it</summary>

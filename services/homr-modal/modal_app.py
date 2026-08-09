@@ -41,14 +41,39 @@ CUDA_BASE = os.environ.get(
 )
 POETRY_VERSION = "2.3.2"
 POETRY_EXPORT_PLUGIN_VERSION = "1.9.0"
-# Set after the first build from /v1/capabilities so a silently changed weight
-# file fails readiness instead of quietly altering results.
+# Weight pins, captured from /v1/capabilities on the first successful GPU
+# deployment (2026-08-08) and verified again after the onnxruntime fix. A
+# changed weight file now fails readiness instead of quietly altering results.
+#
+# These are pins, not secrets, so they live here beside HOMR_COMMIT and
+# CUDA_BASE_DIGEST rather than in a shell export: an export that is forgotten
+# silently produces an UNPINNED image, because an empty value is dropped below
+# and nothing fails. Committed, they cannot be forgotten.
+#
+# The GPU path loads fp16 weights, so these differ from the CPU image's hashes.
+# Re-capture with `npm run scanner:modal:check` if HOMR_COMMIT ever moves.
+DEFAULT_MODEL_SHA256 = {
+    "segmentation": "60f495496cb41473c0521d0811d8f44b9d5cff892d287974a8aebb3eaee2fa83",
+    "encoder": "cd2da3ddec91af046d274506947f01da079c4ec5908ba0dd4c0c5985f780c82a",
+    "decoder": "58d55eebe22788ce98f0fc7730480a79c9f56534db064e8d32b1d5fe2579904a",
+}
 EXPECTED_MODEL_SHA256 = {
     key: value
     for key, value in (
-        ("segmentation", os.environ.get("HOMR_EXPECTED_SEGMENTATION_SHA256", "")),
-        ("encoder", os.environ.get("HOMR_EXPECTED_ENCODER_SHA256", "")),
-        ("decoder", os.environ.get("HOMR_EXPECTED_DECODER_SHA256", "")),
+        (
+            "segmentation",
+            os.environ.get(
+                "HOMR_EXPECTED_SEGMENTATION_SHA256", DEFAULT_MODEL_SHA256["segmentation"]
+            ),
+        ),
+        (
+            "encoder",
+            os.environ.get("HOMR_EXPECTED_ENCODER_SHA256", DEFAULT_MODEL_SHA256["encoder"]),
+        ),
+        (
+            "decoder",
+            os.environ.get("HOMR_EXPECTED_DECODER_SHA256", DEFAULT_MODEL_SHA256["decoder"]),
+        ),
     )
     if value
 }
