@@ -14,11 +14,6 @@ const platformFeatures: Array<{
     },
   },
   {
-    title: "Visual Musical Diff",
-    body: "Compare revisions side-by-side at the score level to quickly inspect meaningful notation changes.",
-    media: { light: "/images/features/visual-diff-light.webm" },
-  },
-  {
     title: "Integrated Score Editor",
     body: "Open and edit scores directly in the browser to reduce context switching between tools.",
     media: { light: "/images/features/score-editor-light.webm" },
@@ -26,7 +21,10 @@ const platformFeatures: Array<{
   {
     title: "Scanner",
     body: "Turn a photo or PDF of printed sheet music into editable MusicXML, review the pages, then open the result in the Score Editor.",
-    media: { light: "/images/features/scanner-light.webm" },
+    media: {
+      light: "/images/features/scanner-light.webm",
+      dark: "/images/features/scanner-dark.webm",
+    },
   },
   {
     title: "Catalogue Discovery",
@@ -95,12 +93,8 @@ const waysToContribute = [
     body: "Improve an existing source with corrections or an alternative edition.",
   },
   {
-    title: "Rate a Source",
-    body: "Use ratings to highlight reliable sources and help others choose what to use first.",
-  },
-  {
-    title: "Leave a Comment",
-    body: "Share feedback about a transcription so users know what to expect, or for editors to know what to improve.",
+    title: "Rate and Comment on a Source",
+    body: "Rate sources to highlight reliable ones and help others choose what to use first, and comment to tell users what to expect or editors what to improve.",
   },
   {
     title: "Flag Mismatched Sources",
@@ -122,7 +116,6 @@ const waysToContribute = [
 
 const quickLinks = [
   { href: "/catalogue", label: "Browse Catalogue", icon: "≡" },
-  { href: "/works/upload", label: "Save IMSLP Work", icon: "+" },
   { href: "/upload", label: "Upload New Source", icon: "↑" },
   { href: "/projects", label: "Explore Projects", icon: "▦" },
   { href: "/score-editor", label: "Open Score Editor", icon: "✎" },
