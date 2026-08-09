@@ -97,9 +97,10 @@ The first build is slow: it pulls the pinned CUDA base, clones HOMR at
 Modal prints the deployed URL. Record it — it becomes `SCANNER_PROVIDER_URL`.
 
 **What the deploy pins** (design §9.5): the CUDA base by manifest-list digest,
-HOMR by commit with a `git rev-parse` assertion, and dependencies via the
-lockfile at that commit. What it does not yet pin is the model weights — that is
-step 5.
+HOMR by commit with a `git rev-parse` assertion, and every dependency by hash —
+resolved from the lockfile at that commit and installed under
+`pip --require-hashes`, so a tampered or substituted artifact fails the build.
+What it does not yet pin is the model weights; that is step 5.
 
 ---
 

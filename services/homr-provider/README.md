@@ -85,6 +85,13 @@ bad pages. Failure detail is logged under `requestId` and never returned.
 
 ## Supply chain
 
+Dependencies are resolved from HOMR's committed `poetry.lock` and installed with
+`pip --require-hashes`, so every artifact is verified against the lockfile hash.
+`poetry install` is deliberately not used: it introspects the environment, which
+fails on interpreters whose bundled pip records a build-time wheel path — Modal's
+`add_python` is one. HOMR itself is installed `--no-deps` from the commit-pinned
+checkout, and poetry is uninstalled afterwards so it is not in the runtime image.
+
 `HomrEngine` reports the SHA-256 of the segmentation, encoder, and decoder
 weights it actually loaded. Capture them from `/v1/capabilities` after the first
 build and pin them (`HOMR_EXPECTED_SEGMENTATION_SHA256` and friends) so a

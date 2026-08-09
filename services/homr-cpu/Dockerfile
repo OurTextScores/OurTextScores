@@ -29,10 +29,19 @@ RUN git clone https://github.com/liebharc/homr.git /opt/homr && \
     git checkout --detach "${HOMR_COMMIT}" && \
     test "$(git rev-parse HEAD)" = "${HOMR_COMMIT}"
 
-RUN python -m pip install --no-cache-dir "poetry==${POETRY_VERSION}" && \
+# Resolve dependencies from HOMR's committed poetry.lock, but install them with
+# pip under --require-hashes rather than `poetry install`. Two reasons: it
+# verifies every artifact against the lockfile hashes (design section 9.5), and
+# it keeps poetry's environment introspection out of the install, which breaks
+# on interpreters whose bundled pip records a build-time wheel path.
+RUN python -m pip install --no-cache-dir \
+      "poetry==${POETRY_VERSION}" "poetry-plugin-export==1.9.0" && \
     cd /opt/homr && \
-    poetry config virtualenvs.create false && \
-    poetry install --only main --no-interaction && \
+    poetry export --only main -f requirements.txt -o /tmp/homr-requirements.txt && \
+    python -m pip install --no-cache-dir --require-hashes -r /tmp/homr-requirements.txt && \
+    python -m pip install --no-cache-dir --no-deps /opt/homr && \
+    python -m pip uninstall -y poetry poetry-plugin-export && \
+    rm -f /tmp/homr-requirements.txt && \
     python -m pip install --no-cache-dir \
       "fastapi==0.116.1" \
       "httpx==0.28.1" \

@@ -61,10 +61,10 @@ form for compatibility with Modal endpoint tooling).
 - After the first deploy, read the model hashes from `/v1/capabilities` and set
   `HOMR_EXPECTED_SEGMENTATION_SHA256`, `HOMR_EXPECTED_ENCODER_SHA256`, and
   `HOMR_EXPECTED_DECODER_SHA256` so a changed weight file fails readiness.
-- Still open against design section 9.5: the CUDA base is pinned by tag rather
-  than digest (set `HOMR_CUDA_BASE` to a digest once one is tested), Python
-  dependencies are not hash-pinned, no SBOM is generated, and Modal runs the
-  container as root.
+- Still open against design section 9.5: no SBOM is generated for this image
+  (the CI workflow scans the CPU image, which shares everything but the CUDA
+  base and the `gpu` extra), and Modal runs the container as root. The CUDA base
+  is digest-pinned and dependencies are hash-verified from the lockfile.
 - The provider source and HOMR are AGPL-3.0. This directory and
   `../homr-provider` must remain publicly available with the deployed service's
   corresponding source and deployment instructions.

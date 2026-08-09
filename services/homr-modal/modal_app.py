@@ -40,6 +40,7 @@ CUDA_BASE = os.environ.get(
     "HOMR_CUDA_BASE", f"{CUDA_BASE_TAG.split(':')[0]}@{CUDA_BASE_DIGEST}"
 )
 POETRY_VERSION = "2.3.2"
+POETRY_EXPORT_PLUGIN_VERSION = "1.9.0"
 # Set after the first build from /v1/capabilities so a silently changed weight
 # file fails readiness instead of quietly altering results.
 EXPECTED_MODEL_SHA256 = {
@@ -61,12 +62,21 @@ image = (
         "git clone https://github.com/liebharc/homr.git /opt/homr",
         f"cd /opt/homr && git checkout --detach {HOMR_COMMIT}",
         f"cd /opt/homr && test \"$(git rev-parse HEAD)\" = {HOMR_COMMIT}",
-        f"python -m pip install --no-cache-dir 'poetry=={POETRY_VERSION}'",
-        # Resolve from HOMR's committed poetry.lock rather than letting pip
-        # re-resolve the ranges in pyproject.toml, so the dependency set is
-        # pinned by the same commit as the source (design section 9.5).
-        "cd /opt/homr && poetry config virtualenvs.create false && "
-        "poetry install --only main --extras gpu --no-interaction",
+        f"python -m pip install --no-cache-dir 'poetry=={POETRY_VERSION}' "
+        f"'poetry-plugin-export=={POETRY_EXPORT_PLUGIN_VERSION}'",
+        # Resolve from HOMR's committed poetry.lock, but install with pip under
+        # --require-hashes rather than `poetry install`. It verifies every
+        # artifact against the lockfile hashes (design section 9.5), and it keeps
+        # poetry out of the install itself — `poetry install` fails on Modal's
+        # add_python interpreter, whose bundled pip records a build-time wheel
+        # path (/build/pip-*.whl) that does not exist in the image.
+        "cd /opt/homr && poetry export --only main --extras gpu "
+        "-f requirements.txt -o /tmp/homr-requirements.txt",
+        "python -m pip install --no-cache-dir --require-hashes "
+        "-r /tmp/homr-requirements.txt",
+        "python -m pip install --no-cache-dir --no-deps /opt/homr",
+        "python -m pip uninstall -y poetry poetry-plugin-export && "
+        "rm -f /tmp/homr-requirements.txt",
         "python -m pip install --no-cache-dir "
         "'fastapi==0.116.1' 'httpx==0.28.1' 'python-multipart==0.0.20'",
         # Bake the weights in so readiness never waits on a download.
