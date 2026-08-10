@@ -259,6 +259,66 @@ def create_provider_app(
             "homrLicense": "AGPL-3.0",
         }
 
+    @app.post("/v1/regenerate")
+    async def regenerate(
+        body: dict[str, Any],
+        authorization: str | None = Header(None, alias="Authorization"),
+    ) -> Any:
+        """Rebuild MusicXML from an edited token sequence.
+
+        No inference and no image: HOMR's own generator over symbols the caller
+        already has. Separate from `/v1/scan-page` so a correction never spends
+        GPU time — the whole point of correcting at token level rather than
+        re-recognising the page.
+        """
+        require_authorization(authorization)
+        request_id = uuid.uuid4().hex
+        started = time.monotonic()
+
+        staffs = body.get("staffs")
+        if not isinstance(staffs, list) or not staffs:
+            return _error(request_id, "invalid_option", "staffs is required")
+        # Every symbol is six fields. Validate before handing anything to HOMR:
+        # the caller is trusted but a malformed sequence would surface as an
+        # opaque generator crash rather than a clear rejection.
+        for staff in staffs:
+            if not isinstance(staff, list):
+                return _error(request_id, "invalid_option", "Each staff must be a list")
+            for token in staff:
+                if not isinstance(token, list) or len(token) != 6:
+                    return _error(
+                        request_id, "invalid_option", "Each symbol must have six fields"
+                    )
+                if not all(isinstance(field, str) for field in token):
+                    return _error(
+                        request_id, "invalid_option", "Symbol fields must be strings"
+                    )
+
+        try:
+            result = await asyncio.to_thread(
+                engine.regenerate, staffs, str(body.get("title", ""))
+            )
+        except InferenceError as error:
+            return _error(request_id, error.code, error.message)
+        if not result.get("ok"):
+            return _error(
+                request_id,
+                result.get("code", CODE_FAILED),
+                "The edited score could not be rebuilt",
+            )
+
+        music_xml = result["musicxml"]
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "requestId": request_id,
+            "result": {
+                "mediaType": MUSICXML_MEDIA_TYPE,
+                "musicXmlBase64": base64.b64encode(music_xml).decode("ascii"),
+                "sha256": hashlib.sha256(music_xml).hexdigest(),
+            },
+            "timing": {"totalMs": int((time.monotonic() - started) * 1000)},
+        }
+
     @app.post("/v1/scan-page")
     async def scan_page(
         page: UploadFile = File(...),

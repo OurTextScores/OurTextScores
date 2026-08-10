@@ -74,10 +74,30 @@ export interface ScannerPageResult {
    * through a GPU (review design §4, §10). Only the symbols the provider could
    * not rule out are here; a confident page stores almost nothing.
    */
+  /** MusicXML rebuilt from corrected tokens; assembly prefers it (Phase D). */
+  reviewedMusicXml?: ScannerStorageLocator;
+  /**
+   * What the reviewer decided, kept alongside what the model predicted and
+   * offered. A confirmation of a low-confidence prediction is as much signal as
+   * a change, so both outcomes are recorded.
+   */
+  corrections?: Array<{
+    spotId: number;
+    head: string;
+    predicted: string;
+    predictedConfidence: number;
+    offered: Array<{ value: string; confidence: number }>;
+    chosen: string;
+    outcome: 'confirmed' | 'corrected';
+    correctedAt: Date;
+  }>;
   review?: {
     staves: Array<{
       index: number;
       region?: number[] | null;
+      /** The full decoded sequence; a correction edits this, not the XML. */
+      tokens?: string[][];
+      barLines?: number[];
       symbols: Array<{
         index: number;
         rhythm?: string;

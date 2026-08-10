@@ -62,6 +62,11 @@ class FakeEngine:
 
     expected_execution_provider = "CPUExecutionProvider"
 
+    def regenerate(self, staffs: list, title: str = "") -> dict:
+        # Mirrors the real engine: symbols in, MusicXML out, no model involved.
+        self.regenerated = staffs
+        return {"ok": True, "musicxml": MUSICXML}
+
     def is_ready(self) -> bool:
         return self.ready
 
@@ -141,6 +146,31 @@ class ProviderContractTest(unittest.TestCase):
             "musicXmlBase64",
         ):
             self.assertIn(field, body, field)
+
+    def test_regenerates_musicxml_without_touching_the_model(self) -> None:
+        # A correction must not cost GPU time: that is the reason corrections
+        # are applied at token level rather than by re-recognising the page.
+        response = self.client.post(
+            "/v1/regenerate",
+            json={"staffs": [[["clef_G2", ".", "_", "_", "_", "upper"]]]},
+            headers={"Authorization": "Bearer test-token"},
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(base64.b64decode(body["result"]["musicXmlBase64"]), MUSICXML)
+        self.assertEqual(body["result"]["sha256"], hashlib.sha256(MUSICXML).hexdigest())
+
+    def test_rejects_a_malformed_token_sequence(self) -> None:
+        # Six fields per symbol. Without this the generator fails opaquely
+        # instead of the caller being told what was wrong.
+        for bad in ([], [[["clef_G2"]]], [[["a", "b", "c", "d", "e", 6]]], "nonsense"):
+            response = self.client.post(
+                "/v1/regenerate",
+                json={"staffs": bad},
+                headers={"Authorization": "Bearer test-token"},
+            )
+            self.assertEqual(response.status_code, 400, bad)
+            self.assertEqual(response.json()["error"]["code"], "invalid_option")
 
     def test_requires_the_configured_bearer_token(self) -> None:
         self.assertEqual(post(self.client, token="wrong").status_code, 401)

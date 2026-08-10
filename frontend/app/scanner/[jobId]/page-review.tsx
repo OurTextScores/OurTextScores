@@ -34,6 +34,37 @@ function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+/**
+ * HOMR's raw tokens are not reader-facing. `.` means "no note" and `_` means
+ * "no decoration", and showing either verbatim asks a reviewer to interpret the
+ * model's vocabulary rather than the music.
+ */
+function readable(head: string, value: string): string {
+  if (value === "." || value === "_" || value === "") {
+    return head === "slur" || head === "articulation" || head === "lift"
+      ? "none"
+      : "nothing here";
+  }
+  const rhythm = value.match(/^(note|rest)_(\d+)(\.*)$/);
+  if (rhythm) {
+    const [, kind, unit, dots] = rhythm;
+    const names: Record<string, string> = {
+      "1": "whole",
+      "2": "half",
+      "4": "quarter",
+      "8": "eighth",
+      "16": "sixteenth",
+      "32": "thirty-second",
+      "64": "sixty-fourth",
+    };
+    const name = names[unit] || `1/${unit}`;
+    return `${name} ${kind}${dots ? " dotted" : ""}`;
+  }
+  if (value === "slurStart") return "a slur starts here";
+  if (value === "slurEnd") return "a slur ends here";
+  return value;
+}
+
 export default function PageReview({
   jobId,
   pageNumber,
@@ -45,6 +76,8 @@ export default function PageReview({
   const [loading, setLoading] = useState(true);
   const [position, setPosition] = useState(0);
   const [level, setLevel] = useState<"staff" | "page">("staff");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +104,34 @@ export default function PageReview({
   const advance = useCallback(() => {
     setPosition((current) => current + 1);
     setLevel("staff");
+    setError(null);
   }, []);
+
+  const choose = useCallback(
+    async (spotId: number, value: string) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/corrections`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ spotId, chosen: value }),
+          },
+        );
+        if (!response.ok) throw new Error("save failed");
+        advance();
+      } catch {
+        // Keep the reviewer on the spot they were working: silently advancing
+        // would lose their decision without saying so.
+        setError("That could not be saved. Try again, or skip this one.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [advance, jobId, pageNumber],
+  );
 
   if (loading) {
     return (
@@ -141,24 +201,31 @@ export default function PageReview({
             {HEAD_LABELS[spot.head] || "What is this?"}
           </p>
           <ul className="mt-2 space-y-1 text-sm">
-            <li className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
-              <span className="font-mono">{spot.chosen}</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {percent(spot.confidence)} — what the scanner chose
-              </span>
-            </li>
-            {spot.alternatives.map((alternative) => (
-              <li
-                key={alternative.value}
-                className="flex items-center gap-2 text-slate-700 dark:text-slate-300"
-              >
-                <span className="font-mono">{alternative.value}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {percent(alternative.confidence)}
-                </span>
+            {[
+              { value: spot.chosen, confidence: spot.confidence, recognised: true },
+              ...spot.alternatives.map((alternative) => ({ ...alternative, recognised: false })),
+            ].map((option) => (
+              <li key={option.value}>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void choose(spot.id, option.value)}
+                  className="flex w-full items-center gap-2 rounded border border-slate-200 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/40"
+                >
+                  <span className="text-slate-900 dark:text-slate-100">
+                    {readable(spot.head, option.value)}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {percent(option.confidence)}
+                    {option.recognised ? " — what the scanner chose" : ""}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
+          {error && (
+            <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">{error}</p>
+          )}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             {/* The number that makes stopping a judgement rather than fatigue:
@@ -173,6 +240,7 @@ export default function PageReview({
             <button
               type="button"
               onClick={advance}
+              disabled={saving}
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Next

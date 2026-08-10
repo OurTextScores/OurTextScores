@@ -188,3 +188,20 @@ describe('pageSuitability', () => {
     expect(spots).toHaveLength(10);
   });
 });
+
+describe('placeholder options', () => {
+  it('does not ask a question whose every answer means nothing', () => {
+    // Seen on a real printed page: `pitch . 37% vs _ 31%`. Both are HOMR
+    // placeholders, so the reviewer would be choosing between two ways of
+    // saying nothing.
+    const staves = [staff(0, [symbol(1, { pitch: head('.', 0.37, [['_', 0.31]]) })])];
+    expect(selectSpots(staves)).toEqual([]);
+  });
+
+  it('still asks when one option is real', () => {
+    // `slur . 39% vs slurStart 31%` is a genuine question: no slur, or a slur
+    // starting here.
+    const staves = [staff(0, [symbol(1, { slur: head('.', 0.39, [['slurStart', 0.31]]) })])];
+    expect(selectSpots(staves)).toHaveLength(1);
+  });
+});

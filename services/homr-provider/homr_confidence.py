@@ -169,6 +169,23 @@ class PageCapture:
         self.staves.append(
             {
                 "index": int(index),
+                # The complete decoded sequence, six fields per symbol, in the
+                # compact array form. This is what a correction edits and what
+                # `/v1/regenerate` turns back into MusicXML, so it must survive
+                # the pruning that thins `symbols` down to the uncertain ones.
+                # `sort_token_chords` only needs these fields and the `chord`
+                # marker, so nothing else has to be carried.
+                "tokens": [
+                    [
+                        symbol.rhythm,
+                        symbol.pitch,
+                        symbol.lift,
+                        symbol.articulation,
+                        symbol.slur,
+                        symbol.position,
+                    ]
+                    for symbol in symbols
+                ],
                 "region": [int(value) for value in region] if region is not None else None,
                 # Detected bar lines in page coordinates. These are what make a
                 # measure-level crop possible: unlike the attention point they

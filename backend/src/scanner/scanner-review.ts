@@ -37,6 +37,9 @@ export interface ReviewSymbol {
 export interface ReviewStaff {
   index: number;
   region?: number[] | null;
+  /** The full decoded sequence, six fields per symbol. */
+  tokens?: string[][];
+  barLines?: number[];
   symbols: ReviewSymbol[];
 }
 
@@ -108,6 +111,19 @@ const ASKABLE_HEADS = ['pitch', 'rhythm', 'lift', 'articulation', 'slur'] as con
 /** Decoration by comparison: these must be more doubtful to be worth asking. */
 const LOW_IMPACT_HEADS = new Set(['slur', 'articulation']);
 
+/**
+ * HOMR's placeholders: `.` is "no note" and `_` is "no decoration".
+ *
+ * A question whose every option is a placeholder — "Which note is this? `.` 37%
+ * or `_` 31%" — asks a reviewer to choose between two ways of saying nothing.
+ * Seen on a real printed page, so it is filtered rather than left to the UI.
+ */
+const PLACEHOLDER_VALUES = new Set(['.', '_', '']);
+
+export function isPlaceholder(value: string): boolean {
+  return PLACEHOLDER_VALUES.has(value);
+}
+
 export function floorFor(head: string, thresholds: ReviewThresholds): number {
   return LOW_IMPACT_HEADS.has(head)
     ? Math.min(thresholds.floor, thresholds.lowImpactFloor)
@@ -132,6 +148,9 @@ export function selectSpots(
         if (alternatives.length === 0) continue;
         const runnerUp = Number(alternatives[0]?.confidence ?? 0);
         if (runnerUp < confidence * thresholds.minAlternativeRatio) continue;
+        // At least one option has to mean something.
+        const options = [entry.chosen, ...alternatives.map((item) => item.value)];
+        if (options.every(isPlaceholder)) continue;
         spots.push({
           staffIndex: staff.index,
           symbolIndex: symbol.index,

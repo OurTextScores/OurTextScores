@@ -44,6 +44,64 @@ export class ScannerProviderService {
     return this.config.get<string>('SCANNER_EXPECTED_HOMR_COMMIT', '').trim();
   }
 
+  /**
+   * Rebuild MusicXML from an edited token sequence.
+   *
+   * No inference, so no GPU time and no idempotency key: this is HOMR's own
+   * generator over symbols we already hold. Correcting at token level rather
+   * than re-recognising the page is what makes a correction free.
+   */
+  async regenerate(staffs: string[][][]): Promise<Buffer> {
+    const providerUrl = this.config.get<string>('SCANNER_PROVIDER_URL', '').trim();
+    if (!providerUrl) {
+      throw new ScannerProviderError(
+        'Scanner provider is not configured',
+        'provider_not_configured',
+        false
+      );
+    }
+    const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'application/json' });
+    const providerToken = this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim();
+    if (providerToken) headers.set('Authorization', `Bearer ${providerToken}`);
+    const tokenId = this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim();
+    const tokenSecret = this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim();
+    if (tokenId && tokenSecret) {
+      headers.set('Authorization', `Bearer ${tokenId}.${tokenSecret}`);
+      headers.set('Modal-Key', tokenId);
+      headers.set('Modal-Secret', tokenSecret);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${providerUrl.replace(/\/$/, '')}/v1/regenerate`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ staffs }),
+        redirect: 'error',
+        signal: AbortSignal.timeout(60_000)
+      });
+    } catch {
+      throw new ScannerProviderError(
+        'Scanner provider is unavailable',
+        'provider_unavailable',
+        true
+      );
+    }
+    if (!response.ok) {
+      throw new ScannerProviderError(
+        'The corrected score could not be rebuilt',
+        'provider_generation_failed',
+        false
+      );
+    }
+    const result: any = await response.json();
+    const musicXml = Buffer.from(String(result?.result?.musicXmlBase64 || ''), 'base64');
+    // Held to the same bar as provider output: this becomes a stored artifact
+    // and is offered for download, so it is validated, not trusted.
+    this.assertValidMusicXml(musicXml);
+    return musicXml;
+  }
+
   createIdempotencyKey(input: {
     inputSha256: string;
     pageNumber: number;
@@ -426,6 +484,19 @@ function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
     clean.push({
       index,
       region: region && region.every((value: number) => Number.isFinite(value)) ? region : null,
+      // Six string fields per symbol; a correction edits one and the provider
+      // rebuilds MusicXML from the result.
+      tokens: Array.isArray(staff?.tokens)
+        ? staff.tokens
+            .filter(
+              (row: unknown) =>
+                Array.isArray(row) && row.length === 6 && row.every((f) => typeof f === 'string')
+            )
+            .map((row: string[]) => [...row])
+        : [],
+      barLines: Array.isArray(staff?.barLines)
+        ? staff.barLines.map((value: unknown) => Number(value)).filter(Number.isFinite)
+        : [],
       symbols: symbols
         .map((symbol: any) => {
           const symbolIndex = Number(symbol?.index);

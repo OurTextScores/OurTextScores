@@ -29,6 +29,9 @@ import {
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
 import { CropLevel, cropForLevel, markerWithin } from './scanner-crop';
+
+/** Field order within a captured token; mirrors the provider's capture. */
+const TOKEN_FIELDS = ['rhythm', 'pitch', 'lift', 'articulation', 'slur', 'position'];
 import {
   DEFAULT_REVIEW_THRESHOLDS,
   pageSuitability,
@@ -36,6 +39,7 @@ import {
   selectSpots
 } from './scanner-review';
 import { ScannerAlertService } from './scanner-alert.service';
+import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
@@ -50,6 +54,7 @@ export class ScannerService implements OnModuleInit {
     @InjectModel(ScannerJob.name)
     private readonly jobs: Model<ScannerJobDocument>,
     private readonly storage: StorageService,
+    private readonly provider: ScannerProviderService,
     private readonly telemetry: ScannerTelemetryService,
     private readonly alerts: ScannerAlertService,
     private readonly config: ConfigService
@@ -665,6 +670,88 @@ export class ScannerService implements OnModuleInit {
       remainingFloor: remainingFloor(spots, 0),
       suitability
     };
+  }
+
+  /**
+   * Apply a reviewer's choice to one spot and rebuild the page's MusicXML.
+   *
+   * The correction edits the decoded token, not the XML: a rhythm change
+   * cascades through the rest of the measure, and only re-generating from
+   * symbols keeps the result internally consistent. It also records what the
+   * model predicted and what was offered, which is the training signal — a
+   * confirmation of a low-confidence prediction is as useful as a change.
+   */
+  async applyCorrection(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    spotId: number,
+    chosen: string
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const review = (page as any).review;
+    const staves = review?.staves || [];
+    const spots = selectSpots(staves, DEFAULT_REVIEW_THRESHOLDS);
+    const spot = spots[spotId];
+    if (!spot) throw new NotFoundException('Scanner review spot not found');
+
+    const offered = [spot.chosen, ...spot.alternatives.map((entry) => entry.value)];
+    if (!offered.includes(chosen)) {
+      // Only the model's own alternatives are accepted. Anything else is a
+      // different edit entirely and belongs in the Score Editor, where it can
+      // be seen in context.
+      throw new BadRequestException('That is not one of the offered alternatives');
+    }
+
+    const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
+    const token = staff?.tokens?.[spot.symbolIndex];
+    if (!token) throw new ConflictException('This page has no token sequence to correct');
+    const field = TOKEN_FIELDS.indexOf(spot.head);
+    if (field < 0) throw new BadRequestException('That symbol cannot be corrected');
+
+    const edited = staves.map((entry: any) => {
+      const tokens = (entry.tokens || []).map((row: string[]) => [...row]);
+      if (entry.index === spot.staffIndex && tokens[spot.symbolIndex]) {
+        tokens[spot.symbolIndex][field] = chosen;
+      }
+      return tokens;
+    });
+
+    const musicXmlBuffer = await this.provider.regenerate(edited);
+    const locator = await this.storage.putDerivativeObject(
+      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-reviewed.musicxml`,
+      musicXmlBuffer,
+      musicXmlBuffer.length,
+      'application/vnd.recordare.musicxml+xml'
+    );
+
+    const correction = {
+      spotId,
+      head: spot.head,
+      predicted: spot.chosen,
+      predictedConfidence: spot.confidence,
+      offered: spot.alternatives,
+      chosen,
+      // Both are signal: confirming a 61% prediction says the model was right
+      // but unsure, which is exactly what improves calibration.
+      outcome: chosen === spot.chosen ? 'confirmed' : 'corrected',
+      correctedAt: new Date()
+    };
+
+    await this.jobs
+      .updateOne(
+        { _id: job._id, 'pages.pageNumber': pageNumber },
+        {
+          $set: { 'pages.$.reviewedMusicXml': locator, 'pages.$.review.staves': staves },
+          $push: { 'pages.$.corrections': correction }
+        }
+      )
+      .exec();
+
+    return { ok: true, outcome: correction.outcome };
   }
 
   /** A cropped view of the source page behind one spot. */

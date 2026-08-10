@@ -185,6 +185,22 @@ export class ScannerController {
     return this.scanner.pageReview(user.userId, jobId, pageNumber);
   }
 
+  @Post(':jobId/pages/:pageNumber/corrections')
+  correct(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body() body: { spotId?: number; chosen?: string }
+  ) {
+    return this.scanner.applyCorrection(
+      user.userId,
+      jobId,
+      pageNumber,
+      Number(body?.spotId),
+      String(body?.chosen ?? '')
+    );
+  }
+
   @Get(':jobId/pages/:pageNumber/crop/:spotId')
   async crop(
     @CurrentUser() user: RequestUser,

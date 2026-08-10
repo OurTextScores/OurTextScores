@@ -114,4 +114,90 @@ describe("PageReview", () => {
       ),
     );
   });
+
+  it("shows music, not the model's vocabulary", async () => {
+    // Raw tokens ask the reviewer to interpret HOMR's alphabet rather than the
+    // notation in front of them.
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "rhythm",
+            chosen: "note_16",
+            confidence: 0.4,
+            alternatives: [{ value: "note_8.", confidence: 0.35 }],
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText("sixteenth note")).toBeInTheDocument();
+    expect(screen.getByText("eighth note dotted")).toBeInTheDocument();
+  });
+
+  it("renders a placeholder as an absence", async () => {
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "slur",
+            chosen: ".",
+            confidence: 0.39,
+            alternatives: [{ value: "slurStart", confidence: 0.31 }],
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText("none")).toBeInTheDocument();
+    expect(screen.getByText("a slur starts here")).toBeInTheDocument();
+  });
+
+  it("records the choice and moves on", async () => {
+    const calls: any[] = [];
+    global.fetch = jest.fn(async (url: any, init: any) => {
+      if (init?.method === "POST") {
+        calls.push(JSON.parse(init.body));
+        return { ok: true, json: async () => ({ ok: true }) } as Response;
+      }
+      return { ok: true, json: async () => review() } as Response;
+    }) as any;
+
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
+    await waitFor(() => expect(calls).toEqual([{ spotId: 0, chosen: "D4" }]));
+    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+  });
+
+  it("confirming the recognised value is recorded too", async () => {
+    // A confirmation of a low-confidence prediction says the model was right
+    // but unsure, which is exactly what improves calibration.
+    const calls: any[] = [];
+    global.fetch = jest.fn(async (url: any, init: any) => {
+      if (init?.method === "POST") {
+        calls.push(JSON.parse(init.body));
+        return { ok: true, json: async () => ({ ok: true }) } as Response;
+      }
+      return { ok: true, json: async () => review() } as Response;
+    }) as any;
+
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /what the scanner chose/ }));
+    await waitFor(() => expect(calls).toEqual([{ spotId: 0, chosen: "C4" }]));
+  });
+
+  it("keeps the reviewer on the spot when saving fails", async () => {
+    // Advancing silently would lose the decision without saying so.
+    global.fetch = jest.fn(async (url: any, init: any) => {
+      if (init?.method === "POST") return { ok: false } as Response;
+      return { ok: true, json: async () => review() } as Response;
+    }) as any;
+
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
+    expect(await screen.findByText(/could not be saved/)).toBeInTheDocument();
+    expect(screen.getByText("Which note is this?")).toBeInTheDocument();
+  });
 });

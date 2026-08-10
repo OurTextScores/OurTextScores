@@ -213,6 +213,63 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
             return
         if request.get("kind") == "shutdown":
             return
+        if request.get("kind") == "regenerate":
+            # Symbols to MusicXML, no model involved: HOMR's own generator run
+            # over an edited token sequence. Handled in the child only because
+            # that is where homr is imported, not because it needs the GPU.
+            try:
+                from homr.music_xml_generator import generate_xml
+                from homr.transformer.vocabulary import EncodedSymbol
+
+                staffs = [
+                    [
+                        EncodedSymbol(
+                            rhythm=token[0],
+                            pitch=token[1],
+                            lift=token[2],
+                            articulation=token[3],
+                            slur=token[4],
+                            position=token[5],
+                        )
+                        for token in staff
+                    ]
+                    for staff in request["staffs"]
+                ]
+                xml = generate_xml(
+                    XmlGeneratorArguments(), staffs, request.get("title", "")
+                )
+                import xml.etree.ElementTree as ElementTree
+
+                connection.send(
+                    {
+                        "ok": True,
+                        # With the declaration, so a regenerated page is
+                        # byte-identical to a scanned one: assembly and
+                        # validation downstream treat the two the same, and a
+                        # difference here would show up as a spurious diff.
+                        "musicxml": ElementTree.tostring(
+                            xml, encoding="utf-8", xml_declaration=True
+                        ),
+                    }
+                )
+            except AssertionError:
+                connection.send(
+                    {
+                        "ok": False,
+                        "code": CODE_GENERATION_FAILED,
+                        "detail": traceback.format_exc()[-2000:],
+                    }
+                )
+            except Exception as error:
+                connection.send(
+                    {
+                        "ok": False,
+                        "code": CODE_FAILED,
+                        "detail": repr(error)[:2000],
+                    }
+                )
+            continue
+
         if request.get("kind") == "warmup_page":
             try:
                 connection.send({"ok": True, "page": _warmup_page()})
@@ -472,6 +529,19 @@ class HomrEngine:
                     "loaded but transformer decoding was not exercised"
                 )
             self._warm = True
+
+    def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> dict[str, Any]:
+        """Rebuild MusicXML from an edited token sequence.
+
+        No inference happens, so this is fast and needs no GPU — but it shares
+        the child, and therefore the same single-flight lock as scanning.
+        """
+        with self._lock:
+            self._ensure_child_locked()
+            return self._request_locked(
+                {"kind": "regenerate", "staffs": staffs, "title": title},
+                timeout=60,
+            )
 
     def transcribe(self, page: bytes, suffix: str, detect_title: bool) -> dict[str, Any]:
         with self._lock:
