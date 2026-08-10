@@ -1,10 +1,13 @@
 import {
+  SCANNER_ARTIFACT_BUILDERS,
   scannerArtifactInputSignature,
+  scannerArtifactInputMatches,
   scannerAggregatePageStatus,
   scannerBlockContentSignature,
   scannerEngineArtifactLocators,
   scannerHomrRun,
   uniqueScannerStorageLocators,
+  withScannerArtifactInputSignature,
   withScannerHomrRun
 } from './scanner-dual-engine';
 import { scannerProviderIdempotencyKey } from './scanner-provider.contract';
@@ -138,6 +141,29 @@ describe('dual-engine content identity', () => {
         pages: [input.pages[0], { ...input.pages[1], checksumSha256: 'reviewed-page-two' }]
       })
     ).not.toBe(signature);
+
+    const locator: any = {
+      bucket: 'scanner',
+      objectKey: 'results.zip',
+      checksumSha256: 'zip'
+    };
+    const signed = withScannerArtifactInputSignature(
+      locator,
+      SCANNER_ARTIFACT_BUILDERS.resultsZip,
+      input.pages
+    );
+    expect(
+      scannerArtifactInputMatches(signed, SCANNER_ARTIFACT_BUILDERS.resultsZip, input.pages)
+    ).toBe(true);
+    expect(
+      scannerArtifactInputMatches(signed, SCANNER_ARTIFACT_BUILDERS.previewPdf, input.pages)
+    ).toBe(false);
+    expect(
+      scannerArtifactInputMatches(signed, SCANNER_ARTIFACT_BUILDERS.resultsZip, [
+        input.pages[0],
+        { ...input.pages[1], checksumSha256: 'changed' }
+      ])
+    ).toBe(false);
   });
 
   it('invalidates a block decision when either artifact or rich descriptor changes', () => {

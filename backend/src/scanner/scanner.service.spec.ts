@@ -12,6 +12,10 @@ import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { ScannerService } from './scanner.service';
 import { scannerUserHash } from './scanner.constants';
+import {
+  SCANNER_ARTIFACT_BUILDERS,
+  withScannerArtifactInputSignature
+} from './scanner-dual-engine';
 
 /** Durable training records; kept out of the job so they outlive it. */
 const corrections = { create: jest.fn(async (doc: any) => doc) } as any;
@@ -926,6 +930,7 @@ describe('reviewed artifacts', () => {
     expect(manifest.pages[0]).toMatchObject({
       musicXmlSha256: 'reviewed-one'
     });
+    expect(manifest.inputSignature).toMatch(/^scanner-artifact-input-v1:/);
     expect(manifest.pages[0].pdfSha256).toBeUndefined();
 
     await expect(service.getArtifact('user-1', 'job-1', 'pdf', 1)).rejects.toThrow(
@@ -938,6 +943,7 @@ describe('reviewed artifacts', () => {
     const presented = await service.getJob('user-1', 'job-1');
     expect(presented.pages[0].hasPdf).toBe(false);
     expect(presented.hasPdf).toBe(false);
+    expect(presented.hasThumbnail).toBe(false);
     expect(presented.hasCombinedMusicXml).toBe(false);
     expect(presented.hasCombinedPdf).toBe(false);
     expect(storage.getObjectStream).not.toHaveBeenCalledWith('derivatives', 'raw-pages.zip');
@@ -986,6 +992,112 @@ describe('reviewed artifacts', () => {
     expect(artifact.filename).toBe('scan.musicxml');
     expect((await readStream(artifact.stream)).toString()).toBe('<reviewed/>');
     expect(storage.getObjectStream).toHaveBeenCalledWith('derivatives', 'reviewed.musicxml');
+  });
+
+  it('rejects signed derivatives whose page-input signature no longer matches', async () => {
+    const raw = locator('current.musicxml', 'current-page', 'application/xml');
+    const signedAgainstOldPage = (objectKey: string, contentType: string, builder: string) =>
+      withScannerArtifactInputSignature(
+        locator(objectKey, `artifact-${objectKey}`, contentType),
+        builder,
+        [{ ordinal: 1, checksumSha256: 'old-page' }]
+      );
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'succeeded',
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          ordinal: 1,
+          included: true,
+          status: 'succeeded',
+          attempts: 1,
+          musicXml: raw,
+          pdf: signedAgainstOldPage(
+            'stale-page.pdf',
+            'application/pdf',
+            SCANNER_ARTIFACT_BUILDERS.pagePdf
+          )
+        }
+      ],
+      musicXmlBundle: signedAgainstOldPage(
+        'stale-bundle.zip',
+        'application/zip',
+        SCANNER_ARTIFACT_BUILDERS.musicXmlBundle
+      ),
+      resultsZip: signedAgainstOldPage(
+        'stale-results.zip',
+        'application/zip',
+        SCANNER_ARTIFACT_BUILDERS.resultsZip
+      ),
+      combinedMusicXml: signedAgainstOldPage(
+        'stale-combined.musicxml',
+        'application/xml',
+        SCANNER_ARTIFACT_BUILDERS.combinedMusicXml
+      ),
+      combinedPdf: signedAgainstOldPage(
+        'stale-combined.pdf',
+        'application/pdf',
+        SCANNER_ARTIFACT_BUILDERS.combinedPdf
+      ),
+      previewPdf: signedAgainstOldPage(
+        'stale-preview.pdf',
+        'application/pdf',
+        SCANNER_ARTIFACT_BUILDERS.previewPdf
+      ),
+      previewThumbnail: signedAgainstOldPage(
+        'stale-preview.png',
+        'image/png',
+        SCANNER_ARTIFACT_BUILDERS.previewThumbnail
+      )
+    };
+    const storage = {
+      getObjectBuffer: jest.fn(async (_bucket: string, objectKey: string) => {
+        if (objectKey !== raw.objectKey) throw new Error(`Stale object read: ${objectKey}`);
+        return Buffer.from('<current/>');
+      }),
+      getObjectStream: jest.fn(async (_bucket: string, objectKey: string) => {
+        if (objectKey !== raw.objectKey) throw new Error(`Stale object stream: ${objectKey}`);
+        return Readable.from([Buffer.from('<current/>')]);
+      })
+    } as any;
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    const musicXml = await service.getArtifact('user-1', 'job-1', 'musicxml');
+    expect((await readStream(musicXml.stream)).toString()).toBe('<current/>');
+
+    const results = new AdmZip(
+      await readStream((await service.getArtifact('user-1', 'job-1', 'zip')).stream)
+    );
+    expect(results.readAsText('page-001.musicxml')).toBe('<current/>');
+    expect(results.getEntry('page-001.pdf')).toBeNull();
+
+    await expect(service.getArtifact('user-1', 'job-1', 'pdf', 1)).rejects.toThrow(
+      'Artifact is not available'
+    );
+    await expect(service.getArtifact('user-1', 'job-1', 'pdf')).rejects.toThrow(
+      'Artifact is not available'
+    );
+    await expect(service.getArtifact('user-1', 'job-1', 'thumbnail')).rejects.toThrow(
+      'Artifact is not available'
+    );
+
+    const presented = await service.getJob('user-1', 'job-1');
+    expect(presented.pages[0].hasPdf).toBe(false);
+    expect(presented.hasPdf).toBe(false);
+    expect(presented.hasCombinedMusicXml).toBe(false);
+    expect(presented.hasCombinedPdf).toBe(false);
   });
 });
 

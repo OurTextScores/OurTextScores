@@ -24,6 +24,8 @@ export interface ScannerStorageLocator {
   sizeBytes: number;
   contentType: string;
   checksumSha256: string;
+  /** Versioned digest of the ordered effective-page inputs for a derivative. */
+  inputSignature?: string;
 }
 
 export interface ScannerSourceInput {

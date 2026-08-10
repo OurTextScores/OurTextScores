@@ -32,10 +32,15 @@ import {
 } from './scanner.constants';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 import {
+  SCANNER_ARTIFACT_BUILDERS,
+  scannerArtifactInputMatches,
+  scannerArtifactInputSignature,
   scannerEngineArtifactLocators,
   uniqueScannerStorageLocators,
+  withScannerArtifactInputSignature,
   withScannerHomrRun
 } from './scanner-dual-engine';
+import type { ScannerArtifactInput } from './scanner-dual-engine';
 import type { ScannerPageProvider } from './scanner-provider.contract';
 
 const execFileAsync = promisify(execFile);
@@ -333,18 +338,35 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         }
         if (prior?.status === 'succeeded' && prior.musicXml) {
           let resumed = prior;
-          if (!prior.pdf) {
+          if (
+            !this.materializedArtifactIsCurrent(
+              prior.pdf,
+              SCANNER_ARTIFACT_BUILDERS.pagePdf,
+              [prior],
+              pageMusicXmlSuperseded(prior)
+            )
+          ) {
             try {
               await this.updateLease(job.jobId, 'rendering');
+              const currentMusicXml = effectivePageMusicXml(prior)!;
               const musicXmlBuffer = await this.storage.getObjectBuffer(
-                prior.musicXml.bucket,
-                prior.musicXml.objectKey
+                currentMusicXml.bucket,
+                currentMusicXml.objectKey
               );
               const rendered = await this.renderer.renderMusicXmlPdf(musicXmlBuffer);
-              const pdf = await this.store(
-                `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.pdf`,
-                rendered.pdf,
-                'application/pdf'
+              const pdf = withScannerArtifactInputSignature(
+                await this.store(
+                  `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.pdf`,
+                  rendered.pdf,
+                  'application/pdf'
+                ),
+                SCANNER_ARTIFACT_BUILDERS.pagePdf,
+                [
+                  {
+                    ordinal: prior.ordinal || pageNumber,
+                    checksumSha256: currentMusicXml.checksumSha256
+                  }
+                ]
               );
               previewThumbnail ??= rendered.thumbnail;
               resumed = { ...prior, pdf };
@@ -438,10 +460,14 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           try {
             await this.updateLease(job.jobId, 'rendering');
             const rendered = await this.renderer.renderMusicXmlPdf(scanned.result.musicXml);
-            pdf = await this.store(
-              `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.pdf`,
-              rendered.pdf,
-              'application/pdf'
+            pdf = withScannerArtifactInputSignature(
+              await this.store(
+                `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.pdf`,
+                rendered.pdf,
+                'application/pdf'
+              ),
+              SCANNER_ARTIFACT_BUILDERS.pagePdf,
+              [{ ordinal: prior?.ordinal || pageNumber, checksumSha256: musicXml.checksumSha256 }]
             );
             previewThumbnail ??= rendered.thumbnail;
           } catch (error) {
@@ -602,7 +628,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       const combined = await this.combinePages(job, successful, pageFiles.length);
       const previewPdf = await this.createPreviewPdf(job, successful, workspace);
       const previewThumbnailLocator = previewThumbnail
-        ? await this.store(`${this.baseKey(job)}/preview.png`, previewThumbnail, 'image/png')
+        ? withScannerArtifactInputSignature(
+            await this.store(`${this.baseKey(job)}/preview.png`, previewThumbnail, 'image/png'),
+            SCANNER_ARTIFACT_BUILDERS.previewThumbnail,
+            this.artifactInputs(successful)
+          )
         : job.previewThumbnail;
       const status = successful.length === pageFiles.length ? 'succeeded' : 'partial';
       const resultsZip = await this.createResultsZip(job, results, {
@@ -953,10 +983,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         return { status: merged.status, reason: merged.reason };
       }
 
-      const musicXml = await this.store(
-        `${this.baseKey(job)}/combined.musicxml`,
-        merged.musicXml,
-        'application/vnd.recordare.musicxml+xml'
+      const inputs = this.artifactInputs(successful);
+      const musicXml = withScannerArtifactInputSignature(
+        await this.store(
+          `${this.baseKey(job)}/combined.musicxml`,
+          merged.musicXml,
+          'application/vnd.recordare.musicxml+xml'
+        ),
+        SCANNER_ARTIFACT_BUILDERS.combinedMusicXml,
+        inputs
       );
       // A render failure does not invalidate good MusicXML (section 3.5), but
       // MuseScore refusing to load the assembly is the strongest signal we have
@@ -964,10 +999,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       let pdf: ScannerStorageLocator | undefined;
       try {
         const rendered = await this.renderer.renderMusicXmlPdf(merged.musicXml);
-        pdf = await this.store(
-          `${this.baseKey(job)}/combined.pdf`,
-          rendered.pdf,
-          'application/pdf'
+        pdf = withScannerArtifactInputSignature(
+          await this.store(`${this.baseKey(job)}/combined.pdf`, rendered.pdf, 'application/pdf'),
+          SCANNER_ARTIFACT_BUILDERS.combinedPdf,
+          inputs
         );
       } catch (error) {
         this.logger.warn(
@@ -992,7 +1027,14 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     pages: ScannerPageResult[]
   ): Promise<ScannerStorageLocator> {
     const onlyPage = effectivePageMusicXml(pages[0]);
-    if (job.pageCount === 1 && onlyPage) return onlyPage;
+    const inputs = this.artifactInputs(pages);
+    if (job.pageCount === 1 && onlyPage) {
+      return withScannerArtifactInputSignature(
+        onlyPage,
+        SCANNER_ARTIFACT_BUILDERS.musicXmlBundle,
+        inputs
+      );
+    }
     const zip = new AdmZip();
     for (const page of pages) {
       const pageMusicXml = effectivePageMusicXml(page);
@@ -1006,7 +1048,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         contents
       );
     }
-    return this.store(`${this.baseKey(job)}/musicxml-pages.zip`, zip.toBuffer(), 'application/zip');
+    return withScannerArtifactInputSignature(
+      await this.store(
+        `${this.baseKey(job)}/musicxml-pages.zip`,
+        zip.toBuffer(),
+        'application/zip'
+      ),
+      SCANNER_ARTIFACT_BUILDERS.musicXmlBundle,
+      inputs
+    );
   }
 
   private async createPreviewPdf(
@@ -1014,9 +1064,23 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     pages: ScannerPageResult[],
     workspace: string
   ): Promise<ScannerStorageLocator | undefined> {
-    const pdfPages = pages.filter((page) => page.pdf && !pageMusicXmlSuperseded(page));
-    if (pdfPages.length === 0) return undefined;
-    if (pdfPages.length === 1 && pdfPages[0].pdf) return pdfPages[0].pdf;
+    const pdfPages = pages.filter((page) =>
+      this.materializedArtifactIsCurrent(
+        page.pdf,
+        SCANNER_ARTIFACT_BUILDERS.pagePdf,
+        [page],
+        pageMusicXmlSuperseded(page)
+      )
+    );
+    if (pdfPages.length !== pages.length) return undefined;
+    const inputs = this.artifactInputs(pdfPages);
+    if (pdfPages.length === 1 && pdfPages[0].pdf) {
+      return withScannerArtifactInputSignature(
+        pdfPages[0].pdf,
+        SCANNER_ARTIFACT_BUILDERS.previewPdf,
+        inputs
+      );
+    }
     const paths: string[] = [];
     for (const page of pdfPages) {
       const path = join(
@@ -1033,14 +1097,18 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const combined = join(workspace, 'preview.pdf');
     try {
       await execFileAsync('pdfunite', [...paths, combined], { timeout: 60_000 });
-      return this.store(
-        `${this.baseKey(job)}/preview.pdf`,
-        await fs.readFile(combined),
-        'application/pdf'
+      return withScannerArtifactInputSignature(
+        await this.store(
+          `${this.baseKey(job)}/preview.pdf`,
+          await fs.readFile(combined),
+          'application/pdf'
+        ),
+        SCANNER_ARTIFACT_BUILDERS.previewPdf,
+        inputs
       );
     } catch (error) {
       this.logger.warn(`Unable to combine scanner preview PDF: ${this.message(error)}`);
-      return pdfPages[0].pdf;
+      return undefined;
     }
   }
 
@@ -1061,6 +1129,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     }
   ): Promise<ScannerStorageLocator> {
     const zip = new AdmZip();
+    const inputs = this.artifactInputs(pages);
     for (const page of pages) {
       const pageSegment = String(page.ordinal || page.pageNumber).padStart(3, '0');
       const pageMusicXml = effectivePageMusicXml(page);
@@ -1070,7 +1139,14 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           await this.storage.getObjectBuffer(pageMusicXml.bucket, pageMusicXml.objectKey)
         );
       }
-      if (page.pdf && !pageMusicXmlSuperseded(page)) {
+      if (
+        this.materializedArtifactIsCurrent(
+          page.pdf,
+          SCANNER_ARTIFACT_BUILDERS.pagePdf,
+          [page],
+          pageMusicXmlSuperseded(page)
+        )
+      ) {
         zip.addFile(
           `page-${pageSegment}.pdf`,
           await this.storage.getObjectBuffer(page.pdf.bucket, page.pdf.objectKey)
@@ -1097,6 +1173,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       // Design section 7.1/17: the weights are versioned separately from the
       // HOMR commit, so a result is only reproducible with both recorded.
       engineProvenance: summary.engineProvenance,
+      inputSignature: scannerArtifactInputSignature({
+        builderVersion: SCANNER_ARTIFACT_BUILDERS.resultsZip,
+        pages: inputs
+      }),
       createdAt: new Date().toISOString(),
       pages: pages.map((page) => ({
         pageNumber: page.pageNumber,
@@ -1111,12 +1191,56 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         errorCode: page.errorCode,
         errorMessage: page.errorMessage,
         musicXmlSha256: effectivePageMusicXml(page)?.checksumSha256,
-        pdfSha256: pageMusicXmlSuperseded(page) ? undefined : page.pdf?.checksumSha256
+        pdfSha256: this.materializedArtifactIsCurrent(
+          page.pdf,
+          SCANNER_ARTIFACT_BUILDERS.pagePdf,
+          [page],
+          pageMusicXmlSuperseded(page)
+        )
+          ? page.pdf?.checksumSha256
+          : undefined
       }))
     };
     zip.addFile('scanner-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
     zip.addFile('README.txt', Buffer.from(this.readmeText(summary.combined)));
-    return this.store(`${this.baseKey(job)}/results.zip`, zip.toBuffer(), 'application/zip');
+    return withScannerArtifactInputSignature(
+      await this.store(`${this.baseKey(job)}/results.zip`, zip.toBuffer(), 'application/zip'),
+      SCANNER_ARTIFACT_BUILDERS.resultsZip,
+      inputs
+    );
+  }
+
+  private artifactInputs(pages: ScannerPageResult[]): ScannerArtifactInput[] {
+    return [...pages]
+      .sort(
+        (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
+      )
+      .flatMap((page) => {
+        const musicXml = effectivePageMusicXml(page);
+        if (!musicXml) return [];
+        if (!musicXml.checksumSha256) {
+          throw new Error(`Scanner page ${page.pageNumber} has no MusicXML checksum`);
+        }
+        return [
+          {
+            ordinal: page.ordinal || page.pageNumber,
+            checksumSha256: musicXml.checksumSha256
+          }
+        ];
+      });
+  }
+
+  private materializedArtifactIsCurrent(
+    locator: ScannerStorageLocator | undefined,
+    builderVersion: string,
+    pages: ScannerPageResult[],
+    legacyInvalidated: boolean
+  ): boolean {
+    if (!locator) return false;
+    if (locator.inputSignature) {
+      return scannerArtifactInputMatches(locator, builderVersion, this.artifactInputs(pages));
+    }
+    return !legacyInvalidated;
   }
 
   private readmeText(combined?: {

@@ -176,18 +176,57 @@ export interface ScannerMeasureRef {
 export const SCANNER_ARTIFACT_INPUT_SIGNATURE_VERSION = 'scanner-artifact-input-v1';
 export const SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION = 'scanner-block-content-v1';
 
+export const SCANNER_ARTIFACT_BUILDERS = {
+  pagePdf: 'scanner-page-pdf-v1',
+  musicXmlBundle: 'scanner-musicxml-bundle-v1',
+  combinedMusicXml: 'scanner-combined-musicxml-v1',
+  combinedPdf: 'scanner-combined-pdf-v1',
+  resultsZip: 'scanner-results-zip-v1',
+  previewPdf: 'scanner-preview-pdf-v1',
+  previewThumbnail: 'scanner-preview-thumbnail-v1'
+} as const;
+
+export interface ScannerArtifactInput {
+  ordinal: number;
+  checksumSha256: string;
+}
+
 /**
  * Fingerprint the exact effective pages from which a materialized derivative was built.
  * Callers supply pages in score order; order is musical content and is not sorted here.
  */
 export function scannerArtifactInputSignature(input: {
   builderVersion: string;
-  pages: Array<{ ordinal: number; checksumSha256: string }>;
+  pages: ScannerArtifactInput[];
 }): string {
   return versionedSignature(SCANNER_ARTIFACT_INPUT_SIGNATURE_VERSION, [
     input.builderVersion,
     input.pages.map((page) => [page.ordinal, page.checksumSha256])
   ]);
+}
+
+/** Persist dependency identity on the artifact rather than in a parallel map. */
+export function withScannerArtifactInputSignature(
+  locator: ScannerStorageLocator,
+  builderVersion: string,
+  pages: ScannerArtifactInput[]
+): ScannerStorageLocator {
+  return {
+    ...locator,
+    inputSignature: scannerArtifactInputSignature({ builderVersion, pages })
+  };
+}
+
+/** Signed artifacts are current only for exactly the inputs and builder requested. */
+export function scannerArtifactInputMatches(
+  locator: ScannerStorageLocator | undefined,
+  builderVersion: string,
+  pages: ScannerArtifactInput[]
+): boolean {
+  return Boolean(
+    locator?.inputSignature &&
+      locator.inputSignature === scannerArtifactInputSignature({ builderVersion, pages })
+  );
 }
 
 /**

@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp = require('sharp');
+import AdmZip = require('adm-zip');
 
 describe('ScannerWorkerService', () => {
   const values: Record<string, string> = {
@@ -50,12 +51,61 @@ describe('ScannerWorkerService', () => {
   });
 
   it('uses the effective page when rebuilding a bundle after review', async () => {
-    const raw = { bucket: 'd', objectKey: 'raw.musicxml' };
-    const reviewed = { bucket: 'd', objectKey: 'reviewed.musicxml' };
+    const raw = { bucket: 'd', objectKey: 'raw.musicxml', checksumSha256: 'raw' };
+    const reviewed = {
+      bucket: 'd',
+      objectKey: 'reviewed.musicxml',
+      checksumSha256: 'reviewed'
+    };
     const result = await (service() as any).createBundle({ pageCount: 1 }, [
       { pageNumber: 1, ordinal: 1, musicXml: raw, reviewedMusicXml: reviewed }
     ]);
-    expect(result).toBe(reviewed);
+    expect(result).toMatchObject(reviewed);
+    expect(result.inputSignature).toMatch(/^scanner-artifact-input-v1:/);
+  });
+
+  it('stores the results dependency signature on both locator and manifest', async () => {
+    let storedBody: Buffer | undefined;
+    const storage = {
+      getObjectBuffer: jest.fn().mockResolvedValue(Buffer.from('<score-partwise/>')),
+      putAuxiliaryObject: jest.fn(async (objectKey: string, body: Buffer) => {
+        storedBody = body;
+        return { bucket: 'scanner', objectKey };
+      })
+    } as any;
+    const scannerWorker = new ScannerWorkerService(
+      {} as any,
+      storage,
+      provider,
+      {} as any,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config
+    ) as any;
+    const locator = await scannerWorker.createResultsZip(
+      { jobId: 'job-1', userId: 'user-1' },
+      [
+        {
+          pageNumber: 1,
+          ordinal: 1,
+          included: true,
+          status: 'succeeded',
+          attempts: 1,
+          musicXml: {
+            bucket: 'scanner',
+            objectKey: 'page.musicxml',
+            checksumSha256: 'page-checksum'
+          }
+        }
+      ],
+      { status: 'succeeded' }
+    );
+
+    expect(locator.inputSignature).toMatch(/^scanner-artifact-input-v1:/);
+    const manifest = JSON.parse(new AdmZip(storedBody).readAsText('scanner-manifest.json'));
+    expect(manifest.inputSignature).toBe(locator.inputSignature);
   });
 
   it('retries one transient failure with exactly the same idempotency key', async () => {
