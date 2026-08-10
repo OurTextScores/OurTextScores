@@ -1,6 +1,7 @@
 import {
   DEFAULT_REVIEW_THRESHOLDS,
   effectiveCeiling,
+  pageSuitability,
   ReviewStaff,
   remainingFloor,
   selectSpots
@@ -123,5 +124,67 @@ describe('remainingFloor', () => {
     expect(remainingFloor(spots, 1)).toBeCloseTo(0.6);
     expect(remainingFloor(spots, 2)).toBeCloseTo(0.75);
     expect(remainingFloor(spots, 3)).toBeNull();
+  });
+});
+
+describe('the lower bound', () => {
+  it('does not ask when the model is merely shrugging', () => {
+    // Measured on a real out-of-scope page: the least certain spot was
+    // `pitch C3 11% vs B3 10%`. Neither is likely right, so the choice is noise
+    // dressed as a decision — and ascending order would put it first.
+    const staves = [staff(0, [symbol(1, { pitch: head('C3', 0.11, [['B3', 0.1]]) })])];
+    expect(selectSpots(staves)).toEqual([]);
+  });
+
+  it('still asks just above the bound', () => {
+    const staves = [staff(0, [symbol(1, { pitch: head('C3', 0.4, [['B3', 0.3]]) })])];
+    expect(selectSpots(staves)).toHaveLength(1);
+  });
+
+  it('keeps the queue opening with useful questions', () => {
+    const staves = [
+      staff(0, [
+        symbol(1, { pitch: head('C3', 0.12, [['B3', 0.11]]) }),
+        symbol(2, { pitch: head('E4', 0.45, [['F4', 0.4]]) })
+      ])
+    ];
+    const spots = selectSpots(staves);
+    expect(spots).toHaveLength(1);
+    expect(spots[0].confidence).toBeCloseTo(0.45);
+  });
+});
+
+describe('pageSuitability', () => {
+  it('is quiet about a page the model mostly handled', () => {
+    const staves = [
+      staff(
+        0,
+        Array.from({ length: 20 }, (_, i) =>
+          symbol(i, { pitch: head('C4', i === 0 ? 0.5 : 0.99, [['D4', i === 0 ? 0.4 : 0.005]]) })
+        )
+      )
+    ];
+    const report = pageSuitability(staves, selectSpots(staves));
+    expect(report.spots).toBe(1);
+    expect(report.unsuitable).toBe(false);
+  });
+
+  it('flags a page past reliable recognition without blocking it', () => {
+    // The real manuscript produced 791 spots from 899 symbols. Presenting that
+    // with no comment implies the page is nearly right.
+    const staves = [
+      staff(
+        0,
+        Array.from({ length: 10 }, (_, i) =>
+          symbol(i, { pitch: head('C4', 0.45, [['D4', 0.4]]) })
+        )
+      )
+    ];
+    const spots = selectSpots(staves);
+    const report = pageSuitability(staves, spots);
+    expect(report.askableRatio).toBeCloseTo(1);
+    expect(report.unsuitable).toBe(true);
+    // A signal, not a gate: the queue is still there to work.
+    expect(spots).toHaveLength(10);
   });
 });

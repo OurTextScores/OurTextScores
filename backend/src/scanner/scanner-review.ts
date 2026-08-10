@@ -54,6 +54,16 @@ export interface ReviewThresholds {
   floor: number;
   lowImpactFloor: number;
   minAlternativeRatio: number;
+  /**
+   * Below this, do not ask at all.
+   *
+   * A choice between 11% and 10% is not the model proposing an alternative, it
+   * is the model shrugging: neither option is likely correct, so the question
+   * is noise dressed as a decision. This matters more than it looks, because
+   * ascending order puts exactly these spots first — without a lower bound the
+   * queue opens with its least useful questions.
+   */
+  minimum: number;
 }
 
 export const DEFAULT_REVIEW_THRESHOLDS: ReviewThresholds = {
@@ -61,8 +71,19 @@ export const DEFAULT_REVIEW_THRESHOLDS: ReviewThresholds = {
   lowImpactFloor: 0.5,
   // A ratio, not an absolute gap: an absolute margin is unsatisfiable at higher
   // confidences, since at 0.72 the runner-up cannot exceed 0.28.
-  minAlternativeRatio: 0.25
+  minAlternativeRatio: 0.25,
+  minimum: 0.35
 };
+
+/**
+ * Above this share of symbols being askable, the page is past what recognition
+ * can do reliably and should be labelled as such.
+ *
+ * A signal, never a gate: the reviewer may still work the queue. What it
+ * prevents is presenting hundreds of questions with no comment, which implies
+ * the page is nearly right when it is not.
+ */
+export const UNSUITABLE_ASKABLE_RATIO = 0.2;
 
 /**
  * The highest confidence that can ever qualify, given the ratio rule.
@@ -106,6 +127,7 @@ export function selectSpots(
         const confidence = Number(entry.confidence);
         if (!Number.isFinite(confidence)) continue;
         if (confidence >= floorFor(head, thresholds)) continue;
+        if (confidence < thresholds.minimum) continue;
         const alternatives = entry.alternatives || [];
         if (alternatives.length === 0) continue;
         const runnerUp = Number(alternatives[0]?.confidence ?? 0);
@@ -144,4 +166,28 @@ export function selectSpots(
 export function remainingFloor(spots: ReviewSpot[], answered: number): number | null {
   if (answered >= spots.length) return null;
   return spots[answered].confidence;
+}
+
+/**
+ * Whether a page is past reliable recognition, and the evidence for saying so.
+ *
+ * `askableRatio` counts spots against symbols the provider kept, so it reflects
+ * how much of what the model was unsure about is actually worth asking. On a
+ * clean printed page this is near zero; on out-of-scope input it approaches one.
+ */
+export function pageSuitability(
+  staves: ReviewStaff[],
+  spots: ReviewSpot[]
+): { symbols: number; spots: number; askableRatio: number; unsuitable: boolean } {
+  const symbols = (staves || []).reduce(
+    (total, staff) => total + (staff.symbols?.length || 0),
+    0
+  );
+  const askableRatio = symbols === 0 ? 0 : spots.length / symbols;
+  return {
+    symbols,
+    spots: spots.length,
+    askableRatio,
+    unsuitable: askableRatio > UNSUITABLE_ASKABLE_RATIO
+  };
 }
