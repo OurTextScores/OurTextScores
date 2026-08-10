@@ -177,6 +177,14 @@ export class ScannerJob {
   @Prop({ type: Object })
   combinedMusicXml?: ScannerStorageLocator;
 
+  /**
+   * A correction invalidated the combined score that had already been built.
+   * The per-page files stay correct; this stops a stale combined download from
+   * being offered as though it included the reviewer's work.
+   */
+  @Prop({ type: Boolean })
+  combinedStale?: boolean;
+
   @Prop({ type: Object })
   combinedPdf?: ScannerStorageLocator;
 

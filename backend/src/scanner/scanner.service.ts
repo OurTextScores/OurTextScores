@@ -40,6 +40,10 @@ import {
 } from './scanner-review';
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerProviderService } from './scanner-provider.service';
+import {
+  ScannerCorrection,
+  ScannerCorrectionDocument
+} from './schemas/scanner-correction.schema';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
@@ -53,6 +57,8 @@ export class ScannerService implements OnModuleInit {
   constructor(
     @InjectModel(ScannerJob.name)
     private readonly jobs: Model<ScannerJobDocument>,
+    @InjectModel(ScannerCorrection.name)
+    private readonly corrections: Model<ScannerCorrectionDocument>,
     private readonly storage: StorageService,
     private readonly provider: ScannerProviderService,
     private readonly telemetry: ScannerTelemetryService,
@@ -751,7 +757,79 @@ export class ScannerService implements OnModuleInit {
       )
       .exec();
 
-    return { ok: true, outcome: correction.outcome };
+    // Durable training record, deliberately outside the job: jobs and their
+    // artifacts expire, and a page reviewed without this is training data
+    // destroyed. Keyed on the image hash so a re-scan joins the same history.
+    // Best effort — losing a training sample must never fail the correction the
+    // reviewer just made.
+    try {
+      await this.corrections.create({
+        pageSha256: page.sourceImage?.checksumSha256 || '',
+        userHash: this.userHash(userId),
+        staffIndex: spot.staffIndex,
+        symbolIndex: spot.symbolIndex,
+        head: spot.head,
+        predicted: spot.chosen,
+        predictedConfidence: spot.confidence,
+        offered: spot.alternatives,
+        chosen,
+        outcome: correction.outcome,
+        homrRevision: this.config.get<string>('SCANNER_EXPECTED_HOMR_COMMIT', ''),
+        providerRevision: this.config.get<string>('SCANNER_EXPECTED_PROVIDER_REVISION', ''),
+        // Which published terms were in force. A scan uploaded under a promise
+        // of no training use must not become training data because the Legal
+        // page changed later, and only the version at capture time can tell
+        // those apart afterwards.
+        policyVersion: this.config.get<string>('SCANNER_TRAINING_POLICY_VERSION', 'unset')
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Scanner correction not recorded for training: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    // A combined score built before this correction no longer reflects the
+    // page. Drop it rather than leaving a download that silently lacks the
+    // reviewer's work; the per-page files are correct either way.
+    const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
+    if (hadCombined) {
+      await this.jobs
+        .updateOne(
+          { _id: job._id },
+          {
+            $unset: { combinedMusicXml: '', combinedPdf: '' },
+            $set: { combinedStale: true }
+          }
+        )
+        .exec();
+    }
+
+    return { ok: true, outcome: correction.outcome, combinedStale: hadCombined };
+  }
+
+  /**
+   * Export captured corrections for training, newest first.
+   *
+   * Admin-only and filterable by policy version, because that is the axis that
+   * decides what may lawfully be used: samples captured while the published
+   * terms promised no training use must be excluded, not silently swept in.
+   */
+  async exportCorrections(options: {
+    policyVersion?: string;
+    since?: Date;
+    limit?: number;
+  }): Promise<any[]> {
+    const filter: Record<string, unknown> = {};
+    if (options.policyVersion) filter.policyVersion = options.policyVersion;
+    if (options.since) filter.createdAt = { $gte: options.since };
+    return this.corrections
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(options.limit || 1000, 1), 10_000))
+      .lean()
+      .exec();
   }
 
   /** A cropped view of the source page behind one spot. */

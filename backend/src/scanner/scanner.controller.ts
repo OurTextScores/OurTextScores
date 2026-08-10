@@ -127,6 +127,21 @@ export class ScannerController {
     return this.scanner.metrics(windowHours);
   }
 
+  @Get('corrections/export')
+  @UseGuards(AdminRequiredGuard)
+  exportCorrections(
+    @Query('policyVersion') policyVersion?: string,
+    @Query('since') since?: string,
+    @Query('limit') limit?: string
+  ) {
+    const parsedSince = since ? new Date(since) : undefined;
+    return this.scanner.exportCorrections({
+      policyVersion,
+      since: parsedSince && !Number.isNaN(parsedSince.getTime()) ? parsedSince : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
+  }
+
   @Get(':jobId')
   get(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.getJob(user.userId, jobId);

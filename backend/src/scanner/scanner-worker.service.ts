@@ -850,14 +850,17 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const pages = await Promise.all(
-        successful.map(async (page) => ({
-          ordinal: page.ordinal || page.pageNumber,
-          pageNumber: page.pageNumber,
-          musicXml: await this.storage.getObjectBuffer(
-            page.musicXml!.bucket,
-            page.musicXml!.objectKey
-          )
-        }))
+        successful.map(async (page) => {
+          // A reviewed page wins over the raw recognition. Assembly is the
+          // point of the review: corrections that never reached the combined
+          // score would leave the reviewer's work visible only per page.
+          const source = (page as any).reviewedMusicXml || page.musicXml!;
+          return {
+            ordinal: page.ordinal || page.pageNumber,
+            pageNumber: page.pageNumber,
+            musicXml: await this.storage.getObjectBuffer(source.bucket, source.objectKey)
+          };
+        })
       );
       const merged = this.merger.merge(pages);
       if (merged.status !== 'succeeded') {
