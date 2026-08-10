@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import type { ScannerPageEngines } from '../scanner-dual-engine';
 
 export type ScannerJobDocument = HydratedDocument<ScannerJob>;
 
@@ -35,6 +36,12 @@ export interface ScannerSourceInput {
  * commit alone is not enough — the weights are versioned separately from it.
  */
 export interface ScannerEngineProvenance {
+  /** Generic immutable model artifact identity, used by engines other than HOMR too. */
+  modelArtifact?: string;
+  modelArtifactSha256?: string;
+  containerImageDigest?: string;
+  converter?: string;
+  converterVersion?: string;
   segmentationModel?: string;
   segmentationModelSha256?: string;
   transformerModel?: string;
@@ -58,6 +65,10 @@ export interface ScannerPageResult {
   sourceImage?: ScannerStorageLocator;
   thumbnail?: ScannerStorageLocator;
   musicXml?: ScannerStorageLocator;
+  /** MusicXML produced by dual-engine reconciliation; preferred over spot review. */
+  mergedMusicXml?: ScannerStorageLocator;
+  /** Phase 0 dual-engine state; legacy top-level HOMR fields remain during migration. */
+  engines?: ScannerPageEngines;
   pdf?: ScannerStorageLocator;
   providerRequestId?: string;
   /** Wall-clock time of the provider call, including any cold-start wait. */

@@ -1,7 +1,7 @@
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { createHash } from 'node:crypto';
+import type { ScannerPageResult, ScannerStorageLocator } from './schemas/scanner-job.schema';
 
 /**
  * Design section 7.2: object keys carry a hashed owner segment, never the user
@@ -47,6 +47,15 @@ export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
  * different code paths — and any of them reading `musicXml` directly hands back
  * work the reviewer has already superseded.
  */
-export function effectivePageMusicXml(page: any): any {
+export function effectivePageMusicXml(
+  page: Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml'> | undefined
+): ScannerStorageLocator | undefined {
   return page?.mergedMusicXml || page?.reviewedMusicXml || page?.musicXml;
+}
+
+/** True when pre-review bundles, renders and manifests no longer describe a page. */
+export function pageMusicXmlSuperseded(
+  page: Pick<ScannerPageResult, 'reviewedMusicXml' | 'mergedMusicXml'> | undefined
+): boolean {
+  return Boolean(page?.mergedMusicXml || page?.reviewedMusicXml);
 }

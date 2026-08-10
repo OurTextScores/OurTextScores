@@ -1,43 +1,23 @@
 import { Injectable } from '@nestjs/common';
-import { ReviewStaff } from './scanner-review';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { providerErrorFromCode, ScannerProviderError } from './scanner.errors';
 import { assertValidMusicXml } from './scanner-musicxml';
+import type { ReviewStaff } from './scanner-review';
+import {
+  ScannerPageProvider,
+  ScannerProviderResult,
+  ScannerProviderScanInput,
+  scannerProviderIdempotencyKey
+} from './scanner-provider.contract';
 
-export interface ScannerModelProvenance {
-  segmentationModel?: string;
-  segmentationModelSha256?: string;
-  transformerModel?: string;
-  encoderModelSha256?: string;
-  decoderModelSha256?: string;
-  executionProvider?: string;
-}
-
-export interface ScanPageResult {
-  musicXml: Buffer;
-  providerRevision: string;
-  modelRevision: string;
-  provenance: ScannerModelProvenance;
-  requestId?: string;
-  /**
-   * Recognition time as measured inside the provider. Design section 11.3
-   * requires separating this from provider start and network time: on a cold
-   * container the caller's wall clock is dominated by the readiness wait, so
-   * using it as "recognition time" overstates it by an order of magnitude.
-   */
-  inferenceMs?: number;
-  musicXmlSha256: string;
-  /**
-   * Provider v2 review data: staff geometry and, for the symbols the provider
-   * did not prune, the model's own confidence and alternatives. Optional
-   * because a v1 provider omits it and everything else must keep working.
-   */
-  review?: { staves: ReviewStaff[] };
-}
+export type ScanPageResult = ScannerProviderResult;
+export type ScannerModelProvenance = ScannerProviderResult['provenance'];
 
 @Injectable()
-export class ScannerProviderService {
+export class ScannerProviderService implements ScannerPageProvider {
+  readonly engine = 'homr' as const;
+
   constructor(private readonly config: ConfigService) {}
 
   get expectedRevision(): string {
@@ -94,7 +74,6 @@ export class ScannerProviderService {
     return musicXml;
   }
 
-
   /**
    * Attach the credentials the configured provider expects.
    *
@@ -124,25 +103,15 @@ export class ScannerProviderService {
     detectTitle: boolean;
     generation: number;
   }): string {
-    return createHash('sha256')
-      .update(
-        JSON.stringify({
-          engine: 'homr',
-          revision: this.expectedRevision,
-          preprocessingRevision: 'ots-scanner-poppler-1920-v1',
-          ...input
-        })
-      )
-      .digest('hex');
+    return scannerProviderIdempotencyKey({
+      engine: this.engine,
+      modelRevision: this.expectedRevision,
+      preprocessingRevision: 'ots-scanner-poppler-1920-v1',
+      ...input
+    });
   }
 
-  async scanPage(input: {
-    image: Buffer;
-    filename: string;
-    contentType: string;
-    detectTitle: boolean;
-    idempotencyKey: string;
-  }): Promise<ScanPageResult> {
+  async scanPage(input: ScannerProviderScanInput): Promise<ScanPageResult> {
     if (this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal') === 'fake') {
       return this.fakeResult(input.idempotencyKey, input.filename);
     }
@@ -348,6 +317,7 @@ export class ScannerProviderService {
     this.assertValidMusicXml(musicXml);
 
     return {
+      engine: this.engine,
       musicXml,
       providerRevision,
       modelRevision,
@@ -450,6 +420,7 @@ export class ScannerProviderService {
       'utf8'
     );
     return {
+      engine: this.engine,
       providerRevision: 'local-fake',
       modelRevision: this.expectedRevision || 'local-fake',
       musicXml,
@@ -523,8 +494,7 @@ function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
                   confidence: Number(alternative?.confidence)
                 }))
                 .filter(
-                  (alternative: any) =>
-                    alternative.value && Number.isFinite(alternative.confidence)
+                  (alternative: any) => alternative.value && Number.isFinite(alternative.confidence)
                 )
             };
           }

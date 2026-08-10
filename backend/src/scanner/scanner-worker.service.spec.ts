@@ -49,6 +49,15 @@ describe('ScannerWorkerService', () => {
     delete values.SCANNER_TEST_WORKER_LEASE_MS;
   });
 
+  it('uses the effective page when rebuilding a bundle after review', async () => {
+    const raw = { bucket: 'd', objectKey: 'raw.musicxml' };
+    const reviewed = { bucket: 'd', objectKey: 'reviewed.musicxml' };
+    const result = await (service() as any).createBundle({ pageCount: 1 }, [
+      { pageNumber: 1, ordinal: 1, musicXml: raw, reviewedMusicXml: reviewed }
+    ]);
+    expect(result).toBe(reviewed);
+  });
+
   it('retries one transient failure with exactly the same idempotency key', async () => {
     provider.scanPage
       .mockRejectedValueOnce(new ScannerProviderError('busy', 'provider_http_503', true))
@@ -260,6 +269,12 @@ describe('ScannerWorkerService', () => {
     const job = { jobId: 'job-1', pageCount: 1, pages: [] };
 
     await scannerWorker.persistPageProgress(job, [], new Map(), undefined, 'service', 'model');
+    expect(updateOne.mock.calls[0][1].$set.pages[0].engines.homr).toMatchObject({
+      engine: 'homr',
+      status: 'pending',
+      providerRevision: 'service',
+      modelRevision: 'model'
+    });
     expect(updateOne).toHaveBeenCalledWith(
       expect.objectContaining({ jobId: 'job-1', leaseOwner: workerId }),
       expect.anything()

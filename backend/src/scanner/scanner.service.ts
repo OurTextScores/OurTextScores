@@ -18,6 +18,7 @@ import { Readable } from 'node:stream';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { extname } from 'node:path';
+import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { StorageService } from '../storage/storage.service';
 import {
@@ -29,6 +30,7 @@ import {
 } from './schemas/scanner-job.schema';
 import {
   effectivePageMusicXml,
+  pageMusicXmlSuperseded,
   SCANNER_UPLOAD_DIRECTORY,
   scannerUserHash
 } from './scanner.constants';
@@ -45,12 +47,16 @@ import {
 } from './scanner-review';
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerProviderService } from './scanner-provider.service';
-import {
-  ScannerCorrection,
-  ScannerCorrectionDocument
-} from './schemas/scanner-correction.schema';
+import { ScannerCorrection, ScannerCorrectionDocument } from './schemas/scanner-correction.schema';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
+import {
+  scannerEngineArtifactLocators,
+  scannerHomrRun,
+  uniqueScannerStorageLocators,
+  withScannerHomrRun
+} from './scanner-dual-engine';
+import type { ScannerEngineRun } from './scanner-dual-engine';
 
 const execFileAsync = promisify(execFile);
 const ACTIVE_STATUSES = ['queued', 'preparing', 'ready', 'running', 'rendering'];
@@ -212,16 +218,18 @@ export class ScannerService implements OnModuleInit {
         inputs: storedInputs,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
-        pages: Array.from({ length: pageCount }, (_value, index) => ({
-          pageNumber: index + 1,
-          ordinal: index + 1,
-          rotationDegrees: 0,
-          included: true,
-          status: 'pending',
-          attempts: 0,
-          manualRetries: 0,
-          idempotencyKey: ''
-        })),
+        pages: Array.from({ length: pageCount }, (_value, index) =>
+          withScannerHomrRun({
+            pageNumber: index + 1,
+            ordinal: index + 1,
+            rotationDegrees: 0,
+            included: true,
+            status: 'pending',
+            attempts: 0,
+            manualRetries: 0,
+            idempotencyKey: ''
+          })
+        ),
         sourceExpiresAt: new Date(
           now + this.number('SCANNER_SOURCE_RETENTION_DAYS', 7) * 86_400_000
         ),
@@ -346,13 +354,13 @@ export class ScannerService implements OnModuleInit {
       if (!requested || !rotations.has(requested.rotationDegrees)) {
         throw new BadRequestException('Page configuration is invalid');
       }
-      return {
+      return withScannerHomrRun({
         ...page,
         ordinal: requested.ordinal,
         rotationDegrees: requested.rotationDegrees as 0 | 90 | 180 | 270,
         included: Boolean(requested.included),
         status: requested.included ? 'pending' : 'skipped'
-      };
+      });
     });
     if (!pages.some((page) => page.included)) {
       throw new BadRequestException('At least one page must be included');
@@ -479,15 +487,33 @@ export class ScannerService implements OnModuleInit {
       throw new NotFoundException('Scanner page not found');
     }
     const pageRequested = pageNumber !== undefined;
+    const superseded = job.pages.some((page) => pageMusicXmlSuperseded(page));
     let locator: ScannerStorageLocator | undefined;
     let filename: string;
     if (kind === 'zip') {
+      if (superseded || job.combinedStale) {
+        const body = await this.currentResultsZip(job);
+        return {
+          stream: Readable.from([body]),
+          contentType: 'application/zip',
+          filename: 'scan-results.zip'
+        };
+      }
       locator = job.resultsZip;
       filename = 'scan-results.zip';
     } else if (kind === 'pdf') {
+      const page = pageRequested
+        ? job.pages.find((candidate) => candidate.pageNumber === pageNumber)
+        : undefined;
+      // A PDF is a render of a specific MusicXML revision. Never show the raw
+      // recognition's render after spot review or reconciliation superseded it.
       locator = pageRequested
-        ? job.pages.find((page) => page.pageNumber === pageNumber)?.pdf
-        : (job.combinedPdf ?? job.previewPdf);
+        ? pageMusicXmlSuperseded(page)
+          ? undefined
+          : page?.pdf
+        : superseded || job.combinedStale
+          ? undefined
+          : (job.combinedPdf ?? job.previewPdf);
       filename = pageRequested ? `scan-page-${pageNumber}.pdf` : 'scan-preview.pdf';
     } else if (kind === 'thumbnail') {
       locator = pageRequested
@@ -495,15 +521,26 @@ export class ScannerService implements OnModuleInit {
         : job.previewThumbnail;
       filename = pageRequested ? `scan-page-${pageNumber}.png` : 'scan-preview.png';
     } else if (pageRequested) {
-      locator = effectivePageMusicXml(
-        job.pages.find((page) => page.pageNumber === pageNumber)
-      );
+      locator = effectivePageMusicXml(job.pages.find((page) => page.pageNumber === pageNumber));
       filename = `scan-page-${pageNumber}.musicxml`;
-    } else if (job.combinedMusicXml) {
+    } else if (job.combinedMusicXml && !superseded && !job.combinedStale) {
       // A validated assembly is the whole score, so it wins over the per-page
       // bundle for the job-level MusicXML artifact.
       locator = job.combinedMusicXml;
       filename = 'scan-combined.musicxml';
+    } else if (superseded) {
+      const currentPages = this.currentMusicXmlPages(job);
+      if (job.pageCount === 1 && currentPages.length === 1) {
+        locator = currentPages[0].musicXml;
+        filename = 'scan.musicxml';
+      } else {
+        const body = await this.currentMusicXmlBundle(job, currentPages);
+        return {
+          stream: Readable.from([body]),
+          contentType: 'application/zip',
+          filename: 'scan-musicxml-pages.zip'
+        };
+      }
     } else {
       locator =
         job.musicXmlBundle ??
@@ -746,12 +783,20 @@ export class ScannerService implements OnModuleInit {
     const musicXmlBuffer = await this.provider.regenerate(
       editedStaves.map((entry: any) => entry.tokens || [])
     );
-    const locator = await this.storage.putDerivativeObject(
+    const reviewedContentType = 'application/vnd.recordare.musicxml+xml';
+    const storedReviewed = await this.storage.putDerivativeObject(
       `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-reviewed.musicxml`,
       musicXmlBuffer,
       musicXmlBuffer.length,
-      'application/vnd.recordare.musicxml+xml'
+      reviewedContentType
     );
+    const locator: ScannerStorageLocator = {
+      bucket: storedReviewed.bucket,
+      objectKey: storedReviewed.objectKey,
+      sizeBytes: musicXmlBuffer.length,
+      contentType: reviewedContentType,
+      checksumSha256: createHash('sha256').update(musicXmlBuffer).digest('hex')
+    };
 
     const correction = {
       spotId,
@@ -813,19 +858,11 @@ export class ScannerService implements OnModuleInit {
     }
 
     // A combined score built before this correction no longer reflects the
-    // page. Drop it rather than leaving a download that silently lacks the
-    // reviewer's work; the per-page files are correct either way.
+    // page. Keep its locator solely so expiry/deletion can collect the object,
+    // but mark it stale so no artifact route or UI offers it as current.
     const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
     if (hadCombined) {
-      await this.jobs
-        .updateOne(
-          { _id: job._id },
-          {
-            $unset: { combinedMusicXml: '', combinedPdf: '' },
-            $set: { combinedStale: true }
-          }
-        )
-        .exec();
+      await this.jobs.updateOne({ _id: job._id }, { $set: { combinedStale: true } }).exec();
     }
 
     return { ok: true, outcome: correction.outcome, combinedStale: hadCombined };
@@ -916,32 +953,56 @@ export class ScannerService implements OnModuleInit {
         .sort(
           (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
         )
-        .map((page) => ({
-          pageNumber: page.pageNumber,
-          ordinal: page.ordinal || page.pageNumber,
-          rotationDegrees: page.rotationDegrees || 0,
-          included: page.included !== false,
-          status:
-            job.status === 'cancelled' && ['pending', 'running'].includes(page.status)
-              ? 'cancelled'
-              : page.status,
-          attempts: page.attempts,
-          manualRetries: page.manualRetries || 0,
-          errorCode: page.errorCode,
-          errorMessage: page.errorMessage,
-          hasThumbnail: Boolean(page.thumbnail),
-          hasMusicXml: Boolean(page.musicXml),
-          hasPdf: Boolean(page.pdf),
-          canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
-        })),
-      hasMusicXml: Boolean(job.musicXmlBundle || job.pages.some((page) => page.musicXml)),
-      hasPdf: Boolean(job.previewPdf),
+        .map((page) => {
+          const homr = scannerHomrRun(page, {
+            providerRevision: job.providerRevision,
+            modelRevision: job.modelRevision,
+            provenance: job.engineProvenance
+          });
+          return {
+            pageNumber: page.pageNumber,
+            ordinal: page.ordinal || page.pageNumber,
+            rotationDegrees: page.rotationDegrees || 0,
+            included: page.included !== false,
+            status:
+              job.status === 'cancelled' && ['pending', 'running'].includes(page.status)
+                ? 'cancelled'
+                : page.status,
+            attempts: page.attempts,
+            manualRetries: page.manualRetries || 0,
+            errorCode: page.errorCode,
+            errorMessage: page.errorMessage,
+            hasThumbnail: Boolean(page.thumbnail),
+            hasMusicXml: Boolean(effectivePageMusicXml(page)),
+            hasPdf: Boolean(page.pdf) && !pageMusicXmlSuperseded(page),
+            engines: {
+              homr: this.presentEngineRun(homr),
+              ...(page.engines?.transcoda
+                ? { transcoda: this.presentEngineRun(page.engines.transcoda) }
+                : {})
+            },
+            canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
+          };
+        }),
+      hasMusicXml: Boolean(
+        job.musicXmlBundle || job.pages.some((page) => effectivePageMusicXml(page))
+      ),
+      hasPdf:
+        Boolean(job.previewPdf) &&
+        !job.combinedStale &&
+        !job.pages.some((page) => pageMusicXmlSuperseded(page)),
       hasThumbnail: Boolean(job.previewThumbnail),
-      hasZip: Boolean(job.resultsZip),
+      hasZip: Boolean(job.resultsZip || job.pages.some((page) => effectivePageMusicXml(page))),
       mergeStatus: job.mergeStatus || 'not-requested',
       mergeReason: job.mergeReason,
-      hasCombinedMusicXml: Boolean(job.combinedMusicXml),
-      hasCombinedPdf: Boolean(job.combinedPdf),
+      hasCombinedMusicXml:
+        Boolean(job.combinedMusicXml) &&
+        !job.combinedStale &&
+        !job.pages.some((page) => pageMusicXmlSuperseded(page)),
+      hasCombinedPdf:
+        Boolean(job.combinedPdf) &&
+        !job.combinedStale &&
+        !job.pages.some((page) => pageMusicXmlSuperseded(page)),
       providerRevision: job.providerRevision,
       modelRevision: job.modelRevision,
       timings: job.timings || {},
@@ -953,6 +1014,24 @@ export class ScannerService implements OnModuleInit {
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       resultExpiresAt: job.resultExpiresAt
+    };
+  }
+
+  private presentEngineRun(run: ScannerEngineRun): any {
+    return {
+      status: run.status,
+      attempts: run.attempts,
+      providerAttempts: run.providerAttempts,
+      providerRequestId: run.providerRequestId,
+      durationMs: run.durationMs,
+      inferenceMs: run.inferenceMs,
+      errorCode: run.errorCode,
+      errorMessage: run.errorMessage,
+      providerRevision: run.providerRevision,
+      modelRevision: run.modelRevision,
+      hasMusicXml: Boolean(run.artifacts.musicXml),
+      hasPdf: Boolean(run.artifacts.pdf),
+      hasKern: Boolean(run.artifacts.kern)
     };
   }
 
@@ -1028,7 +1107,7 @@ export class ScannerService implements OnModuleInit {
   }
 
   private async deleteArtifacts(job: ScannerJobDocument): Promise<void> {
-    const locators = [
+    const locators = uniqueScannerStorageLocators([
       job.input,
       ...(job.inputs || []).map((item) => item.storage),
       job.musicXmlBundle,
@@ -1037,11 +1116,110 @@ export class ScannerService implements OnModuleInit {
       job.resultsZip,
       job.previewPdf,
       job.previewThumbnail,
-      ...job.pages.flatMap((page) => [page.sourceImage, page.thumbnail, page.musicXml, page.pdf])
-    ].filter(Boolean) as ScannerStorageLocator[];
+      ...job.pages.flatMap((page) => [
+        page.sourceImage,
+        page.thumbnail,
+        page.musicXml,
+        page.reviewedMusicXml,
+        page.mergedMusicXml,
+        page.pdf,
+        ...scannerEngineArtifactLocators(page)
+      ])
+    ]);
     await Promise.all(
       locators.map((item) => this.storage.deleteObject(item.bucket, item.objectKey))
     );
+  }
+
+  private currentMusicXmlPages(job: ScannerJobDocument): Array<{
+    page: ScannerPageResult;
+    musicXml: ScannerStorageLocator;
+  }> {
+    return [...job.pages]
+      .sort(
+        (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
+      )
+      .flatMap((page) => {
+        const musicXml = effectivePageMusicXml(page);
+        return page.status === 'succeeded' && musicXml ? [{ page, musicXml }] : [];
+      });
+  }
+
+  private async currentMusicXmlBundle(
+    job: ScannerJobDocument,
+    pages = this.currentMusicXmlPages(job)
+  ): Promise<Buffer> {
+    if (pages.length === 0) throw new NotFoundException('Artifact is not available');
+    const zip = new AdmZip();
+    for (const { page, musicXml } of pages) {
+      zip.addFile(
+        `page-${String(page.ordinal || page.pageNumber).padStart(3, '0')}.musicxml`,
+        await this.storage.getObjectBuffer(musicXml.bucket, musicXml.objectKey)
+      );
+    }
+    return zip.toBuffer();
+  }
+
+  private async currentResultsZip(job: ScannerJobDocument): Promise<Buffer> {
+    const zip = new AdmZip();
+    const pages = [...job.pages].sort(
+      (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
+    );
+    for (const page of pages) {
+      const pageSegment = String(page.ordinal || page.pageNumber).padStart(3, '0');
+      const musicXml = effectivePageMusicXml(page);
+      if (musicXml) {
+        zip.addFile(
+          `page-${pageSegment}.musicxml`,
+          await this.storage.getObjectBuffer(musicXml.bucket, musicXml.objectKey)
+        );
+      }
+      if (page.pdf && !pageMusicXmlSuperseded(page)) {
+        zip.addFile(
+          `page-${pageSegment}.pdf`,
+          await this.storage.getObjectBuffer(page.pdf.bucket, page.pdf.objectKey)
+        );
+      }
+    }
+
+    const manifest = {
+      version: 1,
+      jobId: job.jobId,
+      status: job.status,
+      mergeStatus: 'stale',
+      mergeReason: 'A page was reviewed after the original result artifacts were built',
+      engine: 'homr',
+      serviceRevision: job.providerRevision,
+      modelRevision: job.modelRevision,
+      engineProvenance: job.engineProvenance,
+      createdAt: new Date().toISOString(),
+      pages: pages.map((page) => {
+        const musicXml = effectivePageMusicXml(page);
+        return {
+          pageNumber: page.pageNumber,
+          ordinal: page.ordinal || page.pageNumber,
+          rotationDegrees: page.rotationDegrees || 0,
+          included: page.included !== false,
+          status: page.status,
+          attempts: page.attempts,
+          providerAttempts: page.providerAttempts ?? page.attempts,
+          providerRequestId: page.providerRequestId,
+          manualRetries: page.manualRetries || 0,
+          errorCode: page.errorCode,
+          errorMessage: page.errorMessage,
+          musicXmlSha256: musicXml?.checksumSha256,
+          pdfSha256: pageMusicXmlSuperseded(page) ? undefined : page.pdf?.checksumSha256
+        };
+      })
+    };
+    zip.addFile('scanner-manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
+    zip.addFile(
+      'README.txt',
+      Buffer.from(
+        'OurTextScores Scanner results\n\nEach page is transcribed independently. Review all MusicXML before use.\n\nA review changed at least one page after the original combined score and PDFs were built. Those stale derivatives are intentionally omitted; the MusicXML page files in this archive are current.\n'
+      )
+    );
+    return zip.toBuffer();
   }
 
   private safeFilename(value: string, fallbackExtension: string): string {
