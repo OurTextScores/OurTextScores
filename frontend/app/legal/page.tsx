@@ -12,6 +12,14 @@ export default function LegalPage() {
       <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
         Legal
       </h1>
+      {/* The scanner stamps every stored correction with the version of these
+          terms in force when it was captured, so answers given under earlier
+          wording stay distinguishable. That is only meaningful if the version
+          is something a reader can see, hence the date. Keep it in step with
+          SCANNER_TRAINING_POLICY_VERSION. */}
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+        Last updated 10 August 2026
+      </p>
 
       <section className="mt-8">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
@@ -168,9 +176,18 @@ export default function LegalPage() {
             belonging to it at any time from its result page.
           </p>
           <p>
-            Scans are private to the account that created them, are never added
-            to the public catalogue automatically, and are not used to train any
-            model.
+            Scans are private to the account that created them and are never
+            added to the public catalogue automatically.
+          </p>
+          <p>
+            Where the scanner is unsure about a symbol, it may ask you to
+            confirm or correct it. If you answer, we keep what the scanner
+            predicted, the alternatives it offered, and which you chose, so that
+            recognition can be improved. That record identifies the passage, not
+            its contents: it holds no image, no notation, and no part of your
+            score. Your scanned pages themselves are not used to train any
+            model, and answering is entirely optional — you can skip any
+            question, or ignore the review altogether.
           </p>
           <p>
             Scanner output is a machine-generated draft. Recognition can misread
