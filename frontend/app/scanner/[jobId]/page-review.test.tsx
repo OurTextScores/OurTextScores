@@ -134,7 +134,7 @@ describe("PageReview", () => {
     );
     render(<PageReview jobId="job-1" pageNumber={3} />);
     expect(await screen.findByText("sixteenth note")).toBeInTheDocument();
-    expect(screen.getByText("eighth note dotted")).toBeInTheDocument();
+    expect(screen.getByText("dotted eighth note")).toBeInTheDocument();
   });
 
   it("renders a placeholder as an absence", async () => {

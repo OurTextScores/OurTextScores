@@ -37,35 +37,88 @@ const HEAD_LABELS: Record<string, string> = {
   slur: "Is this slurred?",
 };
 
-function percent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
 /**
  * HOMR's raw tokens are not reader-facing. `.` means "no note" and `_` means
  * "no decoration", and showing either verbatim asks a reviewer to interpret the
  * model's vocabulary rather than the music.
+ *
+ * Durations are Humdrum **kern: the number is how many of the note fit in a
+ * whole note. A power of two is an ordinary note value; anything else is a
+ * tuplet, and `kern_to_symbol_duration` resolves it as `base` notes in the
+ * space of `prior_power_of_two(base)`. So `note_48` is 48 in the space of 32 —
+ * a triplet thirty-second, not the "1/48 note" a naive reading produces.
  */
+const NOTE_VALUE_NAMES: Record<number, string> = {
+  1: "whole",
+  2: "half",
+  4: "quarter",
+  8: "eighth",
+  16: "sixteenth",
+  32: "thirty-second",
+  64: "sixty-fourth",
+  128: "hundred-twenty-eighth",
+};
+
+// Keyed on the *reduced* ratio: kern 12 against 8 and kern 48 against 32 are
+// both 3:2, and describing one note's duration only needs the ratio, not the
+// grouping it came from.
+const TUPLET_NAMES: Record<string, string> = {
+  "3:2": "triplet",
+  "5:4": "quintuplet",
+  "7:4": "septuplet",
+  "9:8": "nonuplet",
+};
+
+function greatestCommonDivisor(a: number, b: number): number {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+
+function priorPowerOfTwo(value: number): number {
+  let power = 1;
+  while (power * 2 < value) power *= 2;
+  return power;
+}
+
+export function describeDuration(kern: string): string {
+  if (kern.endsWith("m")) return "multi-measure rest";
+  const match = kern.match(/^(\d*)(G?)(\.*)$/);
+  if (!match) return kern;
+  const [, digits, grace, dots] = match;
+  const base = digits === "" ? 4 : Number(digits);
+  const dotted = dots.length === 1 ? "dotted " : dots.length > 1 ? "double-dotted " : "";
+  const gracePrefix = grace ? "grace " : "";
+
+  // kern 0 is the whole-measure rest, not a note value.
+  if (base === 0) return `${gracePrefix}whole-measure rest`;
+
+  const isPowerOfTwo = (base & (base - 1)) === 0;
+  if (isPowerOfTwo) {
+    const name = NOTE_VALUE_NAMES[base] || `1/${base}`;
+    return `${gracePrefix}${dotted}${name}`;
+  }
+
+  const normal = priorPowerOfTwo(base);
+  const name = NOTE_VALUE_NAMES[normal] || `1/${normal}`;
+  const divisor = greatestCommonDivisor(base, normal);
+  const ratio = `${base / divisor}:${normal / divisor}`;
+  const tuplet = TUPLET_NAMES[ratio] || `${ratio}`;
+  return `${gracePrefix}${dotted}${tuplet} ${name}`;
+}
+
+function percent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
 function readable(head: string, value: string): string {
   if (value === "." || value === "_" || value === "") {
     return head === "slur" || head === "articulation" || head === "lift"
       ? "none"
       : "nothing here";
   }
-  const rhythm = value.match(/^(note|rest)_(\d+)(\.*)$/);
+  const rhythm = value.match(/^(note|rest)_(.+)$/);
   if (rhythm) {
-    const [, kind, unit, dots] = rhythm;
-    const names: Record<string, string> = {
-      "1": "whole",
-      "2": "half",
-      "4": "quarter",
-      "8": "eighth",
-      "16": "sixteenth",
-      "32": "thirty-second",
-      "64": "sixty-fourth",
-    };
-    const name = names[unit] || `1/${unit}`;
-    return `${name} ${kind}${dots ? " dotted" : ""}`;
+    const [, kind, kern] = rhythm;
+    return `${describeDuration(kern)} ${kind}`;
   }
   if (value === "slurStart") return "a slur starts here";
   if (value === "slurEnd") return "a slur ends here";
