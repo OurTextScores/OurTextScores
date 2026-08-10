@@ -31,7 +31,14 @@ const PROVIDER_ERROR_CODES: Record<string, { message: string; retryable: boolean
   busy: { message: 'Scanner provider capacity is temporarily unavailable', retryable: true },
   model_not_ready: { message: 'The scanner provider is starting up', retryable: true },
   inference_timeout: { message: 'The scanner timed out on this page', retryable: true },
-  inference_failed: { message: 'The scanner could not process this page', retryable: true }
+  inference_failed: { message: 'The scanner could not process this page', retryable: true },
+  // Recognition succeeded; converting the result to MusicXML hit an invariant.
+  // Deterministic, so never retried: the same page trips the same assert every
+  // time and a retry would spend a second GPU call to fail identically.
+  generation_failed: {
+    message: 'The scanner recognised this page but could not build a score from it',
+    retryable: false
+  }
 };
 
 export function providerErrorFromCode(code: unknown): ScannerProviderError | undefined {

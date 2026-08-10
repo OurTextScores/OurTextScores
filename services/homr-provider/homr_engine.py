@@ -17,6 +17,7 @@ import multiprocessing
 import os
 import tempfile
 import threading
+import traceback
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,13 @@ CODE_INVALID_IMAGE = "invalid_image"
 CODE_TIMEOUT = "inference_timeout"
 CODE_FAILED = "inference_failed"
 CODE_NOT_READY = "model_not_ready"
+# Recognition succeeded and MusicXML generation then failed on an invariant.
+# Distinct from CODE_FAILED because it is deterministic: the same page trips the
+# same assert every time, so a retry burns a second GPU call for an identical
+# failure. Observed on 2026-08-10 as `assert group_duration > Fraction(0)` in
+# music_xml_generator.build_note_chord, reached via a symbol decoded without a
+# pitch — see the upstream report.
+CODE_GENERATION_FAILED = "generation_failed"
 
 # Messages HOMR raises when the image decoded fine but holds no usable notation
 # (homr/main.py, `No noteheads found` and `No staffs found`). Verified against
@@ -252,6 +260,17 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
             )
         except InferenceError as error:
             connection.send({"ok": False, "code": error.code, "detail": error.detail})
+        except AssertionError as error:
+            # An assert is an invariant HOMR believes cannot be violated. It
+            # carries no message to classify on, and retrying cannot change the
+            # outcome, so it is deterministic by construction.
+            connection.send(
+                {
+                    "ok": False,
+                    "code": CODE_GENERATION_FAILED,
+                    "detail": traceback.format_exc()[-2000:],
+                }
+            )
         except Exception as error:
             connection.send(
                 {

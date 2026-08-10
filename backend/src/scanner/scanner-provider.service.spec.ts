@@ -302,6 +302,30 @@ describe('ScannerProviderService', () => {
       });
     });
 
+    it('never retries a page whose score generation hit an invariant', async () => {
+      // Recognition succeeds and MusicXML generation then trips an assert. The
+      // same page fails identically every time, so a retry spends a second GPU
+      // call for nothing — the failure mode `classify_homr_error` warns about.
+      values.SCANNER_PROVIDER_KIND = 'modal';
+      values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: 'generation_failed' } }), { status: 500 })
+      );
+      const service = new ScannerProviderService(config);
+      await expect(
+        service.scanPage({
+          image: Buffer.from('image'),
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: 'a'.repeat(64)
+        })
+      ).rejects.toMatchObject({ code: 'provider_generation_failed', retryable: false });
+      fetchSpy.mockRestore();
+      values.SCANNER_PROVIDER_KIND = 'fake';
+      delete values.SCANNER_PROVIDER_URL;
+    });
+
     it('keeps an infrastructure failure retryable even though HOMR ran', async () => {
       failWith(500, { error: { code: 'inference_failed', message: 'ignored' } });
       await expect(scan()).rejects.toMatchObject({
