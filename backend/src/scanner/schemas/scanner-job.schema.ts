@@ -66,6 +66,33 @@ export interface ScannerPageResult {
   inferenceMs?: number;
   errorCode?: string;
   errorMessage?: string;
+  /**
+   * Provider v2 review data, stored raw rather than pre-selected.
+   *
+   * Which spots to ask a reviewer about is computed on read, so the thresholds
+   * can be retuned against real reviewer behaviour without re-scanning the page
+   * through a GPU (review design §4, §10). Only the symbols the provider could
+   * not rule out are here; a confident page stores almost nothing.
+   */
+  review?: {
+    staves: Array<{
+      index: number;
+      region?: number[] | null;
+      symbols: Array<{
+        index: number;
+        rhythm?: string;
+        heads: Record<
+          string,
+          {
+            chosen: string;
+            confidence: number;
+            alternatives: Array<{ value: string; confidence: number }>;
+          }
+        >;
+        attention?: number[] | null;
+      }>;
+    }>;
+  };
 }
 
 @Schema({ collection: 'scanner_jobs', timestamps: true })

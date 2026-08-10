@@ -1,110 +1,46 @@
-"""Select and rank the spots worth asking a reviewer about.
+"""Prune the per-symbol distributions down to what is worth sending.
 
-Design §4. Two separate decisions, deliberately kept apart:
+Selection — which spots to actually ask a reviewer about, and in what order —
+deliberately lives in the **backend**, not here (design §4, §10). Its thresholds
+have to be tuned against real reviewer behaviour, and doing that must not mean
+re-scanning every page through a GPU. The backend therefore stores the raw
+distributions and re-selects from them whenever the thresholds move.
 
-* **Filtering** decides what is worth a question at all, and musical impact
-  belongs here — a doubtful slur matters less than a doubtful pitch, so a
-  low-impact head has to be *more* uncertain to qualify.
-* **Ranking** is strictly by ascending confidence, least certain first, and
-  impact is deliberately absent. The queue is open-ended, and its whole value is
-  that the reviewer can be told:
-
-      19 spots left, all at least 84% confident.
-
-  That is only true, and only checkable, if the queue is monotonic in
-  confidence. A weighted ordering would buy slightly better expected value per
-  question and lose the ability to say anything honest about the remainder.
+What happens here is only the size reduction: a clean page is confident almost
+everywhere, and shipping the top-4 alternatives for every head of every symbol
+would be mostly noise. Anything above the prune floor cannot qualify under any
+plausible selection threshold, so it is dropped before the response is built.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# A head qualifies when its confidence is below the floor for its impact class.
-# Pitch and rhythm change the music; the rest are decoration by comparison, so
-# they must be considerably more doubtful before they are worth interrupting for.
-DEFAULT_FLOOR = 0.80
-LOW_IMPACT_FLOOR = 0.50
-LOW_IMPACT_HEADS = frozenset({"slur", "articulation"})
+# Deliberately far above any selection floor the backend would use, so pruning
+# can never remove a spot that selection would have wanted.
+PRUNE_FLOOR = 0.95
 
-# Require a plausible alternative: the runner-up must be at least this fraction
-# of the chosen value. A 0.60/0.05 spread is uncertainty with nothing to offer
-# instead; 0.45/0.40 is a real question.
-#
-# A ratio, not an absolute gap. Probabilities sum to one, so an absolute margin
-# is unsatisfiable at higher confidences — at 0.72 the runner-up cannot exceed
-# 0.28, making the gap at least 0.44 — which would silently cap the effective
-# floor near 0.62 no matter what floor was configured.
-DEFAULT_MIN_ALTERNATIVE_RATIO = 0.25
-
-# `position` is an internal grand-staff assignment rather than something a
-# reviewer can judge from a crop, and `lift` is covered by the pitch question.
-ASKABLE_HEADS = ("pitch", "rhythm", "lift", "articulation", "slur")
+# `position` is an internal grand-staff assignment rather than anything a
+# reviewer could judge from a crop, so it never reaches the UI. Kept in the
+# payload for debugging is not worth the bytes.
+DROPPED_HEADS = frozenset({"position"})
 
 
-def floor_for(head: str, floor: float) -> float:
-    if head in LOW_IMPACT_HEADS:
-        return min(floor, LOW_IMPACT_FLOOR)
-    return floor
-
-
-def select_spots(
-    staves: list[dict[str, Any]],
-    *,
-    floor: float = DEFAULT_FLOOR,
-    min_alternative_ratio: float = DEFAULT_MIN_ALTERNATIVE_RATIO,
-) -> list[dict[str, Any]]:
-    """Return every askable spot, least certain first.
-
-    No cap: a fixed budget is the designer guessing at someone else's attention
-    span. The caller stops when the remainder is good enough, which is why the
-    result is ordered and why `remaining_floor` exists.
-    """
-    spots: list[dict[str, Any]] = []
+def prune_staves(staves: list[dict[str, Any]], floor: float = PRUNE_FLOOR) -> list[dict[str, Any]]:
+    """Drop symbols the model was sure about, and heads no one can review."""
+    pruned: list[dict[str, Any]] = []
     for staff in staves:
+        symbols = []
         for symbol in staff.get("symbols", []):
-            for head in ASKABLE_HEADS:
-                entry = (symbol.get("heads") or {}).get(head)
-                if not entry:
-                    continue
-                confidence = float(entry.get("confidence", 1.0))
-                if confidence >= floor_for(head, floor):
-                    continue
-                alternatives = entry.get("alternatives") or []
-                if not alternatives:
-                    continue
-                runner_up = float(alternatives[0].get("confidence", 0.0))
-                if runner_up < confidence * min_alternative_ratio:
-                    continue
-                spots.append(
-                    {
-                        "staffIndex": staff.get("index"),
-                        "symbolIndex": symbol.get("index"),
-                        "head": head,
-                        "chosen": entry.get("chosen"),
-                        "confidence": confidence,
-                        "alternatives": alternatives,
-                        "attention": symbol.get("attention"),
-                    }
-                )
-    # Ties broken by position so the order is stable across identical scans.
-    spots.sort(
-        key=lambda spot: (
-            spot["confidence"],
-            spot["staffIndex"] or 0,
-            spot["symbolIndex"] or 0,
-        )
-    )
-    return spots
-
-
-def remaining_floor(spots: list[dict[str, Any]], answered: int) -> float | None:
-    """Confidence of the least certain spot still unanswered.
-
-    This is the number behind "N left, all at least X% confident". Because the
-    queue is sorted ascending, it is simply the next one — and it rises as the
-    reviewer works, which is what makes stopping an evidence-based decision.
-    """
-    if answered >= len(spots):
-        return None
-    return float(spots[answered]["confidence"])
+            heads = {
+                name: entry
+                for name, entry in (symbol.get("heads") or {}).items()
+                if name not in DROPPED_HEADS
+            }
+            if not heads:
+                continue
+            if all(float(entry.get("confidence", 1.0)) >= floor for entry in heads.values()):
+                continue
+            symbols.append({**symbol, "heads": heads})
+        pruned.append({**staff, "symbols": symbols})
+    return pruned

@@ -23,6 +23,8 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Callable
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+
+from homr_review import prune_staves
 from fastapi.responses import JSONResponse
 
 from homr_engine import (
@@ -345,7 +347,12 @@ def create_provider_app(
             },
             # Design §3. Present but empty when the capture found nothing, so a
             # consumer never has to distinguish "absent" from "no staves".
-            "review": result.get("review") or {"staves": []},
+            # Pruned here only for size; which spots to ask about, and in what
+            # order, is the backend's decision so its thresholds can be retuned
+            # without re-scanning (§4, §10).
+            "review": {
+                "staves": prune_staves((result.get("review") or {}).get("staves") or [])
+            },
             "warnings": (
                 [{"code": "warmup_degraded", "message": engine.degraded_reason}]
                 if engine.degraded_reason

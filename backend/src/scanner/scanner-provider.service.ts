@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ReviewStaff } from './scanner-review';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { providerErrorFromCode, ScannerProviderError } from './scanner.errors';
@@ -27,6 +28,12 @@ export interface ScanPageResult {
    */
   inferenceMs?: number;
   musicXmlSha256: string;
+  /**
+   * Provider v2 review data: staff geometry and, for the symbols the provider
+   * did not prune, the model's own confidence and alternatives. Optional
+   * because a v1 provider omits it and everything else must keep working.
+   */
+  review?: { staves: ReviewStaff[] };
 }
 
 @Injectable()
@@ -279,6 +286,7 @@ export class ScannerProviderService {
       providerRevision,
       modelRevision,
       musicXmlSha256,
+      review: normaliseReview(result?.review),
       requestId: result?.requestId ? String(result.requestId) : undefined,
       inferenceMs: Number.isFinite(Number(result?.timing?.inferenceMs))
         ? Number(result.timing.inferenceMs)
@@ -392,4 +400,71 @@ export class ScannerProviderService {
       }
     };
   }
+}
+
+/**
+ * Coerce the provider's review block into the shape the rest of the backend
+ * expects, dropping anything malformed.
+ *
+ * The provider is treated as untrusted here for the same reason as everywhere
+ * else in this client: this data reaches a UI and is stored, so a hostile or
+ * simply buggy provider must not be able to inject arbitrary structure. Numbers
+ * are coerced, unknown keys are dropped, and a failure yields no review rather
+ * than a partially-trusted one.
+ */
+function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
+  const staves = raw?.staves;
+  if (!Array.isArray(staves)) return undefined;
+  const clean: ReviewStaff[] = [];
+  for (const staff of staves) {
+    const index = Number(staff?.index);
+    if (!Number.isFinite(index)) continue;
+    const region = Array.isArray(staff?.region)
+      ? staff.region.slice(0, 4).map((value: unknown) => Number(value))
+      : null;
+    const symbols = Array.isArray(staff?.symbols) ? staff.symbols : [];
+    clean.push({
+      index,
+      region: region && region.every((value: number) => Number.isFinite(value)) ? region : null,
+      symbols: symbols
+        .map((symbol: any) => {
+          const symbolIndex = Number(symbol?.index);
+          if (!Number.isFinite(symbolIndex)) return null;
+          const heads: Record<string, any> = {};
+          for (const [name, entry] of Object.entries(symbol?.heads || {})) {
+            const head = entry as any;
+            const confidence = Number(head?.confidence);
+            if (!head?.chosen || !Number.isFinite(confidence)) continue;
+            heads[name] = {
+              chosen: String(head.chosen),
+              confidence,
+              alternatives: (Array.isArray(head.alternatives) ? head.alternatives : [])
+                .map((alternative: any) => ({
+                  value: String(alternative?.value ?? ''),
+                  confidence: Number(alternative?.confidence)
+                }))
+                .filter(
+                  (alternative: any) =>
+                    alternative.value && Number.isFinite(alternative.confidence)
+                )
+            };
+          }
+          if (Object.keys(heads).length === 0) return null;
+          const attention = Array.isArray(symbol?.attention)
+            ? symbol.attention.slice(0, 2).map((value: unknown) => Number(value))
+            : null;
+          return {
+            index: symbolIndex,
+            rhythm: symbol?.rhythm ? String(symbol.rhythm) : undefined,
+            heads,
+            attention:
+              attention && attention.every((value: number) => Number.isFinite(value))
+                ? attention
+                : null
+          };
+        })
+        .filter(Boolean) as any[]
+    });
+  }
+  return { staves: clean };
 }

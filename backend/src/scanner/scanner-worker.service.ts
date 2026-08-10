@@ -415,6 +415,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             providerRequestId: scanned.result.requestId,
             durationMs: providerMs,
             inferenceMs: scanned.result.inferenceMs,
+            // Stored raw. Selection happens on read so thresholds stay tunable
+            // without re-scanning (review design §4).
+            review: scanned.result.review,
             ...assets,
             musicXml,
             pdf
