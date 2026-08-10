@@ -28,7 +28,7 @@ describe("SignInForm", () => {
     );
 
     await user.type(screen.getByLabelText("Email"), "reviewer@example.com");
-    fireEvent.submit(screen.getByRole("button", { name: "Send magic link" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Email me a sign-in link" }).closest("form")!);
 
     await waitFor(() => {
       expect(signIn).toHaveBeenCalledWith("email", {

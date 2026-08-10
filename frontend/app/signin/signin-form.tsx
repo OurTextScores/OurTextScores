@@ -98,7 +98,9 @@ export default function SignInForm({
             disabled={isPending}
             className="w-full rounded bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:opacity-60"
           >
-            {isPending && pendingProvider === "email" ? "Sending magic link..." : "Send magic link"}
+            {isPending && pendingProvider === "email"
+              ? "Sending sign-in link..."
+              : "Email me a sign-in link"}
           </button>
         </form>
       ) : null}

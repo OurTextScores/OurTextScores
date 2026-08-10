@@ -80,7 +80,7 @@ test.describe('Email auth (magic link)', () => {
     await expect(page.locator('input[type="email"][name="email"]')).toBeVisible({ timeout: 5000 });
     await input.fill(email);
     // NextAuth labels vary; click submit or press Enter
-    const submit = page.locator('button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
+    const submit = page.locator('button:has-text("sign-in link"), button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
     if (await submit.count()) await submit.first().click(); else await input.press('Enter');
 
     // Poll Mailpit for the magic link

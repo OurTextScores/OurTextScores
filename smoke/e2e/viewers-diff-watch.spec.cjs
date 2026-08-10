@@ -55,7 +55,7 @@ test.describe('Viewers + Diff + Watch', () => {
     }
     await expect(page.locator('input[type="email"][name="email"]')).toBeVisible({ timeout: 5000 });
     await page.fill('input[type="email"][name="email"]', email);
-    const submit = page.locator('button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
+    const submit = page.locator('button:has-text("sign-in link"), button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
     if (await submit.count()) await submit.first().click(); else await page.keyboard.press('Enter');
     const magic = await getMagicLink(request, email);
     await page.goto(magic);
