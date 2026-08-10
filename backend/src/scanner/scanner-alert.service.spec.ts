@@ -39,6 +39,17 @@ describe('ScannerAlertService', () => {
     expect(alerts[0].message).toContain('CUDA expected but absent');
   });
 
+  it('reports an operator stop that was left engaged', async () => {
+    // Set by hand and stays set, so it is exactly what gets forgotten after the
+    // budget is raised — and the only other symptom is the scanner quietly
+    // refusing every job.
+    values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'true';
+    const service = new ScannerAlertService(jobsWith(), config);
+    const alerts = await service.evaluate();
+    expect(alerts.map((a) => a.key)).toEqual(['budget_stop_engaged']);
+    delete values.SCANNER_PROVIDER_BUDGET_EXHAUSTED;
+  });
+
   it('reports a job that has sat in the queue', async () => {
     const service = new ScannerAlertService(
       jobsWith({ queuedAt: new Date(Date.now() - 20 * 60_000) }),

@@ -1,3 +1,4 @@
+import { disablesProvider } from './scanner-worker.service';
 import { ScannerProviderError } from './scanner.errors';
 import { ScannerWorkerService } from './scanner-worker.service';
 import { promises as fs } from 'node:fs';
@@ -135,6 +136,39 @@ describe('ScannerWorkerService', () => {
       })
     ).rejects.toMatchObject({ code: 'invalid_musicxml', retryable: false });
     expect(provider.scanPage).toHaveBeenCalledTimes(1);
+  });
+
+  describe('disablesProvider', () => {
+    it('stops the worker when the provider is not the one we pinned', () => {
+      // Continuing would produce output we cannot vouch for.
+      for (const code of [
+        'provider_service_revision_mismatch',
+        'provider_model_revision_mismatch',
+        'provider_execution_provider_mismatch',
+        'provider_input_digest_mismatch'
+      ]) {
+        expect(disablesProvider(code)).toBe(true);
+      }
+    });
+
+    it('stops the worker when capacity is gone', () => {
+      // The next page cannot succeed either, and this is what makes it alert:
+      // otherwise the only symptom is a queue that reports as `queue_stalled`
+      // and names the wrong cause — or, with nothing queued, silence.
+      expect(disablesProvider('provider_budget_exhausted')).toBe(true);
+    });
+
+    it('lets an ordinary page failure fail only that page', () => {
+      for (const code of [
+        'provider_timeout',
+        'provider_unavailable',
+        'no_staff_detected',
+        'invalid_musicxml',
+        'generation_failed'
+      ]) {
+        expect(disablesProvider(code)).toBe(false);
+      }
+    });
   });
 
   it('does not call the provider after the budget switch is set', async () => {

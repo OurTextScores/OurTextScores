@@ -73,6 +73,18 @@ export class ScannerAlertService {
       });
     }
 
+    // An operator-set stop. Distinct from the provider reporting exhaustion:
+    // this flag is set by hand and stays set, so it is exactly the kind of
+    // thing that gets left on after the budget is raised — with no symptom
+    // beyond the scanner quietly refusing every job.
+    if (this.config.get<string>('SCANNER_PROVIDER_BUDGET_EXHAUSTED', 'false') === 'true') {
+      alerts.push({
+        key: 'budget_stop_engaged',
+        message:
+          'SCANNER_PROVIDER_BUDGET_EXHAUSTED is set, so no scans are being accepted or processed'
+      });
+    }
+
     // Oldest queued job. Section 13.4 wants ten minutes.
     const queueAgeMs = this.number('SCANNER_ALERT_QUEUE_AGE_MS', 10 * 60 * 1000);
     const oldest = await this.jobs

@@ -29,6 +29,29 @@ import { scannerUserHash } from './scanner.constants';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Failures that stop the worker rather than just failing one page.
+ *
+ * The provenance mismatches mean the provider is not the one we pinned, so
+ * continuing would produce output we cannot vouch for. Budget exhaustion means
+ * capacity is gone until an operator acts, so the next page cannot succeed
+ * either — and recording it here is what makes it *alert*: otherwise the only
+ * symptom is jobs sitting in the queue, which reports as `queue_stalled` and
+ * names the wrong cause, and with no queued jobs nothing fires at all.
+ *
+ * Named and exported so this list is visible and testable rather than an inline
+ * condition inside the page loop.
+ */
+export function disablesProvider(code: string): boolean {
+  return (
+    code === 'provider_service_revision_mismatch' ||
+    code === 'provider_model_revision_mismatch' ||
+    code === 'provider_execution_provider_mismatch' ||
+    code === 'provider_input_digest_mismatch' ||
+    code === 'provider_budget_exhausted'
+  );
+}
 const PROCESSING_STATUSES = ['running', 'rendering'];
 
 @Injectable()
@@ -441,12 +464,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           });
         } catch (error) {
           const providerError = this.asProviderError(error);
-          if (
-            providerError.code === 'provider_service_revision_mismatch' ||
-            providerError.code === 'provider_model_revision_mismatch' ||
-            providerError.code === 'provider_execution_provider_mismatch' ||
-            providerError.code === 'provider_input_digest_mismatch'
-          ) {
+          if (disablesProvider(providerError.code)) {
             this.providerDisabledReason = providerError.message;
             this.logger.error(`Disabling scanner provider: ${providerError.message}`);
             this.telemetry.emit('provider_disabled', {
