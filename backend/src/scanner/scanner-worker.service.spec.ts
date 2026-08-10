@@ -203,6 +203,9 @@ describe('ScannerWorkerService', () => {
       for (const code of [
         'provider_service_revision_mismatch',
         'provider_model_revision_mismatch',
+        'provider_model_artifact_mismatch',
+        'provider_container_image_mismatch',
+        'provider_converter_mismatch',
         'provider_execution_provider_mismatch',
         'provider_input_digest_mismatch'
       ]) {

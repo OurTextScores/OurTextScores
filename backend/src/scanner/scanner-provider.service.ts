@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
-import { providerErrorFromCode, ScannerProviderError } from './scanner.errors';
+import { ScannerProviderError } from './scanner.errors';
 import { assertValidMusicXml } from './scanner-musicxml';
 import type { ReviewStaff } from './scanner-review';
 import {
@@ -10,6 +10,10 @@ import {
   ScannerProviderScanInput,
   scannerProviderIdempotencyKey
 } from './scanner-provider.contract';
+import {
+  ScannerProviderConnection,
+  ScannerProviderHttpService
+} from './scanner-provider-http.service';
 
 export type ScanPageResult = ScannerProviderResult;
 export type ScannerModelProvenance = ScannerProviderResult['provenance'];
@@ -18,7 +22,10 @@ export type ScannerModelProvenance = ScannerProviderResult['provenance'];
 export class ScannerProviderService implements ScannerPageProvider {
   readonly engine = 'homr' as const;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly http: ScannerProviderHttpService = new ScannerProviderHttpService()
+  ) {}
 
   get expectedRevision(): string {
     return this.config.get<string>('SCANNER_EXPECTED_HOMR_COMMIT', '').trim();
@@ -32,69 +39,22 @@ export class ScannerProviderService implements ScannerPageProvider {
    * than re-recognising the page is what makes a correction free.
    */
   async regenerate(staffs: string[][][]): Promise<Buffer> {
-    const providerUrl = this.config.get<string>('SCANNER_PROVIDER_URL', '').trim();
-    if (!providerUrl) {
-      throw new ScannerProviderError(
-        'Scanner provider is not configured',
-        'provider_not_configured',
-        false
-      );
-    }
-    const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'application/json' });
-    this.applyProviderAuth(headers);
-
-    let response: Response;
-    try {
-      response = await fetch(`${providerUrl.replace(/\/$/, '')}/v1/regenerate`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ staffs }),
-        redirect: 'error',
-        signal: AbortSignal.timeout(60_000)
-      });
-    } catch {
-      throw new ScannerProviderError(
-        'Scanner provider is unavailable',
-        'provider_unavailable',
-        true
-      );
-    }
-    if (!response.ok) {
-      throw new ScannerProviderError(
-        'The corrected score could not be rebuilt',
-        'provider_generation_failed',
-        false
-      );
-    }
-    const result: any = await response.json();
+    const result = await this.http.postJson({
+      connection: { ...this.connection(), timeoutMs: 60_000 },
+      path: '/v1/regenerate',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ staffs }),
+      nonOkError: {
+        message: 'The corrected score could not be rebuilt',
+        code: 'provider_generation_failed',
+        retryable: false
+      }
+    });
     const musicXml = Buffer.from(String(result?.result?.musicXmlBase64 || ''), 'base64');
     // Held to the same bar as provider output: this becomes a stored artifact
     // and is offered for download, so it is validated, not trusted.
     this.assertValidMusicXml(musicXml);
     return musicXml;
-  }
-
-  /**
-   * Attach the credentials the configured provider expects.
-   *
-   * Gated on `SCANNER_PROVIDER_KIND`, because Modal credentials commonly sit in
-   * an environment that is also used to run the local CPU provider. Applying
-   * them unconditionally overwrote the local bearer token and the provider
-   * answered 401 — a confusing failure, since the local token was set correctly
-   * and the request looked authenticated from the caller's side.
-   */
-  private applyProviderAuth(headers: Headers): void {
-    const providerToken = this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim();
-    if (providerToken) headers.set('Authorization', `Bearer ${providerToken}`);
-
-    if (this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal') !== 'modal') return;
-    const tokenId = this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim();
-    const tokenSecret = this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim();
-    if (tokenId && tokenSecret) {
-      headers.set('Authorization', `Bearer ${tokenId}.${tokenSecret}`);
-      headers.set('Modal-Key', tokenId);
-      headers.set('Modal-Secret', tokenSecret);
-    }
   }
 
   createIdempotencyKey(input: {
@@ -116,121 +76,18 @@ export class ScannerProviderService implements ScannerPageProvider {
       return this.fakeResult(input.idempotencyKey, input.filename);
     }
 
-    const providerUrl = this.config.get<string>('SCANNER_PROVIDER_URL', '').trim();
-    if (!providerUrl) {
-      throw new ScannerProviderError(
-        'Scanner provider is not configured',
-        'provider_not_configured',
-        false
-      );
-    }
-
-    const timeoutMs = Math.max(
-      1_000,
-      Number(this.config.get<string>('SCANNER_PROVIDER_TIMEOUT_MS', '600000'))
-    );
     const body = new FormData();
     const imageBytes = new Uint8Array(input.image.length);
     imageBytes.set(input.image);
     body.set('page', new Blob([imageBytes], { type: input.contentType }), input.filename);
     body.set('detectTitle', String(input.detectTitle));
 
-    const headers = new Headers({
-      'Idempotency-Key': input.idempotencyKey,
-      Accept: 'application/json'
+    const result = await this.http.postJson({
+      connection: this.connection(),
+      path: '/v1/scan-page',
+      headers: { 'Idempotency-Key': input.idempotencyKey, Accept: 'application/json' },
+      body
     });
-    this.applyProviderAuth(headers);
-
-    let response: Response;
-    try {
-      response = await fetch(`${providerUrl.replace(/\/$/, '')}/v1/scan-page`, {
-        method: 'POST',
-        headers,
-        body,
-        // The provider contract has no redirect. Following one would forward
-        // `Modal-Key` and `Modal-Secret` to the target: the Fetch standard
-        // strips `Authorization` on a cross-origin redirect but says nothing
-        // about custom headers, so a compromised or misconfigured provider
-        // could hand our credentials to a third party.
-        redirect: 'error',
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-    } catch (error: any) {
-      const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
-      throw new ScannerProviderError(
-        timedOut ? 'Scanner provider timed out' : 'Scanner provider is unavailable',
-        timedOut ? 'provider_timeout' : 'provider_unavailable',
-        true
-      );
-    }
-
-    if (!response.ok) {
-      const raw = await response.text().catch(() => '');
-      let envelope: any;
-      try {
-        envelope = raw ? JSON.parse(raw) : undefined;
-      } catch {
-        envelope = undefined;
-      }
-      // The provider's stable code is more precise than the status, so prefer
-      // it when the response carries one (design section 9.4).
-      const classified = providerErrorFromCode(envelope?.error?.code);
-      if (classified) throw classified;
-      // Modal enforces a workspace budget by disabling the whole workspace, and
-      // answers with a plain-text `404 modal-http: workspace … is disabled`.
-      // Verified 2026-08-08 by running a $0.25 cap to exhaustion. Without this
-      // the page fails as "rejected the request (404)", and because 404 is not
-      // in the retryable set it could not be retried even after the operator
-      // raised the budget — design §13.1 wants capacity exhaustion to stop
-      // provider retries but stay recoverable by hand.
-      if (/workspace\s+\S+\s+is disabled/i.test(raw)) {
-        throw new ScannerProviderError(
-          'Scanner monthly capacity has been reached',
-          'provider_budget_exhausted',
-          // Not auto-retryable: capacity is gone until an operator acts. The
-          // code is in the manual-retry set, so the page can be retried after.
-          false
-        );
-      }
-      const retryable =
-        response.status === 408 || response.status === 429 || response.status >= 500;
-      throw new ScannerProviderError(
-        this.safeHttpErrorMessage(response.status),
-        `provider_http_${response.status}`,
-        retryable,
-        response.status
-      );
-    }
-
-    // Bound the body before reading it. Every other check here treats the
-    // provider as untrusted, but `response.json()` buffers whatever arrives:
-    // the MusicXML ceiling below is applied to the decoded document, long after
-    // an oversized body would already be in memory.
-    const maxResponseBytes = Math.max(
-      1024,
-      Number(this.config.get<string>('SCANNER_MAX_PROVIDER_RESPONSE_BYTES', '33554432'))
-    );
-    const declaredLength = Number(response.headers.get('content-length') || 0);
-    if (Number.isFinite(declaredLength) && declaredLength > maxResponseBytes) {
-      throw new ScannerProviderError(
-        `Scanner provider response exceeds the ${maxResponseBytes} byte limit`,
-        'provider_response_too_large',
-        false
-      );
-    }
-
-    let result: any;
-    try {
-      // A chunked response declares no length, so cap the read itself.
-      result = JSON.parse(await this.readCapped(response, maxResponseBytes));
-    } catch (error) {
-      if (error instanceof ScannerProviderError) throw error;
-      throw new ScannerProviderError(
-        'Scanner provider returned invalid JSON',
-        'provider_invalid_response',
-        false
-      );
-    }
 
     // Prefer the `ots-homr-provider.v1` envelope, falling back to the flat
     // aliases so a provider deployed before that contract still works.
@@ -355,51 +212,17 @@ export class ScannerProviderService implements ScannerPageProvider {
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
   }
 
-  /**
-   * Read a response body as text, aborting once it exceeds `maxBytes`.
-   *
-   * `response.text()` and `response.json()` buffer the whole body first, so a
-   * provider that declares no `Content-Length` — every chunked response — could
-   * exhaust memory before any ceiling applied. Counting bytes as they arrive
-   * bounds it whether or not the length was declared.
-   */
-  private async readCapped(response: Response, maxBytes: number): Promise<string> {
-    const body = response.body;
-    if (!body) return '';
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!value) continue;
-        total += value.byteLength;
-        if (total > maxBytes) {
-          throw new ScannerProviderError(
-            `Scanner provider response exceeds the ${maxBytes} byte limit`,
-            'provider_response_too_large',
-            false
-          );
-        }
-        chunks.push(value);
-      }
-    } finally {
-      // Release the connection whether we finished or bailed out early.
-      await reader.cancel().catch(() => undefined);
-    }
-    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
-  }
-
-  private safeHttpErrorMessage(status: number): string {
-    if (status === 408 || status === 504) return 'Scanner provider timed out';
-    if (status === 429) return 'Scanner provider capacity is temporarily unavailable';
-    if (status === 400) return 'Scanner provider rejected the page request';
-    if (status === 413) return 'Scanner page exceeds the provider size limit';
-    if (status === 415) return 'Scanner provider does not support this page format';
-    if (status === 422) return 'HOMR could not recognize a score on this page';
-    if (status >= 500) return 'Scanner provider is temporarily unavailable';
-    return `Scanner provider rejected the request (${status})`;
+  private connection(): ScannerProviderConnection {
+    return {
+      url: this.config.get<string>('SCANNER_PROVIDER_URL', '').trim(),
+      kind: this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal').trim(),
+      providerToken: this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim() || undefined,
+      modalTokenId: this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim() || undefined,
+      modalTokenSecret:
+        this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim() || undefined,
+      timeoutMs: this.number('SCANNER_PROVIDER_TIMEOUT_MS', 600_000),
+      maxResponseBytes: this.number('SCANNER_MAX_PROVIDER_RESPONSE_BYTES', 33_554_432)
+    };
   }
 
   private fakeResult(key: string, filename: string): ScanPageResult {

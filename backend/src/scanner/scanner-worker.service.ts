@@ -62,6 +62,9 @@ export function disablesProvider(code: string): boolean {
   return (
     code === 'provider_service_revision_mismatch' ||
     code === 'provider_model_revision_mismatch' ||
+    code === 'provider_model_artifact_mismatch' ||
+    code === 'provider_container_image_mismatch' ||
+    code === 'provider_converter_mismatch' ||
     code === 'provider_execution_provider_mismatch' ||
     code === 'provider_input_digest_mismatch' ||
     code === 'provider_budget_exhausted'

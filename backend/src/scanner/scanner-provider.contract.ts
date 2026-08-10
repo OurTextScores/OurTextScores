@@ -42,6 +42,8 @@ export interface ScannerPageProvider {
 export function scannerProviderIdempotencyKey(input: {
   engine: ScannerEngineName;
   modelRevision: string;
+  modelArtifactSha256?: string;
+  converterVersion?: string;
   preprocessingRevision: string;
   inputSha256: string;
   pageNumber: number;

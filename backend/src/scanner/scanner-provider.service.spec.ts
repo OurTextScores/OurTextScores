@@ -69,6 +69,53 @@ describe('ScannerProviderService', () => {
     delete values.SCANNER_FAKE_TRANSIENT_FAILURE_PAGE;
   });
 
+  it('regenerates corrected HOMR tokens through the shared authenticated transport', async () => {
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    values.SCANNER_MODAL_TOKEN_ID = 'modal-id';
+    values.SCANNER_MODAL_TOKEN_SECRET = 'modal-secret';
+    const musicXml = Buffer.from(
+      '<score-partwise><part-list><score-part id="P1"/></part-list>' +
+        '<part id="P1"><measure number="1"/></part></score-partwise>'
+    );
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+      expect(String(url)).toBe('https://scanner.example/v1/regenerate');
+      expect(new Headers(init?.headers).get('Modal-Key')).toBe('modal-id');
+      return new Response(
+        JSON.stringify({ result: { musicXmlBase64: musicXml.toString('base64') } }),
+        { status: 200 }
+      );
+    });
+
+    await expect(new ScannerProviderService(config).regenerate([[['note']]])).resolves.toEqual(
+      musicXml
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+    delete values.SCANNER_MODAL_TOKEN_ID;
+    delete values.SCANNER_MODAL_TOKEN_SECRET;
+  });
+
+  it('keeps regeneration failures deterministic after the transport extraction', async () => {
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('failed', { status: 500 }));
+
+    await expect(new ScannerProviderService(config).regenerate([[['note']]])).rejects.toMatchObject(
+      {
+        code: 'provider_generation_failed',
+        retryable: false
+      }
+    );
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+  });
+
   it('classifies provider capacity errors as retryable', async () => {
     values.SCANNER_PROVIDER_KIND = 'modal';
     values.SCANNER_PROVIDER_URL = 'https://scanner.example';
@@ -208,7 +255,9 @@ describe('ScannerProviderService', () => {
     // followed redirect would hand them to the target.
     values.SCANNER_PROVIDER_KIND = 'modal';
     values.SCANNER_PROVIDER_URL = 'https://scanner.example';
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
     const service = new ScannerProviderService(config);
     await service
       .scanPage({
@@ -371,9 +420,11 @@ describe('ScannerProviderService', () => {
       // call for nothing — the failure mode `classify_homr_error` warns about.
       values.SCANNER_PROVIDER_KIND = 'modal';
       values.SCANNER_PROVIDER_URL = 'https://scanner.example';
-      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify({ error: { code: 'generation_failed' } }), { status: 500 })
-      );
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: { code: 'generation_failed' } }), { status: 500 })
+        );
       const service = new ScannerProviderService(config);
       await expect(
         service.scanPage({
