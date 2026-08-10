@@ -61,15 +61,7 @@ export class ScannerProviderService {
       );
     }
     const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'application/json' });
-    const providerToken = this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim();
-    if (providerToken) headers.set('Authorization', `Bearer ${providerToken}`);
-    const tokenId = this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim();
-    const tokenSecret = this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim();
-    if (tokenId && tokenSecret) {
-      headers.set('Authorization', `Bearer ${tokenId}.${tokenSecret}`);
-      headers.set('Modal-Key', tokenId);
-      headers.set('Modal-Secret', tokenSecret);
-    }
+    this.applyProviderAuth(headers);
 
     let response: Response;
     try {
@@ -100,6 +92,30 @@ export class ScannerProviderService {
     // and is offered for download, so it is validated, not trusted.
     this.assertValidMusicXml(musicXml);
     return musicXml;
+  }
+
+
+  /**
+   * Attach the credentials the configured provider expects.
+   *
+   * Gated on `SCANNER_PROVIDER_KIND`, because Modal credentials commonly sit in
+   * an environment that is also used to run the local CPU provider. Applying
+   * them unconditionally overwrote the local bearer token and the provider
+   * answered 401 — a confusing failure, since the local token was set correctly
+   * and the request looked authenticated from the caller's side.
+   */
+  private applyProviderAuth(headers: Headers): void {
+    const providerToken = this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim();
+    if (providerToken) headers.set('Authorization', `Bearer ${providerToken}`);
+
+    if (this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal') !== 'modal') return;
+    const tokenId = this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim();
+    const tokenSecret = this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim();
+    if (tokenId && tokenSecret) {
+      headers.set('Authorization', `Bearer ${tokenId}.${tokenSecret}`);
+      headers.set('Modal-Key', tokenId);
+      headers.set('Modal-Secret', tokenSecret);
+    }
   }
 
   createIdempotencyKey(input: {
@@ -154,15 +170,7 @@ export class ScannerProviderService {
       'Idempotency-Key': input.idempotencyKey,
       Accept: 'application/json'
     });
-    const providerToken = this.config.get<string>('SCANNER_PROVIDER_TOKEN', '').trim();
-    if (providerToken) headers.set('Authorization', `Bearer ${providerToken}`);
-    const tokenId = this.config.get<string>('SCANNER_MODAL_TOKEN_ID', '').trim();
-    const tokenSecret = this.config.get<string>('SCANNER_MODAL_TOKEN_SECRET', '').trim();
-    if (tokenId && tokenSecret) {
-      headers.set('Authorization', `Bearer ${tokenId}.${tokenSecret}`);
-      headers.set('Modal-Key', tokenId);
-      headers.set('Modal-Secret', tokenSecret);
-    }
+    this.applyProviderAuth(headers);
 
     let response: Response;
     try {

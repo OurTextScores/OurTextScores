@@ -139,6 +139,69 @@ describe('ScannerProviderService', () => {
     delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
   });
 
+  it('does not send Modal credentials to a local provider', async () => {
+    // Modal credentials commonly sit in the same environment used to run the
+    // local CPU provider. Applying them regardless of kind overwrote the local
+    // bearer token, and the provider answered 401 while the local token was
+    // set correctly — a confusing failure to diagnose from the caller's side.
+    values.SCANNER_PROVIDER_KIND = 'local';
+    values.SCANNER_PROVIDER_URL = 'http://homr_cpu:8000';
+    values.SCANNER_PROVIDER_TOKEN = 'ots-local-development';
+    values.SCANNER_MODAL_TOKEN_ID = 'ak-modal';
+    values.SCANNER_MODAL_TOKEN_SECRET = 'as-modal';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const service = new ScannerProviderService(config);
+    await service
+      .scanPage({
+        image: Buffer.from('image'),
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'b'.repeat(64)
+      })
+      .catch(() => undefined);
+
+    const headers = fetchSpy.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get('Authorization')).toBe('Bearer ots-local-development');
+    expect(headers.get('Modal-Key')).toBeNull();
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+    delete values.SCANNER_PROVIDER_TOKEN;
+    delete values.SCANNER_MODAL_TOKEN_ID;
+    delete values.SCANNER_MODAL_TOKEN_SECRET;
+  });
+
+  it('still sends Modal credentials to a Modal provider', async () => {
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    values.SCANNER_MODAL_TOKEN_ID = 'ak-modal';
+    values.SCANNER_MODAL_TOKEN_SECRET = 'as-modal';
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
+    const service = new ScannerProviderService(config);
+    await service
+      .scanPage({
+        image: Buffer.from('image'),
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'c'.repeat(64)
+      })
+      .catch(() => undefined);
+
+    const headers = fetchSpy.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get('Modal-Key')).toBe('ak-modal');
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+    delete values.SCANNER_MODAL_TOKEN_ID;
+    delete values.SCANNER_MODAL_TOKEN_SECRET;
+  });
+
   it('refuses to follow a redirect, so credentials cannot be forwarded', async () => {
     // `Modal-Key` and `Modal-Secret` are custom headers: the Fetch standard
     // strips `Authorization` on a cross-origin redirect but not these, so a
