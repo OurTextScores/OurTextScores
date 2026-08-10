@@ -15,6 +15,12 @@ export default function SignInPage({
   const emailEnabled = Boolean(process.env.EMAIL_SERVER && process.env.EMAIL_FROM);
   const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   const githubEnabled = Boolean(process.env.GITHUB_ID && process.env.GITHUB_SECRET);
+  // Same test as /scanner itself, so the copy never promises something the
+  // destination would refuse. Signed-out visitors reach this page from the
+  // header's Scanner link, and it should say why signing in is worth it.
+  const scannerEnabled =
+    process.env.SCANNER_ENABLED === "true" ||
+    process.env.NEXT_PUBLIC_SCANNER_ENABLED === "true";
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -22,7 +28,9 @@ export default function SignInPage({
         <header className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60">
           <h1 className="text-2xl font-semibold">Sign in</h1>
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-            Sign in to access reviews and collaboration tools.
+            {scannerEnabled
+              ? "Sign in to scan sheet music, review changes, and use the collaboration tools."
+              : "Sign in to access reviews and collaboration tools."}
           </p>
         </header>
 

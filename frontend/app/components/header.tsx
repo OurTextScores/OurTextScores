@@ -102,7 +102,10 @@ export default function Header() {
             >
               <span aria-hidden="true">✎</span>Score Editor
             </Link>
-            {process.env.NEXT_PUBLIC_SCANNER_ENABLED === "true" && user && (
+            {/* Shown signed out as well: /scanner redirects to sign-in with a
+                callback, so the link advertises the feature rather than hiding
+                it from the people most likely to want an account for it. */}
+            {process.env.NEXT_PUBLIC_SCANNER_ENABLED === "true" && (
               <Link
                 href="/scanner"
                 className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"

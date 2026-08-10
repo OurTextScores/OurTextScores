@@ -32,6 +32,29 @@ describe("Header", () => {
     expect(screen.queryByRole("link", { name: /Join beta/i })).not.toBeInTheDocument();
   });
 
+  it("offers Scanner to signed-out visitors when it is enabled", () => {
+    // /scanner redirects to sign-in with a callback, so the link advertises the
+    // feature to exactly the people who would need an account for it.
+    const previous = process.env.NEXT_PUBLIC_SCANNER_ENABLED;
+    process.env.NEXT_PUBLIC_SCANNER_ENABLED = "true";
+    (useSession as jest.Mock).mockReturnValue({ data: null });
+    render(<Header />);
+    expect(screen.getByRole("link", { name: /Scanner/i })).toHaveAttribute(
+      "href",
+      "/scanner",
+    );
+    process.env.NEXT_PUBLIC_SCANNER_ENABLED = previous;
+  });
+
+  it("hides Scanner entirely when the deployment has it off", () => {
+    const previous = process.env.NEXT_PUBLIC_SCANNER_ENABLED;
+    delete process.env.NEXT_PUBLIC_SCANNER_ENABLED;
+    (useSession as jest.Mock).mockReturnValue({ data: null });
+    render(<Header />);
+    expect(screen.queryByRole("link", { name: /Scanner/i })).not.toBeInTheDocument();
+    process.env.NEXT_PUBLIC_SCANNER_ENABLED = previous;
+  });
+
   it("renders user info and sign-out button when authenticated", () => {
     const session = {
       user: { name: "Test User", email: "test@example.com" },
