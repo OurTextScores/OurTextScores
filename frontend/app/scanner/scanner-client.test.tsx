@@ -146,6 +146,41 @@ describe("ScannerClient", () => {
     ]);
   });
 
+  it("refuses an oversized selection before sending it", async () => {
+    // On Vercel the request never reaches our route handler: the platform
+    // rejects the body at the edge and returns a 413 we cannot annotate. The
+    // pre-flight has to catch it while we can still explain what to do.
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const huge = new File(["x"], "huge.png", { type: "image/png" });
+    Object.defineProperty(huge, "size", { value: 30 * 1024 * 1024 });
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: { files: [huge] },
+    });
+
+    fireEvent.submit(screen.getByRole("button", { name: "Scan" }).closest("form")!);
+    expect(await screen.findByText(/the limit is/i)).toBeInTheDocument();
+    expect(FakeXhr.last).toBeNull();
+  });
+
+  it("explains a 413 rather than reporting the status code", async () => {
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: { files: [new File(["a"], "page-1.png", { type: "image/png" })] },
+    });
+    fireEvent.submit(screen.getByRole("button", { name: "Scan" }).closest("form")!);
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+
+    // A platform 413 carries an HTML body, so the JSON path cannot help.
+    FakeXhr.last!.status = 413;
+    FakeXhr.last!.responseText = "<html>Request Entity Too Large</html>";
+    await act(async () => {
+      FakeXhr.last!.finish();
+    });
+    expect(await screen.findByText(/refused this upload as too large/i)).toBeInTheDocument();
+  });
+
   it("reports real upload progress and then opens the new scan", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());

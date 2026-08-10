@@ -54,6 +54,33 @@ function uploadJob(
   });
 }
 
+/**
+ * The upload goes through a Next route handler, and on Vercel that is a
+ * serverless function whose request body is capped at ~4.5 MB. The cap is
+ * enforced at the edge, so the handler never runs: the browser gets a platform
+ * 413 with a body our error handling cannot improve on, and nothing reaches the
+ * backend to log. Stay under it there, and keep the backend's own 25 MB limit
+ * everywhere else — the self-hosted stack has no such restriction.
+ *
+ * `NEXT_PUBLIC_VERCEL_ENV` is set automatically by Vercel at build time, so
+ * this needs no configuration. `NEXT_PUBLIC_SCANNER_MAX_REQUEST_BYTES`
+ * overrides it for a deployment whose proxy imposes some other limit.
+ */
+export const MAX_UPLOAD_BYTES = (() => {
+  const override = Number(process.env.NEXT_PUBLIC_SCANNER_MAX_REQUEST_BYTES);
+  if (Number.isFinite(override) && override > 0) return override;
+  // 4 MB, not 4.5: multipart boundaries and part headers add to the encoded
+  // body, and being refused by our own message beats being refused by Vercel's.
+  return process.env.NEXT_PUBLIC_VERCEL_ENV
+    ? 4 * 1024 * 1024
+    : 25 * 1024 * 1024;
+})();
+
+function formatMb(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return Number.isInteger(mb) ? `${mb} MB` : `${mb.toFixed(1)} MB`;
+}
+
 function uploadSelectionError(files: File[]): string | null {
   if (files.length > 20) return "Select at most 20 image pages.";
   if (
@@ -66,8 +93,13 @@ function uploadSelectionError(files: File[]): string | null {
   ) {
     return "Upload one PDF by itself, or upload only PNG/JPEG images.";
   }
-  if (files.reduce((sum, file) => sum + file.size, 0) > 25 * 1024 * 1024) {
-    return "The combined upload may not exceed 25 MB.";
+  const total = files.reduce((sum, file) => sum + file.size, 0);
+  if (total > MAX_UPLOAD_BYTES) {
+    return (
+      `This selection is ${formatMb(total)}; the limit is ` +
+      `${formatMb(MAX_UPLOAD_BYTES)}. Scan fewer pages at a time, or save them ` +
+      `at a lower resolution.`
+    );
   }
   return null;
 }
@@ -160,6 +192,15 @@ export default function ScannerClient() {
       body.set("detectTitle", String(detectTitle));
       const response = await uploadJob(body, (sent) => setSentBytes(sent));
       if (!response.ok) {
+        if (response.status === 413) {
+          // The pre-flight above should prevent this, but the encoded body is
+          // slightly larger than the sum of the file sizes, and a proxy may
+          // impose a limit we do not know about.
+          throw new Error(
+            "The server refused this upload as too large. Scan fewer pages at " +
+              "a time, or save them at a lower resolution.",
+          );
+        }
         let message = `Request failed (${response.status})`;
         try {
           const parsed = JSON.parse(response.body);
@@ -210,7 +251,7 @@ export default function ScannerClient() {
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Upload one PDF or up to 20 PNG/JPEG images. Image pages are ordered by
           filename and can be rearranged during review. The combined upload may
-          be up to 25 MB.
+          be up to {formatMb(MAX_UPLOAD_BYTES)}.
         </p>
         <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">

@@ -75,6 +75,14 @@ jobs:
             # Restart backend service
             sudo docker compose up -d backend
 
+            # Reclaim the digest this deploy just replaced. Pulling :latest
+            # leaves the previous image untagged, and nothing else removes it —
+            # they accumulated to 4GB and filled the disk on 2026-08-09, which
+            # broke Docker health checks and the nightly backup along with it.
+            # Dangling only: an image any container still references is kept, so
+            # this cannot take the scanner worker's image out from under it.
+            sudo docker image prune -f
+
             # Wait for health check
             echo "Waiting for backend to be healthy..."
             for i in {1..30}; do
