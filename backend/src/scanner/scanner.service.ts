@@ -28,6 +28,13 @@ import {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
+import { CropLevel, cropForLevel, markerWithin } from './scanner-crop';
+import {
+  DEFAULT_REVIEW_THRESHOLDS,
+  pageSuitability,
+  remainingFloor,
+  selectSpots
+} from './scanner-review';
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
@@ -611,6 +618,96 @@ export class ScannerService implements OnModuleInit {
         `This upload would exceed the ${limit}-page rolling 24-hour quota`
       );
     }
+  }
+
+  /**
+   * The review queue for one page (design section 4).
+   *
+   * Selection runs here rather than being stored, so the thresholds can be
+   * retuned against real reviewer behaviour without re-scanning the page.
+   */
+  async pageReview(userId: string, jobId: string, pageNumber: number): Promise<any> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+
+    const staves = (page as any).review?.staves || [];
+    const thresholds = {
+      floor: this.float('SCANNER_REVIEW_CONFIDENCE_FLOOR', DEFAULT_REVIEW_THRESHOLDS.floor),
+      lowImpactFloor: this.float(
+        'SCANNER_REVIEW_LOW_IMPACT_FLOOR',
+        DEFAULT_REVIEW_THRESHOLDS.lowImpactFloor
+      ),
+      minAlternativeRatio: this.float(
+        'SCANNER_REVIEW_MIN_ALTERNATIVE_RATIO',
+        DEFAULT_REVIEW_THRESHOLDS.minAlternativeRatio
+      ),
+      minimum: this.float('SCANNER_REVIEW_CONFIDENCE_MIN', DEFAULT_REVIEW_THRESHOLDS.minimum)
+    };
+    const spots = selectSpots(staves, thresholds);
+    const suitability = pageSuitability(staves, spots);
+
+    return {
+      pageNumber,
+      status: page.status,
+      // No cap and no truncation: the reviewer stops when the remainder is good
+      // enough, which is what `remainingFloor` is for.
+      spots: spots.map((spot, index) => ({
+        id: index,
+        head: spot.head,
+        chosen: spot.chosen,
+        confidence: spot.confidence,
+        alternatives: spot.alternatives,
+        staffIndex: spot.staffIndex,
+        symbolIndex: spot.symbolIndex
+      })),
+      remainingFloor: remainingFloor(spots, 0),
+      suitability
+    };
+  }
+
+  /** A cropped view of the source page behind one spot. */
+  async pageCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    spotId: number,
+    level: CropLevel
+  ): Promise<{ body: Buffer; contentType: string; marker: { x: number; y: number } | null }> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page?.sourceImage) throw new NotFoundException('Scanner page image is not available');
+
+    const staves = (page as any).review?.staves || [];
+    const spots = selectSpots(staves, DEFAULT_REVIEW_THRESHOLDS);
+    const spot = spots[spotId];
+    if (!spot) throw new NotFoundException('Scanner review spot not found');
+    const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
+
+    const source = await this.storage.getObjectBuffer(
+      page.sourceImage.bucket,
+      page.sourceImage.objectKey
+    );
+    const image = sharp(source);
+    const metadata = await image.metadata();
+    const bounds = { width: metadata.width || 0, height: metadata.height || 0 };
+    if (!bounds.width || !bounds.height) {
+      throw new NotFoundException('Scanner page image could not be read');
+    }
+    const rect = cropForLevel(level, staff?.region, bounds);
+    const body = await sharp(source).extract(rect).png().toBuffer();
+    return {
+      body,
+      contentType: 'image/png',
+      marker: markerWithin(level, spot.attention, rect, staff?.region)
+    };
+  }
+
+  private float(key: string, fallback: number): number {
+    const parsed = Number(this.config.get<string>(key, String(fallback)));
+    return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : fallback;
   }
 
   private async ownedJob(userId: string, jobId: string): Promise<ScannerJobDocument> {

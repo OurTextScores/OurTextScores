@@ -40,6 +40,9 @@ const SCANNER_ARTIFACT_KINDS = {
   zip: 'zip'
 } as const;
 
+/** Zoom levels for a review crop; scanner-crop.ts explains why only two. */
+const SCANNER_CROP_LEVELS = { staff: 'staff', page: 'page' } as const;
+
 @ApiTags('scanner')
 @ApiBearerAuth()
 @Controller('scanner/jobs')
@@ -171,6 +174,44 @@ export class ScannerController {
   @Delete(':jobId')
   remove(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.deleteJob(user.userId, jobId);
+  }
+
+  @Get(':jobId/pages/:pageNumber/review')
+  review(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number
+  ) {
+    return this.scanner.pageReview(user.userId, jobId, pageNumber);
+  }
+
+  @Get(':jobId/pages/:pageNumber/crop/:spotId')
+  async crop(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('spotId', ParseIntPipe) spotId: number,
+    @Query('level', new ParseEnumPipe(SCANNER_CROP_LEVELS, { optional: true }))
+    level: 'staff' | 'page' | undefined,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const crop = await this.scanner.pageCrop(
+      user.userId,
+      jobId,
+      pageNumber,
+      spotId,
+      level || 'staff'
+    );
+    response.setHeader('Content-Type', crop.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    // The crop is a rendering of user-uploaded content; never let it be sniffed
+    // into something executable.
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    if (crop.marker) {
+      // A hint for the overlay, not a boundary — see scanner-crop.ts.
+      response.setHeader('X-Scanner-Marker', `${crop.marker.x.toFixed(4)},${crop.marker.y.toFixed(4)}`);
+    }
+    return new StreamableFile(crop.body);
   }
 
   @Get(':jobId/artifacts/:kind')

@@ -42,5 +42,7 @@ def prune_staves(staves: list[dict[str, Any]], floor: float = PRUNE_FLOOR) -> li
             if all(float(entry.get("confidence", 1.0)) >= floor for entry in heads.values()):
                 continue
             symbols.append({**symbol, "heads": heads})
+        # Geometry is kept whole: bar lines and the region are what the crop is
+        # built from, and they are small next to the distributions.
         pruned.append({**staff, "symbols": symbols})
     return pruned

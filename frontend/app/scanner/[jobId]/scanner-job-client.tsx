@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import PageReview from "./page-review";
 import {
   activeScannerStatuses,
   ScannerJob,
@@ -542,6 +543,11 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               {selected.errorMessage}
             </p>
+          )}
+          {selected.status === "succeeded" && (
+            <div className="mt-4">
+              <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
+            </div>
           )}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">

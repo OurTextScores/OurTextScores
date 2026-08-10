@@ -147,7 +147,9 @@ class PageCapture:
 
     # -- page side --------------------------------------------------------
 
-    def add_staff(self, index: int, region: Any, symbols: list[Any]) -> None:
+    def add_staff(
+        self, index: int, region: Any, symbols: list[Any], bar_lines: Any = None
+    ) -> None:
         entries: list[dict[str, Any]] = []
         for ordinal, symbol in enumerate(symbols):
             heads = getattr(symbol, CONFIDENCE_ATTR, None)
@@ -168,6 +170,10 @@ class PageCapture:
             {
                 "index": int(index),
                 "region": [int(value) for value in region] if region is not None else None,
+                # Detected bar lines in page coordinates. These are what make a
+                # measure-level crop possible: unlike the attention point they
+                # come from segmentation, so they can be trusted as boundaries.
+                "barLines": sorted(bar_lines) if bar_lines else [],
                 "symbols": entries,
             }
         )
@@ -225,7 +231,12 @@ class capture_page:  # noqa: N801 - used as a context manager
                 region = staff_parsing._calculate_region(staff, regions)
             except Exception:  # pragma: no cover - geometry is best effort
                 region = None
-            page.add_staff(index, region, symbols)
+            bar_lines: list[int] = []
+            try:
+                bar_lines = [int(line.center[0]) for line in staff.get_bar_lines()]
+            except Exception:  # pragma: no cover - geometry is best effort
+                bar_lines = []
+            page.add_staff(index, region, symbols, bar_lines)
             return symbols
 
         staff_parsing.parse_staff_image = parse_staff_image
