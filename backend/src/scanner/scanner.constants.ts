@@ -15,4 +15,26 @@ export function scannerUserHash(userId: string, salt = ''): string {
   return createHash('sha256').update(`${salt}:${userId}`).digest('hex').slice(0, 32);
 }
 
-export const SCANNER_UPLOAD_DIRECTORY = join(tmpdir(), 'ots-scanner-uploads');
+/**
+ * Where multipart uploads are staged before they reach object storage.
+ *
+ * Configurable so staging can be pointed at a dedicated volume. In Docker,
+ * `tmpdir()` is the container's own `/tmp` on the writable layer — not the
+ * host's — so it consumes the same disk as the image store and everything else
+ * under `/var/lib/docker`. That is survivable but shared, and a deployment that
+ * wants staging isolated (or on faster storage) sets `SCANNER_UPLOAD_DIR`.
+ * The default keeps development and CI unchanged.
+ */
+export const SCANNER_UPLOAD_DIRECTORY =
+  process.env.SCANNER_UPLOAD_DIR?.trim() || join(tmpdir(), 'ots-scanner-uploads');
+
+/**
+ * Ceiling for the whole multipart request, applied from `Content-Length` before
+ * a single byte is written. `SCANNER_MAX_UPLOAD_BYTES` is checked in
+ * `createJob`, which runs only after multer has already staged every file, so
+ * on its own it bounds what is accepted but not what is written: 20 files at
+ * the per-file limit is 500 MB staged per request, and concurrent requests
+ * multiply that against shared disk. The slack covers multipart boundaries and
+ * part headers.
+ */
+export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;

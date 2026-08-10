@@ -139,6 +139,84 @@ describe('ScannerProviderService', () => {
     delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
   });
 
+  it('refuses to follow a redirect, so credentials cannot be forwarded', async () => {
+    // `Modal-Key` and `Modal-Secret` are custom headers: the Fetch standard
+    // strips `Authorization` on a cross-origin redirect but not these, so a
+    // followed redirect would hand them to the target.
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const service = new ScannerProviderService(config);
+    await service
+      .scanPage({
+        image: Buffer.from('image'),
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'd'.repeat(64)
+      })
+      .catch(() => undefined);
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({ redirect: 'error' });
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+  });
+
+  it('rejects an oversized provider response before buffering it', async () => {
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    values.SCANNER_MAX_PROVIDER_RESPONSE_BYTES = '1024';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response('{}', {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'content-length': '99999999' }
+      })
+    );
+    const service = new ScannerProviderService(config);
+    await expect(
+      service.scanPage({
+        image: Buffer.from('image'),
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'e'.repeat(64)
+      })
+    ).rejects.toMatchObject({ code: 'provider_response_too_large' });
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+    delete values.SCANNER_MAX_PROVIDER_RESPONSE_BYTES;
+  });
+
+  it('caps a chunked response that declares no length', async () => {
+    // The declared-length check cannot help here; the read itself must stop.
+    values.SCANNER_PROVIDER_KIND = 'modal';
+    values.SCANNER_PROVIDER_URL = 'https://scanner.example';
+    values.SCANNER_MAX_PROVIDER_RESPONSE_BYTES = '2048';
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(4096));
+      }
+    });
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(stream, { status: 200 }));
+    const service = new ScannerProviderService(config);
+    await expect(
+      service.scanPage({
+        image: Buffer.from('image'),
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'f'.repeat(64)
+      })
+    ).rejects.toMatchObject({ code: 'provider_response_too_large' });
+    fetchSpy.mockRestore();
+    values.SCANNER_PROVIDER_KIND = 'fake';
+    delete values.SCANNER_PROVIDER_URL;
+    delete values.SCANNER_MAX_PROVIDER_RESPONSE_BYTES;
+  });
+
   it('authenticates a CPU provider and accepts its explicit provenance', async () => {
     values.SCANNER_PROVIDER_KIND = 'local';
     values.SCANNER_PROVIDER_URL = 'http://homr_cpu:8000';

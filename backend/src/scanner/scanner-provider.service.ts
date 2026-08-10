@@ -105,6 +105,12 @@ export class ScannerProviderService {
         method: 'POST',
         headers,
         body,
+        // The provider contract has no redirect. Following one would forward
+        // `Modal-Key` and `Modal-Secret` to the target: the Fetch standard
+        // strips `Authorization` on a cross-origin redirect but says nothing
+        // about custom headers, so a compromised or misconfigured provider
+        // could hand our credentials to a third party.
+        redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs)
       });
     } catch (error: any) {
@@ -154,10 +160,29 @@ export class ScannerProviderService {
       );
     }
 
+    // Bound the body before reading it. Every other check here treats the
+    // provider as untrusted, but `response.json()` buffers whatever arrives:
+    // the MusicXML ceiling below is applied to the decoded document, long after
+    // an oversized body would already be in memory.
+    const maxResponseBytes = Math.max(
+      1024,
+      Number(this.config.get<string>('SCANNER_MAX_PROVIDER_RESPONSE_BYTES', '33554432'))
+    );
+    const declaredLength = Number(response.headers.get('content-length') || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > maxResponseBytes) {
+      throw new ScannerProviderError(
+        `Scanner provider response exceeds the ${maxResponseBytes} byte limit`,
+        'provider_response_too_large',
+        false
+      );
+    }
+
     let result: any;
     try {
-      result = await response.json();
-    } catch {
+      // A chunked response declares no length, so cap the read itself.
+      result = JSON.parse(await this.readCapped(response, maxResponseBytes));
+    } catch (error) {
+      if (error instanceof ScannerProviderError) throw error;
       throw new ScannerProviderError(
         'Scanner provider returned invalid JSON',
         'provider_invalid_response',
@@ -284,6 +309,42 @@ export class ScannerProviderService {
   private number(key: string, fallback: number): number {
     const parsed = Number(this.config.get<string>(key, String(fallback)));
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  }
+
+  /**
+   * Read a response body as text, aborting once it exceeds `maxBytes`.
+   *
+   * `response.text()` and `response.json()` buffer the whole body first, so a
+   * provider that declares no `Content-Length` — every chunked response — could
+   * exhaust memory before any ceiling applied. Counting bytes as they arrive
+   * bounds it whether or not the length was declared.
+   */
+  private async readCapped(response: Response, maxBytes: number): Promise<string> {
+    const body = response.body;
+    if (!body) return '';
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          throw new ScannerProviderError(
+            `Scanner provider response exceeds the ${maxBytes} byte limit`,
+            'provider_response_too_large',
+            false
+          );
+        }
+        chunks.push(value);
+      }
+    } finally {
+      // Release the connection whether we finished or bailed out early.
+      await reader.cancel().catch(() => undefined);
+    }
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
   }
 
   private safeHttpErrorMessage(status: number): string {

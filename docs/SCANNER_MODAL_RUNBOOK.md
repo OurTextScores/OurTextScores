@@ -286,6 +286,12 @@ SCANNER_EXPECTED_EXECUTION_PROVIDER=CUDAExecutionProvider
 # object keys and logs is obfuscation, not a barrier.
 SCANNER_OBJECT_KEY_SALT=<long random string, generate once, never rotate casually>
 
+# Optional. Uploads stage in the container's own /tmp by default, which is the
+# writable layer and shares a disk with the image store rather than the host's
+# tmpfs. Set this only to isolate staging on its own volume; the request-size
+# guard bounds how much can be written either way.
+# SCANNER_UPLOAD_DIR=/var/lib/ots-scanner-uploads
+
 SCANNER_PROVIDER_BUDGET_EXHAUSTED=false
 ```
 

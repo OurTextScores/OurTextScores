@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   ParseEnumPipe,
+  PayloadTooLargeException,
   ParseIntPipe,
   Post,
   Query,
@@ -27,7 +28,10 @@ import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequestUser } from '../auth/types/auth-user';
 import { ScannerService } from './scanner.service';
-import { SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
+import {
+  SCANNER_REQUEST_OVERHEAD_BYTES,
+  SCANNER_UPLOAD_DIRECTORY
+} from './scanner.constants';
 
 const SCANNER_ARTIFACT_KINDS = {
   musicxml: 'musicxml',
@@ -54,7 +58,29 @@ export class ScannerController {
         },
         filename: (_request, _file, callback) => callback(null, randomUUID())
       }),
-      limits: { fileSize: 25 * 1024 * 1024, files: 20 }
+      limits: { fileSize: 25 * 1024 * 1024, files: 20 },
+      // Refuse the request from its declared length, before multer stages a
+      // byte. `SCANNER_MAX_UPLOAD_BYTES` is enforced in `createJob`, which runs
+      // after every file has already been written, so without this a caller can
+      // stage 20 files at the per-file limit — 500 MB — and only then be told
+      // the combined upload is too large. Concurrent requests multiply it, and
+      // the staging directory is shared with the rest of the host.
+      fileFilter: (request, _file, callback) => {
+        const declared = Number(request.headers['content-length'] || 0);
+        const limit =
+          Number(process.env.SCANNER_MAX_UPLOAD_BYTES || 25 * 1024 * 1024) +
+          SCANNER_REQUEST_OVERHEAD_BYTES;
+        if (Number.isFinite(declared) && declared > limit) {
+          callback(
+            new PayloadTooLargeException(
+              `Combined upload exceeds the ${limit - SCANNER_REQUEST_OVERHEAD_BYTES} byte limit`
+            ),
+            false
+          );
+          return;
+        }
+        callback(null, true);
+      }
     })
   )
   // 202, not 201: the job is accepted for asynchronous preparation and is not
