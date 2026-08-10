@@ -230,7 +230,7 @@ export default function PageReview({
   const [review, setReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
   const [position, setPosition] = useState(0);
-  const [level, setLevel] = useState<"staff" | "page">("staff");
+  const [level, setLevel] = useState<"staff" | "context">("staff");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -364,9 +364,9 @@ export default function PageReview({
             />
             {/* Without this the question is unanswerable: a staff crop can hold
                 thirty notes, and "which duration is this?" needs to say which.
-                Only drawn on the staff view — the band is a fraction of the
-                staff's width and means nothing against the whole page. */}
-            {level === "staff" && spot.band && (
+                Drawn at both levels: the context crop grows only vertically, so
+                the band's horizontal position stays correct. */}
+            {spot.band && (
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-y-0 border-x-2 border-cyan-500 bg-cyan-400/20"
@@ -377,7 +377,7 @@ export default function PageReview({
               />
             )}
           </div>
-          {spot.band && level === "staff" && (
+          {spot.band && (
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {spot.band.basis === "note"
                 ? "Highlighted: this symbol."
@@ -389,10 +389,10 @@ export default function PageReview({
           <div className="mt-2 flex gap-2 text-xs">
             <button
               type="button"
-              onClick={() => setLevel(level === "staff" ? "page" : "staff")}
+              onClick={() => setLevel(level === "staff" ? "context" : "staff")}
               className="rounded border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              {level === "staff" ? "Show the whole page" : "Back to this staff"}
+              {level === "staff" ? "Show the staves around it" : "Back to this staff"}
             </button>
           </div>
 

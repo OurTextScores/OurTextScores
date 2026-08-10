@@ -88,25 +88,43 @@ describe("PageReview", () => {
     expect(screen.getByText("Which note is this?")).toBeInTheDocument();
   });
 
-  it("expands to the whole page and back", async () => {
+  it("expands to the neighbouring staves and back", async () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
     const image = await screen.findByRole("img");
     expect(image).toHaveAttribute("src", expect.stringContaining("level=staff"));
-    fireEvent.click(screen.getByRole("button", { name: "Show the whole page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show the staves around it" }));
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
         "src",
-        expect.stringContaining("level=page"),
+        expect.stringContaining("level=context"),
       ),
     );
+  });
+
+  it("keeps the highlight when expanded", async () => {
+    // The context crop grows only vertically, so the band's horizontal
+    // position is still correct — and without it the expanded view would be
+    // exactly as unanswerable as the whole page was.
+    mockReview(review());
+    const { container } = render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Show the staves around it" }));
+    await waitFor(() =>
+      expect(screen.getByRole("img")).toHaveAttribute(
+        "src",
+        expect.stringContaining("level=context"),
+      ),
+    );
+    const overlay = container.querySelector('[aria-hidden="true"].absolute') as HTMLElement;
+    expect(overlay).not.toBeNull();
+    expect(overlay.style.left).toBe("47%");
   });
 
   it("returns to the staff view when moving to the next spot", async () => {
     // The previous spot's zoom says nothing about the next one.
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Show the whole page" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show the staves around it" }));
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
@@ -212,17 +230,6 @@ describe("PageReview", () => {
     expect(overlay).not.toBeNull();
     expect(overlay.style.left).toBe("47%");
     expect(screen.getByText(/Highlighted: this symbol/)).toBeInTheDocument();
-  });
-
-  it("does not draw the band over the whole page", async () => {
-    // The band is a fraction of the staff's width and means nothing against
-    // the full page.
-    mockReview(review());
-    const { container } = render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Show the whole page" }));
-    await waitFor(() =>
-      expect(container.querySelector('[aria-hidden="true"].absolute')).toBeNull(),
-    );
   });
 
   it("says when the position is only approximate", async () => {

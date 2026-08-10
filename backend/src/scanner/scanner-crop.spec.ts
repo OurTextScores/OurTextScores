@@ -43,13 +43,35 @@ describe('cropForLevel', () => {
     expect(rect.width).toBe(657);
   });
 
-  it('returns the whole page at page level', () => {
-    expect(cropForLevel('page', [178, 341, 811, 537], IMAGE)).toEqual({
-      left: 0,
-      top: 0,
-      width: 1000,
-      height: 800
-    });
+  it('grows only downwards and upwards for context', () => {
+    // The band is positioned as a fraction of the crop's width, so widening
+    // would silently move the highlight off the symbol. Holding x fixed means
+    // one band position is correct at both levels.
+    const staff = [178, 341, 811, 537];
+    const above = [178, 120, 811, 300];
+    const below = [178, 580, 811, 760];
+    const base = cropForLevel('staff', staff, IMAGE);
+    const context = cropForLevel('context', staff, IMAGE, [above, below]);
+
+    expect(context.left).toBe(base.left);
+    expect(context.width).toBe(base.width);
+    expect(context.top).toBeLessThan(base.top);
+    expect(context.top + context.height).toBeGreaterThan(base.top + base.height);
+  });
+
+  it('is the staff itself when there are no neighbours', () => {
+    const staff = [178, 341, 811, 537];
+    expect(cropForLevel('context', staff, IMAGE, [])).toEqual(
+      cropForLevel('staff', staff, IMAGE)
+    );
+  });
+
+  it('does not run past the image for an edge staff', () => {
+    const staff = [10, 10, 500, 90];
+    const below = [10, 700, 500, 795];
+    const context = cropForLevel('context', staff, IMAGE, [below]);
+    expect(context.top).toBeGreaterThanOrEqual(0);
+    expect(context.top + context.height).toBeLessThanOrEqual(IMAGE.height);
   });
 
   it('falls back to the whole page when geometry is missing', () => {

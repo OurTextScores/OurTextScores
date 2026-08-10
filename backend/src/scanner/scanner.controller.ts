@@ -41,7 +41,7 @@ const SCANNER_ARTIFACT_KINDS = {
 } as const;
 
 /** Zoom levels for a review crop; scanner-crop.ts explains why only two. */
-const SCANNER_CROP_LEVELS = { staff: 'staff', page: 'page' } as const;
+const SCANNER_CROP_LEVELS = { staff: 'staff', context: 'context' } as const;
 
 @ApiTags('scanner')
 @ApiBearerAuth()
@@ -223,7 +223,7 @@ export class ScannerController {
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
     @Param('spotId', ParseIntPipe) spotId: number,
     @Query('level', new ParseEnumPipe(SCANNER_CROP_LEVELS, { optional: true }))
-    level: 'staff' | 'page' | undefined,
+    level: 'staff' | 'context' | undefined,
     @Res({ passthrough: true }) response: Response
   ) {
     const crop = await this.scanner.pageCrop(

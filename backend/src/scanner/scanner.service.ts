@@ -868,7 +868,11 @@ export class ScannerService implements OnModuleInit {
     if (!bounds.width || !bounds.height) {
       throw new NotFoundException('Scanner page image could not be read');
     }
-    const rect = cropForLevel(level, staff?.region, bounds);
+    // The staves either side, so `context` can grow vertically into them.
+    const neighbours = [spot.staffIndex - 1, spot.staffIndex + 1]
+      .map((index) => staves.find((entry: any) => entry.index === index)?.region)
+      .filter(Boolean);
+    const rect = cropForLevel(level, staff?.region, bounds, neighbours);
     const body = await sharp(source).extract(rect).png().toBuffer();
     return { body, contentType: 'image/png' };
   }

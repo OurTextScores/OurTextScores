@@ -12,7 +12,7 @@
  * approximate, so a band cannot land in the wrong part of the line.
  */
 
-export type CropLevel = 'staff' | 'page';
+export type CropLevel = 'staff' | 'context';
 
 export interface CropRect {
   left: number;
@@ -46,23 +46,35 @@ export function padAndClamp(
 /**
  * The rectangle to extract for a spot at a given zoom level.
  *
- * `staff` is the staff's own region, which `_calculate_region` already extends
- * to the staves above and below — so it is the design's "surrounding bars and
- * staves" view, not a bare five-line strip.
+ * `context` keeps the *same horizontal extent* as `staff` and only grows
+ * vertically, into the staves above and below. That is deliberate: the
+ * highlight is positioned as a fraction of the crop's width, so a wider crop
+ * would silently move it off the symbol. Holding x fixed means one band
+ * position is correct at both levels.
  *
- * A measure-level crop is not offered yet: it needs bar-line positions in page
- * coordinates, and those are not available at the point where the provider
- * captures staff geometry. Until they are, `staff` is the tightest rectangle
- * that can be guaranteed correct.
+ * A whole-page view was the earlier behaviour and was not useful — the staff
+ * becomes a thin strip and the symbol is invisible.
  */
 export function cropForLevel(
   level: CropLevel,
   staffRegion: number[] | null | undefined,
-  image: { width: number; height: number }
+  image: { width: number; height: number },
+  neighbourRegions: Array<number[] | null | undefined> = []
 ): CropRect {
-  if (level === 'page' || !staffRegion || staffRegion.length !== 4) {
+  if (!staffRegion || staffRegion.length !== 4) {
     return { left: 0, top: 0, width: image.width, height: image.height };
   }
   // A little air around the staff so the symbol is not flush against an edge.
-  return padAndClamp(staffRegion, 12, image);
+  const base = padAndClamp(staffRegion, 12, image);
+  if (level === 'staff') return base;
+
+  let top = base.top;
+  let bottom = base.top + base.height;
+  for (const region of neighbourRegions) {
+    if (!region || region.length !== 4) continue;
+    top = Math.min(top, Math.max(0, Math.floor(Math.min(region[1], region[3]) - 12)));
+    bottom = Math.max(bottom, Math.min(image.height, Math.ceil(Math.max(region[1], region[3]) + 12)));
+  }
+  // Horizontal extent is untouched, so the band stays aligned.
+  return { left: base.left, top, width: base.width, height: Math.max(1, bottom - top) };
 }
