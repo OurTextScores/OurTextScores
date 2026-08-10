@@ -37,6 +37,48 @@ const HEAD_LABELS: Record<string, string> = {
   slur: "Is this slurred?",
 };
 
+const CLEF_NAMES: Record<string, string> = {
+  G2: "treble clef",
+  G1: "French violin clef",
+  F4: "bass clef",
+  F3: "baritone clef",
+  F5: "subbass clef",
+  C1: "soprano clef",
+  C2: "mezzo-soprano clef",
+  C3: "alto clef",
+  C4: "tenor clef",
+  C5: "baritone C clef",
+  TAB5: "tablature clef",
+};
+
+const SYMBOL_NAMES: Record<string, string> = {
+  barline: "a barline",
+  doublebarline: "a double barline",
+  bolddoublebarline: "a final barline",
+  repeatStart: "a repeat start",
+  repeatEnd: "a repeat end",
+  repeatEndStart: "a repeat end and start",
+  voltaStart: "a volta start",
+  voltaStop: "a volta end",
+  voltaDiscontinue: "a volta break",
+  chord: "part of a chord",
+  newline: "a line break",
+};
+
+/**
+ * The `rhythm` head is really "what symbol is this": its vocabulary holds bar
+ * lines, clefs, key and time signatures and chord markers alongside note and
+ * rest durations. Asking "which duration is this?" over a list containing a
+ * clef is incoherent, so the question follows the options rather than the head.
+ */
+function questionFor(head: string, options: string[]): string {
+  if (head === "rhythm") {
+    const allDurations = options.every((value) => /^(note|rest)_/.test(value));
+    return allDurations ? "Which duration is this?" : "What is this symbol?";
+  }
+  return HEAD_LABELS[head] || "What is this?";
+}
+
 /**
  * HOMR's raw tokens are not reader-facing. `.` means "no note" and `_` means
  * "no decoration", and showing either verbatim asks a reviewer to interpret the
@@ -122,6 +164,22 @@ function readable(head: string, value: string): string {
   }
   if (value === "slurStart") return "a slur starts here";
   if (value === "slurEnd") return "a slur ends here";
+  if (SYMBOL_NAMES[value]) return SYMBOL_NAMES[value];
+
+  const clef = value.match(/^clef_(.+)$/);
+  if (clef) return CLEF_NAMES[clef[1]] || "a clef";
+
+  const key = value.match(/^keySignature_(-?\d+)$/);
+  if (key) {
+    const fifths = Number(key[1]);
+    if (fifths === 0) return "no sharps or flats";
+    const count = Math.abs(fifths);
+    return `${count} ${fifths > 0 ? "sharp" : "flat"}${count === 1 ? "" : "s"}`;
+  }
+
+  const time = value.match(/^timeSignature\/(.+)$/);
+  if (time) return `a time signature (/${time[1]})`;
+
   return value;
 }
 
@@ -163,6 +221,14 @@ export default function PageReview({
   // about the next one.
   const advance = useCallback(() => {
     setPosition((current) => current + 1);
+    setLevel("staff");
+    setError(null);
+  }, []);
+
+  // Going back matters because a choice is committed the moment it is clicked:
+  // without this, a misclick is only fixable by re-reviewing the whole page.
+  const goBack = useCallback(() => {
+    setPosition((current) => Math.max(0, current - 1));
     setLevel("staff");
     setError(null);
   }, []);
@@ -234,9 +300,22 @@ export default function PageReview({
       )}
 
       {!spot ? (
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          That is everything flagged on this page.
-        </p>
+        <div className="text-sm text-slate-600 dark:text-slate-400">
+          <p>
+            {position >= review.spots.length
+              ? "That is everything flagged on this page."
+              : "Stopped here. The rest are listed above if you want them."}
+          </p>
+          {position > 0 && (
+            <button
+              type="button"
+              onClick={goBack}
+              className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Back to the last one
+            </button>
+          )}
+        </div>
       ) : (
         <>
           <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
@@ -281,7 +360,10 @@ export default function PageReview({
           </div>
 
           <p className="mt-4 text-sm font-medium text-slate-900 dark:text-slate-100">
-            {HEAD_LABELS[spot.head] || "What is this?"}
+            {questionFor(spot.head, [
+              spot.chosen,
+              ...spot.alternatives.map((alternative) => alternative.value),
+            ])}
           </p>
           <ul className="mt-2 space-y-1 text-sm">
             {[
@@ -320,14 +402,32 @@ export default function PageReview({
                   )} confident`
                 : "This is the last one flagged."}
             </p>
-            <button
-              type="button"
-              onClick={advance}
-              disabled={saving}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Next
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={saving || position === 0}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={advance}
+                disabled={saving}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => setPosition(review.spots.length)}
+                disabled={saving}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Skip remaining
+              </button>
+            </div>
           </div>
         </>
       )}

@@ -58,10 +58,10 @@ describe("PageReview", () => {
   it("moves through the queue and ends honestly", async () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
     expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
     expect(screen.getByText(/This is the last one flagged/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(
       await screen.findByText(/That is everything flagged on this page/),
     ).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe("PageReview", () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: "Show the whole page" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
         "src",
@@ -263,5 +263,80 @@ describe("PageReview", () => {
     );
     render(<PageReview jobId="job-1" pageNumber={3} />);
     expect(await screen.findByText(/the measure it is in/)).toBeInTheDocument();
+  });
+
+  it("asks what a symbol is when the options are not all durations", async () => {
+    // The `rhythm` head is really "what symbol is this": its vocabulary holds
+    // bar lines and clefs alongside durations, so "which duration is this?"
+    // over a list containing a clef is incoherent.
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "rhythm",
+            chosen: "note_16",
+            confidence: 0.47,
+            alternatives: [
+              { value: "barline", confidence: 0.22 },
+              { value: "clef_F4", confidence: 0.04 },
+              { value: "chord", confidence: 0.02 },
+            ],
+            band: { start: 0.4, end: 0.44, basis: "note" },
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText("What is this symbol?")).toBeInTheDocument();
+    expect(screen.getByText("a barline")).toBeInTheDocument();
+    expect(screen.getByText("bass clef")).toBeInTheDocument();
+    expect(screen.getByText("part of a chord")).toBeInTheDocument();
+  });
+
+  it("keeps the duration wording when every option is a duration", async () => {
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "rhythm",
+            chosen: "note_16",
+            confidence: 0.47,
+            alternatives: [{ value: "note_8", confidence: 0.3 }],
+            band: { start: 0.4, end: 0.44, basis: "note" },
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+  });
+
+  it("can go back to fix an earlier answer", async () => {
+    // A choice commits the moment it is clicked, so without this a misclick is
+    // only fixable by re-reviewing the whole page.
+    mockReview(review());
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await screen.findByText("Which note is this?")).toBeInTheDocument();
+  });
+
+  it("cannot go back past the first spot", async () => {
+    mockReview(review());
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByRole("button", { name: "Previous" })).toBeDisabled();
+  });
+
+  it("skips the rest and still offers a way back", async () => {
+    // Stopping early is a normal ending, not a dead end.
+    mockReview(review());
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Skip remaining" }));
+    expect(await screen.findByText(/everything flagged on this page/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the last one" }));
+    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
   });
 });
