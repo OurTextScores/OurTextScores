@@ -71,8 +71,55 @@ describe('note-level location', () => {
     const band = locateSymbol(tokens, 1, symbols)!;
     expect(band.basis).toBe('note');
     // 640 / 1280 = half way along the staff.
-    expect((band.start + band.end) / 2).toBeCloseTo(0.5, 5);
+    expect((band.start + band.end) / 2).toBeCloseTo(0.5, 2);
     expect(band.end - band.start).toBeLessThan(0.1);
+  });
+
+  it('never reaches a neighbouring symbol', () => {
+    // A reviewer asked "which note is this?" will answer with the note the box
+    // sits on, so a band that covers the note next door invites the wrong
+    // answer. Reported against a real page, where the band ran from the last
+    // note's centre to the end of the bar.
+    const symbols = [
+      { index: 0, attention: [600, 40] },
+      { index: 1, attention: [640, 40] },
+      { index: 2, attention: [680, 40] }
+    ];
+    const band = locateSymbol([note(), note(), note()], 1, symbols)!;
+    const previous = 600 / 1280;
+    const next = 680 / 1280;
+    expect(band.start).toBeGreaterThan(previous);
+    expect(band.end).toBeLessThan(next);
+  });
+
+  it('stops half way to each neighbour', () => {
+    const symbols = [
+      { index: 0, attention: [0, 40] },
+      { index: 1, attention: [640, 40] },
+      { index: 2, attention: [1280, 40] }
+    ];
+    const band = locateSymbol([note(), note(), note()], 1, symbols)!;
+    // Half way from 0.5 to each neighbour would be 0.25 either side, but the
+    // ceiling keeps a single band from spanning a quarter of the staff.
+    expect(band.start).toBeGreaterThanOrEqual(0.48);
+    expect(band.end).toBeLessThanOrEqual(0.52);
+  });
+
+  it('stays visible in a dense passage', () => {
+    // Neighbours a couple of pixels away must not collapse the band to nothing.
+    const symbols = [
+      { index: 0, attention: [638, 40] },
+      { index: 1, attention: [640, 40] },
+      { index: 2, attention: [642, 40] }
+    ];
+    const band = locateSymbol([note(), note(), note()], 1, symbols)!;
+    expect(band.end - band.start).toBeGreaterThan(0);
+  });
+
+  it('uses the ceiling where there is no neighbour to bound it', () => {
+    const symbols = [{ index: 0, attention: [640, 40] }];
+    const band = locateSymbol([note()], 0, symbols)!;
+    expect(band.end - band.start).toBeCloseTo(0.04, 3);
   });
 
   it('falls back to the measure when the point breaks scan order', () => {

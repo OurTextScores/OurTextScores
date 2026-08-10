@@ -26,13 +26,18 @@
 const STAFF_IMAGE_WIDTH = 1280;
 
 /**
- * Half-width of a note-level band, as a fraction of the staff.
+ * Largest half-width of a note-level band, as a fraction of the staff.
  *
- * Wide enough to cover a notehead and its stem at typical engraving sizes, and
- * to absorb the attention point's own imprecision; narrow enough that it picks
- * out one note rather than a run of them.
+ * A ceiling, not a fixed size: the band is normally bounded by the neighbouring
+ * symbols (below), and this only applies where there is no neighbour to bound
+ * it — the first or last symbol on a staff.
  */
-const NOTE_HALF_WIDTH = 0.025;
+const MAX_NOTE_HALF_WIDTH = 0.02;
+
+/**
+ * Smallest half-width, so a band in a dense passage stays visible.
+ */
+const MIN_NOTE_HALF_WIDTH = 0.004;
 
 const BARLINE_RHYTHMS = new Set(['barline', 'barline_repeat', 'repeat']);
 
@@ -46,6 +51,33 @@ export interface SpotBand {
   end: number;
   /** How the band was derived, so the UI can be honest about precision. */
   basis: 'note' | 'measure' | 'position';
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+/** Keep a half-width visible, and never wider than the ceiling. */
+function bound(halfWidth: number): number {
+  if (!Number.isFinite(halfWidth) || halfWidth <= 0) return MIN_NOTE_HALF_WIDTH;
+  return Math.min(MAX_NOTE_HALF_WIDTH, Math.max(MIN_NOTE_HALF_WIDTH, halfWidth));
+}
+
+/** The attention centres either side of a symbol, as staff fractions. */
+function neighbourCentres(
+  symbols: LocatableSymbol[],
+  symbolIndex: number
+): { before: number | null; after: number | null } {
+  const ordered = symbols
+    .filter((entry) => Array.isArray(entry.attention) && Number.isFinite(entry.attention[0]))
+    .sort((left, right) => left.index - right.index);
+  const position = ordered.findIndex((entry) => entry.index === symbolIndex);
+  if (position < 0) return { before: null, after: null };
+  const at = (index: number): number | null => {
+    const value = ordered[index]?.attention?.[0];
+    return Number.isFinite(value) ? clamp01((value as number) / STAFF_IMAGE_WIDTH) : null;
+  };
+  return { before: at(position - 1), after: at(position + 1) };
 }
 
 export interface LocatableSymbol {
@@ -100,10 +132,21 @@ export function locateSymbol(
   const symbol = symbols?.find((entry) => entry.index === symbolIndex);
   const attentionX = symbol?.attention?.[0];
   if (Number.isFinite(attentionX) && attentionIsOrdered(symbols, symbolIndex)) {
-    const centre = Math.min(1, Math.max(0, (attentionX as number) / STAFF_IMAGE_WIDTH));
+    const centre = clamp01((attentionX as number) / STAFF_IMAGE_WIDTH);
+    const { before, after } = neighbourCentres(symbols!, symbolIndex);
+
+    // Stop half way to each neighbour. A fixed width covers the note next door
+    // in a dense passage, and a reviewer asked "which note is this?" will
+    // reasonably answer with the note the box is sitting on — so a band must
+    // never reach one that is not the subject.
+    const leftLimit = before === null ? MAX_NOTE_HALF_WIDTH : (centre - before) / 2;
+    const rightLimit = after === null ? MAX_NOTE_HALF_WIDTH : (after - centre) / 2;
+    const left = bound(leftLimit);
+    const right = bound(rightLimit);
+
     return {
-      start: Math.max(0, centre - NOTE_HALF_WIDTH),
-      end: Math.min(1, centre + NOTE_HALF_WIDTH),
+      start: Math.max(0, centre - left),
+      end: Math.min(1, centre + right),
       basis: 'note'
     };
   }
