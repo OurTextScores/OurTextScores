@@ -10,7 +10,7 @@ interface Alternative {
 interface Band {
   start: number;
   end: number;
-  basis: "measure" | "position";
+  basis: "note" | "measure" | "position";
 }
 
 interface Spot {
@@ -210,9 +210,11 @@ export default function PageReview({
           </div>
           {spot.band && level === "staff" && (
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {spot.band.basis === "measure"
-                ? "Highlighted: the measure this symbol is in."
-                : "Highlighted: roughly where this symbol falls."}
+              {spot.band.basis === "note"
+                ? "Highlighted: this symbol."
+                : spot.band.basis === "measure"
+                  ? "Highlighted: the measure it is in — the exact position was unreliable here."
+                  : "Highlighted: roughly where it falls."}
             </p>
           )}
           <div className="mt-2 flex gap-2 text-xs">

@@ -1,4 +1,4 @@
-import { locateSymbol } from './scanner-locate';
+import { attentionIsOrdered, locateSymbol } from './scanner-locate';
 
 function note(): string[] {
   return ['note_4', 'C4', '_', '_', '_', 'upper'];
@@ -52,5 +52,80 @@ describe('locateSymbol', () => {
     expect(locateSymbol(undefined, 0)).toBeNull();
     expect(locateSymbol([], 0)).toBeNull();
     expect(locateSymbol([note()], 5)).toBeNull();
+  });
+
+});
+
+describe('note-level location', () => {
+  // Two bar lines, so the measure fallback is available to fall back *to*.
+  const tokens = [note(), note(), bar(), note(), bar(), note()];
+
+  it('uses the attention point when it sits in scan order', () => {
+    // Measured ~98% monotonic on a real printed page, so this is the common
+    // case, not the exception.
+    const symbols = [
+      { index: 0, attention: [128, 40] },
+      { index: 1, attention: [640, 40] },
+      { index: 3, attention: [1152, 40] }
+    ];
+    const band = locateSymbol(tokens, 1, symbols)!;
+    expect(band.basis).toBe('note');
+    // 640 / 1280 = half way along the staff.
+    expect((band.start + band.end) / 2).toBeCloseTo(0.5, 5);
+    expect(band.end - band.start).toBeLessThan(0.1);
+  });
+
+  it('falls back to the measure when the point breaks scan order', () => {
+    // HOMR names this test: patch tokens are processed in raster order, so a
+    // coordinate that goes backwards is the unreliable one.
+    const symbols = [
+      { index: 0, attention: [128, 40] },
+      { index: 1, attention: [1200, 40] },
+      { index: 3, attention: [300, 40] }
+    ];
+    expect(locateSymbol(tokens, 1, symbols)!.basis).toBe('measure');
+  });
+
+  it('falls back when there is no attention point at all', () => {
+    expect(locateSymbol(tokens, 1, [{ index: 1, attention: null }])!.basis).not.toBe('note');
+    expect(locateSymbol(tokens, 1)!.basis).not.toBe('note');
+  });
+
+  it('is much narrower than a measure', () => {
+    // The point of note-level: a measure can hold eight notes.
+    const symbols = [{ index: 1, attention: [640, 40] }];
+    const note = locateSymbol(tokens, 1, symbols)!;
+    const measure = locateSymbol(tokens, 1)!;
+    expect(note.end - note.start).toBeLessThan(measure.end - measure.start);
+  });
+});
+
+describe('attentionIsOrdered', () => {
+  it('accepts a run that only increases', () => {
+    const symbols = [
+      { index: 0, attention: [10, 1] },
+      { index: 1, attention: [20, 1] },
+      { index: 2, attention: [30, 1] }
+    ];
+    expect(attentionIsOrdered(symbols, 1)).toBe(true);
+  });
+
+  it('rejects a point that goes backwards', () => {
+    const symbols = [
+      { index: 0, attention: [50, 1] },
+      { index: 1, attention: [10, 1] },
+      { index: 2, attention: [60, 1] }
+    ];
+    expect(attentionIsOrdered(symbols, 1)).toBe(false);
+  });
+
+  it('tolerates gaps, since confident symbols are pruned away', () => {
+    // A subsequence of a monotonic sequence is still monotonic.
+    const symbols = [
+      { index: 0, attention: [10, 1] },
+      { index: 7, attention: [400, 1] },
+      { index: 19, attention: [900, 1] }
+    ];
+    expect(attentionIsOrdered(symbols, 7)).toBe(true);
   });
 });

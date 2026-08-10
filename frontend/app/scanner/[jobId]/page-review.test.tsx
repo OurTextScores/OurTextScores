@@ -14,7 +14,7 @@ function review(overrides: Record<string, unknown> = {}) {
           { value: "D4", confidence: 0.39 },
           { value: "B3", confidence: 0.1 },
         ],
-        band: { start: 0.25, end: 0.5, basis: "measure" },
+        band: { start: 0.47, end: 0.52, basis: "note" },
       },
       {
         id: 1,
@@ -210,9 +210,8 @@ describe("PageReview", () => {
     await screen.findByText("Which note is this?");
     const overlay = container.querySelector('[aria-hidden="true"].absolute') as HTMLElement;
     expect(overlay).not.toBeNull();
-    expect(overlay.style.left).toBe("25%");
-    expect(overlay.style.width).toBe("25%");
-    expect(screen.getByText(/the measure this symbol is in/)).toBeInTheDocument();
+    expect(overlay.style.left).toBe("47%");
+    expect(screen.getByText(/Highlighted: this symbol/)).toBeInTheDocument();
   });
 
   it("does not draw the band over the whole page", async () => {
@@ -242,6 +241,27 @@ describe("PageReview", () => {
       }),
     );
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    expect(await screen.findByText(/roughly where this symbol falls/)).toBeInTheDocument();
+    expect(await screen.findByText(/roughly where it falls/)).toBeInTheDocument();
+  });
+
+  it("says when it could only narrow to the measure", async () => {
+    // The attention point failed its scan-order check, so the claim is weaker
+    // and the caption has to match.
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "rhythm",
+            chosen: "note_8",
+            confidence: 0.5,
+            alternatives: [{ value: "note_16", confidence: 0.4 }],
+            band: { start: 0.25, end: 0.5, basis: "measure" },
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText(/the measure it is in/)).toBeInTheDocument();
   });
 });

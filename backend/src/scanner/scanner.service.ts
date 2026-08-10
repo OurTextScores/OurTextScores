@@ -677,7 +677,7 @@ export class ScannerService implements OnModuleInit {
           symbolIndex: spot.symbolIndex,
           // Where to point on the staff crop. Without this the reviewer is
           // asked "which duration is this?" over a line of thirty notes.
-          band: locateSymbol(staff?.tokens, spot.symbolIndex)
+          band: locateSymbol(staff?.tokens, spot.symbolIndex, staff?.symbols)
         };
       }),
       remainingFloor: remainingFloor(spots, 0),
