@@ -183,6 +183,43 @@ function readable(head: string, value: string): string {
   return value;
 }
 
+interface Option {
+  value: string;
+  label: string;
+  confidence: number;
+  recognised: boolean;
+}
+
+/**
+ * Collapse options that read the same.
+ *
+ * HOMR has two placeholders — `.` for "not applicable" and `_` for "no
+ * decoration" — and for a pitch they both mean no note. Showing "nothing here"
+ * twice asks the reviewer to choose between two things they cannot tell apart.
+ *
+ * Confidences are summed because the outcomes are mutually exclusive and mean
+ * the same thing: the chance the answer is "nothing here" really is the sum.
+ * The highest-confidence member is what gets submitted, so the value sent is
+ * always one the model actually offered.
+ */
+export function mergeOptions(options: Option[]): Option[] {
+  const byLabel = new Map<string, Option>();
+  for (const option of options) {
+    const existing = byLabel.get(option.label);
+    if (!existing) {
+      byLabel.set(option.label, { ...option });
+      continue;
+    }
+    byLabel.set(option.label, {
+      label: option.label,
+      confidence: existing.confidence + option.confidence,
+      value: existing.confidence >= option.confidence ? existing.value : option.value,
+      recognised: existing.recognised || option.recognised
+    });
+  }
+  return [...byLabel.values()].sort((left, right) => right.confidence - left.confidence);
+}
+
 export default function PageReview({
   jobId,
   pageNumber,
@@ -366,20 +403,28 @@ export default function PageReview({
             ])}
           </p>
           <ul className="mt-2 space-y-1 text-sm">
-            {[
-              { value: spot.chosen, confidence: spot.confidence, recognised: true },
-              ...spot.alternatives.map((alternative) => ({ ...alternative, recognised: false })),
-            ].map((option) => (
-              <li key={option.value}>
+            {mergeOptions([
+              {
+                value: spot.chosen,
+                label: readable(spot.head, spot.chosen),
+                confidence: spot.confidence,
+                recognised: true,
+              },
+              ...spot.alternatives.map((alternative) => ({
+                value: alternative.value,
+                label: readable(spot.head, alternative.value),
+                confidence: alternative.confidence,
+                recognised: false,
+              })),
+            ]).map((option) => (
+              <li key={option.label}>
                 <button
                   type="button"
                   disabled={saving}
                   onClick={() => void choose(spot.id, option.value)}
                   className="flex w-full items-center gap-2 rounded border border-slate-200 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/40"
                 >
-                  <span className="text-slate-900 dark:text-slate-100">
-                    {readable(spot.head, option.value)}
-                  </span>
+                  <span className="text-slate-900 dark:text-slate-100">{option.label}</span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {percent(option.confidence)}
                     {option.recognised ? " — what the scanner chose" : ""}

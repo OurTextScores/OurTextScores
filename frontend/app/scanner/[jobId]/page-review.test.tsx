@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import PageReview from "./page-review";
+import PageReview, { mergeOptions } from "./page-review";
 
 function review(overrides: Record<string, unknown> = {}) {
   return {
@@ -338,5 +338,98 @@ describe("PageReview", () => {
     expect(await screen.findByText(/everything flagged on this page/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back to the last one" }));
     expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+  });
+
+  it("does not offer the same answer twice", async () => {
+    // HOMR has two placeholders, `.` and `_`, and for a pitch both mean no
+    // note — so the reviewer was asked to choose between two things they
+    // cannot tell apart.
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "pitch",
+            chosen: "C4",
+            confidence: 0.45,
+            alternatives: [
+              { value: ".", confidence: 0.31 },
+              { value: "_", confidence: 0.12 },
+            ],
+            band: { start: 0.4, end: 0.44, basis: "note" },
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    await screen.findByText("Which note is this?");
+    expect(screen.getAllByText("nothing here")).toHaveLength(1);
+    // Mutually exclusive outcomes meaning the same thing: 31 + 12.
+    expect(screen.getByText(/43%/)).toBeInTheDocument();
+  });
+
+  it("submits a value the model actually offered when options merge", async () => {
+    const calls: any[] = [];
+    global.fetch = jest.fn(async (url: any, init: any) => {
+      if (init?.method === "POST") {
+        calls.push(JSON.parse(init.body));
+        return { ok: true, json: async () => ({ ok: true }) } as Response;
+      }
+      return {
+        ok: true,
+        json: async () =>
+          review({
+            spots: [
+              {
+                id: 0,
+                head: "pitch",
+                chosen: "C4",
+                confidence: 0.45,
+                alternatives: [
+                  { value: ".", confidence: 0.31 },
+                  { value: "_", confidence: 0.12 },
+                ],
+                band: null,
+              },
+            ],
+          }),
+      } as Response;
+    }) as any;
+
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /nothing here/ }));
+    // The higher-confidence member of the merged pair.
+    await waitFor(() => expect(calls).toEqual([{ spotId: 0, chosen: "." }]));
+  });
+});
+
+describe("mergeOptions", () => {
+  it("keeps distinct answers separate", () => {
+    const merged = mergeOptions([
+      { value: "C4", label: "C4", confidence: 0.5, recognised: true },
+      { value: "D4", label: "D4", confidence: 0.3, recognised: false },
+    ]);
+    expect(merged).toHaveLength(2);
+  });
+
+  it("carries the recognised marker onto the merged entry", () => {
+    const merged = mergeOptions([
+      { value: ".", label: "nothing here", confidence: 0.3, recognised: true },
+      { value: "_", label: "nothing here", confidence: 0.4, recognised: false },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].recognised).toBe(true);
+    // Submits the likelier token, not the one that happened to be chosen.
+    expect(merged[0].value).toBe("_");
+    expect(merged[0].confidence).toBeCloseTo(0.7);
+  });
+
+  it("re-sorts so the likeliest answer leads", () => {
+    const merged = mergeOptions([
+      { value: "C4", label: "C4", confidence: 0.4, recognised: true },
+      { value: ".", label: "nothing here", confidence: 0.31, recognised: false },
+      { value: "_", label: "nothing here", confidence: 0.2, recognised: false },
+    ]);
+    expect(merged[0].label).toBe("nothing here");
   });
 });
