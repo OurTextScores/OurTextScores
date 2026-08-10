@@ -238,10 +238,6 @@ export class ScannerController {
     // The crop is a rendering of user-uploaded content; never let it be sniffed
     // into something executable.
     response.setHeader('X-Content-Type-Options', 'nosniff');
-    if (crop.marker) {
-      // A hint for the overlay, not a boundary — see scanner-crop.ts.
-      response.setHeader('X-Scanner-Marker', `${crop.marker.x.toFixed(4)},${crop.marker.y.toFixed(4)}`);
-    }
     return new StreamableFile(crop.body);
   }
 

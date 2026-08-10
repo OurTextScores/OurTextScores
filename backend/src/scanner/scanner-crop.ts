@@ -5,8 +5,11 @@
  * attention. HOMR is explicit that attention coordinates are "inherently
  * imprecise, since the model is optimized for predictive accuracy rather than
  * spatial localization", and a tight box confidently in the wrong place is
- * worse than a generous one in the right place. Attention is passed through for
- * the UI to draw a *marker* inside the crop, and is never a boundary.
+ * worse than a generous one in the right place.
+ *
+ * Pointing *within* a crop is `scanner-locate.ts`, which derives a band from
+ * bar lines in the token sequence — ordering is exact even where spacing is
+ * approximate, so a band cannot land in the wrong part of the line.
  */
 
 export type CropLevel = 'staff' | 'page';
@@ -62,33 +65,4 @@ export function cropForLevel(
   }
   // A little air around the staff so the symbol is not flush against an edge.
   return padAndClamp(staffRegion, 12, image);
-}
-
-/**
- * Where to draw the marker within a crop, as a fraction of its size.
- *
- * Returns null when there is nothing trustworthy to draw. The attention point
- * is in the staff image's own coordinates, so it is only meaningful relative to
- * the staff region; on the whole-page view it is not placed at all rather than
- * placed approximately.
- */
-export function markerWithin(
-  level: CropLevel,
-  attention: number[] | null | undefined,
-  crop: CropRect,
-  staffRegion: number[] | null | undefined
-): { x: number; y: number } | null {
-  if (level !== 'staff') return null;
-  if (!attention || attention.length !== 2) return null;
-  if (!staffRegion || staffRegion.length !== 4) return null;
-  const [ax, ay] = attention;
-  if (!Number.isFinite(ax) || !Number.isFinite(ay)) return null;
-  const pageX = Math.min(staffRegion[0], staffRegion[2]) + ax;
-  const pageY = Math.min(staffRegion[1], staffRegion[3]) + ay;
-  const x = (pageX - crop.left) / crop.width;
-  const y = (pageY - crop.top) / crop.height;
-  // Outside the crop means the estimate is wrong, not that the crop is; drawing
-  // it clamped to an edge would assert a position we do not have.
-  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-  return { x, y };
 }

@@ -1,4 +1,4 @@
-import { cropForLevel, markerWithin, padAndClamp } from './scanner-crop';
+import { cropForLevel, padAndClamp } from './scanner-crop';
 
 const IMAGE = { width: 1000, height: 800 };
 
@@ -57,37 +57,5 @@ describe('cropForLevel', () => {
     // rather than failing the request.
     expect(cropForLevel('staff', null, IMAGE).width).toBe(1000);
     expect(cropForLevel('staff', [1, 2], IMAGE).width).toBe(1000);
-  });
-});
-
-describe('markerWithin', () => {
-  const region = [100, 100, 500, 300];
-
-  it('places the marker relative to the crop', () => {
-    const crop = cropForLevel('staff', region, IMAGE);
-    const marker = markerWithin('staff', [200, 100], crop, region);
-    expect(marker).not.toBeNull();
-    expect(marker!.x).toBeGreaterThan(0);
-    expect(marker!.x).toBeLessThan(1);
-  });
-
-  it('draws nothing on the whole-page view', () => {
-    // The attention point is in staff-image coordinates, so it means nothing
-    // against the page.
-    const crop = cropForLevel('page', region, IMAGE);
-    expect(markerWithin('page', [200, 100], crop, region)).toBeNull();
-  });
-
-  it('draws nothing when the estimate falls outside the crop', () => {
-    // Clamping it to an edge would assert a position we do not have. HOMR warns
-    // these coordinates are unreliable, so silence is the honest answer.
-    const crop = cropForLevel('staff', region, IMAGE);
-    expect(markerWithin('staff', [9000, 9000], crop, region)).toBeNull();
-  });
-
-  it('draws nothing without an attention point', () => {
-    const crop = cropForLevel('staff', region, IMAGE);
-    expect(markerWithin('staff', null, crop, region)).toBeNull();
-    expect(markerWithin('staff', [Number.NaN, 5], crop, region)).toBeNull();
   });
 });

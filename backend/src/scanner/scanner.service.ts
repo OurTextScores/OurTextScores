@@ -28,7 +28,8 @@ import {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
-import { CropLevel, cropForLevel, markerWithin } from './scanner-crop';
+import { CropLevel, cropForLevel } from './scanner-crop';
+import { locateSymbol } from './scanner-locate';
 
 /** Field order within a captured token; mirrors the provider's capture. */
 const TOKEN_FIELDS = ['rhythm', 'pitch', 'lift', 'articulation', 'slur', 'position'];
@@ -664,15 +665,21 @@ export class ScannerService implements OnModuleInit {
       status: page.status,
       // No cap and no truncation: the reviewer stops when the remainder is good
       // enough, which is what `remainingFloor` is for.
-      spots: spots.map((spot, index) => ({
-        id: index,
-        head: spot.head,
-        chosen: spot.chosen,
-        confidence: spot.confidence,
-        alternatives: spot.alternatives,
-        staffIndex: spot.staffIndex,
-        symbolIndex: spot.symbolIndex
-      })),
+      spots: spots.map((spot, index) => {
+        const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
+        return {
+          id: index,
+          head: spot.head,
+          chosen: spot.chosen,
+          confidence: spot.confidence,
+          alternatives: spot.alternatives,
+          staffIndex: spot.staffIndex,
+          symbolIndex: spot.symbolIndex,
+          // Where to point on the staff crop. Without this the reviewer is
+          // asked "which duration is this?" over a line of thirty notes.
+          band: locateSymbol(staff?.tokens, spot.symbolIndex)
+        };
+      }),
       remainingFloor: remainingFloor(spots, 0),
       suitability
     };
@@ -839,7 +846,7 @@ export class ScannerService implements OnModuleInit {
     pageNumber: number,
     spotId: number,
     level: CropLevel
-  ): Promise<{ body: Buffer; contentType: string; marker: { x: number; y: number } | null }> {
+  ): Promise<{ body: Buffer; contentType: string }> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
@@ -863,11 +870,7 @@ export class ScannerService implements OnModuleInit {
     }
     const rect = cropForLevel(level, staff?.region, bounds);
     const body = await sharp(source).extract(rect).png().toBuffer();
-    return {
-      body,
-      contentType: 'image/png',
-      marker: markerWithin(level, spot.attention, rect, staff?.region)
-    };
+    return { body, contentType: 'image/png' };
   }
 
   private float(key: string, fallback: number): number {

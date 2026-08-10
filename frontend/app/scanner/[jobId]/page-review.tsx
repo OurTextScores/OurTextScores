@@ -7,12 +7,19 @@ interface Alternative {
   confidence: number;
 }
 
+interface Band {
+  start: number;
+  end: number;
+  basis: "measure" | "position";
+}
+
 interface Spot {
   id: number;
   head: string;
   chosen: string;
   confidence: number;
   alternatives: Alternative[];
+  band?: Band | null;
 }
 
 interface Review {
@@ -179,14 +186,35 @@ export default function PageReview({
         </p>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+          <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/crop/${spot.id}?level=${level}`}
               alt={`Page ${pageNumber}, the passage the scanner was unsure about`}
               className="max-h-80 w-full object-contain"
             />
+            {/* Without this the question is unanswerable: a staff crop can hold
+                thirty notes, and "which duration is this?" needs to say which.
+                Only drawn on the staff view — the band is a fraction of the
+                staff's width and means nothing against the whole page. */}
+            {level === "staff" && spot.band && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 border-x-2 border-cyan-500 bg-cyan-400/20"
+                style={{
+                  left: `${spot.band.start * 100}%`,
+                  width: `${Math.max(2, (spot.band.end - spot.band.start) * 100)}%`,
+                }}
+              />
+            )}
           </div>
+          {spot.band && level === "staff" && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {spot.band.basis === "measure"
+                ? "Highlighted: the measure this symbol is in."
+                : "Highlighted: roughly where this symbol falls."}
+            </p>
+          )}
           <div className="mt-2 flex gap-2 text-xs">
             <button
               type="button"

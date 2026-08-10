@@ -14,6 +14,7 @@ function review(overrides: Record<string, unknown> = {}) {
           { value: "D4", confidence: 0.39 },
           { value: "B3", confidence: 0.1 },
         ],
+        band: { start: 0.25, end: 0.5, basis: "measure" },
       },
       {
         id: 1,
@@ -199,5 +200,48 @@ describe("PageReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
     expect(await screen.findByText(/could not be saved/)).toBeInTheDocument();
     expect(screen.getByText("Which note is this?")).toBeInTheDocument();
+  });
+
+  it("points at the symbol rather than the whole line", async () => {
+    // A staff crop can hold thirty notes; "which duration is this?" over all of
+    // them is unanswerable.
+    mockReview(review());
+    const { container } = render(<PageReview jobId="job-1" pageNumber={3} />);
+    await screen.findByText("Which note is this?");
+    const overlay = container.querySelector('[aria-hidden="true"].absolute') as HTMLElement;
+    expect(overlay).not.toBeNull();
+    expect(overlay.style.left).toBe("25%");
+    expect(overlay.style.width).toBe("25%");
+    expect(screen.getByText(/the measure this symbol is in/)).toBeInTheDocument();
+  });
+
+  it("does not draw the band over the whole page", async () => {
+    // The band is a fraction of the staff's width and means nothing against
+    // the full page.
+    mockReview(review());
+    const { container } = render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Show the whole page" }));
+    await waitFor(() =>
+      expect(container.querySelector('[aria-hidden="true"].absolute')).toBeNull(),
+    );
+  });
+
+  it("says when the position is only approximate", async () => {
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "rhythm",
+            chosen: "note_8",
+            confidence: 0.5,
+            alternatives: [{ value: "note_16", confidence: 0.4 }],
+            band: { start: 0.4, end: 0.56, basis: "position" },
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText(/roughly where this symbol falls/)).toBeInTheDocument();
   });
 });
