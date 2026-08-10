@@ -121,16 +121,37 @@ class ProviderContractTest(unittest.TestCase):
         self.engine = FakeEngine()
         self.client = build(self.engine)
 
+    def test_carries_a_review_block_even_when_empty(self) -> None:
+        # Always present, so a consumer never has to tell "absent" apart from
+        # "no staves found".
+        body = post(self.client, page=png_bytes()).json()
+        self.assertIn("review", body)
+        self.assertIsInstance(body["review"].get("staves"), list)
+
+    def test_v2_keeps_every_v1_field(self) -> None:
+        # A backend deployed before this contract change must keep working
+        # through a rolling restart, so nothing was moved or renamed.
+        body = post(self.client, page=png_bytes()).json()
+        for field in (
+            "serviceRevision",
+            "homrRevision",
+            "modelRevision",
+            "executionProvider",
+            "inputSha256",
+            "musicXmlBase64",
+        ):
+            self.assertIn(field, body, field)
+
     def test_requires_the_configured_bearer_token(self) -> None:
         self.assertEqual(post(self.client, token="wrong").status_code, 401)
         self.assertEqual(post(self.client, token=None).status_code, 401)
 
-    def test_returns_provenance_and_the_v1_envelope(self) -> None:
+    def test_returns_provenance_and_the_v2_envelope(self) -> None:
         page = png_bytes()
         response = post(self.client, page=page)
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["schemaVersion"], "ots-homr-provider.v1")
+        self.assertEqual(body["schemaVersion"], "ots-homr-provider.v2")
         self.assertTrue(body["requestId"])
         self.assertEqual(
             base64.b64decode(body["result"]["musicXmlBase64"]), MUSICXML

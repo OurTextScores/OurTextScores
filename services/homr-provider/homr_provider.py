@@ -35,7 +35,11 @@ from homr_engine import (
     InferenceError,
 )
 
-SCHEMA_VERSION = "ots-homr-provider.v1"
+# v2 adds `review`: per-symbol confidence, the alternatives the model
+# considered, and the page geometry needed to crop to a spot. The v1 fields are
+# all still present and unchanged, so a backend that ignores `review` behaves
+# exactly as before.
+SCHEMA_VERSION = "ots-homr-provider.v2"
 MUSICXML_MEDIA_TYPE = "application/vnd.recordare.musicxml+xml"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
 LICENSE = "AGPL-3.0-or-later"
@@ -339,6 +343,9 @@ def create_provider_app(
                 "totalMs": int((time.monotonic() - started) * 1000),
                 "inferenceMs": int(result.get("durationMs", 0)),
             },
+            # Design §3. Present but empty when the capture found nothing, so a
+            # consumer never has to distinguish "absent" from "no staves".
+            "review": result.get("review") or {"staves": []},
             "warnings": (
                 [{"code": "warmup_degraded", "message": engine.degraded_reason}]
                 if engine.degraded_reason

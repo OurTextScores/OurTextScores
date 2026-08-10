@@ -151,6 +151,7 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
     try:
         import onnxruntime as ort
 
+        from homr_confidence import capture_page
         from homr.main import ProcessingConfig, download_weights, process_image
         from homr.music_xml_generator import XmlGeneratorArguments
         from homr.segmentation.config import (
@@ -229,7 +230,12 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
                     False,  # coreml_encoder
                     bool(request["detect_title"]),
                 )
-                process_image(str(source), config, XmlGeneratorArguments())
+                # The capture only observes: it tees the decoder's per-step
+                # distributions and the staff geometry HOMR already computes,
+                # and changes nothing about what is predicted.
+                with capture_page() as captured:
+                    process_image(str(source), config, XmlGeneratorArguments())
+                review = captured.as_dict()
                 output = source.with_suffix(".musicxml")
                 if not output.is_file():
                     raise InferenceError(CODE_FAILED, "HOMR produced no MusicXML")
@@ -240,6 +246,7 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
                 {
                     "ok": True,
                     "musicxml": result,
+                    "review": review,
                     "durationMs": int((time.monotonic() - started) * 1000),
                 }
             )

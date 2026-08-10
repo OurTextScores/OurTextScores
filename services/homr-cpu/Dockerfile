@@ -60,7 +60,10 @@ RUN cd /opt/homr && homr --init --gpu no
 WORKDIR /app
 COPY homr-provider/homr_engine.py /app/homr_engine.py
 COPY homr-provider/homr_provider.py /app/homr_provider.py
+COPY homr-provider/homr_confidence.py /app/homr_confidence.py
+COPY homr-provider/homr_review.py /app/homr_review.py
 COPY homr-provider/test_homr_provider.py /app/test_homr_provider.py
+COPY homr-provider/test_homr_review.py /app/test_homr_review.py
 COPY homr-provider/warmup-page.png /app/warmup-page.png
 COPY homr-provider/warmup-page.musicxml /app/warmup-page.musicxml
 COPY homr-provider/LICENSE-NOTICE.md /app/LICENSE-NOTICE.md
