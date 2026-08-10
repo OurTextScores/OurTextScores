@@ -25,7 +25,7 @@ import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerMergeService } from './scanner-merge.service';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
-import { scannerUserHash } from './scanner.constants';
+import { scannerUserHash, effectivePageMusicXml } from './scanner.constants';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 
 const execFileAsync = promisify(execFile);
@@ -872,7 +872,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           // A reviewed page wins over the raw recognition. Assembly is the
           // point of the review: corrections that never reached the combined
           // score would leave the reviewer's work visible only per page.
-          const source = (page as any).reviewedMusicXml || page.musicXml!;
+          const source = effectivePageMusicXml(page);
           return {
             ordinal: page.ordinal || page.pageNumber,
             pageNumber: page.pageNumber,
@@ -994,10 +994,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const zip = new AdmZip();
     for (const page of pages) {
       const pageSegment = String(page.ordinal || page.pageNumber).padStart(3, '0');
-      if (page.musicXml) {
+      const pageMusicXml = effectivePageMusicXml(page);
+      if (pageMusicXml) {
         zip.addFile(
           `page-${pageSegment}.musicxml`,
-          await this.storage.getObjectBuffer(page.musicXml.bucket, page.musicXml.objectKey)
+          await this.storage.getObjectBuffer(pageMusicXml.bucket, pageMusicXml.objectKey)
         );
       }
       if (page.pdf) {

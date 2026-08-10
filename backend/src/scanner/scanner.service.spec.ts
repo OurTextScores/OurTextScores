@@ -719,6 +719,65 @@ describe('corrections', () => {
     expect(provider.regenerate.mock.calls[0][0][0][0][1]).toBe('.');
   });
 
+  it('accumulates corrections instead of discarding the earlier one', async () => {
+    // Regenerating from the original tokens each time and keeping only the
+    // latest edit silently destroyed every earlier correction — and a later
+    // confirmation erased one too, because it regenerates as well.
+    const tokens = [
+      ['note_4', 'C4', '_', '_', '_', 'upper'],
+      ['note_4', 'E4', '_', '_', '_', 'upper']
+    ];
+    const page: any = {
+      pageNumber: 1,
+      status: 'succeeded',
+      sourceImage: { bucket: 'raw', objectKey: 'k', checksumSha256: 'abc', sizeBytes: 1, contentType: 'image/png' },
+      musicXml: { bucket: 'd', objectKey: 'm', checksumSha256: 'x', sizeBytes: 1, contentType: 'application/xml' },
+      review: {
+        staves: [
+          {
+            index: 0,
+            region: [0, 0, 10, 10],
+            tokens,
+            symbols: [
+              { index: 0, heads: { pitch: { chosen: 'C4', confidence: 0.45, alternatives: [{ value: 'D4', confidence: 0.4 }] } } },
+              { index: 1, heads: { pitch: { chosen: 'E4', confidence: 0.46, alternatives: [{ value: 'F4', confidence: 0.4 }] } } }
+            ]
+          }
+        ]
+      }
+    };
+    const job: any = { _id: 'j', jobId: 'job-1', pages: [page] };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      // Apply the $set the way Mongo would, so the second call sees the first.
+      updateOne: (_filter: any, update: any) => ({
+        exec: async () => {
+          const staves = update.$set?.['pages.$.review.staves'];
+          if (staves) page.review.staves = staves;
+          return {};
+        }
+      })
+    };
+    provider.regenerate.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      { putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }) } as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4');
+    await service.applyCorrection('user-1', 'job-1', 1, 1, 'F4');
+
+    // The second regeneration must carry both edits, not just its own.
+    const second = provider.regenerate.mock.calls[1][0][0];
+    expect(second[0][1]).toBe('D4');
+    expect(second[1][1]).toBe('F4');
+  });
+
   it('records a confirmation as well as a change', async () => {
     // Agreeing with a 45% prediction says the model was right but unsure —
     // exactly the sample that improves calibration.

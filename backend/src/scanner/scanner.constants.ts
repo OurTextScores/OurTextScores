@@ -38,3 +38,15 @@ export const SCANNER_UPLOAD_DIRECTORY =
  * part headers.
  */
 export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
+
+/**
+ * The MusicXML that represents a page *now*.
+ *
+ * Reconciliation beats spot review beats raw recognition. One resolver, because
+ * a page is downloaded, bundled, zipped, rendered and opened in the editor by
+ * different code paths — and any of them reading `musicXml` directly hands back
+ * work the reviewer has already superseded.
+ */
+export function effectivePageMusicXml(page: any): any {
+  return page?.mergedMusicXml || page?.reviewedMusicXml || page?.musicXml;
+}

@@ -27,7 +27,11 @@ import {
   ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
-import { SCANNER_UPLOAD_DIRECTORY, scannerUserHash } from './scanner.constants';
+import {
+  effectivePageMusicXml,
+  SCANNER_UPLOAD_DIRECTORY,
+  scannerUserHash
+} from './scanner.constants';
 import { CropLevel, cropForLevel } from './scanner-crop';
 import { locateSymbol } from './scanner-locate';
 
@@ -491,7 +495,9 @@ export class ScannerService implements OnModuleInit {
         : job.previewThumbnail;
       filename = pageRequested ? `scan-page-${pageNumber}.png` : 'scan-preview.png';
     } else if (pageRequested) {
-      locator = job.pages.find((page) => page.pageNumber === pageNumber)?.musicXml;
+      locator = effectivePageMusicXml(
+        job.pages.find((page) => page.pageNumber === pageNumber)
+      );
       filename = `scan-page-${pageNumber}.musicxml`;
     } else if (job.combinedMusicXml) {
       // A validated assembly is the whole score, so it wins over the per-page
@@ -500,7 +506,8 @@ export class ScannerService implements OnModuleInit {
       filename = 'scan-combined.musicxml';
     } else {
       locator =
-        job.musicXmlBundle ?? job.pages.find((page) => page.status === 'succeeded')?.musicXml;
+        job.musicXmlBundle ??
+        effectivePageMusicXml(job.pages.find((page) => page.status === 'succeeded'));
       filename = job.pageCount === 1 ? 'scan.musicxml' : 'scan-musicxml-pages.zip';
     }
     if (!locator) throw new NotFoundException('Artifact is not available');
@@ -725,15 +732,20 @@ export class ScannerService implements OnModuleInit {
     const field = TOKEN_FIELDS.indexOf(spot.head);
     if (field < 0) throw new BadRequestException('That symbol cannot be corrected');
 
-    const edited = staves.map((entry: any) => {
+    // The edit is folded back into the stored sequence, so corrections
+    // accumulate. Regenerating from the *original* tokens each time and keeping
+    // only the latest edit silently discarded every earlier correction — and
+    // even a later confirmation would erase one, because it regenerates too.
+    const editedStaves = staves.map((entry: any) => {
+      if (entry.index !== spot.staffIndex) return entry;
       const tokens = (entry.tokens || []).map((row: string[]) => [...row]);
-      if (entry.index === spot.staffIndex && tokens[spot.symbolIndex]) {
-        tokens[spot.symbolIndex][field] = chosen;
-      }
-      return tokens;
+      if (tokens[spot.symbolIndex]) tokens[spot.symbolIndex][field] = chosen;
+      return { ...entry, tokens };
     });
 
-    const musicXmlBuffer = await this.provider.regenerate(edited);
+    const musicXmlBuffer = await this.provider.regenerate(
+      editedStaves.map((entry: any) => entry.tokens || [])
+    );
     const locator = await this.storage.putDerivativeObject(
       `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-reviewed.musicxml`,
       musicXmlBuffer,
@@ -758,7 +770,10 @@ export class ScannerService implements OnModuleInit {
       .updateOne(
         { _id: job._id, 'pages.pageNumber': pageNumber },
         {
-          $set: { 'pages.$.reviewedMusicXml': locator, 'pages.$.review.staves': staves },
+          $set: {
+            'pages.$.reviewedMusicXml': locator,
+            'pages.$.review.staves': editedStaves
+          },
           $push: { 'pages.$.corrections': correction }
         }
       )
