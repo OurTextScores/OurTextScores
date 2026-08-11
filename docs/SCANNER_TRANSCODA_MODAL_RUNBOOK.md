@@ -135,7 +135,7 @@ uv run --no-project \
     -s services/transcoda-provider -p 'test_*.py' -v
 ```
 
-Expect ten passing tests.
+Expect twelve passing tests.
 
 ### 2.3 Load the deployment definition locally
 

@@ -108,7 +108,10 @@ def _build_manifest_digest() -> str:
         and path.suffix != ".pyc"
         and not path.name.startswith("test_")
     ]
-    for path in sorted([Path(__file__), WARMUP_PAGE, *shared_inputs]):
+    # Resolve this file just like the other inputs. `runpy.run_path()` otherwise
+    # keeps a relative `__file__`, which changes sort order and makes the
+    # pre-deployment digest differ from Modal's absolute-path import.
+    for path in sorted([Path(__file__).resolve(), WARMUP_PAGE, *shared_inputs]):
         digest.update(path.name.encode("utf-8") + b"\0")
         digest.update(path.read_bytes())
     return "sha256:" + digest.hexdigest()

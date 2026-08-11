@@ -12,6 +12,16 @@ from unittest.mock import patch
 
 
 class ModalDefinitionTest(unittest.TestCase):
+    def test_manifest_digest_is_independent_of_run_path_spelling(self) -> None:
+        source = Path(__file__).with_name("modal_app.py").resolve()
+        relative_source = Path(os.path.relpath(source, Path.cwd()))
+        with patch.dict(os.environ, {"OTS_SOURCE_COMMIT": "b" * 40}, clear=False):
+            os.environ.pop("TRANSCODA_CONTAINER_IMAGE_DIGEST", None)
+            absolute = runpy.run_path(str(source))["CONTAINER_IMAGE_DIGEST"]
+            relative = runpy.run_path(str(relative_source))["CONTAINER_IMAGE_DIGEST"]
+
+        self.assertEqual(absolute, relative)
+
     def test_remote_import_uses_baked_digest_without_checkout_files(self) -> None:
         source = Path(__file__).with_name("modal_app.py")
         digest = "sha256:" + "a" * 64
