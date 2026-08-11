@@ -28,6 +28,18 @@ export interface ScannerStorageLocator {
   inputSignature?: string;
 }
 
+/** Pixel identity of the exact, post-rotation raster supplied to an OMR engine. */
+export interface ScannerRasterIdentity {
+  checksumSha256: string;
+  width: number;
+  height: number;
+}
+
+/** Immutable stored input for recognition and later page-coordinate crops. */
+export interface ScannerRecognitionRaster extends ScannerRasterIdentity {
+  storage: ScannerStorageLocator;
+}
+
 export interface ScannerSourceInput {
   originalFilename: string;
   storage: ScannerStorageLocator;
@@ -66,6 +78,9 @@ export interface ScannerPageResult {
   manualRetries?: number;
   sourceImage?: ScannerStorageLocator;
   thumbnail?: ScannerStorageLocator;
+  recognitionRaster?: ScannerRecognitionRaster;
+  /** Superseded immutable rasters retained only so source expiry can delete them. */
+  recognitionRasterHistory?: ScannerRecognitionRaster[];
   musicXml?: ScannerStorageLocator;
   /** MusicXML produced by dual-engine reconciliation; preferred over spot review. */
   mergedMusicXml?: ScannerStorageLocator;

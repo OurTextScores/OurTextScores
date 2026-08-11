@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   ScannerEngineProvenance,
   ScannerPageResult,
+  ScannerRasterIdentity,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 
@@ -57,6 +58,8 @@ export interface ScannerEngineRun {
   attempts: number;
   providerAttempts?: number;
   idempotencyKey: string;
+  /** Exact post-rotation pixels supplied to this run; geometry must bind to this identity. */
+  recognitionRaster?: ScannerRasterIdentity;
   providerRequestId?: string;
   durationMs?: number;
   inferenceMs?: number;
@@ -350,6 +353,7 @@ export function scannerEngineReviewContentSignature(run: ScannerEngineRun): stri
     .update(
       JSON.stringify({
         engine: run.engine,
+        recognitionRaster: run.recognitionRaster,
         rawMusicXmlSha256: run.artifacts.musicXml?.checksumSha256,
         reviewedMusicXmlSha256: run.reviewedMusicXml?.checksumSha256,
         review: run.review,
@@ -385,6 +389,7 @@ export function scannerEngineManifest(page: ScannerPageResult): Record<string, u
                 providerRequestId: run.providerRequestId,
                 durationMs: run.durationMs,
                 inferenceMs: run.inferenceMs,
+                recognitionRaster: run.recognitionRaster,
                 generation: run.generation,
                 errorCode: run.errorCode,
                 errorMessage: run.errorMessage,

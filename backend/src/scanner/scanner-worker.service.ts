@@ -25,6 +25,8 @@ import {
   ScannerJob,
   ScannerJobDocument,
   ScannerPageResult,
+  ScannerRecognitionRaster,
+  ScannerRasterIdentity,
   ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
@@ -361,19 +363,29 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
         const image = await fs.readFile(pageFile.path);
+        const recognitionRaster = await this.persistRecognitionRaster(
+          job,
+          prior,
+          image,
+          pageFile.contentType
+        );
         const startingPage = this.withInitialPlannedEngineRuns(
           job,
           this.withHomrCompatibility(
             job,
-            prior || {
-              pageNumber,
-              ordinal: pageNumber,
-              rotationDegrees: 0,
-              included: true,
-              status: 'pending',
-              attempts: 0,
-              manualRetries: 0,
-              idempotencyKey: ''
+            {
+              ...(prior || {
+                pageNumber,
+                ordinal: pageNumber,
+                rotationDegrees: 0,
+                included: true,
+                status: 'pending',
+                attempts: 0,
+                manualRetries: 0,
+                idempotencyKey: ''
+              }),
+              recognitionRaster,
+              recognitionRasterHistory: this.recognitionRasterHistory(prior, recognitionRaster)
             },
             { providerRevision, modelRevision, provenance: engineProvenance }
           )
@@ -393,6 +405,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           job,
           page: pageForRecognition,
           image,
+          recognitionRaster: this.recognitionRasterIdentity(recognitionRaster),
           contentType: pageFile.contentType,
           pageNumber,
           detectTitle,
@@ -567,6 +580,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     job: ScannerJobDocument;
     page: ScannerPageResult;
     image: Buffer;
+    recognitionRaster: ScannerRasterIdentity;
     contentType: 'image/png' | 'image/jpeg';
     pageNumber: number;
     detectTitle: boolean;
@@ -586,6 +600,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           idempotencyKey: page.engines?.[engineId]?.idempotencyKey || '',
           errorCode: 'engine_not_registered',
           errorMessage: `Scanner engine ${engineId} is not registered for execution`,
+          recognitionRaster: input.recognitionRaster,
           artifacts: page.engines?.[engineId]?.artifacts || {}
         });
         this.telemetry.emit('page_engine_failed', {
@@ -615,6 +630,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     job: ScannerJobDocument;
     page: ScannerPageResult;
     image: Buffer;
+    recognitionRaster: ScannerRasterIdentity;
     contentType: 'image/png' | 'image/jpeg';
     pageNumber: number;
     detectTitle: boolean;
@@ -624,8 +640,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }): Promise<{ page: ScannerPageResult; providerMs: number }> {
     const { definition } = input;
     const prior = input.page.engines?.[definition.id];
+    const inputSha256 = createHash('sha256').update(input.image).digest('hex');
+    if (
+      input.recognitionRaster.checksumSha256 !== inputSha256 ||
+      !Number.isInteger(input.recognitionRaster.width) ||
+      input.recognitionRaster.width <= 0 ||
+      !Number.isInteger(input.recognitionRaster.height) ||
+      input.recognitionRaster.height <= 0
+    ) {
+      throw new ScannerProviderError(
+        'Scanner run recognition-raster identity does not match its input',
+        'provider_input_digest_mismatch',
+        false
+      );
+    }
     const idempotencyKey = definition.adapter.createIdempotencyKey({
-      inputSha256: createHash('sha256').update(input.image).digest('hex'),
+      inputSha256,
       pageNumber: input.pageNumber,
       detectTitle: input.detectTitle,
       generation: input.job.generation
@@ -637,10 +667,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         .filter(([, artifact]) => artifact.requiredProviderOutput)
         .every(([kind]) => Boolean(this.engineArtifact(prior, kind)))
     ) {
-      return { page: withScannerEngineRun(input.page, prior), providerMs: 0 };
+      return {
+        page: withScannerEngineRun(input.page, {
+          ...prior,
+          recognitionRaster: input.recognitionRaster
+        }),
+        providerMs: 0
+      };
     }
     if (prior && this.shouldPreservePriorFailure(prior, idempotencyKey)) {
-      return { page: withScannerEngineRun(input.page, prior), providerMs: 0 };
+      return {
+        page: withScannerEngineRun(input.page, {
+          ...prior,
+          recognitionRaster: input.recognitionRaster
+        }),
+        providerMs: 0
+      };
     }
     const disabledReason = this.engineDisabledReasons.get(definition.id);
     if (disabledReason) {
@@ -651,6 +693,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           attempts: 0,
           providerAttempts: prior?.providerAttempts,
           idempotencyKey,
+          recognitionRaster: input.recognitionRaster,
           errorCode: 'provider_disabled',
           errorMessage: disabledReason,
           artifacts: prior?.artifacts || {}
@@ -665,6 +708,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       attempts: prior?.attempts || 0,
       providerAttempts: prior?.providerAttempts,
       idempotencyKey,
+      recognitionRaster: input.recognitionRaster,
       artifacts: prior?.artifacts || {}
     });
     await input.onPageChange?.(runningPage);
@@ -775,6 +819,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         attempts: scanned.attempts,
         providerAttempts: (prior?.providerAttempts || 0) + scanned.attempts,
         idempotencyKey,
+        recognitionRaster: input.recognitionRaster,
         providerRequestId: scanned.result.requestId,
         durationMs: providerMs,
         inferenceMs: scanned.result.inferenceMs,
@@ -848,6 +893,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         attempts,
         providerAttempts: (prior?.providerAttempts || 0) + attempts,
         idempotencyKey,
+        recognitionRaster: input.recognitionRaster,
         durationMs: providerMs,
         errorCode: providerError.code,
         errorMessage: providerError.message,
@@ -1235,6 +1281,66 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       pages.push({ pageNumber: page.pageNumber, path, contentType: 'image/png' });
     }
     return pages;
+  }
+
+  private recognitionRasterIdentity(raster: ScannerRecognitionRaster): ScannerRasterIdentity {
+    return {
+      checksumSha256: raster.checksumSha256,
+      width: raster.width,
+      height: raster.height
+    };
+  }
+
+  private recognitionRasterHistory(
+    page: ScannerPageResult | undefined,
+    current: ScannerRecognitionRaster
+  ): ScannerRecognitionRaster[] | undefined {
+    const history = new Map<string, ScannerRecognitionRaster>();
+    for (const raster of [
+      ...(page?.recognitionRasterHistory || []),
+      ...(page?.recognitionRaster ? [page.recognitionRaster] : [])
+    ]) {
+      if (raster.checksumSha256 !== current.checksumSha256) {
+        history.set(`${raster.storage.bucket}/${raster.storage.objectKey}`, raster);
+      }
+    }
+    return history.size > 0 ? [...history.values()] : undefined;
+  }
+
+  /** Persist the exact post-rotation bytes used by every engine on this page. */
+  private async persistRecognitionRaster(
+    job: ScannerJobDocument,
+    page: ScannerPageResult | undefined,
+    image: Buffer,
+    contentType: 'image/png' | 'image/jpeg'
+  ): Promise<ScannerRecognitionRaster> {
+    const metadata = await sharp(image).metadata();
+    const width = Number(metadata.width || 0);
+    const height = Number(metadata.height || 0);
+    if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) {
+      throw new ScannerProviderError(
+        'The recognition raster dimensions could not be read',
+        'source_page_missing',
+        false
+      );
+    }
+    const checksumSha256 = createHash('sha256').update(image).digest('hex');
+    const current = page?.recognitionRaster;
+    if (
+      current?.checksumSha256 === checksumSha256 &&
+      current.width === width &&
+      current.height === height
+    ) {
+      return current;
+    }
+    const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
+    const pageSegment = String(page?.pageNumber || 0).padStart(3, '0');
+    const storage = await this.store(
+      `${this.sourceBaseKey(job)}/page-${pageSegment}-recognition-g${job.generation}-${checksumSha256.slice(0, 16)}.${extension}`,
+      image,
+      contentType
+    );
+    return { storage, checksumSha256, width, height };
   }
 
   /**
@@ -1676,13 +1782,24 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       const locators = [
         job.input,
         ...(job.inputs || []).map((item) => item.storage),
-        ...job.pages.flatMap((page) => [page.sourceImage, page.thumbnail])
+        ...job.pages.flatMap((page) => [
+          page.sourceImage,
+          page.thumbnail,
+          page.recognitionRaster?.storage,
+          ...(page.recognitionRasterHistory || []).map((raster) => raster.storage)
+        ])
       ].filter(Boolean) as ScannerStorageLocator[];
       await Promise.all(
         locators.map((locator) => this.storage.deleteObject(locator.bucket, locator.objectKey))
       );
       const pages = job.pages.map(
-        ({ sourceImage: _sourceImage, thumbnail: _thumbnail, ...page }) => page
+        ({
+          sourceImage: _sourceImage,
+          thumbnail: _thumbnail,
+          recognitionRaster: _recognitionRaster,
+          recognitionRasterHistory: _recognitionRasterHistory,
+          ...page
+        }) => page
       );
       await this.jobs
         .updateOne(

@@ -10,6 +10,7 @@ import type {
   ScannerComparisonBlock,
   ScannerComparisonMeasureIdentity
 } from './scanner-comparison-blocks';
+import type { ScannerRasterIdentity } from './schemas/scanner-job.schema';
 
 export const SCANNER_MEASURE_GEOMETRY_VERSION = 'scanner-measure-geometry-v1';
 export const SCANNER_COMPARISON_GEOMETRY_JOIN_VERSION = 'scanner-comparison-geometry-join-v1';
@@ -17,11 +18,8 @@ export const MAX_SCANNER_MEASURE_GEOMETRY_REFS = 262_144;
 export const MAX_SCANNER_MEASURE_CROPS_PER_REF = 64;
 export const MAX_SCANNER_MEASURE_CROP_STAVES = 256;
 
-export interface ScannerSourceImageIdentity {
-  checksumSha256: string;
-  width: number;
-  height: number;
-}
+/** Compatibility name retained for the geometry API. */
+export type ScannerSourceImageIdentity = ScannerRasterIdentity;
 
 /**
  * Page-coordinate geometry plus explicit engine-document measure joins.

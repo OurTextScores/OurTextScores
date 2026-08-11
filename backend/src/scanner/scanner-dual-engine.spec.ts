@@ -108,6 +108,7 @@ describe('dual-engine content identity', () => {
       status: 'succeeded',
       attempts: 1,
       idempotencyKey: 'future-key',
+      recognitionRaster: { checksumSha256: 'a'.repeat(64), width: 100, height: 200 },
       artifacts: { musicXml: { checksumSha256: 'raw' } },
       reviewedMusicXml: reviewed,
       review: { staves: [] },
@@ -122,6 +123,12 @@ describe('dual-engine content identity', () => {
       scannerEngineReviewContentSignature({
         ...run,
         corrections: [{ spotId: 0, chosen: 'D4' }]
+      })
+    ).not.toBe(signature);
+    expect(
+      scannerEngineReviewContentSignature({
+        ...run,
+        recognitionRaster: { ...run.recognitionRaster, checksumSha256: 'b'.repeat(64) }
       })
     ).not.toBe(signature);
   });

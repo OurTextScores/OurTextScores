@@ -955,7 +955,11 @@ export class ScannerService implements OnModuleInit {
     // reviewer just made.
     try {
       await this.corrections.create({
-        pageSha256: page.sourceImage?.checksumSha256 || '',
+        pageSha256:
+          reviewEngine.run.recognitionRaster?.checksumSha256 ||
+          page.recognitionRaster?.checksumSha256 ||
+          page.sourceImage?.checksumSha256 ||
+          '',
         userHash: this.userHash(userId),
         engineId: reviewEngine.engineId,
         staffIndex: spot.staffIndex,
@@ -1049,7 +1053,7 @@ export class ScannerService implements OnModuleInit {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
-    if (!page?.sourceImage) throw new NotFoundException('Scanner page image is not available');
+    if (!page) throw new NotFoundException('Scanner page image is not available');
     if (page.mergedMusicXml) {
       throw new ConflictException('Spot review is unavailable after engine reconciliation');
     }
@@ -1068,9 +1072,25 @@ export class ScannerService implements OnModuleInit {
     if (!spot) throw new NotFoundException('Scanner review spot not found');
     const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
 
+    const runRaster = reviewEngine.run.recognitionRaster;
+    const pageRaster = page.recognitionRaster;
+    if (runRaster && !pageRaster) {
+      throw new NotFoundException('Scanner page image is not available');
+    }
+    if (
+      runRaster &&
+      pageRaster &&
+      (runRaster.checksumSha256 !== pageRaster.checksumSha256 ||
+        runRaster.width !== pageRaster.width ||
+        runRaster.height !== pageRaster.height)
+    ) {
+      throw new ConflictException('Scanner recognition raster changed; refresh and try again');
+    }
+    const sourceLocator = runRaster ? pageRaster?.storage : page.sourceImage;
+    if (!sourceLocator) throw new NotFoundException('Scanner page image is not available');
     const source = await this.storage.getObjectBuffer(
-      page.sourceImage.bucket,
-      page.sourceImage.objectKey
+      sourceLocator.bucket,
+      sourceLocator.objectKey
     );
     const image = sharp(source);
     const metadata = await image.metadata();
@@ -1222,6 +1242,7 @@ export class ScannerService implements OnModuleInit {
       providerRequestId: run.providerRequestId,
       durationMs: run.durationMs,
       inferenceMs: run.inferenceMs,
+      recognitionRaster: run.recognitionRaster,
       generation: run.generation,
       completeness: run.completeness,
       errorCode: run.errorCode,
@@ -1331,6 +1352,8 @@ export class ScannerService implements OnModuleInit {
       ...job.pages.flatMap((page) => [
         page.sourceImage,
         page.thumbnail,
+        page.recognitionRaster?.storage,
+        ...(page.recognitionRasterHistory || []).map((raster) => raster.storage),
         page.musicXml,
         page.reviewedMusicXml,
         page.mergedMusicXml,

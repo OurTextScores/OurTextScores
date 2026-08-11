@@ -4,12 +4,18 @@ import { ScannerWorkerService } from './scanner-worker.service';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import sharp = require('sharp');
 import AdmZip = require('adm-zip');
 import { scannerDefaultEnginePlan, scannerEnginePlan } from './scanner-dual-engine';
 import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
 
 describe('ScannerWorkerService', () => {
+  const recognitionRaster = {
+    checksumSha256: createHash('sha256').update(Buffer.from('image')).digest('hex'),
+    width: 1920,
+    height: 1080
+  };
   const values: Record<string, string> = {
     SCANNER_ENABLED: 'true',
     SCANNER_PROVIDER_BUDGET_EXHAUSTED: 'false'
@@ -162,6 +168,7 @@ describe('ScannerWorkerService', () => {
               status: 'succeeded',
               attempts: 1,
               idempotencyKey: 'transcoda-key',
+              recognitionRaster,
               providerRequestId: 'transcoda-request',
               providerRevision: 'transcoda-service',
               modelRevision: 'transcoda-model',
@@ -189,6 +196,7 @@ describe('ScannerWorkerService', () => {
     expect(manifest.pages[0].engines.transcoda).toMatchObject({
       status: 'succeeded',
       providerRequestId: 'transcoda-request',
+      recognitionRaster,
       provenance: { executionProvider: 'torch.cuda' },
       artifacts: {
         musicXmlSha256: 'transcoda-checksum',
@@ -362,6 +370,7 @@ describe('ScannerWorkerService', () => {
         }
       },
       image: Buffer.from('image'),
+      recognitionRaster,
       contentType: 'image/png',
       pageNumber: 1,
       detectTitle: false,
@@ -455,6 +464,7 @@ describe('ScannerWorkerService', () => {
       job,
       page,
       image: Buffer.from('image'),
+      recognitionRaster,
       contentType: 'image/png',
       pageNumber: 1,
       detectTitle: false,
@@ -578,6 +588,7 @@ describe('ScannerWorkerService', () => {
       job,
       page,
       image: Buffer.from('image'),
+      recognitionRaster,
       contentType: 'image/png',
       pageNumber: 1,
       detectTitle: false,
@@ -723,6 +734,7 @@ describe('ScannerWorkerService', () => {
         }
       },
       image: Buffer.from('image'),
+      recognitionRaster,
       contentType: 'image/png',
       pageNumber: 1,
       detectTitle: false,
@@ -1065,5 +1077,61 @@ describe('ScannerWorkerService', () => {
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
     }
+  });
+
+  it('stores and reuses the exact recognition raster with checksum and dimensions', async () => {
+    const image = await sharp({
+      create: { width: 37, height: 19, channels: 3, background: '#ffffff' }
+    })
+      .png()
+      .toBuffer();
+    const storage = {
+      putAuxiliaryObject: jest.fn(async (objectKey: string) => ({
+        bucket: 'scanner',
+        objectKey
+      }))
+    } as any;
+    const scannerWorker = new ScannerWorkerService(
+      {} as any,
+      storage,
+      provider,
+      transcodaProvider,
+      {} as any,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config
+    ) as any;
+    const job = { jobId: 'job-1', userId: 'user-1', generation: 4 };
+    const page = { pageNumber: 2 };
+
+    const first = await scannerWorker.persistRecognitionRaster(job, page, image, 'image/png');
+    expect(first).toMatchObject({
+      checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      width: 37,
+      height: 19,
+      storage: {
+        contentType: 'image/png',
+        sizeBytes: image.length,
+        objectKey: expect.stringMatching(/page-002-recognition-g4-[a-f0-9]{16}\.png$/)
+      }
+    });
+    const second = await scannerWorker.persistRecognitionRaster(
+      job,
+      { ...page, recognitionRaster: first },
+      image,
+      'image/png'
+    );
+    expect(second).toBe(first);
+    expect(storage.putAuxiliaryObject).toHaveBeenCalledTimes(1);
+    const changed = {
+      ...first,
+      checksumSha256: 'f'.repeat(64),
+      storage: { ...first.storage, objectKey: 'new-raster.png' }
+    };
+    expect(
+      scannerWorker.recognitionRasterHistory({ ...page, recognitionRaster: first }, changed)
+    ).toEqual([first]);
   });
 });
