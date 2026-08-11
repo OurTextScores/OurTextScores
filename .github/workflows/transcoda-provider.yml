@@ -1,0 +1,56 @@
+name: Transcoda Provider
+
+on:
+  push:
+    branches: ["main", "feature/scanner"]
+    paths:
+      - "services/transcoda-provider/**"
+      - "services/transcoda-modal/**"
+      - ".github/workflows/transcoda-provider.yml"
+  pull_request:
+    paths:
+      - "services/transcoda-provider/**"
+      - "services/transcoda-modal/**"
+      - ".github/workflows/transcoda-provider.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    name: Contract and source checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/transcoda-provider
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install contract-test dependencies
+        run: >-
+          python -m pip install
+          fastapi==0.116.1
+          httpx==0.28.1
+          python-multipart==0.0.30
+          ruff==0.12.12
+
+      - name: Check provider source
+        working-directory: .
+        run: |
+          ruff check services/transcoda-provider services/transcoda-modal
+          ruff format --check services/transcoda-provider services/transcoda-modal
+          python -m py_compile \
+            services/transcoda-provider/transcoda_engine.py \
+            services/transcoda-provider/transcoda_provider.py \
+            services/transcoda-provider/test_transcoda_provider.py \
+            services/transcoda-modal/modal_app.py
+
+      - name: Run HTTP contract tests
+        run: python -m unittest test_transcoda_provider -v

@@ -13,8 +13,8 @@ describe('ScannerTranscodaProviderService', () => {
     SCANNER_EXPECTED_TRANSCODA_MODEL_SHA256: 'a'.repeat(64),
     SCANNER_EXPECTED_TRANSCODA_CONTAINER_IMAGE_DIGEST: `sha256:${'c'.repeat(64)}`,
     SCANNER_EXPECTED_TRANSCODA_CONVERTER: 'music21',
-    SCANNER_EXPECTED_TRANSCODA_CONVERTER_VERSION: '9.7.1',
-    SCANNER_EXPECTED_TRANSCODA_EXECUTION_PROVIDER: 'CUDAExecutionProvider'
+    SCANNER_EXPECTED_TRANSCODA_CONVERTER_VERSION: '9.9.1',
+    SCANNER_EXPECTED_TRANSCODA_EXECUTION_PROVIDER: 'torch.cuda'
   };
   const config = {
     get: jest.fn((key: string, fallback?: string) => values[key] ?? fallback)
@@ -40,8 +40,8 @@ describe('ScannerTranscodaProviderService', () => {
       modelArtifactSha256: 'a'.repeat(64),
       containerImageDigest: `sha256:${'c'.repeat(64)}`,
       converter: 'music21',
-      converterVersion: '9.7.1',
-      executionProvider: 'CUDAExecutionProvider'
+      converterVersion: '9.9.1',
+      executionProvider: 'torch.cuda'
     },
     result: {
       kernBase64: kern.toString('base64'),
@@ -88,8 +88,8 @@ describe('ScannerTranscodaProviderService', () => {
         modelArtifactSha256: 'a'.repeat(64),
         containerImageDigest: `sha256:${'c'.repeat(64)}`,
         converter: 'music21',
-        converterVersion: '9.7.1',
-        executionProvider: 'CUDAExecutionProvider'
+        converterVersion: '9.9.1',
+        executionProvider: 'torch.cuda'
       }
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);

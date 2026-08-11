@@ -127,10 +127,7 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
     );
     this.verifyExpected(
       executionProvider,
-      this.config.get<string>(
-        'SCANNER_EXPECTED_TRANSCODA_EXECUTION_PROVIDER',
-        'CUDAExecutionProvider'
-      ),
+      this.config.get<string>('SCANNER_EXPECTED_TRANSCODA_EXECUTION_PROVIDER', 'torch.cuda'),
       'provider_execution_provider_mismatch',
       'Scanner Transcoda execution verification failed'
     );
