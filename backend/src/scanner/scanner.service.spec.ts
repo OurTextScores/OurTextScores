@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
 import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { ScannerService } from './scanner.service';
@@ -695,6 +696,163 @@ describe('ScannerService', () => {
     await expect(
       service.getArtifact('user-1', 'job-1', '../mei', 1, 'audiveris-5')
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('compares the selected reviewed and raw engine artifacts through the live pipeline', async () => {
+    const score = (partId: string, voice: number) =>
+      Buffer.from(
+        `<score-partwise><part-list><score-part id="${partId}"><part-name>Cello</part-name></score-part></part-list><part id="${partId}"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>${voice}</voice><staff>1</staff></note></measure></part></score-partwise>`
+      );
+    const reviewedHomr = score('P1', 1);
+    const rawTranscoda = score('T9', 2);
+    const checksum = (body: Buffer) => createHash('sha256').update(body).digest('hex');
+    const raster = {
+      checksumSha256: createHash('sha256').update('raster').digest('hex'),
+      width: 100,
+      height: 50
+    };
+    const locator = (objectKey: string, body: Buffer) => ({
+      bucket: 'scanner',
+      objectKey,
+      checksumSha256: checksum(body),
+      sizeBytes: body.length,
+      contentType: 'application/vnd.recordare.musicxml+xml'
+    });
+    const reviewedLocator = locator('homr-reviewed.musicxml', reviewedHomr);
+    const candidateLocator = locator('transcoda.musicxml', rawTranscoda);
+    const job: any = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      pageCount: 1,
+      enginePlan: scannerEnginePlan(['homr', 'transcoda']),
+      pages: [
+        {
+          pageNumber: 1,
+          status: 'succeeded',
+          recognitionRaster: {
+            ...raster,
+            storage: { bucket: 'scanner', objectKey: 'recognition.png' }
+          },
+          engines: {
+            homr: {
+              engine: 'homr',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'homr-key',
+              recognitionRaster: raster,
+              modelRevision: 'abcdef0',
+              artifacts: { musicXml: locator('homr-raw.musicxml', score('P1', 3)) },
+              reviewedMusicXml: reviewedLocator,
+              review: {
+                staves: [
+                  {
+                    index: 0,
+                    region: [0, 0, 100, 50],
+                    barLines: [0, 100],
+                    tokens: [['note_4', 'C4', '_', '_', '_', 'upper']],
+                    symbols: []
+                  }
+                ]
+              }
+            },
+            transcoda: {
+              engine: 'transcoda',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'transcoda-key',
+              recognitionRaster: raster,
+              completeness: 'complete',
+              artifacts: { musicXml: candidateLocator }
+            }
+          }
+        }
+      ]
+    };
+    const bodies: Record<string, Buffer> = {
+      [reviewedLocator.objectKey]: reviewedHomr,
+      [candidateLocator.objectKey]: rawTranscoda
+    };
+    const comparisonStorage = {
+      getObjectBuffer: jest.fn(async (_bucket: string, objectKey: string) => bodies[objectKey])
+    } as any;
+    const registry = new ScannerEngineRegistry(config, provider, { engine: 'transcoda' } as any);
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections,
+      comparisonStorage,
+      provider,
+      telemetry,
+      alerts,
+      config,
+      registry
+    );
+
+    const result = await service.pageComparison('user-1', 'job-1', 1, 'homr', 'transcoda');
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      base: { artifactChecksumSha256: reviewedLocator.checksumSha256 },
+      candidate: { artifactChecksumSha256: candidateLocator.checksumSha256 },
+      geometry: { status: 'ready' }
+    });
+    expect(comparisonStorage.getObjectBuffer.mock.calls).toEqual([
+      ['scanner', 'homr-reviewed.musicxml'],
+      ['scanner', 'transcoda.musicxml']
+    ]);
+  });
+
+  it('explicitly refuses comparison for a retained job without raster identities', async () => {
+    const artifact = (engine: string) => ({
+      bucket: 'scanner',
+      objectKey: `${engine}.musicxml`,
+      checksumSha256: engine === 'homr' ? 'a'.repeat(64) : 'b'.repeat(64)
+    });
+    const job: any = {
+      jobId: 'legacy-job',
+      userId: 'user-1',
+      pageCount: 1,
+      enginePlan: scannerEnginePlan(['homr', 'transcoda']),
+      pages: [
+        {
+          pageNumber: 1,
+          status: 'succeeded',
+          engines: {
+            homr: {
+              engine: 'homr',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'homr-key',
+              artifacts: { musicXml: artifact('homr') }
+            },
+            transcoda: {
+              engine: 'transcoda',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'transcoda-key',
+              artifacts: { musicXml: artifact('transcoda') }
+            }
+          }
+        }
+      ]
+    };
+    const comparisonStorage = { getObjectBuffer: jest.fn() } as any;
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections,
+      comparisonStorage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await expect(
+      service.pageComparison('user-1', 'legacy-job', 1, 'homr', 'transcoda')
+    ).resolves.toMatchObject({
+      status: 'refused',
+      refusalReasons: [{ code: 'recognition-raster-unavailable' }]
+    });
+    expect(comparisonStorage.getObjectBuffer).not.toHaveBeenCalled();
   });
 
   it('queues one manual generation for a transiently failed page', async () => {

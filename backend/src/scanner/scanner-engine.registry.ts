@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
   ScannerEngineCapabilitySnapshot,
+  ScannerEngineArtifacts,
   ScannerEngineId,
   ScannerEnginePlan
 } from './scanner-dual-engine';
@@ -13,7 +14,11 @@ import {
 import type { ScannerPageProvider } from './scanner-provider.contract';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.service';
-import type { ScannerPageResult } from './schemas/scanner-job.schema';
+import type { ScannerPageResult, ScannerRasterIdentity } from './schemas/scanner-job.schema';
+import type { ScannerDescribedPart } from './scanner-measure-analysis';
+import type { ScannerPartMatchResult } from './scanner-part-matching';
+import type { ScannerMeasureGeometryManifest } from './scanner-comparison-geometry';
+import { buildScannerHomrMeasureGeometry } from './scanner-homr-measure-geometry';
 
 export interface ScannerEngineArtifactDefinition {
   contentType: string;
@@ -23,6 +28,22 @@ export interface ScannerEngineArtifactDefinition {
   /** The provider response must contain this artifact for a successful run. */
   requiredProviderOutput: boolean;
 }
+
+export interface ScannerMeasureGeometryProducerInput {
+  artifactChecksumSha256: string;
+  sourceImage: ScannerRasterIdentity;
+  producerRevision: string;
+  partMatchResult: ScannerPartMatchResult;
+  parts: ScannerDescribedPart[];
+  review?: ScannerPageResult['review'];
+  artifacts: ScannerEngineArtifacts;
+  loadArtifact: (kind: string) => Promise<Buffer | undefined>;
+  loadRecognitionRaster: () => Promise<Buffer>;
+}
+
+export type ScannerMeasureGeometryProducerResult =
+  | { status: 'succeeded'; geometry: ScannerMeasureGeometryManifest }
+  | { status: 'refused'; refusalReasons: Array<{ code: string; detail: string }> };
 
 export interface ScannerEngineDefinition {
   id: ScannerEngineId;
@@ -35,6 +56,10 @@ export interface ScannerEngineDefinition {
   timeoutConfigKey: string;
   capabilities: ScannerEngineCapabilitySnapshot;
   artifacts: Record<string, ScannerEngineArtifactDefinition>;
+  /** Optional engine-specific join from its MusicXML measures to page coordinates. */
+  measureGeometryProducer?: (
+    input: ScannerMeasureGeometryProducerInput
+  ) => ScannerMeasureGeometryProducerResult | Promise<ScannerMeasureGeometryProducerResult>;
 }
 
 /**
@@ -66,6 +91,16 @@ export class ScannerEngineRegistry {
         supportsMeasureGeometry: true,
         unsupportedSemanticClasses: []
       },
+      measureGeometryProducer: (input) =>
+        buildScannerHomrMeasureGeometry({
+          engineId: 'homr',
+          artifactChecksumSha256: input.artifactChecksumSha256,
+          sourceImage: input.sourceImage,
+          producerRevision: input.producerRevision,
+          partMatchResult: input.partMatchResult,
+          parts: input.parts,
+          staves: input.review?.staves || []
+        }),
       artifacts: {
         musicxml: {
           contentType: 'application/vnd.recordare.musicxml+xml',
@@ -131,6 +166,8 @@ export class ScannerEngineRegistry {
     const definedKinds = Object.keys(definition.artifacts).sort();
     const extensions = Object.values(definition.artifacts).map((artifact) => artifact.extension);
     if (
+      (Boolean(definition.measureGeometryProducer) &&
+        !definition.capabilities.supportsMeasureGeometry) ||
       declaredKinds.length !== new Set(declaredKinds).size ||
       declaredKinds.length !== definedKinds.length ||
       declaredKinds.some((kind, index) => kind !== definedKinds[index]) ||

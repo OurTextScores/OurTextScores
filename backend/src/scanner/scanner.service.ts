@@ -76,6 +76,7 @@ import type {
   ScannerEngineId,
   ScannerEngineRun
 } from './scanner-dual-engine';
+import { compareScannerPage, SCANNER_PAGE_COMPARISON_VERSION } from './scanner-page-comparison';
 
 const execFileAsync = promisify(execFile);
 const ACTIVE_STATUSES = ['queued', 'preparing', 'ready', 'running', 'rendering'];
@@ -798,6 +799,140 @@ export class ScannerService implements OnModuleInit {
       remainingFloor: remainingFloor(spots, 0),
       suitability
     };
+  }
+
+  /** Build a fresh, read-only comparison from the selected stored engine revisions. */
+  async pageComparison(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    baseEngineId: string,
+    candidateEngineId: string
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    if (
+      !isScannerEngineId(baseEngineId) ||
+      !isScannerEngineId(candidateEngineId) ||
+      baseEngineId === candidateEngineId
+    ) {
+      throw new BadRequestException('Comparison requires two distinct valid scanner engines');
+    }
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.mergedMusicXml) {
+      throw new ConflictException('Comparison is unavailable after engine reconciliation');
+    }
+    const plan = this.enginePlanForJob(job);
+    for (const engineId of [baseEngineId, candidateEngineId]) {
+      if (!plan.engineIds.includes(engineId)) {
+        throw new BadRequestException(`Scanner engine ${engineId} is not part of this job`);
+      }
+      if (this.registeredEngines && !this.registeredEngines.get(engineId)) {
+        throw new BadRequestException(
+          `Scanner engine ${engineId} is not registered for comparison`
+        );
+      }
+    }
+
+    const runFor = (engineId: ScannerEngineId): ScannerEngineRun | undefined =>
+      page.engines?.[engineId] ||
+      (engineId === 'homr'
+        ? scannerHomrRun(page, {
+            providerRevision: job.providerRevision,
+            modelRevision: job.modelRevision,
+            provenance: job.engineProvenance
+          })
+        : undefined);
+    const baseRun = runFor(baseEngineId);
+    const candidateRun = runFor(candidateEngineId);
+    if (baseRun?.status !== 'succeeded' || candidateRun?.status !== 'succeeded') {
+      throw new ConflictException('Both selected scanner engines must have successful results');
+    }
+    const baseArtifact = baseRun.reviewedMusicXml || baseRun.artifacts.musicXml;
+    const candidateArtifact = candidateRun.reviewedMusicXml || candidateRun.artifacts.musicXml;
+    if (
+      !/^[a-f0-9]{64}$/i.test(baseArtifact?.checksumSha256 || '') ||
+      !/^[a-f0-9]{64}$/i.test(candidateArtifact?.checksumSha256 || '')
+    ) {
+      throw new ConflictException('Both selected scanner engine artifacts must be available');
+    }
+
+    const pair = { baseEngineId, candidateEngineId };
+    const side = (engineId: ScannerEngineId, run: ScannerEngineRun, checksum: string) => ({
+      engineId,
+      displayName: plan.capabilitySnapshots[engineId].displayName,
+      artifactChecksumSha256: checksum,
+      completeness: run.completeness,
+      unsupportedSemanticClasses:
+        plan.capabilitySnapshots[engineId].unsupportedSemanticClasses || []
+    });
+    if (!page.recognitionRaster || !baseRun.recognitionRaster || !candidateRun.recognitionRaster) {
+      return {
+        version: SCANNER_PAGE_COMPARISON_VERSION,
+        status: 'refused',
+        pair,
+        base: side(baseEngineId, baseRun, baseArtifact.checksumSha256),
+        candidate: side(candidateEngineId, candidateRun, candidateArtifact.checksumSha256),
+        refusalReasons: [
+          {
+            stage: 'prerequisites',
+            code: 'recognition-raster-unavailable',
+            detail: 'This retained job predates content-bound recognition rasters'
+          }
+        ]
+      };
+    }
+
+    const [baseMusicXml, candidateMusicXml] = await Promise.all([
+      this.storage.getObjectBuffer(baseArtifact.bucket, baseArtifact.objectKey),
+      this.storage.getObjectBuffer(candidateArtifact.bucket, candidateArtifact.objectKey)
+    ]);
+    const baseDefinition = this.registeredEngines?.get(baseEngineId);
+    const candidateDefinition = this.registeredEngines?.get(candidateEngineId);
+    const loadRecognitionRaster = () =>
+      this.storage.getObjectBuffer(
+        page.recognitionRaster!.storage.bucket,
+        page.recognitionRaster!.storage.objectKey
+      );
+    const producerSide = (run: ScannerEngineRun, musicXml: ScannerStorageLocator) => {
+      const artifacts = { ...run.artifacts, musicXml };
+      return {
+        artifacts,
+        loadArtifact: async (kind: string): Promise<Buffer | undefined> => {
+          const locator = kind === 'musicxml' ? artifacts.musicXml : artifacts[kind];
+          return locator
+            ? this.storage.getObjectBuffer(locator.bucket, locator.objectKey)
+            : undefined;
+        },
+        loadRecognitionRaster
+      };
+    };
+    return compareScannerPage({
+      sourceImage: {
+        checksumSha256: page.recognitionRaster.checksumSha256,
+        width: page.recognitionRaster.width,
+        height: page.recognitionRaster.height
+      },
+      base: {
+        ...side(baseEngineId, baseRun, baseArtifact.checksumSha256),
+        musicXml: baseMusicXml,
+        recognitionRaster: baseRun.recognitionRaster,
+        modelRevision: baseRun.modelRevision,
+        review: baseRun.review,
+        ...producerSide(baseRun, baseArtifact),
+        measureGeometryProducer: baseDefinition?.measureGeometryProducer
+      },
+      candidate: {
+        ...side(candidateEngineId, candidateRun, candidateArtifact.checksumSha256),
+        musicXml: candidateMusicXml,
+        recognitionRaster: candidateRun.recognitionRaster,
+        modelRevision: candidateRun.modelRevision,
+        review: candidateRun.review,
+        ...producerSide(candidateRun, candidateArtifact),
+        measureGeometryProducer: candidateDefinition?.measureGeometryProducer
+      }
+    });
   }
 
   /**

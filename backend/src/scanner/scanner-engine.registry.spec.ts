@@ -15,6 +15,8 @@ describe('ScannerEngineRegistry', () => {
   it('snapshots only engines enabled when a new job is created', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
     expect(registry.newJobPlan().engineIds).toEqual(['homr']);
+    expect(registry.get('homr')?.measureGeometryProducer).toEqual(expect.any(Function));
+    expect(registry.get('transcoda')?.measureGeometryProducer).toBeUndefined();
 
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     expect(registry.newJobPlan()).toMatchObject({

@@ -190,6 +190,23 @@ export class ScannerController {
     return this.scanner.pageReview(user.userId, jobId, pageNumber);
   }
 
+  @Get(':jobId/pages/:pageNumber/comparison')
+  comparison(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Query('baseEngine') baseEngine: string | undefined,
+    @Query('candidateEngine') candidateEngine: string | undefined
+  ) {
+    return this.scanner.pageComparison(
+      user.userId,
+      jobId,
+      pageNumber,
+      String(baseEngine ?? ''),
+      String(candidateEngine ?? '')
+    );
+  }
+
   @Post(':jobId/pages/:pageNumber/corrections')
   correct(
     @CurrentUser() user: RequestUser,
