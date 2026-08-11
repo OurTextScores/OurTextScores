@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp = require('sharp');
 import AdmZip = require('adm-zip');
-import { scannerDefaultEnginePlan } from './scanner-dual-engine';
+import { scannerDefaultEnginePlan, scannerEnginePlan } from './scanner-dual-engine';
+import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
 
 describe('ScannerWorkerService', () => {
   const values: Record<string, string> = {
@@ -17,9 +18,11 @@ describe('ScannerWorkerService', () => {
     get: jest.fn((key: string, fallback?: string) => values[key] ?? fallback)
   } as any;
   const provider = {
+    engine: 'homr',
     scanPage: jest.fn()
   } as any;
   const transcodaProvider = {
+    engine: 'transcoda',
     createIdempotencyKey: jest.fn(() => 'transcoda-key'),
     scanPage: jest.fn()
   } as any;
@@ -59,16 +62,37 @@ describe('ScannerWorkerService', () => {
 
   it('uses the persisted engine plan after the new-job flag changes', () => {
     const scannerWorker = service() as any;
+    const page = { included: true, status: 'pending', attempts: 0, idempotencyKey: '' };
 
     values.SCANNER_TRANSCODA_ENABLED = 'false';
     expect(
-      scannerWorker.transcodaPlanned({ enginePlan: scannerDefaultEnginePlan(true), pages: [] })
-    ).toBe(true);
+      scannerWorker.withInitialPlannedEngineRuns(
+        { enginePlan: scannerDefaultEnginePlan(true), pages: [] },
+        page
+      ).engines.transcoda.status
+    ).toBe('pending');
 
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     expect(
-      scannerWorker.transcodaPlanned({ enginePlan: scannerDefaultEnginePlan(false), pages: [] })
-    ).toBe(false);
+      scannerWorker.withInitialPlannedEngineRuns(
+        { enginePlan: scannerDefaultEnginePlan(false), pages: [] },
+        page
+      ).engines?.transcoda
+    ).toBeUndefined();
+  });
+
+  it('fails a planned run explicitly when its registry definition is unavailable', () => {
+    const scannerWorker = service() as any;
+    const result = scannerWorker.withInitialPlannedEngineRuns(
+      { enginePlan: scannerEnginePlan(['homr', 'retired-engine']), pages: [] },
+      { included: true, status: 'pending', attempts: 0, idempotencyKey: '' }
+    );
+
+    expect(result.engines['retired-engine']).toMatchObject({
+      status: 'failed',
+      attempts: 0,
+      errorCode: 'engine_not_registered'
+    });
   });
 
   it('uses the effective page when rebuilding a bundle after review', async () => {
@@ -295,7 +319,7 @@ describe('ScannerWorkerService', () => {
       config
     ) as any;
 
-    const result = await scannerWorker.scanTranscodaPage({
+    const result = await scannerWorker.scanAdditionalEnginePage({
       job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
       page: {
         pageNumber: 1,
@@ -328,7 +352,8 @@ describe('ScannerWorkerService', () => {
       contentType: 'image/png',
       pageNumber: 1,
       detectTitle: false,
-      userHash: 'user-hash'
+      userHash: 'user-hash',
+      definition: scannerWorker.engineRegistry().get('transcoda')
     });
 
     expect(result.page).toMatchObject({
@@ -354,6 +379,137 @@ describe('ScannerWorkerService', () => {
     ]);
   });
 
+  it('runs a third planned adapter through the generic engine loop', async () => {
+    const audiverisProvider = {
+      engine: 'audiveris-5',
+      createIdempotencyKey: jest.fn(() => 'audiveris-key'),
+      scanPage: jest.fn().mockResolvedValue({
+        engine: 'audiveris-5',
+        musicXml: Buffer.from('<score-partwise/>'),
+        nativeArtifacts: { mei: Buffer.from('<mei/>') },
+        providerRevision: 'audiveris-service',
+        modelRevision: 'audiveris-model',
+        provenance: { executionProvider: 'cpu' },
+        requestId: 'audiveris-request',
+        completeness: 'complete'
+      })
+    } as any;
+    const definition: ScannerEngineDefinition = {
+      id: 'audiveris-5',
+      displayName: 'Audiveris 5',
+      adapter: audiverisProvider,
+      readable: true,
+      enabledForNewJobs: () => true,
+      budgetExhaustedConfigKey: 'SCANNER_AUDIVERIS_BUDGET_EXHAUSTED',
+      providerKindConfigKey: 'SCANNER_AUDIVERIS_PROVIDER_KIND',
+      timeoutConfigKey: 'SCANNER_AUDIVERIS_TIMEOUT_MS',
+      capabilities: {
+        displayName: 'Audiveris 5',
+        outputArtifactKinds: ['musicxml', 'mei'],
+        supportsSpotReview: false,
+        supportsMeasureGeometry: true,
+        unsupportedSemanticClasses: []
+      },
+      artifacts: {
+        musicxml: {
+          contentType: 'application/vnd.recordare.musicxml+xml',
+          extension: 'musicxml',
+          maxBytes: 10_485_760,
+          requiredProviderOutput: true
+        },
+        mei: {
+          contentType: 'application/mei+xml',
+          extension: 'mei',
+          maxBytes: 10_485_760,
+          requiredProviderOutput: true
+        }
+      }
+    };
+    const registry = new ScannerEngineRegistry(config, provider, transcodaProvider);
+    registry.register(definition);
+    const jobsModel = {
+      updateOne: jest.fn(() => ({ exec: async () => ({}) })),
+      findOne: jest.fn(() => ({
+        select: () => ({ lean: () => ({ exec: async () => ({ status: 'running' }) }) })
+      }))
+    } as any;
+    const stored = new Map<string, Buffer>();
+    const engineStorage = {
+      putAuxiliaryObject: jest.fn(async (objectKey: string, body: Buffer) => {
+        stored.set(objectKey, body);
+        return { bucket: 'scanner', objectKey };
+      }),
+      deleteObject: jest.fn().mockResolvedValue(undefined)
+    } as any;
+    const scannerWorker = new ScannerWorkerService(
+      jobsModel,
+      engineStorage,
+      provider,
+      transcodaProvider,
+      {} as any,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config,
+      registry
+    ) as any;
+    const job = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      generation: 1,
+      enginePlan: registry.newJobPlan(),
+      pages: []
+    };
+    const page = scannerWorker.withInitialPlannedEngineRuns(job, {
+      pageNumber: 1,
+      ordinal: 1,
+      included: true,
+      status: 'failed',
+      attempts: 1,
+      idempotencyKey: 'homr-key',
+      engines: {
+        homr: {
+          engine: 'homr',
+          status: 'failed',
+          attempts: 1,
+          idempotencyKey: 'homr-key',
+          artifacts: {}
+        }
+      }
+    });
+
+    const result = await scannerWorker.scanPlannedAdditionalEngines({
+      job,
+      page,
+      image: Buffer.from('image'),
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash'
+    });
+
+    expect(audiverisProvider.scanPage).toHaveBeenCalledTimes(1);
+    expect(result.page).toMatchObject({
+      status: 'succeeded',
+      engines: {
+        'audiveris-5': {
+          status: 'succeeded',
+          providerRequestId: 'audiveris-request',
+          completeness: 'complete',
+          artifacts: {
+            musicXml: { objectKey: expect.stringMatching(/audiveris-5\.musicxml$/) },
+            mei: { objectKey: expect.stringMatching(/audiveris-5\.mei$/) }
+          }
+        }
+      }
+    });
+    expect([...stored.keys()]).toEqual([
+      expect.stringMatching(/page-001-audiveris-5\.musicxml$/),
+      expect.stringMatching(/page-001-audiveris-5\.mei$/)
+    ]);
+  });
+
   it('keeps a successful HOMR page usable when Transcoda fails', async () => {
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     transcodaProvider.scanPage.mockRejectedValue(
@@ -373,7 +529,7 @@ describe('ScannerWorkerService', () => {
     ) as any;
     const homrMusicXml = { bucket: 'scanner', objectKey: 'homr.musicxml' };
 
-    const result = await scannerWorker.scanTranscodaPage({
+    const result = await scannerWorker.scanAdditionalEnginePage({
       job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
       page: {
         pageNumber: 1,
@@ -397,7 +553,8 @@ describe('ScannerWorkerService', () => {
       contentType: 'image/png',
       pageNumber: 1,
       detectTitle: false,
-      userHash: 'user-hash'
+      userHash: 'user-hash',
+      definition: scannerWorker.engineRegistry().get('transcoda')
     });
 
     expect(result.page).toMatchObject({
@@ -423,6 +580,8 @@ describe('ScannerWorkerService', () => {
         'provider_container_image_mismatch',
         'provider_converter_mismatch',
         'provider_execution_provider_mismatch',
+        'provider_engine_mismatch',
+        'provider_missing_artifact',
         'provider_input_digest_mismatch'
       ]) {
         expect(disablesProvider(code)).toBe(true);

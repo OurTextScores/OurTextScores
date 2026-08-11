@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   OnModuleInit,
+  Optional,
   PayloadTooLargeException,
   ServiceUnavailableException
 } from '@nestjs/common';
@@ -50,6 +51,7 @@ import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerCorrection, ScannerCorrectionDocument } from './schemas/scanner-correction.schema';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
+import { ScannerEngineRegistry } from './scanner-engine.registry';
 import {
   SCANNER_ARTIFACT_BUILDERS,
   scannerArtifactInputSignature,
@@ -87,7 +89,8 @@ export class ScannerService implements OnModuleInit {
     private readonly provider: ScannerProviderService,
     private readonly telemetry: ScannerTelemetryService,
     private readonly alerts: ScannerAlertService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    @Optional() private readonly registeredEngines?: ScannerEngineRegistry
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -231,7 +234,7 @@ export class ScannerService implements OnModuleInit {
         inputs: storedInputs,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
-        enginePlan: scannerDefaultEnginePlan(this.bool('SCANNER_TRANSCODA_ENABLED', false)),
+        enginePlan: this.newJobEnginePlan(),
         pages: Array.from({ length: pageCount }, (_value, index) =>
           withScannerHomrRun({
             pageNumber: index + 1,
@@ -518,15 +521,19 @@ export class ScannerService implements OnModuleInit {
       }
       const page = job.pages.find((candidate) => candidate.pageNumber === pageNumber);
       if (!page) throw new NotFoundException('Scanner page not found');
-      const enginePlan = scannerEnginePlanForJob(
-        job,
-        this.bool('SCANNER_TRANSCODA_ENABLED', false)
-      );
+      const enginePlan = this.enginePlanForJob(job);
       if (!enginePlan.engineIds.includes(engine)) {
         throw new BadRequestException('Scanner engine is not part of this job');
       }
+      const definition = this.registeredEngines?.readable(engine);
+      if (this.registeredEngines && !definition) {
+        throw new BadRequestException('Scanner engine is not registered for artifact reads');
+      }
       if (!enginePlan.capabilitySnapshots[engine].outputArtifactKinds.includes(kind)) {
         throw new BadRequestException('Artifact kind is not declared by this scanner engine');
+      }
+      if (definition && !definition.artifacts[kind]) {
+        throw new BadRequestException('Artifact kind is not registered for this scanner engine');
       }
       const run =
         engine === 'homr'
@@ -537,7 +544,7 @@ export class ScannerService implements OnModuleInit {
             })
           : page?.engines?.[engine];
       locator = kind === 'musicxml' ? run?.artifacts.musicXml : run?.artifacts[kind];
-      const extension = kind === 'kern' ? 'krn' : kind;
+      const extension = definition?.artifacts[kind].extension || (kind === 'kern' ? 'krn' : kind);
       filename = `scan-page-${pageNumber}-${engine}.${extension}`;
     } else if (!SCANNER_JOB_ARTIFACT_KINDS.has(kind)) {
       throw new BadRequestException(
@@ -607,7 +614,10 @@ export class ScannerService implements OnModuleInit {
           : undefined;
       filename = pageRequested ? `scan-page-${pageNumber}.png` : 'scan-preview.png';
     } else if (pageRequested) {
-      locator = effectivePageMusicXml(job.pages.find((page) => page.pageNumber === pageNumber));
+      locator = effectivePageMusicXml(
+        job.pages.find((page) => page.pageNumber === pageNumber),
+        this.enginePlanForJob(job)
+      );
       filename = `scan-page-${pageNumber}.musicxml`;
     } else if (
       this.materializedArtifactIsCurrent(
@@ -1042,7 +1052,7 @@ export class ScannerService implements OnModuleInit {
   private present(job: ScannerJobDocument): any {
     const superseded = job.pages.some((page) => pageMusicXmlSuperseded(page));
     const legacyJobInvalidated = superseded || Boolean(job.combinedStale);
-    const enginePlan = scannerEnginePlanForJob(job, this.bool('SCANNER_TRANSCODA_ENABLED', false));
+    const enginePlan = this.enginePlanForJob(job);
     return {
       jobId: job.jobId,
       status: job.status,
@@ -1076,7 +1086,7 @@ export class ScannerService implements OnModuleInit {
             errorCode: page.errorCode,
             errorMessage: page.errorMessage,
             hasThumbnail: Boolean(page.thumbnail),
-            hasMusicXml: Boolean(effectivePageMusicXml(page)),
+            hasMusicXml: Boolean(effectivePageMusicXml(page, enginePlan)),
             hasPdf: this.materializedArtifactIsCurrent(
               page.pdf,
               SCANNER_ARTIFACT_BUILDERS.pagePdf,
@@ -1093,7 +1103,7 @@ export class ScannerService implements OnModuleInit {
           };
         }),
       hasMusicXml: Boolean(
-        job.musicXmlBundle || job.pages.some((page) => effectivePageMusicXml(page))
+        job.musicXmlBundle || job.pages.some((page) => effectivePageMusicXml(page, enginePlan))
       ),
       hasPdf: this.materializedArtifactIsCurrent(
         job.previewPdf,
@@ -1107,7 +1117,9 @@ export class ScannerService implements OnModuleInit {
         job.pages,
         legacyJobInvalidated
       ),
-      hasZip: Boolean(job.resultsZip || job.pages.some((page) => effectivePageMusicXml(page))),
+      hasZip: Boolean(
+        job.resultsZip || job.pages.some((page) => effectivePageMusicXml(page, enginePlan))
+      ),
       mergeStatus: job.mergeStatus || 'not-requested',
       mergeReason: job.mergeReason,
       hasCombinedMusicXml: this.materializedArtifactIsCurrent(
@@ -1161,6 +1173,7 @@ export class ScannerService implements OnModuleInit {
 
   /** Stop new work only when no enabled recognition engine has capacity. */
   private providerCapacityExhausted(): boolean {
+    if (this.registeredEngines) return this.registeredEngines.newJobCapacityExhausted();
     if (!this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) return false;
     return (
       !this.bool('SCANNER_TRANSCODA_ENABLED', false) ||
@@ -1273,17 +1286,20 @@ export class ScannerService implements OnModuleInit {
         (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
       )
       .flatMap((page) => {
-        const musicXml = effectivePageMusicXml(page);
+        const musicXml = effectivePageMusicXml(page, this.enginePlanForJob(job));
         return page.status === 'succeeded' && musicXml ? [{ page, musicXml }] : [];
       });
   }
 
-  private artifactInputs(pages: ScannerPageResult[]): ScannerArtifactInput[] | undefined {
+  private artifactInputs(
+    pages: ScannerPageResult[],
+    enginePlan?: { primaryEngineId: string; fallbackEngineIds: string[] }
+  ): ScannerArtifactInput[] | undefined {
     const inputs: ScannerArtifactInput[] = [];
     for (const page of [...pages].sort(
       (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
     )) {
-      const musicXml = effectivePageMusicXml(page);
+      const musicXml = effectivePageMusicXml(page, enginePlan);
       if (!musicXml) continue;
       if (!musicXml.checksumSha256) return undefined;
       inputs.push({
@@ -1332,10 +1348,11 @@ export class ScannerService implements OnModuleInit {
     const pages = [...job.pages].sort(
       (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
     );
-    const inputs = this.artifactInputs(pages);
+    const enginePlan = this.enginePlanForJob(job);
+    const inputs = this.artifactInputs(pages, enginePlan);
     for (const page of pages) {
       const pageSegment = String(page.ordinal || page.pageNumber).padStart(3, '0');
-      const musicXml = effectivePageMusicXml(page);
+      const musicXml = effectivePageMusicXml(page, enginePlan);
       if (musicXml) {
         zip.addFile(
           `page-${pageSegment}.musicxml`,
@@ -1365,10 +1382,7 @@ export class ScannerService implements OnModuleInit {
       mergeReason:
         job.mergeReason || 'Stored result artifacts do not match the current page inputs',
       engine: 'homr',
-      enginePlan: scannerEnginePlanForJob(
-        job,
-        this.bool('SCANNER_TRANSCODA_ENABLED', false)
-      ),
+      enginePlan: this.enginePlanForJob(job),
       serviceRevision: job.providerRevision,
       modelRevision: job.modelRevision,
       engineProvenance: job.engineProvenance,
@@ -1382,7 +1396,7 @@ export class ScannerService implements OnModuleInit {
         : {}),
       createdAt: new Date().toISOString(),
       pages: pages.map((page) => {
-        const musicXml = effectivePageMusicXml(page);
+        const musicXml = effectivePageMusicXml(page, this.enginePlanForJob(job));
         return {
           pageNumber: page.pageNumber,
           ordinal: page.ordinal || page.pageNumber,
@@ -1570,6 +1584,20 @@ export class ScannerService implements OnModuleInit {
 
   private userHash(userId: string): string {
     return scannerUserHash(userId, this.config.get<string>('SCANNER_OBJECT_KEY_SALT', ''));
+  }
+
+  private newJobEnginePlan() {
+    return (
+      this.registeredEngines?.newJobPlan() ||
+      scannerDefaultEnginePlan(this.bool('SCANNER_TRANSCODA_ENABLED', false))
+    );
+  }
+
+  private enginePlanForJob(job: ScannerJobDocument) {
+    return (
+      this.registeredEngines?.planForJob(job) ||
+      scannerEnginePlanForJob(job, this.bool('SCANNER_TRANSCODA_ENABLED', false))
+    );
   }
 
   private number(key: string, fallback: number): number {

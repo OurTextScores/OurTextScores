@@ -160,7 +160,7 @@ export function scannerDefaultEnginePlan(transcodaEnabled: boolean): ScannerEngi
  */
 export function scannerEnginePlanForJob(
   job: { enginePlan?: ScannerEnginePlan; pages?: ScannerPageResult[] },
-  transcodaEnabled = false
+  enabledEngineIds: ScannerEngineId[] | boolean = []
 ): ScannerEnginePlan {
   if (job.enginePlan) {
     const plan = job.enginePlan;
@@ -189,10 +189,15 @@ export function scannerEnginePlanForJob(
     return normalized;
   }
 
+  const enabledIds = Array.isArray(enabledEngineIds)
+    ? enabledEngineIds
+    : enabledEngineIds
+      ? ['homr', 'transcoda']
+      : ['homr'];
   const recordedEngineIds = (job.pages || []).flatMap((page) => Object.keys(page.engines || {}));
   const engineIds = [
     'homr',
-    ...(transcodaEnabled ? ['transcoda'] : []),
+    ...enabledIds.filter((engineId) => engineId !== 'homr'),
     ...recordedEngineIds.filter((engineId) => engineId !== 'homr')
   ];
   return scannerEnginePlan([...new Set(engineIds)], 'homr');

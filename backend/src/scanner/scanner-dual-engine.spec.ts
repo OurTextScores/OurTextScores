@@ -204,6 +204,33 @@ describe('dual-engine content identity', () => {
     expect(effectivePageMusicXml({ ...withTranscoda, musicXml: homr })).toBe(homr);
   });
 
+  it('resolves effective MusicXML in persisted primary and fallback order', () => {
+    const audiveris = { objectKey: 'audiveris.musicxml' } as any;
+    const transcoda = { objectKey: 'transcoda.musicxml' } as any;
+    const page: any = {
+      engines: {
+        homr: { engine: 'homr', status: 'failed', artifacts: {} },
+        'audiveris-5': {
+          engine: 'audiveris-5',
+          status: 'succeeded',
+          artifacts: { musicXml: audiveris }
+        },
+        transcoda: {
+          engine: 'transcoda',
+          status: 'succeeded',
+          artifacts: { musicXml: transcoda }
+        }
+      }
+    };
+
+    expect(
+      effectivePageMusicXml(page, scannerEnginePlan(['homr', 'transcoda', 'audiveris-5']))
+    ).toBe(transcoda);
+    expect(
+      effectivePageMusicXml(page, scannerEnginePlan(['homr', 'audiveris-5', 'transcoda']))
+    ).toBe(audiveris);
+  });
+
   it('binds materialized artifacts to page order, checksums and builder version', () => {
     const input = {
       builderVersion: 'bundle-v1',

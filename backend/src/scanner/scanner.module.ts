@@ -16,6 +16,7 @@ import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { ScannerWorkerService } from './scanner-worker.service';
 import { ScannerProviderHttpService } from './scanner-provider-http.service';
 import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.service';
+import { ScannerEngineRegistry } from './scanner-engine.registry';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.se
     ScannerProviderHttpService,
     ScannerProviderService,
     ScannerTranscodaProviderService,
+    ScannerEngineRegistry,
     ScannerTelemetryService,
     ScannerWorkerService
   ],

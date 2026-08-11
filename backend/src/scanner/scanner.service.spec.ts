@@ -17,12 +17,14 @@ import {
   scannerEnginePlan,
   withScannerArtifactInputSignature
 } from './scanner-dual-engine';
+import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
 
 /** Durable training records; kept out of the job so they outlive it. */
 const corrections = { create: jest.fn(async (doc: any) => doc) } as any;
 
 /** Regeneration is a provider call; correction tests assert on what it received. */
 const provider = {
+  engine: 'homr',
   regenerate: jest.fn(async () => Buffer.from('<score-partwise/>'))
 } as any;
 
@@ -591,6 +593,33 @@ describe('ScannerService', () => {
       supportsMeasureGeometry: true,
       unsupportedSemanticClasses: []
     };
+    const definition: ScannerEngineDefinition = {
+      id: 'audiveris-5',
+      displayName: 'Audiveris 5',
+      adapter: { engine: 'audiveris-5' } as any,
+      readable: true,
+      enabledForNewJobs: () => true,
+      budgetExhaustedConfigKey: 'SCANNER_AUDIVERIS_BUDGET_EXHAUSTED',
+      providerKindConfigKey: 'SCANNER_AUDIVERIS_PROVIDER_KIND',
+      timeoutConfigKey: 'SCANNER_AUDIVERIS_TIMEOUT_MS',
+      capabilities,
+      artifacts: {
+        musicxml: {
+          contentType: 'application/vnd.recordare.musicxml+xml',
+          extension: 'musicxml',
+          maxBytes: 10_485_760,
+          requiredProviderOutput: true
+        },
+        mei: {
+          contentType: 'application/mei+xml',
+          extension: 'mei',
+          maxBytes: 10_485_760,
+          requiredProviderOutput: true
+        }
+      }
+    };
+    const registry = new ScannerEngineRegistry(config, provider, { engine: 'transcoda' } as any);
+    registry.register(definition);
     const job: any = {
       jobId: 'job-1',
       userId: 'user-1',
@@ -626,7 +655,8 @@ describe('ScannerService', () => {
       provider,
       telemetry,
       alerts,
-      config
+      config,
+      registry
     );
 
     const artifact = await service.getArtifact('user-1', 'job-1', 'mei', 1, 'audiveris-5');

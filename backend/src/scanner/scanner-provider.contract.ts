@@ -20,6 +20,8 @@ export interface ScannerProviderResult {
   musicXml: Buffer;
   /** Model-authored kern retained before Transcoda's MusicXML conversion. */
   kern?: Buffer;
+  /** Other bounded, adapter-validated provider-native artifacts by registry kind. */
+  nativeArtifacts?: Record<string, Buffer>;
   providerRevision: string;
   modelRevision: string;
   provenance: ScannerEngineProvenance;

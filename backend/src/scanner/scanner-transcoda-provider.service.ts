@@ -156,6 +156,7 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
     return {
       engine: this.engine,
       kern,
+      nativeArtifacts: { kern },
       musicXml,
       musicXmlSha256,
       providerRevision,

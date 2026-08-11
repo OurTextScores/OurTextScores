@@ -50,14 +50,37 @@ export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
 export function effectivePageMusicXml(
   page:
     | Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'>
-    | undefined
+    | undefined,
+  enginePlan?: { primaryEngineId: string; fallbackEngineIds: string[] }
 ): ScannerStorageLocator | undefined {
-  return (
-    page?.mergedMusicXml ||
-    page?.reviewedMusicXml ||
-    page?.musicXml ||
-    page?.engines?.transcoda?.artifacts.musicXml
-  );
+  if (!page) return undefined;
+  if (page.mergedMusicXml) return page.mergedMusicXml;
+  if (page.reviewedMusicXml) return page.reviewedMusicXml;
+
+  const artifactForEngine = (engineId: string): ScannerStorageLocator | undefined => {
+    if (engineId === 'homr' && page.musicXml) return page.musicXml;
+    const run = page.engines?.[engineId];
+    return run?.status === 'succeeded' ? run.artifacts.musicXml : undefined;
+  };
+  if (enginePlan) {
+    for (const engineId of [enginePlan.primaryEngineId, ...enginePlan.fallbackEngineIds]) {
+      const artifact = artifactForEngine(engineId);
+      if (artifact) return artifact;
+    }
+    return undefined;
+  }
+
+  // Legacy callers have no job plan. Preserve HOMR precedence, then use the
+  // recorded engine insertion order (which new workers create in plan order).
+  if (page.musicXml) return page.musicXml;
+  const homr = artifactForEngine('homr');
+  if (homr) return homr;
+  for (const engineId of Object.keys(page.engines || {})) {
+    if (engineId === 'homr') continue;
+    const artifact = artifactForEngine(engineId);
+    if (artifact) return artifact;
+  }
+  return undefined;
 }
 
 /** True when pre-review bundles, renders and manifests no longer describe a page. */
