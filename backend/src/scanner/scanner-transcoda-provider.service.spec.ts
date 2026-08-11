@@ -47,7 +47,14 @@ describe('ScannerTranscodaProviderService', () => {
       kernBase64: kern.toString('base64'),
       kernSha256: sha256(kern),
       musicXmlBase64: musicXml.toString('base64'),
-      musicXmlSha256: sha256(musicXml)
+      musicXmlSha256: sha256(musicXml),
+      generation: {
+        hitMaxLength: false,
+        sawEos: true,
+        truncated: false,
+        maxLength: 2048,
+        numBeams: 3
+      }
     },
     timing: { inferenceMs: 123 },
     ...overrides
@@ -83,6 +90,13 @@ describe('ScannerTranscodaProviderService', () => {
       modelRevision: 'model-revision',
       requestId: 'transcoda-request',
       inferenceMs: 123,
+      generation: {
+        hitMaxLength: false,
+        sawEos: true,
+        truncated: false,
+        maxLength: 2048,
+        numBeams: 3
+      },
       provenance: {
         modelArtifact: 'btrkeks/transcoda-59M-zeroshot-v1',
         modelArtifactSha256: 'a'.repeat(64),
@@ -93,6 +107,46 @@ describe('ScannerTranscodaProviderService', () => {
       }
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires and preserves decoder termination diagnostics', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          envelope({
+            result: {
+              ...envelope().result,
+              generation: {
+                hitMaxLength: true,
+                sawEos: false,
+                truncated: true,
+                maxLength: 2048,
+                numBeams: 3
+              }
+            }
+          })
+        ),
+        { status: 200 }
+      )
+    );
+    await expect(scan()).resolves.toMatchObject({
+      generation: { hitMaxLength: true, sawEos: false, truncated: true, maxLength: 2048 }
+    });
+
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify(
+            envelope({ result: { ...envelope().result, generation: { truncated: false } } })
+          ),
+          { status: 200 }
+        )
+      );
+    await expect(scan()).rejects.toMatchObject({
+      code: 'provider_invalid_response',
+      retryable: false
+    });
   });
 
   it('fails closed when the model artifact is not the configured one', async () => {

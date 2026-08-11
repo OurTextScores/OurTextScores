@@ -9,6 +9,25 @@ export type ScannerStatus =
   | "failed"
   | "cancelled";
 
+export interface ScannerEngineRun {
+  status:
+    "pending" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
+  attempts: number;
+  providerAttempts?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  hasMusicXml: boolean;
+  hasPdf: boolean;
+  hasKern: boolean;
+  generation?: {
+    hitMaxLength: boolean;
+    sawEos: boolean;
+    truncated: boolean;
+    maxLength?: number;
+    numBeams?: number;
+  };
+}
+
 export interface ScannerJob {
   jobId: string;
   status: ScannerStatus;
@@ -32,6 +51,10 @@ export interface ScannerJob {
     hasMusicXml: boolean;
     hasPdf: boolean;
     canRetry: boolean;
+    engines?: {
+      homr?: ScannerEngineRun;
+      transcoda?: ScannerEngineRun;
+    };
   }>;
   hasMusicXml: boolean;
   hasPdf: boolean;

@@ -118,10 +118,14 @@ export class ScannerAlertService {
     const byCode: Record<string, number> = {};
     for (const job of recent as any[]) {
       for (const page of job.pages || []) {
-        if (page.status === 'succeeded') succeeded += 1;
-        else if (page.status === 'failed') {
+        // The aggregate page can succeed through Transcoda while HOMR is down.
+        // This alert guards the primary engine, so read its independent run;
+        // legacy jobs fall back to their top-level HOMR fields.
+        const homr = page.engines?.homr || page;
+        if (homr.status === 'succeeded') succeeded += 1;
+        else if (homr.status === 'failed') {
           failed += 1;
-          const code = String(page.errorCode || 'unknown');
+          const code = String(homr.errorCode || 'unknown');
           byCode[code] = (byCode[code] || 0) + 1;
         }
       }

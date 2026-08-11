@@ -676,16 +676,17 @@ export class ScannerService implements OnModuleInit {
     for (const job of recent as any[]) {
       providerMsTotal += Number(job.timings?.providerMs || 0);
       for (const page of job.pages || []) {
-        if (page.status === 'succeeded') {
+        const homr = page.engines?.homr || page;
+        if (homr.status === 'succeeded') {
           pagesSucceeded += 1;
           if (page.pdf) pagesRendered += 1;
-          if (Number.isFinite(page.durationMs)) pageDurations.push(page.durationMs);
-        } else if (page.status === 'failed') {
+          if (Number.isFinite(homr.durationMs)) pageDurations.push(homr.durationMs);
+        } else if (homr.status === 'failed') {
           pagesFailed += 1;
-          const code = String(page.errorCode || 'unknown');
+          const code = String(homr.errorCode || 'unknown');
           failuresByCode[code] = (failuresByCode[code] || 0) + 1;
         }
-        providerCalls += Number(page.providerAttempts || page.attempts || 0);
+        providerCalls += Number(homr.providerAttempts || homr.attempts || 0);
       }
     }
 
@@ -1125,6 +1126,7 @@ export class ScannerService implements OnModuleInit {
       providerRequestId: run.providerRequestId,
       durationMs: run.durationMs,
       inferenceMs: run.inferenceMs,
+      generation: run.generation,
       errorCode: run.errorCode,
       errorMessage: run.errorMessage,
       providerRevision: run.providerRevision,
@@ -1465,7 +1467,14 @@ export class ScannerService implements OnModuleInit {
         ? { allowed: true, reason: '' }
         : { allowed: false, reason: 'The page has not failed' };
     }
-    if (page.status === 'succeeded' && !page.pdf) return { allowed: true, reason: '' };
+    if (page.status === 'succeeded' && !page.pdf) {
+      const homr = page.engines?.homr;
+      if (!homr || homr.status === 'succeeded') return { allowed: true, reason: '' };
+      if (homr.status === 'failed' && isRetryableScannerErrorCode(homr.errorCode)) {
+        return { allowed: true, reason: '' };
+      }
+      return { allowed: false, reason: 'This page failure cannot be retried safely' };
+    }
     if (page.status === 'failed' && isRetryableScannerErrorCode(page.errorCode)) {
       return { allowed: true, reason: '' };
     }

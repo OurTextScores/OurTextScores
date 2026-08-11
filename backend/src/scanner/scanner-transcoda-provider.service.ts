@@ -143,6 +143,7 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
 
     const kern = this.decodeBase64(envelope?.result?.kernBase64, 'kern');
     const musicXml = this.decodeBase64(envelope?.result?.musicXmlBase64, 'MusicXML');
+    const generation = this.generationMetadata(envelope?.result?.generation);
     this.verifyOutputDigest(kern, envelope?.result?.kernSha256, 'kern');
     const musicXmlSha256 = this.verifyOutputDigest(
       musicXml,
@@ -163,6 +164,7 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
       inferenceMs: Number.isFinite(Number(envelope?.timing?.inferenceMs))
         ? Number(envelope.timing.inferenceMs)
         : undefined,
+      generation,
       provenance: {
         modelArtifact,
         modelArtifactSha256,
@@ -346,6 +348,40 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
       throw this.invalidResponse('Scanner provider returned invalid container digest');
     }
     return text;
+  }
+
+  private generationMetadata(value: unknown): {
+    hitMaxLength: boolean;
+    sawEos: boolean;
+    truncated: boolean;
+    maxLength?: number;
+    numBeams?: number;
+  } {
+    if (!value || typeof value !== 'object') {
+      throw this.invalidResponse('Scanner provider returned incomplete generation diagnostics');
+    }
+    const generation = value as Record<string, unknown>;
+    const requiredBoolean = (key: string): boolean => {
+      if (typeof generation[key] !== 'boolean') {
+        throw this.invalidResponse('Scanner provider returned invalid generation diagnostics');
+      }
+      return generation[key] as boolean;
+    };
+    const optionalPositiveInteger = (key: string): number | undefined => {
+      if (generation[key] === undefined) return undefined;
+      const parsed = Number(generation[key]);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw this.invalidResponse('Scanner provider returned invalid generation diagnostics');
+      }
+      return parsed;
+    };
+    return {
+      hitMaxLength: requiredBoolean('hitMaxLength'),
+      sawEos: requiredBoolean('sawEos'),
+      truncated: requiredBoolean('truncated'),
+      maxLength: optionalPositiveInteger('maxLength'),
+      numBeams: optionalPositiveInteger('numBeams')
+    };
   }
 
   private optionalText(value: unknown): string | undefined {

@@ -114,6 +114,12 @@ describe('ScannerWorkerService', () => {
               providerRequestId: 'transcoda-request',
               providerRevision: 'transcoda-service',
               modelRevision: 'transcoda-model',
+              generation: {
+                hitMaxLength: true,
+                sawEos: false,
+                truncated: true,
+                maxLength: 2048
+              },
               provenance: { executionProvider: 'torch.cuda' },
               artifacts: {
                 kern: { checksumSha256: 'kern-checksum' },
@@ -252,7 +258,14 @@ describe('ScannerWorkerService', () => {
       modelRevision: 'transcoda-model',
       provenance: { executionProvider: 'torch.cuda' },
       requestId: 'transcoda-request',
-      inferenceMs: 25
+      inferenceMs: 25,
+      generation: {
+        hitMaxLength: true,
+        sawEos: false,
+        truncated: true,
+        maxLength: 2048,
+        numBeams: 3
+      }
     });
     const scannerWorker = new ScannerWorkerService(
       jobsModel,
@@ -305,13 +318,14 @@ describe('ScannerWorkerService', () => {
 
     expect(result.page).toMatchObject({
       status: 'succeeded',
-      errorCode: undefined,
-      errorMessage: undefined,
+      errorCode: 'provider_no_staff_detected',
+      errorMessage: 'No notation was detected',
       engines: {
         homr: { status: 'failed' },
         transcoda: {
           status: 'succeeded',
           providerRequestId: 'transcoda-request',
+          generation: { hitMaxLength: true, sawEos: false, truncated: true },
           artifacts: {
             musicXml: { objectKey: expect.stringMatching(/-transcoda\.musicxml$/) },
             kern: { objectKey: expect.stringMatching(/-transcoda\.krn$/) }

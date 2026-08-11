@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ReviewStaff } from './scanner-review';
-import type { ScannerEngineName } from './scanner-dual-engine';
+import type { ScannerEngineName, ScannerGenerationMetadata } from './scanner-dual-engine';
 import type { ScannerEngineProvenance } from './schemas/scanner-job.schema';
 
 export interface ScannerProviderScanInput {
@@ -21,6 +21,8 @@ export interface ScannerProviderResult {
   provenance: ScannerEngineProvenance;
   requestId?: string;
   inferenceMs?: number;
+  /** Decoder termination diagnostics; currently supplied by Transcoda. */
+  generation?: ScannerGenerationMetadata;
   musicXmlSha256: string;
   /** HOMR-only review data; absent without decoded token geometry. */
   review?: { staves: ReviewStaff[] };

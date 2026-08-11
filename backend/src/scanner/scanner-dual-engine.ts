@@ -16,6 +16,14 @@ export type ScannerEngineRunStatus =
   | 'cancelled'
   | 'skipped';
 
+export interface ScannerGenerationMetadata {
+  hitMaxLength: boolean;
+  sawEos: boolean;
+  truncated: boolean;
+  maxLength?: number;
+  numBeams?: number;
+}
+
 /** Independent state for one engine; page status is derived from both records. */
 export interface ScannerEngineRun {
   engine: ScannerEngineName;
@@ -26,6 +34,7 @@ export interface ScannerEngineRun {
   providerRequestId?: string;
   durationMs?: number;
   inferenceMs?: number;
+  generation?: ScannerGenerationMetadata;
   errorCode?: string;
   errorMessage?: string;
   providerRevision?: string;
@@ -144,6 +153,7 @@ export function scannerEngineManifest(page: ScannerPageResult): Record<string, u
                 providerRequestId: run.providerRequestId,
                 durationMs: run.durationMs,
                 inferenceMs: run.inferenceMs,
+                generation: run.generation,
                 errorCode: run.errorCode,
                 errorMessage: run.errorMessage,
                 providerRevision: run.providerRevision,

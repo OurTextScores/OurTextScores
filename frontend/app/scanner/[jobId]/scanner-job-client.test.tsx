@@ -104,6 +104,64 @@ describe("ScannerJobClient", () => {
     );
   });
 
+  it("shows a rescued HOMR failure and Transcoda truncation", async () => {
+    const rescued: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pageCount: 1,
+      includedPageCount: 1,
+      pages: [
+        {
+          ...partialJob.pages[0],
+          hasPdf: false,
+          canRetry: true,
+          errorCode: "provider_http_503",
+          errorMessage: "HOMR is temporarily unavailable.",
+          engines: {
+            homr: {
+              status: "failed",
+              attempts: 2,
+              errorCode: "provider_http_503",
+              errorMessage: "HOMR is temporarily unavailable.",
+              hasMusicXml: false,
+              hasPdf: false,
+              hasKern: false,
+            },
+            transcoda: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: false,
+              hasKern: true,
+              generation: {
+                hitMaxLength: true,
+                sawEos: false,
+                truncated: true,
+                maxLength: 2048,
+              },
+            },
+          },
+        },
+      ],
+    };
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => rescued,
+    });
+
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByText(/available MusicXML comes from Transcoda/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/reached its generation limit/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Retry HOMR" }),
+    ).toBeInTheDocument();
+  });
+
   it("saves page review choices before explicitly starting inference", async () => {
     const readyJob: ScannerJob = {
       ...partialJob,

@@ -900,15 +900,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         providerRequestId: scanned.result.requestId,
         durationMs: providerMs,
         inferenceMs: scanned.result.inferenceMs,
+        generation: scanned.result.generation,
         providerRevision: scanned.result.providerRevision,
         modelRevision: scanned.result.modelRevision,
         provenance: scanned.result.provenance,
         artifacts: { musicXml, kern }
       };
-      let page = withScannerEngineRun(input.page, run);
-      if (page.engines?.homr?.status !== 'succeeded') {
-        page = { ...page, errorCode: undefined, errorMessage: undefined };
-      }
+      const page = withScannerEngineRun(input.page, run);
       this.telemetry.emit('page_engine_succeeded', {
         jobId: input.job.jobId,
         userHash: input.userHash,

@@ -85,6 +85,26 @@ describe('ScannerAlertService', () => {
     expect(alerts[0].message).toContain('4 of 12');
   });
 
+  it('alerts when HOMR fails behind successful aggregate pages', async () => {
+    const rescued = Array.from({ length: 12 }, () => ({
+      status: 'succeeded',
+      engines: {
+        homr: {
+          status: 'failed',
+          errorCode: 'provider_http_503'
+        },
+        transcoda: { status: 'succeeded' }
+      }
+    }));
+    const alerts = await new ScannerAlertService(jobsWith({ pages: rescued }), config).evaluate();
+    expect(alerts).toEqual([
+      expect.objectContaining({
+        key: 'page_failure_rate',
+        message: expect.stringMatching(/12 of 12.*provider_http_503/)
+      })
+    ]);
+  });
+
   it('fires once, then again only after the cooldown, then reports recovery', async () => {
     values.SCANNER_ALERT_WEBHOOK_URL = 'https://hooks.example/abc';
     values.SCANNER_ALERT_COOLDOWN_MS = '3600000';

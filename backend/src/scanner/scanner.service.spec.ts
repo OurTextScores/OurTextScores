@@ -280,6 +280,19 @@ describe('ScannerService', () => {
                       status: 'failed',
                       errorCode: 'provider_no_staff_detected',
                       providerAttempts: 1
+                    },
+                    {
+                      // Aggregate success through Transcoda must not hide the
+                      // primary engine from operations.
+                      status: 'succeeded',
+                      engines: {
+                        homr: {
+                          status: 'failed',
+                          errorCode: 'provider_http_503',
+                          providerAttempts: 1
+                        },
+                        transcoda: { status: 'succeeded', providerAttempts: 1 }
+                      }
                     }
                   ]
                 }
@@ -299,13 +312,16 @@ describe('ScannerService', () => {
       config
     ).metrics(24);
 
-    expect(result.pagesByStatus).toEqual({ succeeded: 2, failed: 1 });
+    expect(result.pagesByStatus).toEqual({ succeeded: 2, failed: 2 });
     expect(result.pageLatencyMs).toMatchObject({ samples: 2, p50: 9_000, max: 9_000 });
-    expect(result.failuresByCode).toEqual({ provider_no_staff_detected: 1 });
-    expect(result.failureRate).toBeCloseTo(1 / 3, 3);
+    expect(result.failuresByCode).toEqual({
+      provider_no_staff_detected: 1,
+      provider_http_503: 1
+    });
+    expect(result.failureRate).toBeCloseTo(1 / 2, 3);
     // One of the two successes rendered a PDF.
     expect(result.renderSuccessRate).toBeCloseTo(0.5, 3);
-    expect(result.provider).toEqual({ calls: 4, approximateSeconds: 12 });
+    expect(result.provider).toEqual({ calls: 5, approximateSeconds: 12 });
     expect(result.queue.oldestQueuedAgeMs).toBeGreaterThanOrEqual(90_000);
     // Aggregates only: no filenames, ids, or artifact locators anywhere.
     expect(JSON.stringify(result)).not.toMatch(/musicxml|objectKey|originalFilename|userId/i);
@@ -417,7 +433,23 @@ describe('ScannerService', () => {
           status: 'succeeded',
           attempts: 1,
           idempotencyKey: 'secret-key',
-          musicXml: { bucket: 'aux', objectKey: 'private-key' }
+          musicXml: { bucket: 'aux', objectKey: 'private-key' },
+          engines: {
+            transcoda: {
+              engine: 'transcoda',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'transcoda-secret',
+              generation: {
+                hitMaxLength: true,
+                sawEos: false,
+                truncated: true,
+                maxLength: 2048,
+                numBeams: 3
+              },
+              artifacts: {}
+            }
+          }
         }
       ],
       input: { bucket: 'raw', objectKey: 'private-source' },
@@ -450,6 +482,10 @@ describe('ScannerService', () => {
       status: 'succeeded',
       attempts: 1,
       hasMusicXml: true
+    });
+    expect(result.pages[0].engines.transcoda.generation).toMatchObject({
+      truncated: true,
+      maxLength: 2048
     });
     expect(result.pages[0]).not.toHaveProperty('idempotencyKey');
     expect(result.pages[0].engines.homr).not.toHaveProperty('idempotencyKey');
@@ -746,6 +782,35 @@ describe('ScannerService', () => {
       config
     );
     await expect(service.retryPage('user-1', 'job-1', 1)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('does not offer a PDF retry for a deterministically failed HOMR rescue', () => {
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    ) as any;
+    const job = {
+      status: 'succeeded',
+      pageCount: 1,
+      sourceExpiresAt: new Date(Date.now() + 60_000)
+    };
+    const page = {
+      pageNumber: 1,
+      status: 'succeeded',
+      engines: {
+        homr: { status: 'failed', errorCode: 'invalid_musicxml' },
+        transcoda: { status: 'succeeded' }
+      }
+    };
+
+    expect(service.pageRetryEligibility(job, 1, page)).toMatchObject({ allowed: false });
+    page.engines.homr.errorCode = 'provider_timeout';
+    expect(service.pageRetryEligibility(job, 1, page)).toMatchObject({ allowed: true });
   });
 
   it('persists a complete page order, rotation, and inclusion setup while ready', async () => {

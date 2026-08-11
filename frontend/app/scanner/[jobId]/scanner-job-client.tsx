@@ -217,6 +217,13 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const completedPages = job.pages.filter(
     (page) => page.status === "succeeded",
   ).length;
+  const rescuedByTranscoda = Boolean(
+    selected?.engines?.homr?.status === "failed" &&
+    selected.engines.transcoda?.status === "succeeded",
+  );
+  const transcodaTruncated = Boolean(
+    selected?.engines?.transcoda?.generation?.truncated,
+  );
 
   return (
     <div className="space-y-6">
@@ -505,7 +512,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                   {busyAction === `retry-${selected.pageNumber}`
                     ? "Queuing…"
                     : selected.hasMusicXml
-                      ? "Retry PDF render"
+                      ? rescuedByTranscoda
+                        ? "Retry HOMR"
+                        : "Retry PDF render"
                       : "Retry page"}
                 </button>
               )}
@@ -539,16 +548,29 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               )}
             </div>
           </div>
-          {selected.errorMessage && (
+          {rescuedByTranscoda && (
+            <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              HOMR failed for this page, so the available MusicXML comes from
+              Transcoda. {selected.errorMessage}
+            </p>
+          )}
+          {!rescuedByTranscoda && selected.errorMessage && (
             <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               {selected.errorMessage}
             </p>
           )}
-          {selected.status === "succeeded" && (
-            <div className="mt-4">
-              <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
-            </div>
+          {transcodaTruncated && (
+            <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Transcoda reached its generation limit, so its transcription may
+              be incomplete.
+            </p>
           )}
+          {selected.status === "succeeded" &&
+            selected.engines?.homr?.status !== "failed" && (
+              <div className="mt-4">
+                <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
+              </div>
+            )}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
               {selected.hasThumbnail ? (
