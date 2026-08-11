@@ -39,6 +39,12 @@ export const SCANNER_UPLOAD_DIRECTORY =
  */
 export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
 
+export interface EffectivePageMusicXmlSelection {
+  musicXml: ScannerStorageLocator;
+  /** Absent when a reviewed or reconciled derivative supersedes raw engine output. */
+  engineId?: string;
+}
+
 /**
  * The MusicXML that represents a page *now*.
  *
@@ -53,14 +59,26 @@ export function effectivePageMusicXml(
     | undefined,
   enginePlan?: { primaryEngineId: string; fallbackEngineIds: string[] }
 ): ScannerStorageLocator | undefined {
-  if (!page) return undefined;
-  if (page.mergedMusicXml) return page.mergedMusicXml;
-  if (page.reviewedMusicXml) return page.reviewedMusicXml;
+  return effectivePageMusicXmlSelection(page, enginePlan)?.musicXml;
+}
 
-  const artifactForEngine = (engineId: string): ScannerStorageLocator | undefined => {
-    if (engineId === 'homr' && page.musicXml) return page.musicXml;
+/** Resolve the artifact and, for raw recognition output, the engine that supplied it. */
+export function effectivePageMusicXmlSelection(
+  page:
+    | Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'>
+    | undefined,
+  enginePlan?: { primaryEngineId: string; fallbackEngineIds: string[] }
+): EffectivePageMusicXmlSelection | undefined {
+  if (!page) return undefined;
+  if (page.mergedMusicXml) return { musicXml: page.mergedMusicXml };
+  if (page.reviewedMusicXml) return { musicXml: page.reviewedMusicXml };
+
+  const artifactForEngine = (engineId: string): EffectivePageMusicXmlSelection | undefined => {
+    if (engineId === 'homr' && page.musicXml) return { musicXml: page.musicXml, engineId };
     const run = page.engines?.[engineId];
-    return run?.status === 'succeeded' ? run.artifacts.musicXml : undefined;
+    return run?.status === 'succeeded' && run.artifacts.musicXml
+      ? { musicXml: run.artifacts.musicXml, engineId }
+      : undefined;
   };
   if (enginePlan) {
     for (const engineId of [enginePlan.primaryEngineId, ...enginePlan.fallbackEngineIds]) {
@@ -72,7 +90,7 @@ export function effectivePageMusicXml(
 
   // Legacy callers have no job plan. Preserve HOMR precedence, then use the
   // recorded engine insertion order (which new workers create in plan order).
-  if (page.musicXml) return page.musicXml;
+  if (page.musicXml) return { musicXml: page.musicXml, engineId: 'homr' };
   const homr = artifactForEngine('homr');
   if (homr) return homr;
   for (const engineId of Object.keys(page.engines || {})) {

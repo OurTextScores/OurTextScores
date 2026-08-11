@@ -110,6 +110,28 @@ describe("ScannerJobClient", () => {
       status: "succeeded",
       pageCount: 1,
       includedPageCount: 1,
+      enginePlan: {
+        version: "scanner-engine-plan-v1",
+        engineIds: ["homr", "transcoda"],
+        primaryEngineId: "homr",
+        fallbackEngineIds: ["transcoda"],
+        capabilitySnapshots: {
+          homr: {
+            displayName: "HOMR",
+            outputArtifactKinds: ["musicxml", "pdf"],
+            supportsSpotReview: true,
+            supportsMeasureGeometry: true,
+            unsupportedSemanticClasses: [],
+          },
+          transcoda: {
+            displayName: "Transcoda",
+            outputArtifactKinds: ["musicxml", "kern"],
+            supportsSpotReview: false,
+            supportsMeasureGeometry: false,
+            unsupportedSemanticClasses: ["lyrics", "dynamics"],
+          },
+        },
+      },
       pages: [
         {
           ...partialJob.pages[0],
@@ -159,6 +181,82 @@ describe("ScannerJobClient", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Retry HOMR" }),
+    ).toBeInTheDocument();
+  });
+
+  it("uses persisted engine policy for fallback and completeness warnings", async () => {
+    const rescued: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pageCount: 1,
+      includedPageCount: 1,
+      enginePlan: {
+        version: "scanner-engine-plan-v1",
+        engineIds: ["audiveris-5", "kraken"],
+        primaryEngineId: "audiveris-5",
+        fallbackEngineIds: ["kraken"],
+        capabilitySnapshots: {
+          "audiveris-5": {
+            displayName: "Audiveris 5",
+            outputArtifactKinds: ["musicxml"],
+            supportsSpotReview: false,
+            supportsMeasureGeometry: false,
+            unsupportedSemanticClasses: [],
+          },
+          kraken: {
+            displayName: "Kraken OMR",
+            outputArtifactKinds: ["musicxml"],
+            supportsSpotReview: false,
+            supportsMeasureGeometry: false,
+            unsupportedSemanticClasses: ["lyrics"],
+          },
+        },
+      },
+      pages: [
+        {
+          ...partialJob.pages[0],
+          effectiveEngineId: "kraken",
+          hasPdf: false,
+          canRetry: true,
+          engines: {
+            "audiveris-5": {
+              status: "failed",
+              attempts: 2,
+              errorMessage: "Audiveris is temporarily unavailable.",
+              hasMusicXml: false,
+              hasPdf: false,
+              hasKern: false,
+            },
+            kraken: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: false,
+              hasKern: false,
+              completeness: "possibly-incomplete",
+            },
+          },
+        },
+      ],
+    };
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => rescued,
+    });
+
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByText(/available MusicXML comes from Kraken OMR/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Kraken OMR reported.*may be incomplete/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Kraken OMR does not recognize lyrics/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Retry Audiveris 5" }),
     ).toBeInTheDocument();
   });
 

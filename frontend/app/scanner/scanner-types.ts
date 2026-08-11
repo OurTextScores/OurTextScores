@@ -67,6 +67,8 @@ export interface ScannerJob {
     errorMessage?: string;
     hasThumbnail: boolean;
     hasMusicXml: boolean;
+    /** Raw engine selected by plan order; absent for reviewed/reconciled derivatives. */
+    effectiveEngineId?: string;
     hasPdf: boolean;
     canRetry: boolean;
     engines?: Record<string, ScannerEngineRun | undefined>;

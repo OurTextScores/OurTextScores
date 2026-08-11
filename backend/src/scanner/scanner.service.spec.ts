@@ -509,6 +509,7 @@ describe('ScannerService', () => {
     const { items } = await service.listJobs('user-1');
     const [result] = items;
     expect(result.hasMusicXml).toBe(true);
+    expect(result.pages[0].effectiveEngineId).toBe('homr');
     expect(result.pages[0].engines.homr).toMatchObject({
       status: 'succeeded',
       attempts: 1,
@@ -528,6 +529,13 @@ describe('ScannerService', () => {
     expect(JSON.stringify(result)).not.toContain('private-source');
     expect(JSON.stringify(result)).not.toContain('private-multi-source');
     expect(JSON.stringify(result)).not.toContain('private-page.png');
+
+    (document as any).enginePlan = scannerEnginePlan(
+      ['audiveris-5', 'homr', 'transcoda'],
+      'audiveris-5'
+    );
+    const planned = await service.listJobs('user-1');
+    expect(planned.items[0].pages[0].effectiveEngineId).toBe('audiveris-5');
   });
 
   it('serves explicit per-engine Transcoda MusicXML and kern artifacts', async () => {
@@ -935,6 +943,36 @@ describe('ScannerService', () => {
 
     expect(service.pageRetryEligibility(job, 1, page)).toMatchObject({ allowed: false });
     page.engines.homr.errorCode = 'provider_timeout';
+    expect(service.pageRetryEligibility(job, 1, page)).toMatchObject({ allowed: true });
+  });
+
+  it('uses the persisted primary engine when deciding whether a rescued page can retry', () => {
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    ) as any;
+    const job = {
+      status: 'succeeded',
+      pageCount: 1,
+      sourceExpiresAt: new Date(Date.now() + 60_000),
+      enginePlan: scannerEnginePlan(['audiveris-5', 'transcoda'], 'audiveris-5')
+    };
+    const page = {
+      pageNumber: 1,
+      status: 'succeeded',
+      engines: {
+        'audiveris-5': { status: 'failed', errorCode: 'invalid_musicxml' },
+        transcoda: { status: 'succeeded' }
+      }
+    };
+
+    expect(service.pageRetryEligibility(job, 1, page)).toMatchObject({ allowed: false });
+    page.engines['audiveris-5'].errorCode = 'provider_timeout';
     expect(service.pageRetryEligibility(job, 1, page)).toMatchObject({ allowed: true });
   });
 

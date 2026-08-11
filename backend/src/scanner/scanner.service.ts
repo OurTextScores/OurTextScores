@@ -31,6 +31,7 @@ import {
 } from './schemas/scanner-job.schema';
 import {
   effectivePageMusicXml,
+  effectivePageMusicXmlSelection,
   pageMusicXmlSuperseded,
   SCANNER_UPLOAD_DIRECTORY,
   scannerUserHash
@@ -1034,6 +1035,7 @@ export class ScannerService implements OnModuleInit {
             modelRevision: job.modelRevision,
             provenance: job.engineProvenance
           });
+          const effectiveMusicXml = effectivePageMusicXmlSelection(page, enginePlan);
           return {
             pageNumber: page.pageNumber,
             ordinal: page.ordinal || page.pageNumber,
@@ -1048,7 +1050,8 @@ export class ScannerService implements OnModuleInit {
             errorCode: page.errorCode,
             errorMessage: page.errorMessage,
             hasThumbnail: Boolean(page.thumbnail),
-            hasMusicXml: Boolean(effectivePageMusicXml(page, enginePlan)),
+            hasMusicXml: Boolean(effectiveMusicXml),
+            effectiveEngineId: effectiveMusicXml?.engineId,
             hasPdf: this.materializedArtifactIsCurrent(
               page.pdf,
               SCANNER_ARTIFACT_BUILDERS.pagePdf,
@@ -1470,9 +1473,12 @@ export class ScannerService implements OnModuleInit {
         : { allowed: false, reason: 'The page has not failed' };
     }
     if (page.status === 'succeeded' && !page.pdf) {
-      const homr = page.engines?.homr;
-      if (!homr || homr.status === 'succeeded') return { allowed: true, reason: '' };
-      if (homr.status === 'failed' && isRetryableScannerErrorCode(homr.errorCode)) {
+      const enginePlan = this.enginePlanForJob(job);
+      const primaryEngineId = enginePlan.primaryEngineId;
+      const primary =
+        primaryEngineId === 'homr' ? scannerHomrRun(page) : page.engines?.[primaryEngineId];
+      if (!primary || primary.status === 'succeeded') return { allowed: true, reason: '' };
+      if (primary.status === 'failed' && isRetryableScannerErrorCode(primary.errorCode)) {
         return { allowed: true, reason: '' };
       }
       return { allowed: false, reason: 'This page failure cannot be retried safely' };

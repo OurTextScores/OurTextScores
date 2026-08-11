@@ -14,7 +14,10 @@ import {
   withScannerHomrRun
 } from './scanner-dual-engine';
 import { scannerProviderIdempotencyKey } from './scanner-provider.contract';
-import { effectivePageMusicXml } from './scanner.constants';
+import {
+  effectivePageMusicXml,
+  effectivePageMusicXmlSelection
+} from './scanner.constants';
 
 describe('dual-engine content identity', () => {
   it('synthesizes legacy HOMR state and dual-writes it without disturbing Transcoda', () => {
@@ -229,6 +232,18 @@ describe('dual-engine content identity', () => {
     expect(
       effectivePageMusicXml(page, scannerEnginePlan(['homr', 'audiveris-5', 'transcoda']))
     ).toBe(audiveris);
+    expect(
+      effectivePageMusicXmlSelection(
+        page,
+        scannerEnginePlan(['audiveris-5', 'transcoda'], 'audiveris-5')
+      )
+    ).toEqual({ musicXml: audiveris, engineId: 'audiveris-5' });
+    expect(
+      effectivePageMusicXmlSelection(
+        { ...page, reviewedMusicXml: { objectKey: 'reviewed.musicxml' } } as any,
+        scannerEnginePlan(['audiveris-5', 'transcoda'], 'audiveris-5')
+      )
+    ).toEqual({ musicXml: { objectKey: 'reviewed.musicxml' } });
   });
 
   it('binds materialized artifacts to page order, checksums and builder version', () => {

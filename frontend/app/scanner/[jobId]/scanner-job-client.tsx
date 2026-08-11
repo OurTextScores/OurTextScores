@@ -17,6 +17,29 @@ async function responseError(
   return String(value?.message || value?.error || fallback);
 }
 
+type ScannerPage = ScannerJob["pages"][number];
+
+function plannedEngineIds(job: ScannerJob, page?: ScannerPage): string[] {
+  return job.enginePlan?.engineIds || Object.keys(page?.engines || {});
+}
+
+function engineLabel(job: ScannerJob, engineId?: string): string {
+  if (!engineId) return "recognition engine";
+  return job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId;
+}
+
+function selectedRawEngineId(
+  job: ScannerJob,
+  page?: ScannerPage,
+): string | undefined {
+  if (!page) return undefined;
+  if (page.effectiveEngineId) return page.effectiveEngineId;
+  return plannedEngineIds(job, page).find((engineId) => {
+    const run = page.engines?.[engineId];
+    return run?.status === "succeeded" && run.hasMusicXml;
+  });
+}
+
 export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const router = useRouter();
   const [job, setJob] = useState<ScannerJob | null>(null);
@@ -217,13 +240,36 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const completedPages = job.pages.filter(
     (page) => page.status === "succeeded",
   ).length;
-  const rescuedByTranscoda = Boolean(
-    selected?.engines?.homr?.status === "failed" &&
-    selected.engines.transcoda?.status === "succeeded",
+  const engineIds = plannedEngineIds(job, selected);
+  const primaryEngineId = job.enginePlan?.primaryEngineId || engineIds[0];
+  const effectiveEngineId = selectedRawEngineId(job, selected);
+  const primaryRun = primaryEngineId
+    ? selected?.engines?.[primaryEngineId]
+    : undefined;
+  const fallbackUsed = Boolean(
+    primaryEngineId &&
+    effectiveEngineId &&
+    primaryEngineId !== effectiveEngineId &&
+    primaryRun?.status === "failed",
   );
-  const transcodaTruncated = Boolean(
-    selected?.engines?.transcoda?.generation?.truncated,
+  const primaryLabel = engineLabel(job, primaryEngineId);
+  const effectiveLabel = engineLabel(job, effectiveEngineId);
+  const incompleteRuns = Object.entries(selected?.engines || {}).filter(
+    ([, run]) =>
+      run?.status === "succeeded" &&
+      (run.generation?.truncated ||
+        run.completeness === "possibly-incomplete" ||
+        run.completeness === "incomplete"),
   );
+  const effectiveLimitations = effectiveEngineId
+    ? job.enginePlan?.capabilitySnapshots[effectiveEngineId]
+        ?.unsupportedSemanticClasses || []
+    : [];
+  const supportsSpotReview = engineIds.some((engineId) => {
+    const run = selected?.engines?.[engineId];
+    const capability = job.enginePlan?.capabilitySnapshots[engineId];
+    return run?.status === "succeeded" && capability?.supportsSpotReview;
+  });
 
   return (
     <div className="space-y-6">
@@ -512,8 +558,8 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                   {busyAction === `retry-${selected.pageNumber}`
                     ? "Queuing…"
                     : selected.hasMusicXml
-                      ? rescuedByTranscoda
-                        ? "Retry HOMR"
+                      ? fallbackUsed
+                        ? `Retry ${primaryLabel}`
                         : "Retry PDF render"
                       : "Retry page"}
                 </button>
@@ -548,29 +594,40 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               )}
             </div>
           </div>
-          {rescuedByTranscoda && (
+          {fallbackUsed && (
             <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              HOMR failed for this page, so the available MusicXML comes from
-              Transcoda. {selected.errorMessage}
+              {primaryLabel} failed for this page, so the available MusicXML
+              comes from {effectiveLabel}.{" "}
+              {primaryRun?.errorMessage || selected.errorMessage}
             </p>
           )}
-          {!rescuedByTranscoda && selected.errorMessage && (
+          {!fallbackUsed && selected.errorMessage && (
             <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               {selected.errorMessage}
             </p>
           )}
-          {transcodaTruncated && (
+          {incompleteRuns.map(([engineId, run]) => (
+            <p
+              key={`incomplete-${engineId}`}
+              className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              {run?.generation?.truncated
+                ? `${engineLabel(job, engineId)} reached its generation limit, so its transcription may be incomplete.`
+                : `${engineLabel(job, engineId)} reported that its transcription ${run?.completeness === "incomplete" ? "is incomplete" : "may be incomplete"}.`}
+            </p>
+          ))}
+          {effectiveLimitations.length > 0 && (
             <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              Transcoda reached its generation limit, so its transcription may
-              be incomplete.
+              {effectiveLabel} does not recognize{" "}
+              {effectiveLimitations.join(", ")}; verify those details against
+              the source image.
             </p>
           )}
-          {selected.status === "succeeded" &&
-            selected.engines?.homr?.status !== "failed" && (
-              <div className="mt-4">
-                <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
-              </div>
-            )}
+          {selected.status === "succeeded" && supportsSpotReview && (
+            <div className="mt-4">
+              <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
+            </div>
+          )}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
               {selected.hasThumbnail ? (
