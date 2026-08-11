@@ -7,7 +7,7 @@ import {
   type ScannerPartMatch
 } from './scanner-dual-engine';
 import {
-  alignScannerMeasureKeys,
+  alignScannerMeasures,
   classifyScannerMeasureDifference,
   SCANNER_MEASURE_ALIGNMENT_VERSION,
   SCANNER_MEASURE_DESCRIPTOR_VERSION,
@@ -194,12 +194,10 @@ export function buildScannerComparisonBlocks(input: {
     baseEngineId: base.engineId,
     candidateEngineId: candidate.engineId
   };
-  const ops = alignScannerMeasureKeys(
-    base.measures.map((measure) => measure.coarseKey),
-    candidate.measures.map((measure) => measure.coarseKey)
-  );
+  const ops = alignScannerMeasures(base.measures, candidate.measures);
   const blocks: ScannerComparisonBlock[] = [];
   let pending = newPending();
+  let previousPairContextHash: string | undefined;
 
   const flush = (contextAfterHash?: string): void => {
     if (!isPending(pending)) return;
@@ -277,20 +275,44 @@ export function buildScannerComparisonBlocks(input: {
     pending = newPending(contextAfterHash);
   };
 
-  for (const op of ops) {
-    if (op.type === 'equal') {
+  const pairContextFor = (op: (typeof ops)[number]): string | undefined => {
+    if (op.type !== 'equal' && op.type !== 'aligned') return undefined;
+    return contextHash(base.measures[op.baseIndex], candidate.measures[op.candidateIndex]);
+  };
+
+  for (let opIndex = 0; opIndex < ops.length; opIndex += 1) {
+    const op = ops[opIndex];
+    if (op.type === 'equal' || op.type === 'aligned') {
       const baseDescriptor = base.measures[op.baseIndex];
       const candidateDescriptor = candidate.measures[op.candidateIndex];
+      const pairContextHash = contextHash(baseDescriptor, candidateDescriptor);
       const differences = classifyScannerMeasureDifference(baseDescriptor, candidateDescriptor);
+      if (op.type === 'aligned') {
+        flush(pairContextHash);
+        pending = newPending(previousPairContextHash);
+        pending.baseIndices.push(op.baseIndex);
+        pending.candidateIndices.push(op.candidateIndex);
+        pending.hasCoarseMismatch = true;
+        differences.forEach((difference) => pending.differenceClasses.add(difference));
+        const nextPairContextHash = ops
+          .slice(opIndex + 1)
+          .map(pairContextFor)
+          .find(Boolean);
+        flush(nextPairContextHash);
+        previousPairContextHash = pairContextHash;
+        pending = newPending(pairContextHash);
+        continue;
+      }
       if (differences.length === 0) {
-        const nextContextHash = contextHash(baseDescriptor, candidateDescriptor);
-        flush(nextContextHash);
-        pending = newPending(nextContextHash);
+        flush(pairContextHash);
+        pending = newPending(pairContextHash);
+        previousPairContextHash = pairContextHash;
         continue;
       }
       pending.baseIndices.push(op.baseIndex);
       pending.candidateIndices.push(op.candidateIndex);
       differences.forEach((difference) => pending.differenceClasses.add(difference));
+      previousPairContextHash = pairContextHash;
       continue;
     }
     pending.hasCoarseMismatch = true;

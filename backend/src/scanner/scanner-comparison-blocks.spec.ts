@@ -45,6 +45,22 @@ function descriptor(
 const equalDescriptor = (measureIndex: number, key: string) =>
   descriptor(measureIndex, key, `equal-${key}`);
 
+function fuzzyDescriptor(
+  measureIndex: number,
+  key: string,
+  tokens: string[]
+): ScannerMeasureDescriptor {
+  return {
+    ...descriptor(measureIndex, key, `rich-${key}`),
+    eventCount: tokens.length,
+    alignment: {
+      events: tokens,
+      pitches: tokens,
+      durations: tokens.map(() => 'quarter')
+    }
+  };
+}
+
 function matchedPart(
   baseChecksum = sha('base'),
   candidateChecksum = sha('candidate')
@@ -203,6 +219,41 @@ describe('scanner comparison blocks', () => {
     });
     expect(removal[0]).toMatchObject({
       baseMeasureRefs: [{ measureIndex: 1 }],
+      candidateMeasureRefs: [],
+      differenceClasses: ['measure-removed']
+    });
+  });
+
+  it('uses a conservative fuzzy pair as a block boundary, not an equality claim', () => {
+    const match = matchedPart();
+    const before = equalDescriptor(0, 'before');
+    const afterBase = equalDescriptor(3, 'after');
+    const afterCandidate = equalDescriptor(2, 'after');
+    const base = [
+      before,
+      fuzzyDescriptor(1, 'base-fuzzy', ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']),
+      descriptor(2, 'removed', 'removed'),
+      afterBase
+    ];
+    const candidate = [
+      before,
+      fuzzyDescriptor(1, 'candidate-fuzzy', ['a', 'b', 'c', 'd', 'e', 'f', 'x', 'h']),
+      afterCandidate
+    ];
+
+    const blocks = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(base, candidate, match)
+    });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toMatchObject({
+      baseMeasureRefs: [{ measureIndex: 1 }],
+      candidateMeasureRefs: [{ measureIndex: 1 }],
+      differenceClasses: expect.arrayContaining(['notation'])
+    });
+    expect(blocks[1]).toMatchObject({
+      baseMeasureRefs: [{ measureIndex: 2 }],
       candidateMeasureRefs: [],
       differenceClasses: ['measure-removed']
     });

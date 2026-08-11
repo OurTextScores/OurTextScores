@@ -1,5 +1,6 @@
 import {
   alignScannerMeasureKeys,
+  alignScannerMeasures,
   classifyScannerMeasureDifference,
   describeScannerMusicXmlMeasures,
   MAX_SCANNER_MEASURES_PER_PART,
@@ -31,6 +32,8 @@ const note = (options: {
   }<duration>${options.duration ?? 1}</duration><voice>${options.voice ?? 1}</voice><staff>${
     options.staff ?? 1
   }</staff>${options.extra || ''}</note>`;
+
+const noteSequence = (steps: string[]) => steps.map((step) => note({ step })).join('');
 
 function firstDescriptor(musicXml: Buffer) {
   return describeScannerMusicXmlMeasures(musicXml)[0].measures[0];
@@ -259,6 +262,66 @@ describe('scanner measure analysis', () => {
       { type: 'equal', baseIndex: 0, candidateIndex: 0 },
       { type: 'removed', baseIndex: 1 },
       { type: 'equal', baseIndex: 2, candidateIndex: 1 }
+    ]);
+  });
+
+  it('locates a uniquely similar measure without promoting it to equality', () => {
+    const base = describeScannerMusicXmlMeasures(
+      score(
+        measure(noteSequence(['C', 'D', 'E']), '1') +
+          measure(noteSequence(['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C']), '2') +
+          measure(noteSequence(['G', 'F', 'E']), '3')
+      )
+    )[0].measures;
+    const candidate = describeScannerMusicXmlMeasures(
+      score(
+        measure(noteSequence(['C', 'D', 'E']), '1') +
+          measure(noteSequence(['C', 'D', 'E', 'F', 'G', 'A', 'A', 'C']), '2') +
+          measure(noteSequence(['G', 'F', 'E']), '3')
+      )
+    )[0].measures;
+
+    expect(alignScannerMeasures(base, candidate)).toEqual([
+      { type: 'equal', baseIndex: 0, candidateIndex: 0 },
+      { type: 'aligned', baseIndex: 1, candidateIndex: 1, similarity: 0.89375 },
+      { type: 'equal', baseIndex: 2, candidateIndex: 2 }
+    ]);
+    expect(classifyScannerMeasureDifference(base[1], candidate[1])).toContain('notation');
+  });
+
+  it('leaves repeated fuzzy passages unmatched when no pair is uniquely best', () => {
+    const repeated = measure(noteSequence(['C', 'D', 'E', 'F', 'G', 'A']), '1');
+    const nearRepeated = measure(noteSequence(['C', 'D', 'E', 'F', 'G', 'B']), '1');
+    const base = describeScannerMusicXmlMeasures(score(repeated + repeated))[0].measures;
+    const candidate = describeScannerMusicXmlMeasures(score(nearRepeated + nearRepeated))[0]
+      .measures;
+
+    expect(alignScannerMeasures(base, candidate)).toEqual([
+      { type: 'removed', baseIndex: 0 },
+      { type: 'removed', baseIndex: 1 },
+      { type: 'added', candidateIndex: 0 },
+      { type: 'added', candidateIndex: 1 }
+    ]);
+  });
+
+  it('fails closed when fuzzy event comparison would exceed its work budget', () => {
+    const base = firstDescriptor(score(measure(noteSequence(['C', 'D', 'E']))));
+    const candidate = firstDescriptor(score(measure(noteSequence(['C', 'D', 'F']))));
+    const oversized = Array.from({ length: 900 }, (_value, index) => `event-${index}`);
+
+    expect(
+      alignScannerMeasures(
+        [{ ...base, alignment: { events: oversized, pitches: oversized, durations: oversized } }],
+        [
+          {
+            ...candidate,
+            alignment: { events: oversized, pitches: oversized, durations: oversized }
+          }
+        ]
+      )
+    ).toEqual([
+      { type: 'removed', baseIndex: 0 },
+      { type: 'added', candidateIndex: 0 }
     ]);
   });
 

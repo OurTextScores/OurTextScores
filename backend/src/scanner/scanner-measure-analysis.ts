@@ -4,8 +4,18 @@ import { musicXmlParser, parseValidMusicXml } from './scanner-musicxml';
 
 export const SCANNER_COARSE_MEASURE_KEY_VERSION = 'scanner-measure-coarse-v1';
 export const SCANNER_MEASURE_DESCRIPTOR_VERSION = 'scanner-measure-descriptor-v1';
-export const SCANNER_MEASURE_ALIGNMENT_VERSION = 'scanner-measure-alignment-v1';
+export const SCANNER_MEASURE_ALIGNMENT_VERSION = 'scanner-measure-alignment-v2';
 export const MAX_SCANNER_MEASURES_PER_PART = 1024;
+export const MAX_SCANNER_FUZZY_EVENTS_PER_MEASURE = 512;
+export const MAX_SCANNER_FUZZY_LCS_CELLS = 2_000_000;
+
+const MIN_SCANNER_FUZZY_COUNT_RATIO = 0.55;
+const MIN_SCANNER_FUZZY_PITCH_COVERAGE = 0.55;
+const MIN_SCANNER_FUZZY_SIMILARITY = 0.62;
+const SCANNER_FUZZY_UNIQUE_MARGIN = 0.08;
+const SCANNER_FUZZY_BOUNDED_UNIQUE_MARGIN = 0.04;
+const MAX_SCANNER_FUZZY_POSITION_DISTANCE = 0.18;
+const SCANNER_FUZZY_POSITION_PENALTY = 0.3;
 
 export type ScannerMeasureDifferenceClass =
   | 'notation'
@@ -35,6 +45,12 @@ export interface ScannerMeasureDescriptor {
   richHash: string;
   componentHashes: ScannerMeasureComponentHashes;
   eventCount: number;
+  /** Hashed, notation-only event sketches used to locate non-identical measures. */
+  alignment?: {
+    events: string[];
+    pitches: string[];
+    durations: string[];
+  };
 }
 
 export interface ScannerDescribedPart {
@@ -44,6 +60,7 @@ export interface ScannerDescribedPart {
 
 export type ScannerMeasureAlignmentOp =
   | { type: 'equal'; baseIndex: number; candidateIndex: number }
+  | { type: 'aligned'; baseIndex: number; candidateIndex: number; similarity: number }
   | { type: 'removed'; baseIndex: number }
   | { type: 'added'; candidateIndex: number };
 
@@ -385,6 +402,23 @@ function describeMeasure(
   const sortedCoarse = coarseEvents.map((event) => ({
     members: [...event.members].sort((left, right) => left.pitch.localeCompare(right.pitch))
   }));
+  const alignment = {
+    events: sortedCoarse.map((event) =>
+      signature(`${SCANNER_MEASURE_ALIGNMENT_VERSION}:event`, event)
+    ),
+    pitches: sortedCoarse.map((event) =>
+      signature(
+        `${SCANNER_MEASURE_ALIGNMENT_VERSION}:pitch`,
+        event.members.map((member) => member.pitch)
+      )
+    ),
+    durations: sortedCoarse.map((event) =>
+      signature(
+        `${SCANNER_MEASURE_ALIGNMENT_VERSION}:duration`,
+        event.members.map((member) => member.duration)
+      )
+    )
+  };
   const stableSort = <T>(values: T[]): T[] =>
     values.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
   const notation = sortedNotes.map(
@@ -434,7 +468,8 @@ function describeMeasure(
       coarseKey: signature(SCANNER_COARSE_MEASURE_KEY_VERSION, sortedCoarse),
       richHash: signature(SCANNER_MEASURE_DESCRIPTOR_VERSION, components),
       componentHashes,
-      eventCount: notes.length
+      eventCount: notes.length,
+      alignment
     },
     divisions
   };
@@ -504,4 +539,181 @@ export function alignScannerMeasureKeys(
     );
   }
   return alignSequenceLcs(baseKeys, candidateKeys);
+}
+
+function lcsMatchCount(left: readonly string[], right: readonly string[]): number {
+  return alignSequenceLcs(left, right).filter((op) => op.type === 'equal').length;
+}
+
+function scannerMeasureSimilarity(
+  base: ScannerMeasureDescriptor,
+  candidate: ScannerMeasureDescriptor
+): number | undefined {
+  const left = base.alignment;
+  const right = candidate.alignment;
+  if (!left || !right || left.events.length < 3 || right.events.length < 3) return undefined;
+  if (
+    left.events.length > MAX_SCANNER_FUZZY_EVENTS_PER_MEASURE ||
+    right.events.length > MAX_SCANNER_FUZZY_EVENTS_PER_MEASURE
+  ) {
+    return undefined;
+  }
+  const longerCount = Math.max(left.events.length, right.events.length);
+  const shorterCount = Math.min(left.events.length, right.events.length);
+  const countRatio = shorterCount / longerCount;
+  if (countRatio < MIN_SCANNER_FUZZY_COUNT_RATIO) return undefined;
+
+  const pitchCoverage = lcsMatchCount(left.pitches, right.pitches) / longerCount;
+  if (pitchCoverage < MIN_SCANNER_FUZZY_PITCH_COVERAGE) return undefined;
+  const eventCoverage = lcsMatchCount(left.events, right.events) / longerCount;
+  const durationCoverage = lcsMatchCount(left.durations, right.durations) / longerCount;
+  const score =
+    0.65 * pitchCoverage + 0.2 * eventCoverage + 0.1 * durationCoverage + 0.05 * countRatio;
+  return score >= MIN_SCANNER_FUZZY_SIMILARITY ? score : undefined;
+}
+
+function alignScannerMeasureSpan(
+  base: readonly ScannerMeasureDescriptor[],
+  candidate: readonly ScannerMeasureDescriptor[],
+  baseOffset: number,
+  candidateOffset: number,
+  boundedByExactAnchors: boolean
+): ScannerMeasureAlignmentOp[] {
+  if (base.length === 0) {
+    return candidate.map((_measure, index) => ({
+      type: 'added' as const,
+      candidateIndex: candidateOffset + index
+    }));
+  }
+  if (candidate.length === 0) {
+    return base.map((_measure, index) => ({
+      type: 'removed' as const,
+      baseIndex: baseOffset + index
+    }));
+  }
+
+  const baseEventCount = base.reduce(
+    (total, measure) => total + (measure.alignment?.events.length || 0),
+    0
+  );
+  const candidateEventCount = candidate.reduce(
+    (total, measure) => total + (measure.alignment?.events.length || 0),
+    0
+  );
+  if (baseEventCount * candidateEventCount * 3 > MAX_SCANNER_FUZZY_LCS_CELLS) {
+    return [
+      ...base.map((_measure, index) => ({
+        type: 'removed' as const,
+        baseIndex: baseOffset + index
+      })),
+      ...candidate.map((_measure, index) => ({
+        type: 'added' as const,
+        candidateIndex: candidateOffset + index
+      }))
+    ];
+  }
+
+  const scores = base.map((baseMeasure, baseIndex) =>
+    candidate.map((candidateMeasure, candidateIndex) => {
+      const similarity = scannerMeasureSimilarity(baseMeasure, candidateMeasure);
+      if (similarity === undefined) return undefined;
+      if (!boundedByExactAnchors) return { similarity, rank: similarity };
+      const basePosition = baseIndex / Math.max(1, base.length - 1);
+      const candidatePosition = candidateIndex / Math.max(1, candidate.length - 1);
+      const distance = Math.abs(basePosition - candidatePosition);
+      if (distance > MAX_SCANNER_FUZZY_POSITION_DISTANCE) return undefined;
+      return { similarity, rank: similarity - SCANNER_FUZZY_POSITION_PENALTY * distance };
+    })
+  );
+  const ranked = (values: Array<number | undefined>): number[] =>
+    values
+      .filter((value): value is number => value !== undefined)
+      .sort((left, right) => right - left);
+  const rowRanks = scores.map((row) => ranked(row.map((score) => score?.rank)));
+  const columnRanks = candidate.map((_measure, candidateIndex) =>
+    ranked(base.map((_baseMeasure, baseIndex) => scores[baseIndex][candidateIndex]?.rank))
+  );
+  const accepted = new Map<string, number>();
+  for (let baseIndex = 0; baseIndex < base.length; baseIndex += 1) {
+    for (let candidateIndex = 0; candidateIndex < candidate.length; candidateIndex += 1) {
+      const score = scores[baseIndex][candidateIndex];
+      if (score === undefined) continue;
+      const row = rowRanks[baseIndex];
+      const column = columnRanks[candidateIndex];
+      const requiredMargin = boundedByExactAnchors
+        ? SCANNER_FUZZY_BOUNDED_UNIQUE_MARGIN
+        : SCANNER_FUZZY_UNIQUE_MARGIN;
+      const rowUnique =
+        score.rank === row[0] && (row.length === 1 || score.rank - row[1] >= requiredMargin);
+      const columnUnique =
+        score.rank === column[0] &&
+        (column.length === 1 || score.rank - column[1] >= requiredMargin);
+      if (rowUnique && columnUnique) {
+        accepted.set(`${baseIndex}:${candidateIndex}`, score.similarity);
+      }
+    }
+  }
+
+  const baseItems = base.map((_measure, index) => index);
+  const candidateItems = candidate.map((_measure, index) => index);
+  const localOps = alignSequenceLcs(baseItems, candidateItems, (left, right) =>
+    accepted.has(`${left}:${right}`)
+  );
+  return localOps.map((op): ScannerMeasureAlignmentOp => {
+    if (op.type === 'removed') return { type: 'removed', baseIndex: baseOffset + op.baseIndex };
+    if (op.type === 'added') {
+      return { type: 'added', candidateIndex: candidateOffset + op.candidateIndex };
+    }
+    const similarity = accepted.get(`${op.baseIndex}:${op.candidateIndex}`);
+    if (similarity === undefined) throw new Error('Scanner fuzzy alignment lost its match score');
+    return {
+      type: 'aligned',
+      baseIndex: baseOffset + op.baseIndex,
+      candidateIndex: candidateOffset + op.candidateIndex,
+      similarity: Number(similarity.toFixed(6))
+    };
+  });
+}
+
+/**
+ * Preserve exact LCS anchors, then conservatively locate similar measures only
+ * inside each unmatched span. Fuzzy pairs must be mutual, unique best matches;
+ * similarity locates correspondence and never claims rich equality.
+ */
+export function alignScannerMeasures(
+  base: readonly ScannerMeasureDescriptor[],
+  candidate: readonly ScannerMeasureDescriptor[]
+): ScannerMeasureAlignmentOp[] {
+  const exact = alignScannerMeasureKeys(
+    base.map((measure) => measure.coarseKey),
+    candidate.map((measure) => measure.coarseKey)
+  );
+  const result: ScannerMeasureAlignmentOp[] = [];
+  let baseStart = 0;
+  let candidateStart = 0;
+  for (const op of exact) {
+    if (op.type !== 'equal') continue;
+    result.push(
+      ...alignScannerMeasureSpan(
+        base.slice(baseStart, op.baseIndex),
+        candidate.slice(candidateStart, op.candidateIndex),
+        baseStart,
+        candidateStart,
+        baseStart > 0
+      ),
+      op
+    );
+    baseStart = op.baseIndex + 1;
+    candidateStart = op.candidateIndex + 1;
+  }
+  result.push(
+    ...alignScannerMeasureSpan(
+      base.slice(baseStart),
+      candidate.slice(candidateStart),
+      baseStart,
+      candidateStart,
+      false
+    )
+  );
+  return result;
 }
