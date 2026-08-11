@@ -19,6 +19,7 @@ describe('ScannerWorkerService', () => {
   } as any;
   const provider = {
     engine: 'homr',
+    createIdempotencyKey: jest.fn(() => 'homr-key'),
     scanPage: jest.fn()
   } as any;
   const transcodaProvider = {
@@ -97,7 +98,7 @@ describe('ScannerWorkerService', () => {
 
   it('reports circuit-disabled engines independently to alerting', () => {
     const scannerWorker = service() as any;
-    scannerWorker.providerDisabledReason = 'HOMR revision mismatch';
+    scannerWorker.engineDisabledReasons.set('homr', 'HOMR revision mismatch');
     scannerWorker.engineDisabledReasons.set('audiveris-5', 'Audiveris image mismatch');
 
     expect(scannerWorker.disabledEngineReasons()).toEqual({
@@ -288,6 +289,7 @@ describe('ScannerWorkerService', () => {
   it('stores independent Transcoda artifacts and survives a HOMR failure', async () => {
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     const jobsModel = {
+      updateOne: jest.fn(() => ({ exec: async () => ({}) })),
       findOne: jest.fn(() => ({
         select: () => ({ lean: () => ({ exec: async () => ({ status: 'running' }) }) })
       }))
@@ -330,7 +332,7 @@ describe('ScannerWorkerService', () => {
       config
     ) as any;
 
-    const result = await scannerWorker.scanAdditionalEnginePage({
+    const result = await scannerWorker.scanEnginePage({
       job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
       page: {
         pageNumber: 1,
@@ -388,6 +390,93 @@ describe('ScannerWorkerService', () => {
       expect.stringMatching(/page-001-transcoda\.musicxml$/),
       expect.stringMatching(/page-001-transcoda\.krn$/)
     ]);
+  });
+
+  it('runs HOMR through the generic engine loop and dual-writes legacy review fields', async () => {
+    const jobsModel = {
+      updateOne: jest.fn(() => ({ exec: async () => ({}) })),
+      findOne: jest.fn(() => ({
+        select: () => ({ lean: () => ({ exec: async () => ({ status: 'running' }) }) })
+      }))
+    } as any;
+    const stored = new Map<string, Buffer>();
+    const engineStorage = {
+      putAuxiliaryObject: jest.fn(async (objectKey: string, body: Buffer) => {
+        stored.set(objectKey, body);
+        return {
+          bucket: 'scanner',
+          objectKey,
+          sizeBytes: body.length,
+          contentType: 'application/vnd.recordare.musicxml+xml',
+          checksumSha256: 'homr-checksum'
+        };
+      }),
+      deleteObject: jest.fn().mockResolvedValue(undefined)
+    } as any;
+    const review = { staves: [] };
+    provider.scanPage.mockResolvedValue({
+      engine: 'homr',
+      musicXml: Buffer.from('<score-partwise/>'),
+      providerRevision: 'homr-service',
+      modelRevision: 'homr-model',
+      provenance: { executionProvider: 'cuda' },
+      requestId: 'homr-request',
+      review
+    });
+    const scannerWorker = new ScannerWorkerService(
+      jobsModel,
+      engineStorage,
+      provider,
+      transcodaProvider,
+      {} as any,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config
+    ) as any;
+    const job = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      generation: 1,
+      enginePlan: scannerDefaultEnginePlan(false),
+      pages: []
+    };
+    const page = scannerWorker.withInitialPlannedEngineRuns(job, {
+      pageNumber: 1,
+      ordinal: 1,
+      included: true,
+      status: 'pending',
+      attempts: 0,
+      idempotencyKey: ''
+    });
+
+    const result = await scannerWorker.scanPlannedEngines({
+      job,
+      page,
+      image: Buffer.from('image'),
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash'
+    });
+
+    expect(result.page).toMatchObject({
+      status: 'succeeded',
+      providerRequestId: 'homr-request',
+      review,
+      musicXml: { objectKey: expect.stringMatching(/page-001-homr\.musicxml$/) },
+      engines: {
+        homr: {
+          status: 'succeeded',
+          review,
+          artifacts: { musicXml: { objectKey: expect.stringMatching(/page-001-homr\.musicxml$/) } }
+        }
+      }
+    });
+    expect([...stored.keys()]).toEqual([expect.stringMatching(/page-001-homr\.musicxml$/)]);
+    expect(telemetry.emit).toHaveBeenCalledWith('page_engine_succeeded', expect.any(Object));
+    expect(telemetry.emit).toHaveBeenCalledWith('page_succeeded', expect.any(Object));
   });
 
   it('runs a third planned adapter through the generic engine loop', async () => {
@@ -469,7 +558,9 @@ describe('ScannerWorkerService', () => {
       jobId: 'job-1',
       userId: 'user-1',
       generation: 1,
-      enginePlan: registry.newJobPlan(),
+      enginePlan: scannerEnginePlan(['audiveris-5'], 'audiveris-5', {
+        'audiveris-5': definition.capabilities
+      }),
       pages: []
     };
     const page = scannerWorker.withInitialPlannedEngineRuns(job, {
@@ -479,18 +570,11 @@ describe('ScannerWorkerService', () => {
       status: 'failed',
       attempts: 1,
       idempotencyKey: 'homr-key',
-      engines: {
-        homr: {
-          engine: 'homr',
-          status: 'failed',
-          attempts: 1,
-          idempotencyKey: 'homr-key',
-          artifacts: {}
-        }
-      }
+      engines: {}
     });
+    expect(page.engines?.homr).toBeUndefined();
 
-    const result = await scannerWorker.scanPlannedAdditionalEngines({
+    const result = await scannerWorker.scanPlannedEngines({
       job,
       page,
       image: Buffer.from('image'),
@@ -521,6 +605,84 @@ describe('ScannerWorkerService', () => {
     ]);
   });
 
+  it('renders a page from the plan-selected fallback without HOMR-specific routing', async () => {
+    const jobsModel = {
+      updateOne: jest.fn(() => ({ exec: async () => ({}) }))
+    } as any;
+    const transcodaMusicXml = {
+      bucket: 'scanner',
+      objectKey: 'transcoda.musicxml',
+      sizeBytes: 10,
+      contentType: 'application/vnd.recordare.musicxml+xml',
+      checksumSha256: 'transcoda-checksum'
+    };
+    const storage = {
+      getObjectBuffer: jest.fn().mockResolvedValue(Buffer.from('<score-partwise/>')),
+      putAuxiliaryObject: jest.fn(async (objectKey: string) => ({
+        bucket: 'scanner',
+        objectKey
+      }))
+    } as any;
+    const renderer = {
+      renderMusicXmlPdf: jest.fn().mockResolvedValue({
+        pdf: Buffer.from('%PDF'),
+        thumbnail: Buffer.from('thumbnail')
+      })
+    } as any;
+    const scannerWorker = new ScannerWorkerService(
+      jobsModel,
+      storage,
+      provider,
+      transcodaProvider,
+      renderer,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config
+    ) as any;
+    const job = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      enginePlan: scannerDefaultEnginePlan(true),
+      pages: []
+    };
+    const page = {
+      pageNumber: 1,
+      ordinal: 1,
+      included: true,
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'homr-key',
+      engines: {
+        homr: {
+          engine: 'homr',
+          status: 'failed',
+          attempts: 1,
+          idempotencyKey: 'homr-key',
+          artifacts: {}
+        },
+        transcoda: {
+          engine: 'transcoda',
+          status: 'succeeded',
+          attempts: 1,
+          idempotencyKey: 'transcoda-key',
+          artifacts: { musicXml: transcodaMusicXml }
+        }
+      }
+    };
+
+    const result = await scannerWorker.renderEffectivePage(job, page, 'user-hash');
+
+    expect(storage.getObjectBuffer).toHaveBeenCalledWith('scanner', 'transcoda.musicxml');
+    expect(renderer.renderMusicXmlPdf).toHaveBeenCalledWith(Buffer.from('<score-partwise/>'));
+    expect(result.page.pdf).toMatchObject({
+      objectKey: expect.stringMatching(/page-001\.pdf$/),
+      inputSignature: expect.stringMatching(/^scanner-artifact-input-v1:/)
+    });
+    expect(result.thumbnail).toEqual(Buffer.from('thumbnail'));
+  });
+
   it('keeps a successful HOMR page usable when Transcoda fails', async () => {
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     transcodaProvider.scanPage.mockRejectedValue(
@@ -540,7 +702,7 @@ describe('ScannerWorkerService', () => {
     ) as any;
     const homrMusicXml = { bucket: 'scanner', objectKey: 'homr.musicxml' };
 
-    const result = await scannerWorker.scanAdditionalEnginePage({
+    const result = await scannerWorker.scanEnginePage({
       job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
       page: {
         pageNumber: 1,

@@ -14,10 +14,7 @@ import {
   withScannerHomrRun
 } from './scanner-dual-engine';
 import { scannerProviderIdempotencyKey } from './scanner-provider.contract';
-import {
-  effectivePageMusicXml,
-  effectivePageMusicXmlSelection
-} from './scanner.constants';
+import { effectivePageMusicXml, effectivePageMusicXmlSelection } from './scanner.constants';
 
 describe('dual-engine content identity', () => {
   it('synthesizes legacy HOMR state and dual-writes it without disturbing Transcoda', () => {
@@ -204,7 +201,13 @@ describe('dual-engine content identity', () => {
 
     expect(withTranscoda.status).toBe('succeeded');
     expect(effectivePageMusicXml(withTranscoda)).toBe(transcoda);
-    expect(effectivePageMusicXml({ ...withTranscoda, musicXml: homr })).toBe(homr);
+    expect(effectivePageMusicXml({ ...withTranscoda, musicXml: homr })).toBe(transcoda);
+    expect(
+      effectivePageMusicXml({
+        musicXml: homr,
+        engines: { transcoda: withTranscoda.engines?.transcoda }
+      } as any)
+    ).toBe(homr);
   });
 
   it('resolves effective MusicXML in persisted primary and fallback order', () => {

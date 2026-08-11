@@ -35,6 +35,7 @@ import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.se
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import {
   effectivePageMusicXml,
+  effectivePageMusicXmlSelection,
   pageMusicXmlSuperseded,
   scannerUserHash
 } from './scanner.constants';
@@ -91,7 +92,6 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly workerId = `${process.pid}-${randomUUID()}`;
   private timer?: NodeJS.Timeout;
   private busy = false;
-  private providerDisabledReason?: string;
   private readonly engineDisabledReasons = new Map<string, string>();
   private lastCleanupAt = 0;
   private lastAlertCheckAt = 0;
@@ -238,7 +238,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         pages.push(
           this.withInitialPlannedEngineRuns(
             job,
-            withScannerHomrRun({
+            this.withHomrCompatibility(job, {
               pageNumber: pageFile.pageNumber,
               ordinal: prior?.ordinal || pageFile.pageNumber,
               rotationDegrees: prior?.rotationDegrees || 0,
@@ -316,7 +316,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           page.pageNumber,
           this.withInitialPlannedEngineRuns(
             job,
-            withScannerHomrRun(page, {
+            this.withHomrCompatibility(job, page, {
               providerRevision: job.providerRevision,
               modelRevision: job.modelRevision,
               provenance: job.engineProvenance
@@ -329,7 +329,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         .map((page) =>
           this.withInitialPlannedEngineRuns(
             job,
-            withScannerHomrRun(
+            this.withHomrCompatibility(
+              job,
               { ...page, status: 'skipped' },
               {
                 providerRevision: job.providerRevision,
@@ -359,325 +360,68 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           if (prior) results.push(prior);
           continue;
         }
-        if (prior?.engines?.homr?.status === 'succeeded' && prior.engines.homr.artifacts.musicXml) {
-          let resumed = prior;
-          if (
-            !this.materializedArtifactIsCurrent(
-              prior.pdf,
-              SCANNER_ARTIFACT_BUILDERS.pagePdf,
-              [prior],
-              pageMusicXmlSuperseded(prior)
-            )
-          ) {
-            try {
-              await this.updateLease(job.jobId, 'rendering');
-              const currentMusicXml = effectivePageMusicXml(
-                prior,
-                this.engineRegistry().planForJob(job)
-              )!;
-              const musicXmlBuffer = await this.storage.getObjectBuffer(
-                currentMusicXml.bucket,
-                currentMusicXml.objectKey
-              );
-              const rendered = await this.renderer.renderMusicXmlPdf(musicXmlBuffer);
-              const pdf = withScannerArtifactInputSignature(
-                await this.store(
-                  `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.pdf`,
-                  rendered.pdf,
-                  'application/pdf'
-                ),
-                SCANNER_ARTIFACT_BUILDERS.pagePdf,
-                [
-                  {
-                    ordinal: prior.ordinal || pageNumber,
-                    checksumSha256: currentMusicXml.checksumSha256
-                  }
-                ]
-              );
-              previewThumbnail ??= rendered.thumbnail;
-              resumed = { ...prior, pdf };
-            } catch (error) {
-              this.logger.warn(
-                `PDF retry failed for ${job.jobId} page ${pageNumber}: ${this.message(error)}`
-              );
-            }
-          }
-          const additional = await this.scanPlannedAdditionalEngines({
-            job,
-            page: resumed,
-            image: await fs.readFile(pageFile.path),
-            contentType: pageFile.contentType,
-            pageNumber,
-            detectTitle,
-            userHash
-          });
-          resumed = additional.page;
-          providerMsTotal += additional.providerMs;
-          results.push(resumed);
-          await this.persistPageProgress(
-            job,
-            results,
-            priorResults,
-            undefined,
-            providerRevision,
-            modelRevision,
-            engineProvenance
-          );
-          continue;
-        }
-
         const image = await fs.readFile(pageFile.path);
-        const idempotencyKey = this.provider.createIdempotencyKey({
-          inputSha256: createHash('sha256').update(image).digest('hex'),
-          pageNumber,
-          detectTitle,
-          generation: job.generation
-        });
-        if (
-          prior?.engines?.homr &&
-          this.shouldPreservePriorFailure(prior.engines.homr, idempotencyKey)
-        ) {
-          let preserved = prior;
-          const additional = await this.scanPlannedAdditionalEngines({
-            job,
-            page: preserved,
-            image,
-            contentType: pageFile.contentType,
-            pageNumber,
-            detectTitle,
-            userHash
-          });
-          preserved = additional.page;
-          providerMsTotal += additional.providerMs;
-          results.push(preserved);
-          await this.persistPageProgress(
-            job,
-            results,
-            priorResults,
-            undefined,
-            providerRevision,
-            modelRevision,
-            engineProvenance
-          );
-          continue;
-        }
-
-        const assets = { sourceImage: prior?.sourceImage, thumbnail: prior?.thumbnail };
-        const manualRetries = prior?.manualRetries || 0;
-        await this.persistPageProgress(
+        const startingPage = this.withInitialPlannedEngineRuns(
           job,
-          results,
-          priorResults,
-          withScannerHomrRun(
-            {
+          this.withHomrCompatibility(
+            job,
+            prior || {
               pageNumber,
-              ordinal: prior?.ordinal || pageNumber,
-              rotationDegrees: prior?.rotationDegrees || 0,
+              ordinal: pageNumber,
+              rotationDegrees: 0,
               included: true,
-              status: 'running',
-              attempts: prior?.attempts || 0,
-              manualRetries,
-              idempotencyKey,
-              engines: prior?.engines,
-              ...assets
+              status: 'pending',
+              attempts: 0,
+              manualRetries: 0,
+              idempotencyKey: ''
             },
-            {
-              providerRevision,
-              modelRevision,
-              provenance: engineProvenance
-            }
-          ),
-          providerRevision,
-          modelRevision,
-          engineProvenance
+            { providerRevision, modelRevision, provenance: engineProvenance }
+          )
         );
-
-        this.telemetry.emit('page_started', {
-          jobId: job.jobId,
-          userHash,
-          pageNumber,
-          ordinal: prior?.ordinal || pageNumber,
-          generation: job.generation,
-          manualRetries,
-          inputBytes: image.length,
-          providerKind: this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal')
-        });
-        const pageStartedAt = Date.now();
-        try {
-          if (this.providerDisabledReason) {
-            throw new ScannerProviderError(this.providerDisabledReason, 'provider_disabled', false);
-          }
-          const scanned = await this.scanWithRetry({
-            image,
-            contentType: pageFile.contentType,
-            pageNumber,
-            generation: job.generation,
-            detectTitle,
-            idempotencyKey
-          });
-          if (await this.isCancelled(job.jobId)) return;
-          providerRevision = scanned.result.providerRevision;
-          modelRevision = scanned.result.modelRevision;
-          engineProvenance = scanned.result.provenance;
-          const musicXml = await this.store(
-            `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.musicxml`,
-            scanned.result.musicXml,
-            'application/vnd.recordare.musicxml+xml'
-          );
-
-          const providerMs = Date.now() - pageStartedAt;
-          providerMsTotal += providerMs;
-
-          let pdf: ScannerStorageLocator | undefined;
-          const renderStartedAt = Date.now();
-          try {
-            await this.updateLease(job.jobId, 'rendering');
-            const rendered = await this.renderer.renderMusicXmlPdf(scanned.result.musicXml);
-            pdf = withScannerArtifactInputSignature(
-              await this.store(
-                `${this.baseKey(job)}/page-${String(pageNumber).padStart(3, '0')}.pdf`,
-                rendered.pdf,
-                'application/pdf'
-              ),
-              SCANNER_ARTIFACT_BUILDERS.pagePdf,
-              [{ ordinal: prior?.ordinal || pageNumber, checksumSha256: musicXml.checksumSha256 }]
-            );
-            previewThumbnail ??= rendered.thumbnail;
-          } catch (error) {
-            this.logger.warn(
-              `PDF rendering failed for ${job.jobId} page ${pageNumber}: ${this.message(error)}`
-            );
-            this.telemetry.emit('page_render_failed', {
-              jobId: job.jobId,
-              userHash,
-              pageNumber,
-              errorCode: 'render_failed',
-              retryable: true
-            });
-          }
-          renderMsTotal += Date.now() - renderStartedAt;
-          if (await this.isCancelled(job.jobId)) {
-            await this.storage.deleteObject(musicXml.bucket, musicXml.objectKey);
-            if (pdf) await this.storage.deleteObject(pdf.bucket, pdf.objectKey);
-            return;
-          }
-          results.push(
-            withScannerHomrRun(
-              {
-                pageNumber,
-                ordinal: prior?.ordinal || pageNumber,
-                rotationDegrees: prior?.rotationDegrees || 0,
-                included: true,
-                status: 'succeeded',
-                // `attempts` counts this generation, which is what the UI shows.
-                // `providerAttempts` accumulates across generations and worker
-                // recoveries so provenance reflects real provider calls (13.4).
-                attempts: scanned.attempts,
-                providerAttempts: (prior?.providerAttempts || 0) + scanned.attempts,
-                manualRetries,
-                idempotencyKey,
-                providerRequestId: scanned.result.requestId,
-                durationMs: providerMs,
-                inferenceMs: scanned.result.inferenceMs,
-                // Stored raw. Selection happens on read so thresholds stay tunable
-                // without re-scanning (review design §4).
-                review: scanned.result.review,
-                engines: prior?.engines,
-                ...assets,
-                musicXml,
-                pdf
-              },
-              {
-                providerRevision: scanned.result.providerRevision,
-                modelRevision: scanned.result.modelRevision,
-                provenance: scanned.result.provenance
-              }
-            )
-          );
-          this.telemetry.emit('page_succeeded', {
-            jobId: job.jobId,
-            userHash,
-            pageNumber,
-            ordinal: prior?.ordinal || pageNumber,
-            attempt: scanned.attempts,
-            providerAttempts: (prior?.providerAttempts || 0) + scanned.attempts,
-            providerRequestId: scanned.result.requestId,
-            providerRevision: scanned.result.providerRevision,
-            modelRevision: scanned.result.modelRevision,
-            executionProvider: scanned.result.provenance?.executionProvider,
-            providerMs,
-            inferenceMs: scanned.result.inferenceMs,
-            renderMs: Date.now() - renderStartedAt,
-            inputBytes: image.length,
-            outputBytes: scanned.result.musicXml.length
-          });
-        } catch (error) {
-          const providerError = this.asProviderError(error);
-          if (disablesProvider(providerError.code)) {
-            this.providerDisabledReason = providerError.message;
-            this.logger.error(`Disabling scanner provider: ${providerError.message}`);
-            this.telemetry.emit('provider_disabled', {
-              jobId: job.jobId,
-              userHash,
-              pageNumber,
-              errorCode: providerError.code,
-              retryable: false
-            });
-          }
-          results.push(
-            withScannerHomrRun(
-              {
-                pageNumber,
-                ordinal: prior?.ordinal || pageNumber,
-                rotationDegrees: prior?.rotationDegrees || 0,
-                included: true,
-                status: 'failed',
-                attempts:
-                  (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1,
-                providerAttempts:
-                  (prior?.providerAttempts || 0) +
-                  ((providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1),
-                manualRetries,
-                idempotencyKey,
-                durationMs: Date.now() - pageStartedAt,
-                engines: prior?.engines,
-                ...assets,
-                errorCode: providerError.code,
-                errorMessage: providerError.message
-              },
-              {
-                providerRevision,
-                modelRevision,
-                provenance: engineProvenance
-              }
-            )
-          );
-          providerMsTotal += Date.now() - pageStartedAt;
-          this.telemetry.emit('page_failed', {
-            jobId: job.jobId,
-            userHash,
-            pageNumber,
-            ordinal: prior?.ordinal || pageNumber,
-            attempt: (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1,
-            providerMs: Date.now() - pageStartedAt,
-            inputBytes: image.length,
-            errorCode: providerError.code,
-            retryable: providerError.retryable
-          });
-        }
-        const homrPage = results.pop();
-        if (!homrPage) throw new Error(`Scanner page ${pageNumber} produced no HOMR state`);
-        const additional = await this.scanPlannedAdditionalEngines({
+        const pageForRecognition = retryPageNumbers
+          ? {
+              ...startingPage,
+              status: 'pending' as const,
+              reviewedMusicXml: undefined,
+              mergedMusicXml: undefined,
+              pdf: undefined,
+              errorCode: undefined,
+              errorMessage: undefined
+            }
+          : startingPage;
+        const scanned = await this.scanPlannedEngines({
           job,
-          page: homrPage,
+          page: pageForRecognition,
           image,
           contentType: pageFile.contentType,
           pageNumber,
           detectTitle,
-          userHash
+          userHash,
+          onPageChange: (current) =>
+            this.persistPageProgress(
+              job,
+              results,
+              priorResults,
+              current,
+              providerRevision,
+              modelRevision,
+              engineProvenance
+            )
         });
-        results.push(additional.page);
-        providerMsTotal += additional.providerMs;
+        if (await this.isCancelled(job.jobId)) return;
+        providerMsTotal += scanned.providerMs;
+        let page = scanned.page;
+        const homr = page.engines?.homr;
+        if (homr?.status === 'succeeded') {
+          providerRevision = homr.providerRevision;
+          modelRevision = homr.modelRevision;
+          engineProvenance = homr.provenance;
+        }
+        const rendered = await this.renderEffectivePage(job, page, userHash);
+        page = rendered.page;
+        renderMsTotal += rendered.renderMs;
+        previewThumbnail ??= rendered.thumbnail;
+        results.push(page);
         await this.persistPageProgress(
           job,
           results,
@@ -697,9 +441,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       );
       if (successful.length === 0) {
         const firstFailure = results.find((page) => page.status === 'failed');
+        const primaryFailure = firstFailure?.engines?.[enginePlan.primaryEngineId];
         await this.finish(job, 'failed', results, {
-          errorCode: firstFailure?.errorCode || 'scan_failed',
-          errorMessage: firstFailure?.errorMessage || 'No pages could be scanned',
+          errorCode: primaryFailure?.errorCode || firstFailure?.errorCode || 'scan_failed',
+          errorMessage:
+            primaryFailure?.errorMessage ||
+            firstFailure?.errorMessage ||
+            'No pages could be scanned',
           providerRevision,
           modelRevision,
           engineProvenance,
@@ -776,7 +524,6 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   ): ScannerPageResult {
     let current = page;
     for (const engineId of this.engineRegistry().planForJob(job).engineIds) {
-      if (engineId === 'homr') continue;
       const existing = current.engines?.[engineId];
       if (existing) {
         current = withScannerEngineRun(current, existing);
@@ -800,7 +547,23 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     return current;
   }
 
-  private async scanPlannedAdditionalEngines(input: {
+  /** Lazy-read/dual-write bridge for jobs whose immutable plan still contains HOMR. */
+  private withHomrCompatibility(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    metadata: {
+      providerRevision?: string;
+      modelRevision?: string;
+      provenance?: ScannerEngineProvenance;
+    } = {}
+  ): ScannerPageResult {
+    if (!this.engineRegistry().planForJob(job).engineIds.includes('homr')) return page;
+    return page.engines?.homr
+      ? withScannerEngineRun(page, page.engines.homr)
+      : withScannerHomrRun(page, metadata);
+  }
+
+  private async scanPlannedEngines(input: {
     job: ScannerJobDocument;
     page: ScannerPageResult;
     image: Buffer;
@@ -808,11 +571,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     pageNumber: number;
     detectTitle: boolean;
     userHash: string;
+    onPageChange?: (page: ScannerPageResult) => Promise<void>;
   }): Promise<{ page: ScannerPageResult; providerMs: number }> {
     let page = input.page;
     let providerMs = 0;
     for (const engineId of this.engineRegistry().planForJob(input.job).engineIds) {
-      if (engineId === 'homr') continue;
       const definition = this.engineRegistry().readable(engineId);
       if (!definition) {
         page = withScannerEngineRun(page, {
@@ -840,14 +603,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
       await this.updateLease(input.job.jobId, 'running');
-      const scanned = await this.scanAdditionalEnginePage({ ...input, page, definition });
+      const scanned = await this.scanEnginePage({ ...input, page, definition });
       page = scanned.page;
       providerMs += scanned.providerMs;
+      if (await this.isCancelled(input.job.jobId)) break;
     }
     return { page, providerMs };
   }
 
-  private async scanAdditionalEnginePage(input: {
+  private async scanEnginePage(input: {
     job: ScannerJobDocument;
     page: ScannerPageResult;
     image: Buffer;
@@ -856,6 +620,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     detectTitle: boolean;
     userHash: string;
     definition: ScannerEngineDefinition;
+    onPageChange?: (page: ScannerPageResult) => Promise<void>;
   }): Promise<{ page: ScannerPageResult; providerMs: number }> {
     const { definition } = input;
     const prior = input.page.engines?.[definition.id];
@@ -894,6 +659,16 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    const runningPage = withScannerEngineRun(input.page, {
+      engine: definition.id,
+      status: 'running',
+      attempts: prior?.attempts || 0,
+      providerAttempts: prior?.providerAttempts,
+      idempotencyKey,
+      artifacts: prior?.artifacts || {}
+    });
+    await input.onPageChange?.(runningPage);
+
     this.telemetry.emit('page_engine_started', {
       jobId: input.job.jobId,
       userHash: input.userHash,
@@ -904,6 +679,18 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       inputBytes: input.image.length,
       providerKind: this.config.get<string>(definition.providerKindConfigKey, 'modal')
     });
+    if (definition.id === 'homr') {
+      this.telemetry.emit('page_started', {
+        jobId: input.job.jobId,
+        userHash: input.userHash,
+        pageNumber: input.pageNumber,
+        ordinal: input.page.ordinal || input.pageNumber,
+        generation: input.job.generation,
+        manualRetries: input.page.manualRetries || 0,
+        inputBytes: input.image.length,
+        providerKind: this.config.get<string>(definition.providerKindConfigKey, 'modal')
+      });
+    }
     const startedAt = Date.now();
     try {
       const scanned = await this.scanWithRetry(
@@ -926,7 +713,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         );
       }
       if (await this.isCancelled(input.job.jobId)) {
-        return { page: input.page, providerMs: Date.now() - startedAt };
+        return { page: runningPage, providerMs: Date.now() - startedAt };
       }
       const pageSegment = String(input.pageNumber).padStart(3, '0');
       const storedArtifacts: Record<string, ScannerStorageLocator> = {};
@@ -964,7 +751,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               this.storage.deleteObject(locator.bucket, locator.objectKey)
             )
           );
-          return { page: input.page, providerMs: Date.now() - startedAt };
+          return { page: runningPage, providerMs: Date.now() - startedAt };
         }
       } catch (error) {
         await Promise.all(
@@ -993,12 +780,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         inferenceMs: scanned.result.inferenceMs,
         generation: scanned.result.generation,
         completeness: scanned.result.completeness,
+        review: scanned.result.review,
         providerRevision: scanned.result.providerRevision,
         modelRevision: scanned.result.modelRevision,
         provenance: scanned.result.provenance,
         artifacts: runArtifacts
       };
-      const page = withScannerEngineRun(input.page, run);
+      const page = withScannerEngineRun(runningPage, run);
       this.telemetry.emit('page_engine_succeeded', {
         jobId: input.job.jobId,
         userHash: input.userHash,
@@ -1017,17 +805,44 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         inputBytes: input.image.length,
         outputBytes: Object.values(providerArtifacts).reduce((sum, body) => sum + body.length, 0)
       });
+      if (definition.id === 'homr') {
+        this.telemetry.emit('page_succeeded', {
+          jobId: input.job.jobId,
+          userHash: input.userHash,
+          pageNumber: input.pageNumber,
+          ordinal: input.page.ordinal || input.pageNumber,
+          generation: input.job.generation,
+          attempt: scanned.attempts,
+          providerAttempts: run.providerAttempts,
+          providerRequestId: scanned.result.requestId,
+          providerRevision: scanned.result.providerRevision,
+          modelRevision: scanned.result.modelRevision,
+          executionProvider: scanned.result.provenance.executionProvider,
+          providerMs,
+          inferenceMs: scanned.result.inferenceMs,
+          inputBytes: input.image.length,
+          outputBytes: scanned.result.musicXml.length
+        });
+      }
       return { page, providerMs };
     } catch (error) {
       const providerError = this.asProviderError(error);
       if (disablesProvider(providerError.code)) {
         this.engineDisabledReasons.set(definition.id, providerError.message);
         this.logger.error(`Disabling ${definition.displayName} provider: ${providerError.message}`);
+        this.telemetry.emit('provider_disabled', {
+          jobId: input.job.jobId,
+          userHash: input.userHash,
+          pageNumber: input.pageNumber,
+          engine: definition.id,
+          errorCode: providerError.code,
+          retryable: false
+        });
       }
       const attempts =
         (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1;
       const providerMs = Date.now() - startedAt;
-      const page = withScannerEngineRun(input.page, {
+      const page = withScannerEngineRun(runningPage, {
         engine: definition.id,
         status: 'failed',
         attempts,
@@ -1051,7 +866,86 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         errorCode: providerError.code,
         retryable: providerError.retryable
       });
+      if (definition.id === 'homr') {
+        this.telemetry.emit('page_failed', {
+          jobId: input.job.jobId,
+          userHash: input.userHash,
+          pageNumber: input.pageNumber,
+          ordinal: input.page.ordinal || input.pageNumber,
+          generation: input.job.generation,
+          attempt: attempts,
+          providerMs,
+          inputBytes: input.image.length,
+          errorCode: providerError.code,
+          retryable: providerError.retryable
+        });
+      }
       return { page, providerMs };
+    }
+  }
+
+  /** Materialize the page preview from the plan-selected MusicXML, regardless of engine. */
+  private async renderEffectivePage(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    userHash: string
+  ): Promise<{ page: ScannerPageResult; renderMs: number; thumbnail?: Buffer }> {
+    const selection = effectivePageMusicXmlSelection(page, this.engineRegistry().planForJob(job));
+    if (!selection) return { page, renderMs: 0 };
+    const musicXml = selection.musicXml;
+    const inputs = [
+      {
+        ordinal: page.ordinal || page.pageNumber,
+        checksumSha256: musicXml.checksumSha256
+      }
+    ];
+    const current = page.pdf?.inputSignature
+      ? scannerArtifactInputMatches(page.pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf, inputs)
+      : Boolean(page.pdf) && !pageMusicXmlSuperseded(page);
+    if (current) return { page, renderMs: 0 };
+
+    const startedAt = Date.now();
+    try {
+      await this.updateLease(job.jobId, 'rendering');
+      const body = await this.storage.getObjectBuffer(musicXml.bucket, musicXml.objectKey);
+      const rendered = await this.renderer.renderMusicXmlPdf(body);
+      const pdf = withScannerArtifactInputSignature(
+        await this.store(
+          `${this.baseKey(job)}/page-${String(page.pageNumber).padStart(3, '0')}.pdf`,
+          rendered.pdf,
+          'application/pdf'
+        ),
+        SCANNER_ARTIFACT_BUILDERS.pagePdf,
+        inputs
+      );
+      let renderedPage: ScannerPageResult = { ...page, pdf };
+      const selectedRun = selection.engineId ? page.engines?.[selection.engineId] : undefined;
+      const selectedDefinition = selection.engineId
+        ? this.engineRegistry().get(selection.engineId)
+        : undefined;
+      if (selectedRun && selectedDefinition?.artifacts.pdf) {
+        renderedPage = withScannerEngineRun(renderedPage, {
+          ...selectedRun,
+          artifacts: { ...selectedRun.artifacts, pdf }
+        });
+      }
+      return {
+        page: renderedPage,
+        renderMs: Date.now() - startedAt,
+        thumbnail: rendered.thumbnail
+      };
+    } catch (error) {
+      this.logger.warn(
+        `PDF rendering failed for ${job.jobId} page ${page.pageNumber}: ${this.message(error)}`
+      );
+      this.telemetry.emit('page_render_failed', {
+        jobId: job.jobId,
+        userHash,
+        pageNumber: page.pageNumber,
+        errorCode: 'render_failed',
+        retryable: true
+      });
+      return { page, renderMs: Date.now() - startedAt };
     }
   }
 
@@ -1078,10 +972,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private disabledEngineReasons(): Record<string, string> {
-    return {
-      ...(this.providerDisabledReason ? { homr: this.providerDisabledReason } : {}),
-      ...Object.fromEntries(this.engineDisabledReasons)
-    };
+    return Object.fromEntries(this.engineDisabledReasons);
   }
 
   private async scanWithRetry(
@@ -1223,7 +1114,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       );
     const pages = [...completed, ...(current ? [current] : []), ...remaining]
       .map((page) =>
-        withScannerHomrRun(page, {
+        this.withHomrCompatibility(job, page, {
           providerRevision,
           modelRevision,
           provenance: engineProvenance

@@ -74,8 +74,10 @@ export function effectivePageMusicXmlSelection(
   if (page.reviewedMusicXml) return { musicXml: page.reviewedMusicXml };
 
   const artifactForEngine = (engineId: string): EffectivePageMusicXmlSelection | undefined => {
-    if (engineId === 'homr' && page.musicXml) return { musicXml: page.musicXml, engineId };
     const run = page.engines?.[engineId];
+    if (engineId === 'homr' && page.musicXml && (!run || run.status === 'succeeded')) {
+      return { musicXml: page.musicXml, engineId };
+    }
     return run?.status === 'succeeded' && run.artifacts.musicXml
       ? { musicXml: run.artifacts.musicXml, engineId }
       : undefined;
@@ -90,7 +92,9 @@ export function effectivePageMusicXmlSelection(
 
   // Legacy callers have no job plan. Preserve HOMR precedence, then use the
   // recorded engine insertion order (which new workers create in plan order).
-  if (page.musicXml) return { musicXml: page.musicXml, engineId: 'homr' };
+  if (page.musicXml && (!page.engines?.homr || page.engines.homr.status === 'succeeded')) {
+    return { musicXml: page.musicXml, engineId: 'homr' };
+  }
   const homr = artifactForEngine('homr');
   if (homr) return homr;
   for (const engineId of Object.keys(page.engines || {})) {

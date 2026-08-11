@@ -65,6 +65,8 @@ export interface ScannerEngineRun {
   modelRevision?: string;
   provenance?: ScannerEngineProvenance;
   completeness?: ScannerOutputCompleteness;
+  /** Capability-owned raw review evidence; currently emitted by HOMR. */
+  review?: ScannerPageResult['review'];
   artifacts: ScannerEngineArtifacts;
 }
 
@@ -264,6 +266,7 @@ export function scannerHomrRun(
       providerRequestId: page.providerRequestId,
       durationMs: page.durationMs,
       inferenceMs: page.inferenceMs,
+      review: page.review,
       errorCode: page.errorCode,
       errorMessage: page.errorMessage,
       providerRevision: metadata.providerRevision,
@@ -295,10 +298,25 @@ export function withScannerEngineRun(
   run: ScannerEngineRun
 ): ScannerPageResult {
   const engines = { ...page.engines, [run.engine]: run };
-  return {
+  const updated: ScannerPageResult = {
     ...page,
     status: scannerAggregatePageStatus(engines, page.included),
     engines
+  };
+  if (run.engine !== 'homr') return updated;
+  return {
+    ...updated,
+    attempts: run.attempts,
+    providerAttempts: run.providerAttempts,
+    idempotencyKey: run.idempotencyKey,
+    providerRequestId: run.providerRequestId,
+    durationMs: run.durationMs,
+    inferenceMs: run.inferenceMs,
+    review: run.review,
+    musicXml: run.status === 'succeeded' ? run.artifacts.musicXml : undefined,
+    pdf: run.status === 'succeeded' ? run.artifacts.pdf || page.pdf : page.pdf,
+    errorCode: run.errorCode,
+    errorMessage: run.errorMessage
   };
 }
 
