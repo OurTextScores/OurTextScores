@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -113,7 +114,17 @@ def _build_manifest_digest() -> str:
     return "sha256:" + digest.hexdigest()
 
 
-CONTAINER_IMAGE_DIGEST = _build_manifest_digest()
+def _resolve_container_image_digest() -> str:
+    """Use the deploy-time digest when Modal re-imports this module remotely."""
+    baked_digest = os.environ.get("TRANSCODA_CONTAINER_IMAGE_DIGEST", "").strip()
+    if baked_digest:
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", baked_digest):
+            raise RuntimeError("The baked container manifest digest is invalid")
+        return baked_digest
+    return _build_manifest_digest()
+
+
+CONTAINER_IMAGE_DIGEST = _resolve_container_image_digest()
 
 image = (
     modal.Image.from_registry(CUDA_BASE, add_python="3.12")

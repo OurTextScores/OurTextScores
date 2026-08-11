@@ -261,7 +261,10 @@ The command prints a token ID with a `wk-` prefix and a secret with a `ws-`
 prefix. The secret is shown once. Store it in the deployment secret manager.
 These are proxy credentials, not Modal API credentials (`ak-` / `as-`).
 
-On a workspace with RBAC, associate the token with the deployment environment:
+Token scope depends on the workspace:
+
+- With RBAC enabled, newly created tokens are environment-scoped. Associate the
+  token with the deployment environment:
 
 ```bash
 export TRANSCODA_MODAL_TOKEN_ID='wk-...'
@@ -269,6 +272,13 @@ modal workspace proxy-tokens allow \
   "$TRANSCODA_MODAL_TOKEN_ID" "$MODAL_ENVIRONMENT"
 modal workspace proxy-tokens list --environment "$MODAL_ENVIRONMENT"
 ```
+
+- Without RBAC, tokens are workspace-wide and already work for Web Functions in
+  every environment. Do not run `allow`: Modal will respond `Token is not
+  environment-scoped`. That response does not invalidate the token; continue to
+  §6. Existing workspace-wide tokens also remain workspace-wide if RBAC is later
+  enabled. If environment isolation is required, enable RBAC and create a new
+  scoped token rather than reusing this one.
 
 Use dedicated Transcoda variable names when Phase B is wired:
 
@@ -306,7 +316,7 @@ First prove the endpoint is not public, then prove the token works:
 curl -sS -o /dev/null -w 'unauthenticated: HTTP %{http_code}\n' \
   "$TRANSCODA_MODAL_URL/healthz"       # expect 401
 
-curl --fail-with-body -sS "${TRANSCODA_AUTH[@]}" \
+curl --fail-with-body -sS --max-time 180 "${TRANSCODA_AUTH[@]}" \
   "$TRANSCODA_MODAL_URL/healthz" | python3 -m json.tool
 ```
 
@@ -558,17 +568,31 @@ After rollback, repeat §§6–7 and use the rolled-back capabilities digest. Mo
 rollback is plan-dependent; source rollback plus a new deploy works everywhere.
 
 For an active incident, revoke the Transcoda proxy token or stop the App from the
-dashboard. CLI equivalents are destructive:
+dashboard. For an RBAC-scoped token, remove only its association with this
+environment:
 
 ```bash
 modal workspace proxy-tokens revoke \
   "$TRANSCODA_MODAL_TOKEN_ID" "$MODAL_ENVIRONMENT"
+```
+
+For a workspace-wide token, `revoke` will report `Token is not
+environment-scoped`; delete the entire token instead:
+
+```bash
+modal workspace proxy-tokens delete "$TRANSCODA_MODAL_TOKEN_ID"
+```
+
+Stopping the App is a separate, destructive option:
+
+```bash
 modal app stop ourtextscores-transcoda-scanner --env "$MODAL_ENVIRONMENT"
 ```
 
 Stopping is permanent for that deployment; restoring service requires another
-`modal deploy`. Revoking only the environment association is the more recoverable
-emergency action.
+`modal deploy`. For a scoped token, revoking only the environment association is
+more recoverable than deleting the token. Deleting a workspace-wide token
+immediately affects every client and environment that uses it.
 
 ---
 
@@ -579,7 +603,9 @@ emergency action.
 | Build fails at `git checkout` | The pinned Transcoda commit was unavailable. Do not move to `main`; verify the repository and pin. |
 | `uv ... --require-hashes` fails | Lock/artifact inconsistency or unavailable wheel. Do not install without hashes. |
 | Checkpoint or encoder `sha256sum` fails | Remote bytes differ from the reviewed artifact. Stop and investigate; do not copy the new hash blindly. |
-| `/healthz` returns `401` | Missing, wrong, or environment-scoped proxy token. Verify `wk-`/`ws-` values and RBAC association. |
+| `/healthz` returns `401` | Missing or wrong proxy-token credentials. Verify the `wk-` ID and `ws-` secret. |
+| `/healthz` returns `403` | A valid RBAC-scoped token is not associated with this environment. Workspace-wide tokens need no association. |
+| Authenticated `/healthz` hangs or returns `5xx` | The protected request reached Modal but its container did not start. Inspect App logs for an image or module-import failure before retrying. |
 | `/healthz` returns plain-text `404` saying the workspace is disabled | Modal's workspace budget cap fired. Restore budget deliberately; do not treat it as a missing route. |
 | `/readyz` stays `503 model_not_ready` | Inspect App logs. Common causes are unavailable CUDA, artifact mismatch, missing offline encoder files, converter mismatch, or failed warm-up conversion. |
 | Readiness reports `torch.cpu` | Invalid deployment. The provider should fail closed rather than serve it; verify the L4 assignment. |

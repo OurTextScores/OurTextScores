@@ -38,6 +38,7 @@ jobs:
           python -m pip install
           fastapi==0.116.1
           httpx==0.28.1
+          modal==1.5.3
           python-multipart==0.0.30
           ruff==0.12.12
 
@@ -50,7 +51,12 @@ jobs:
             services/transcoda-provider/transcoda_engine.py \
             services/transcoda-provider/transcoda_provider.py \
             services/transcoda-provider/test_transcoda_provider.py \
-            services/transcoda-modal/modal_app.py
+            services/transcoda-modal/modal_app.py \
+            services/transcoda-modal/test_modal_app.py
 
       - name: Run HTTP contract tests
         run: python -m unittest test_transcoda_provider -v
+
+      - name: Test Modal definition import
+        working-directory: .
+        run: python -m unittest discover -s services/transcoda-modal -p 'test_*.py' -v
