@@ -24,6 +24,7 @@ export interface ScannerTelemetryFields {
   status?: string;
   previousStatus?: string;
   providerKind?: string;
+  engine?: string;
   providerRevision?: string;
   modelRevision?: string;
   providerRequestId?: string;
@@ -61,6 +62,7 @@ const ALLOWED_FIELDS: ReadonlyArray<keyof ScannerTelemetryFields> = [
   'status',
   'previousStatus',
   'providerKind',
+  'engine',
   'providerRevision',
   'modelRevision',
   'providerRequestId',
@@ -96,6 +98,9 @@ export type ScannerTelemetryEvent =
   | 'page_started'
   | 'page_succeeded'
   | 'page_failed'
+  | 'page_engine_started'
+  | 'page_engine_succeeded'
+  | 'page_engine_failed'
   | 'page_render_failed'
   | 'provider_disabled'
   | 'artifacts_purged';
@@ -122,7 +127,8 @@ export class ScannerTelemetryService {
       if (value !== undefined && value !== null && value !== '') payload[key] = value;
     }
     const line = `scanner ${JSON.stringify(payload)}`;
-    if (event === 'page_failed' || event === 'provider_disabled') this.logger.warn(line);
+    if (event === 'page_failed' || event === 'page_engine_failed' || event === 'provider_disabled')
+      this.logger.warn(line);
     else this.logger.log(line);
   }
 

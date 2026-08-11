@@ -109,10 +109,56 @@ export function withScannerHomrRun(
   };
 }
 
+/** Store one engine result and derive the compatibility page status from all runs. */
+export function withScannerEngineRun(
+  page: ScannerPageResult,
+  run: ScannerEngineRun
+): ScannerPageResult {
+  const engines = { ...page.engines, [run.engine]: run };
+  return {
+    ...page,
+    status: scannerAggregatePageStatus(engines, page.included),
+    engines
+  };
+}
+
 /** All artifacts owned by engine runs, including model-native intermediates. */
 export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerStorageLocator[] {
   return Object.values(page.engines || {}).flatMap((run) =>
     run ? (Object.values(run.artifacts).filter(Boolean) as ScannerStorageLocator[]) : []
+  );
+}
+
+/** Reproducible per-engine result metadata without exposing storage object keys. */
+export function scannerEngineManifest(page: ScannerPageResult): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(page.engines || {}).flatMap(([engine, run]) =>
+      run
+        ? [
+            [
+              engine,
+              {
+                status: run.status,
+                attempts: run.attempts,
+                providerAttempts: run.providerAttempts ?? run.attempts,
+                providerRequestId: run.providerRequestId,
+                durationMs: run.durationMs,
+                inferenceMs: run.inferenceMs,
+                errorCode: run.errorCode,
+                errorMessage: run.errorMessage,
+                providerRevision: run.providerRevision,
+                modelRevision: run.modelRevision,
+                provenance: run.provenance,
+                artifacts: {
+                  musicXmlSha256: run.artifacts.musicXml?.checksumSha256,
+                  pdfSha256: run.artifacts.pdf?.checksumSha256,
+                  kernSha256: run.artifacts.kern?.checksumSha256
+                }
+              }
+            ]
+          ]
+        : []
+    )
   );
 }
 

@@ -25,6 +25,12 @@ const provider = {
   regenerate: jest.fn(async () => Buffer.from('<score-partwise/>'))
 } as any;
 
+async function readStream(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
 describe('ScannerService', () => {
   const values: Record<string, string> = {
     SCANNER_ENABLED: 'true',
@@ -57,6 +63,8 @@ describe('ScannerService', () => {
     values.SCANNER_ENABLED = 'true';
     values.SCANNER_BETA_USER_IDS = 'user-1';
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'false';
+    delete values.SCANNER_TRANSCODA_ENABLED;
+    delete values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED;
     jobs.countDocuments.mockReturnValue({ exec: () => Promise.resolve(0) });
     jobs.aggregate.mockReturnValue({ exec: () => Promise.resolve([]) });
     jobs.create.mockImplementation((value: any) =>
@@ -377,6 +385,25 @@ describe('ScannerService', () => {
     expect(() => service.assertAvailable('user-1')).not.toThrow();
   });
 
+  it('accepts new work while either enabled engine still has capacity', () => {
+    values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'true';
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED = 'false';
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    ) as any;
+
+    expect(service.providerCapacityExhausted()).toBe(false);
+    values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED = 'true';
+    expect(service.providerCapacityExhausted()).toBe(true);
+  });
+
   it('returns owned job summaries without storage locators or idempotency keys', async () => {
     const document = {
       jobId: 'job-1',
@@ -430,6 +457,73 @@ describe('ScannerService', () => {
     expect(JSON.stringify(result)).not.toContain('private-source');
     expect(JSON.stringify(result)).not.toContain('private-multi-source');
     expect(JSON.stringify(result)).not.toContain('private-page.png');
+  });
+
+  it('serves explicit per-engine Transcoda MusicXML and kern artifacts', async () => {
+    const transcodaMusicXml = {
+      bucket: 'scanner',
+      objectKey: 'page-001-transcoda.musicxml',
+      contentType: 'application/vnd.recordare.musicxml+xml'
+    };
+    const transcodaKern = {
+      bucket: 'scanner',
+      objectKey: 'page-001-transcoda.krn',
+      contentType: 'text/plain; charset=utf-8'
+    };
+    const job: any = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          status: 'succeeded',
+          attempts: 1,
+          idempotencyKey: 'homr-key',
+          engines: {
+            transcoda: {
+              engine: 'transcoda',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'transcoda-key',
+              artifacts: { musicXml: transcodaMusicXml, kern: transcodaKern }
+            }
+          }
+        }
+      ]
+    };
+    const bodies: Record<string, Buffer> = {
+      [transcodaMusicXml.objectKey]: Buffer.from('<score-partwise/>'),
+      [transcodaKern.objectKey]: Buffer.from('**kern\n4c\n*-\n')
+    };
+    const engineStorage = {
+      getObjectStream: jest.fn(async (_bucket: string, objectKey: string) =>
+        Readable.from([bodies[objectKey]])
+      )
+    } as any;
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections,
+      engineStorage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    const musicXml = await service.getArtifact('user-1', 'job-1', 'musicxml', 1, 'transcoda');
+    const kern = await service.getArtifact('user-1', 'job-1', 'kern', 1, 'transcoda');
+
+    expect(musicXml.filename).toBe('scan-page-1-transcoda.musicxml');
+    expect((await readStream(musicXml.stream)).toString()).toBe('<score-partwise/>');
+    expect(kern.filename).toBe('scan-page-1-transcoda.krn');
+    expect((await readStream(kern.stream)).toString()).toBe('**kern\n4c\n*-\n');
+    await expect(service.getArtifact('user-1', 'job-1', 'kern', 1)).rejects.toThrow(
+      BadRequestException
+    );
+    await expect(
+      service.getArtifact('user-1', 'job-1', 'musicxml', undefined, 'transcoda')
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('queues one manual generation for a transiently failed page', async () => {
@@ -826,12 +920,6 @@ describe('reviewed artifacts', () => {
     contentType,
     sizeBytes: 1
   });
-
-  async function readStream(stream: Readable): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-    return Buffer.concat(chunks);
-  }
 
   it('builds job downloads from effective pages and withholds stale renders', async () => {
     const rawOne = locator('raw-1.musicxml', 'raw-one', 'application/xml');

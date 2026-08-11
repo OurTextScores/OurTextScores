@@ -48,9 +48,16 @@ export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
  * work the reviewer has already superseded.
  */
 export function effectivePageMusicXml(
-  page: Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml'> | undefined
+  page:
+    | Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'>
+    | undefined
 ): ScannerStorageLocator | undefined {
-  return page?.mergedMusicXml || page?.reviewedMusicXml || page?.musicXml;
+  return (
+    page?.mergedMusicXml ||
+    page?.reviewedMusicXml ||
+    page?.musicXml ||
+    page?.engines?.transcoda?.artifacts.musicXml
+  );
 }
 
 /** True when pre-review bundles, renders and manifests no longer describe a page. */

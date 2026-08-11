@@ -487,15 +487,16 @@ worker provides durable idempotency above it.
 
 ## 8. Record the Phase B handoff configuration
 
-Store these values in the deployment inventory and secret manager. Do not add
-them to the current production worker until Phase B actually invokes the
-Transcoda adapter:
+Store these values in the deployment inventory and secret manager. Phase B now
+invokes the Transcoda adapter, but remains off until the worker flag is enabled:
 
 ```text
+SCANNER_TRANSCODA_ENABLED=false
 SCANNER_TRANSCODA_PROVIDER_KIND=modal
 SCANNER_TRANSCODA_PROVIDER_URL=<TRANSCODA_MODAL_URL>
 SCANNER_TRANSCODA_MODAL_TOKEN_ID=<wk-...>
 SCANNER_TRANSCODA_MODAL_TOKEN_SECRET=<ws-...>
+SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED=false
 
 SCANNER_EXPECTED_TRANSCODA_PROVIDER_REVISION=ots-transcoda-modal-v1
 SCANNER_EXPECTED_TRANSCODA_MODEL_ARTIFACT=btrkeks/transcoda-59M-zeroshot-v1
@@ -514,6 +515,29 @@ to avoid coordinating a rollout.
 
 Keep the HOMR `SCANNER_PROVIDER_*` configuration untouched. The two engines need
 separate URLs, credentials, state, retries, telemetry, and provenance.
+
+After deploying a backend/worker image that contains Phase B, set
+`SCANNER_TRANSCODA_ENABLED=true` in the worker environment and recreate only the
+worker. The base Compose service reads these values from `.env`; a hand-maintained
+VPS Compose file must pass them through explicitly if it does not use that file.
+The flag is the rollback: set it back to `false` and recreate the worker. Existing
+Transcoda artifacts remain downloadable until normal Scanner retention removes
+them.
+
+Run one Scanner job and inspect `pages[].engines.transcoda` in the authenticated
+job response. It must reach its own terminal state without changing a successful
+HOMR run into a failed page. Download the model-authored results explicitly:
+
+```text
+GET /api/scanner/jobs/<job-id>/artifacts/musicxml?page=1&engine=transcoda
+GET /api/scanner/jobs/<job-id>/artifacts/kern?page=1&engine=transcoda
+```
+
+The results ZIP manifest records each engine's attempts, request/revision data,
+provenance, errors, and artifact checksums without exposing object-storage keys.
+Phase B adds no compare UI and performs no cross-engine merge. HOMR remains the
+preferred effective page; Transcoda is only a fallback when HOMR has no usable
+MusicXML.
 
 ---
 

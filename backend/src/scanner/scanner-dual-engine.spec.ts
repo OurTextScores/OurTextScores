@@ -8,9 +8,11 @@ import {
   scannerHomrRun,
   uniqueScannerStorageLocators,
   withScannerArtifactInputSignature,
+  withScannerEngineRun,
   withScannerHomrRun
 } from './scanner-dual-engine';
 import { scannerProviderIdempotencyKey } from './scanner-provider.contract';
+import { effectivePageMusicXml } from './scanner.constants';
 
 describe('dual-engine content identity', () => {
   it('synthesizes legacy HOMR state and dual-writes it without disturbing Transcoda', () => {
@@ -112,6 +114,35 @@ describe('dual-engine content identity', () => {
     ).toBe('running');
     expect(scannerAggregatePageStatus({ homr: run('homr', 'failed') })).toBe('failed');
     expect(scannerAggregatePageStatus({}, false)).toBe('skipped');
+  });
+
+  it('uses Transcoda only as a fallback when HOMR has no usable MusicXML', () => {
+    const homr = { objectKey: 'homr.musicxml' } as any;
+    const transcoda = { objectKey: 'transcoda.musicxml' } as any;
+    const page: any = {
+      included: true,
+      status: 'failed',
+      engines: {
+        homr: {
+          engine: 'homr',
+          status: 'failed',
+          attempts: 1,
+          idempotencyKey: 'homr-key',
+          artifacts: {}
+        }
+      }
+    };
+    const withTranscoda = withScannerEngineRun(page, {
+      engine: 'transcoda',
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'transcoda-key',
+      artifacts: { musicXml: transcoda }
+    });
+
+    expect(withTranscoda.status).toBe('succeeded');
+    expect(effectivePageMusicXml(withTranscoda)).toBe(transcoda);
+    expect(effectivePageMusicXml({ ...withTranscoda, musicXml: homr })).toBe(homr);
   });
 
   it('binds materialized artifacts to page order, checksums and builder version', () => {

@@ -24,6 +24,7 @@ import {
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerMergeService } from './scanner-merge.service';
 import { ScannerProviderService } from './scanner-provider.service';
+import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.service';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import {
   effectivePageMusicXml,
@@ -36,11 +37,13 @@ import {
   scannerArtifactInputMatches,
   scannerArtifactInputSignature,
   scannerEngineArtifactLocators,
+  scannerEngineManifest,
   uniqueScannerStorageLocators,
   withScannerArtifactInputSignature,
+  withScannerEngineRun,
   withScannerHomrRun
 } from './scanner-dual-engine';
-import type { ScannerArtifactInput } from './scanner-dual-engine';
+import type { ScannerArtifactInput, ScannerEngineRun } from './scanner-dual-engine';
 import type { ScannerPageProvider } from './scanner-provider.contract';
 
 const execFileAsync = promisify(execFile);
@@ -79,6 +82,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private busy = false;
   private providerDisabledReason?: string;
+  private transcodaDisabledReason?: string;
   private lastCleanupAt = 0;
   private lastAlertCheckAt = 0;
 
@@ -88,6 +92,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly storage: StorageService,
     @Inject(ScannerProviderService)
     private readonly provider: ScannerPageProvider,
+    @Inject(ScannerTranscodaProviderService)
+    private readonly transcodaProvider: ScannerPageProvider,
     private readonly renderer: DerivativePipelineService,
     private readonly merger: ScannerMergeService,
     private readonly alerts: ScannerAlertService,
@@ -150,10 +156,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async claim(): Promise<ScannerJobDocument | null> {
-    if (
-      !this.bool('SCANNER_ENABLED', false) ||
-      this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)
-    ) {
+    if (!this.bool('SCANNER_ENABLED', false)) {
+      return null;
+    }
+    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false) && !this.transcodaEnabled()) {
       return null;
     }
     const now = new Date();
@@ -222,18 +228,20 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         if (assets.sourceImage) storedLocators.push(assets.sourceImage);
         if (assets.thumbnail) storedLocators.push(assets.thumbnail);
         pages.push(
-          withScannerHomrRun({
-            pageNumber: pageFile.pageNumber,
-            ordinal: prior?.ordinal || pageFile.pageNumber,
-            rotationDegrees: prior?.rotationDegrees || 0,
-            included: prior?.included !== false,
-            status: prior?.included === false ? 'skipped' : 'pending',
-            attempts: 0,
-            manualRetries: 0,
-            idempotencyKey: '',
-            engines: prior?.engines,
-            ...assets
-          })
+          this.withInitialTranscodaRun(
+            withScannerHomrRun({
+              pageNumber: pageFile.pageNumber,
+              ordinal: prior?.ordinal || pageFile.pageNumber,
+              rotationDegrees: prior?.rotationDegrees || 0,
+              included: prior?.included !== false,
+              status: prior?.included === false ? 'skipped' : 'pending',
+              attempts: 0,
+              manualRetries: 0,
+              idempotencyKey: '',
+              engines: prior?.engines,
+              ...assets
+            })
+          )
         );
       }
       const updated = await this.jobs
@@ -293,30 +301,31 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     let renderMsTotal = 0;
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-worker-'));
     try {
-      if (this.providerDisabledReason) {
-        throw new ScannerProviderError(this.providerDisabledReason, 'provider_disabled', false);
-      }
       const pageFiles = await this.materializeConfiguredPages(job, workspace);
       const priorResults = new Map(
         job.pages.map((page) => [
           page.pageNumber,
-          withScannerHomrRun(page, {
-            providerRevision: job.providerRevision,
-            modelRevision: job.modelRevision,
-            provenance: job.engineProvenance
-          })
+          this.withInitialTranscodaRun(
+            withScannerHomrRun(page, {
+              providerRevision: job.providerRevision,
+              modelRevision: job.modelRevision,
+              provenance: job.engineProvenance
+            })
+          )
         ])
       );
       const results: ScannerPageResult[] = job.pages
         .filter((page) => page.included === false)
         .map((page) =>
-          withScannerHomrRun(
-            { ...page, status: 'skipped' },
-            {
-              providerRevision: job.providerRevision,
-              modelRevision: job.modelRevision,
-              provenance: job.engineProvenance
-            }
+          this.withInitialTranscodaRun(
+            withScannerHomrRun(
+              { ...page, status: 'skipped' },
+              {
+                providerRevision: job.providerRevision,
+                modelRevision: job.modelRevision,
+                provenance: job.engineProvenance
+              }
+            )
           )
         );
       const retryPageNumbers = job.retryPageNumbers?.length
@@ -339,7 +348,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           if (prior) results.push(prior);
           continue;
         }
-        if (prior?.status === 'succeeded' && prior.musicXml) {
+        if (prior?.engines?.homr?.status === 'succeeded' && prior.engines.homr.artifacts.musicXml) {
           let resumed = prior;
           if (
             !this.materializedArtifactIsCurrent(
@@ -379,7 +388,30 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               );
             }
           }
+          if (this.transcodaEnabled()) {
+            await this.updateLease(job.jobId, 'running');
+            const transcoda = await this.scanTranscodaPage({
+              job,
+              page: resumed,
+              image: await fs.readFile(pageFile.path),
+              contentType: pageFile.contentType,
+              pageNumber,
+              detectTitle,
+              userHash
+            });
+            resumed = transcoda.page;
+            providerMsTotal += transcoda.providerMs;
+          }
           results.push(resumed);
+          await this.persistPageProgress(
+            job,
+            results,
+            priorResults,
+            undefined,
+            providerRevision,
+            modelRevision,
+            engineProvenance
+          );
           continue;
         }
 
@@ -390,8 +422,35 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           detectTitle,
           generation: job.generation
         });
-        if (prior && this.shouldPreservePriorFailure(prior, idempotencyKey)) {
-          results.push(prior);
+        if (
+          prior?.engines?.homr &&
+          this.shouldPreservePriorFailure(prior.engines.homr, idempotencyKey)
+        ) {
+          let preserved = prior;
+          if (this.transcodaEnabled()) {
+            await this.updateLease(job.jobId, 'running');
+            const transcoda = await this.scanTranscodaPage({
+              job,
+              page: preserved,
+              image,
+              contentType: pageFile.contentType,
+              pageNumber,
+              detectTitle,
+              userHash
+            });
+            preserved = transcoda.page;
+            providerMsTotal += transcoda.providerMs;
+          }
+          results.push(preserved);
+          await this.persistPageProgress(
+            job,
+            results,
+            priorResults,
+            undefined,
+            providerRevision,
+            modelRevision,
+            engineProvenance
+          );
           continue;
         }
 
@@ -437,6 +496,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         });
         const pageStartedAt = Date.now();
         try {
+          if (this.providerDisabledReason) {
+            throw new ScannerProviderError(this.providerDisabledReason, 'provider_disabled', false);
+          }
           const scanned = await this.scanWithRetry({
             image,
             contentType: pageFile.contentType,
@@ -595,6 +657,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             retryable: providerError.retryable
           });
         }
+        if (this.transcodaEnabled()) {
+          await this.updateLease(job.jobId, 'running');
+          const homrPage = results.pop();
+          if (!homrPage) throw new Error(`Scanner page ${pageNumber} produced no HOMR state`);
+          const transcoda = await this.scanTranscodaPage({
+            job,
+            page: homrPage,
+            image,
+            contentType: pageFile.contentType,
+            pageNumber,
+            detectTitle,
+            userHash
+          });
+          results.push(transcoda.page);
+          providerMsTotal += transcoda.providerMs;
+        }
         await this.persistPageProgress(
           job,
           results,
@@ -608,7 +686,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (await this.isCancelled(job.jobId)) return;
-      const successful = results.filter((page) => page.status === 'succeeded' && page.musicXml);
+      const successful = results.filter(
+        (page) => page.status === 'succeeded' && effectivePageMusicXml(page)
+      );
       if (successful.length === 0) {
         const firstFailure = results.find((page) => page.status === 'failed');
         await this.finish(job, 'failed', results, {
@@ -684,21 +764,226 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async scanWithRetry(input: {
+  private withInitialTranscodaRun(page: ScannerPageResult): ScannerPageResult {
+    if (!this.transcodaEnabled()) return page;
+    const existing = page.engines?.transcoda;
+    if (existing) return withScannerEngineRun(page, existing);
+    return withScannerEngineRun(page, {
+      engine: 'transcoda',
+      status: page.included === false ? 'skipped' : 'pending',
+      attempts: 0,
+      idempotencyKey: '',
+      artifacts: {}
+    });
+  }
+
+  private transcodaEnabled(): boolean {
+    return this.bool('SCANNER_TRANSCODA_ENABLED', false);
+  }
+
+  private async scanTranscodaPage(input: {
+    job: ScannerJobDocument;
+    page: ScannerPageResult;
     image: Buffer;
-    contentType?: 'image/png' | 'image/jpeg';
+    contentType: 'image/png' | 'image/jpeg';
     pageNumber: number;
-    generation?: number;
     detectTitle: boolean;
-    idempotencyKey: string;
-  }): Promise<{
+    userHash: string;
+  }): Promise<{ page: ScannerPageResult; providerMs: number }> {
+    const prior = input.page.engines?.transcoda;
+    const idempotencyKey = this.transcodaProvider.createIdempotencyKey({
+      inputSha256: createHash('sha256').update(input.image).digest('hex'),
+      pageNumber: input.pageNumber,
+      detectTitle: input.detectTitle,
+      generation: input.job.generation
+    });
+    if (
+      prior?.status === 'succeeded' &&
+      prior.idempotencyKey === idempotencyKey &&
+      prior.artifacts.musicXml &&
+      prior.artifacts.kern
+    ) {
+      return { page: withScannerEngineRun(input.page, prior), providerMs: 0 };
+    }
+    if (prior && this.shouldPreservePriorFailure(prior, idempotencyKey)) {
+      return { page: withScannerEngineRun(input.page, prior), providerMs: 0 };
+    }
+    if (this.transcodaDisabledReason) {
+      return {
+        page: withScannerEngineRun(input.page, {
+          engine: 'transcoda',
+          status: 'skipped',
+          attempts: 0,
+          providerAttempts: prior?.providerAttempts,
+          idempotencyKey,
+          errorCode: 'provider_disabled',
+          errorMessage: this.transcodaDisabledReason,
+          artifacts: prior?.artifacts || {}
+        }),
+        providerMs: 0
+      };
+    }
+
+    this.telemetry.emit('page_engine_started', {
+      jobId: input.job.jobId,
+      userHash: input.userHash,
+      pageNumber: input.pageNumber,
+      ordinal: input.page.ordinal || input.pageNumber,
+      generation: input.job.generation,
+      engine: 'transcoda',
+      inputBytes: input.image.length,
+      providerKind: this.config.get<string>('SCANNER_TRANSCODA_PROVIDER_KIND', 'modal')
+    });
+    const startedAt = Date.now();
+    try {
+      const scanned = await this.scanWithRetry(
+        {
+          image: input.image,
+          contentType: input.contentType,
+          pageNumber: input.pageNumber,
+          generation: input.job.generation,
+          detectTitle: input.detectTitle,
+          idempotencyKey
+        },
+        this.transcodaProvider,
+        'SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED'
+      );
+      if (await this.isCancelled(input.job.jobId)) {
+        return { page: input.page, providerMs: Date.now() - startedAt };
+      }
+      if (!scanned.result.kern) {
+        throw new ScannerProviderError(
+          'Scanner Transcoda provider returned no kern artifact',
+          'provider_invalid_kern',
+          false
+        );
+      }
+
+      const pageSegment = String(input.pageNumber).padStart(3, '0');
+      let musicXml: ScannerStorageLocator | undefined;
+      let kern: ScannerStorageLocator | undefined;
+      try {
+        musicXml = await this.store(
+          `${this.baseKey(input.job)}/page-${pageSegment}-transcoda.musicxml`,
+          scanned.result.musicXml,
+          'application/vnd.recordare.musicxml+xml'
+        );
+        kern = await this.store(
+          `${this.baseKey(input.job)}/page-${pageSegment}-transcoda.krn`,
+          scanned.result.kern,
+          'text/plain; charset=utf-8'
+        );
+        if (await this.isCancelled(input.job.jobId)) {
+          await Promise.all(
+            [musicXml, kern].map((locator) =>
+              this.storage.deleteObject(locator.bucket, locator.objectKey)
+            )
+          );
+          return { page: input.page, providerMs: Date.now() - startedAt };
+        }
+      } catch (error) {
+        await Promise.all(
+          [musicXml, kern]
+            .filter(Boolean)
+            .map((locator) => this.storage.deleteObject(locator!.bucket, locator!.objectKey))
+        );
+        throw error;
+      }
+
+      const providerMs = Date.now() - startedAt;
+      const run: ScannerEngineRun = {
+        engine: 'transcoda',
+        status: 'succeeded',
+        attempts: scanned.attempts,
+        providerAttempts: (prior?.providerAttempts || 0) + scanned.attempts,
+        idempotencyKey,
+        providerRequestId: scanned.result.requestId,
+        durationMs: providerMs,
+        inferenceMs: scanned.result.inferenceMs,
+        providerRevision: scanned.result.providerRevision,
+        modelRevision: scanned.result.modelRevision,
+        provenance: scanned.result.provenance,
+        artifacts: { musicXml, kern }
+      };
+      let page = withScannerEngineRun(input.page, run);
+      if (page.engines?.homr?.status !== 'succeeded') {
+        page = { ...page, errorCode: undefined, errorMessage: undefined };
+      }
+      this.telemetry.emit('page_engine_succeeded', {
+        jobId: input.job.jobId,
+        userHash: input.userHash,
+        pageNumber: input.pageNumber,
+        ordinal: input.page.ordinal || input.pageNumber,
+        generation: input.job.generation,
+        engine: 'transcoda',
+        attempt: scanned.attempts,
+        providerAttempts: run.providerAttempts,
+        providerRequestId: scanned.result.requestId,
+        providerRevision: scanned.result.providerRevision,
+        modelRevision: scanned.result.modelRevision,
+        executionProvider: scanned.result.provenance.executionProvider,
+        providerMs,
+        inferenceMs: scanned.result.inferenceMs,
+        inputBytes: input.image.length,
+        outputBytes: scanned.result.musicXml.length + scanned.result.kern.length
+      });
+      return { page, providerMs };
+    } catch (error) {
+      const providerError = this.asProviderError(error);
+      if (disablesProvider(providerError.code)) {
+        this.transcodaDisabledReason = providerError.message;
+        this.logger.error(`Disabling Transcoda provider: ${providerError.message}`);
+      }
+      const attempts =
+        (providerError as ScannerProviderError & { attempts?: number }).attempts ?? 1;
+      const providerMs = Date.now() - startedAt;
+      const page = withScannerEngineRun(input.page, {
+        engine: 'transcoda',
+        status: 'failed',
+        attempts,
+        providerAttempts: (prior?.providerAttempts || 0) + attempts,
+        idempotencyKey,
+        durationMs: providerMs,
+        errorCode: providerError.code,
+        errorMessage: providerError.message,
+        artifacts: prior?.artifacts || {}
+      });
+      this.telemetry.emit('page_engine_failed', {
+        jobId: input.job.jobId,
+        userHash: input.userHash,
+        pageNumber: input.pageNumber,
+        ordinal: input.page.ordinal || input.pageNumber,
+        generation: input.job.generation,
+        engine: 'transcoda',
+        attempt: attempts,
+        providerMs,
+        inputBytes: input.image.length,
+        errorCode: providerError.code,
+        retryable: providerError.retryable
+      });
+      return { page, providerMs };
+    }
+  }
+
+  private async scanWithRetry(
+    input: {
+      image: Buffer;
+      contentType?: 'image/png' | 'image/jpeg';
+      pageNumber: number;
+      generation?: number;
+      detectTitle: boolean;
+      idempotencyKey: string;
+    },
+    provider: ScannerPageProvider = this.provider,
+    budgetKey = 'SCANNER_PROVIDER_BUDGET_EXHAUSTED'
+  ): Promise<{
     result: Awaited<ReturnType<ScannerPageProvider['scanPage']>>;
     attempts: number;
   }> {
     let attempt = 0;
     while (attempt < 2) {
       attempt += 1;
-      if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+      if (this.bool(budgetKey, false)) {
         throw new ScannerProviderError(
           'Scanner monthly capacity has been reached',
           'provider_budget_exhausted',
@@ -707,7 +992,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
       try {
         const contentType = input.contentType || 'image/png';
-        const result = await this.provider.scanPage({
+        const result = await provider.scanPage({
           image: input.image,
           filename: `page-${input.pageNumber}-generation-${input.generation || 1}.${contentType === 'image/jpeg' ? 'jpg' : 'png'}`,
           contentType,
@@ -751,7 +1036,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private shouldPreservePriorFailure(
-    prior: ScannerPageResult,
+    prior: { status: string; idempotencyKey: string; errorCode?: string },
     currentIdempotencyKey: string
   ): boolean {
     return (
@@ -1193,6 +1478,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         manualRetries: page.manualRetries || 0,
         errorCode: page.errorCode,
         errorMessage: page.errorMessage,
+        engines: scannerEngineManifest(page),
         musicXmlSha256: effectivePageMusicXml(page)?.checksumSha256,
         pdfSha256: this.materializedArtifactIsCurrent(
           page.pdf,
@@ -1505,8 +1791,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       const testLease = Number(this.config.get<string>('SCANNER_TEST_WORKER_LEASE_MS', ''));
       if (Number.isFinite(testLease) && testLease > 0) return Math.max(5_000, testLease);
     }
-    const timeout = Number(this.config.get<string>('SCANNER_PROVIDER_TIMEOUT_MS', '600000'));
-    return Math.max(1_200_000, (Number.isFinite(timeout) ? timeout : 600_000) + 300_000);
+    const homrTimeout = Number(this.config.get<string>('SCANNER_PROVIDER_TIMEOUT_MS', '600000'));
+    const transcodaTimeout = this.transcodaEnabled()
+      ? Number(this.config.get<string>('SCANNER_TRANSCODA_PROVIDER_TIMEOUT_MS', '600000'))
+      : 0;
+    const timeout = Math.max(
+      Number.isFinite(homrTimeout) ? homrTimeout : 600_000,
+      Number.isFinite(transcodaTimeout) ? transcodaTimeout : 0
+    );
+    return Math.max(1_200_000, timeout + 300_000);
   }
 
   private asProviderError(error: unknown): ScannerProviderError {

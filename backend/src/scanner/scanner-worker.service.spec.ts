@@ -18,6 +18,10 @@ describe('ScannerWorkerService', () => {
   const provider = {
     scanPage: jest.fn()
   } as any;
+  const transcodaProvider = {
+    createIdempotencyKey: jest.fn(() => 'transcoda-key'),
+    scanPage: jest.fn()
+  } as any;
   const merger = { enabled: false, merge: jest.fn() } as any;
   const alerts = {
     check: jest.fn().mockResolvedValue([]),
@@ -34,6 +38,7 @@ describe('ScannerWorkerService', () => {
       {} as any,
       {} as any,
       provider,
+      transcodaProvider,
       {} as any,
       merger,
       alerts,
@@ -47,6 +52,7 @@ describe('ScannerWorkerService', () => {
     jest.clearAllMocks();
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'false';
     delete values.SCANNER_PROVIDER_KIND;
+    delete values.SCANNER_TRANSCODA_ENABLED;
     delete values.SCANNER_TEST_WORKER_LEASE_MS;
   });
 
@@ -77,6 +83,7 @@ describe('ScannerWorkerService', () => {
       {} as any,
       storage,
       provider,
+      transcodaProvider,
       {} as any,
       merger,
       alerts,
@@ -97,6 +104,22 @@ describe('ScannerWorkerService', () => {
             bucket: 'scanner',
             objectKey: 'page.musicxml',
             checksumSha256: 'page-checksum'
+          },
+          engines: {
+            transcoda: {
+              engine: 'transcoda',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'transcoda-key',
+              providerRequestId: 'transcoda-request',
+              providerRevision: 'transcoda-service',
+              modelRevision: 'transcoda-model',
+              provenance: { executionProvider: 'torch.cuda' },
+              artifacts: {
+                kern: { checksumSha256: 'kern-checksum' },
+                musicXml: { checksumSha256: 'transcoda-checksum' }
+              }
+            }
           }
         }
       ],
@@ -106,6 +129,15 @@ describe('ScannerWorkerService', () => {
     expect(locator.inputSignature).toMatch(/^scanner-artifact-input-v1:/);
     const manifest = JSON.parse(new AdmZip(storedBody).readAsText('scanner-manifest.json'));
     expect(manifest.inputSignature).toBe(locator.inputSignature);
+    expect(manifest.pages[0].engines.transcoda).toMatchObject({
+      status: 'succeeded',
+      providerRequestId: 'transcoda-request',
+      provenance: { executionProvider: 'torch.cuda' },
+      artifacts: {
+        musicXmlSha256: 'transcoda-checksum',
+        kernSha256: 'kern-checksum'
+      }
+    });
   });
 
   it('retries one transient failure with exactly the same idempotency key', async () => {
@@ -197,6 +229,161 @@ describe('ScannerWorkerService', () => {
     expect(provider.scanPage).toHaveBeenCalledTimes(1);
   });
 
+  it('stores independent Transcoda artifacts and survives a HOMR failure', async () => {
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    const jobsModel = {
+      findOne: jest.fn(() => ({
+        select: () => ({ lean: () => ({ exec: async () => ({ status: 'running' }) }) })
+      }))
+    } as any;
+    const stored = new Map<string, Buffer>();
+    const engineStorage = {
+      putAuxiliaryObject: jest.fn(async (objectKey: string, body: Buffer) => {
+        stored.set(objectKey, body);
+        return { bucket: 'scanner', objectKey };
+      }),
+      deleteObject: jest.fn().mockResolvedValue(undefined)
+    } as any;
+    transcodaProvider.scanPage.mockResolvedValue({
+      engine: 'transcoda',
+      musicXml: Buffer.from('<score-partwise/>'),
+      kern: Buffer.from('**kern\n4c\n*-\n'),
+      providerRevision: 'transcoda-service',
+      modelRevision: 'transcoda-model',
+      provenance: { executionProvider: 'torch.cuda' },
+      requestId: 'transcoda-request',
+      inferenceMs: 25
+    });
+    const scannerWorker = new ScannerWorkerService(
+      jobsModel,
+      engineStorage,
+      provider,
+      transcodaProvider,
+      {} as any,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config
+    ) as any;
+
+    const result = await scannerWorker.scanTranscodaPage({
+      job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
+      page: {
+        pageNumber: 1,
+        ordinal: 1,
+        included: true,
+        status: 'failed',
+        attempts: 1,
+        idempotencyKey: 'homr-key',
+        errorCode: 'provider_no_staff_detected',
+        errorMessage: 'No notation was detected',
+        engines: {
+          homr: {
+            engine: 'homr',
+            status: 'failed',
+            attempts: 1,
+            idempotencyKey: 'homr-key',
+            errorCode: 'provider_no_staff_detected',
+            artifacts: {}
+          },
+          transcoda: {
+            engine: 'transcoda',
+            status: 'pending',
+            attempts: 0,
+            idempotencyKey: '',
+            artifacts: {}
+          }
+        }
+      },
+      image: Buffer.from('image'),
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash'
+    });
+
+    expect(result.page).toMatchObject({
+      status: 'succeeded',
+      errorCode: undefined,
+      errorMessage: undefined,
+      engines: {
+        homr: { status: 'failed' },
+        transcoda: {
+          status: 'succeeded',
+          providerRequestId: 'transcoda-request',
+          artifacts: {
+            musicXml: { objectKey: expect.stringMatching(/-transcoda\.musicxml$/) },
+            kern: { objectKey: expect.stringMatching(/-transcoda\.krn$/) }
+          }
+        }
+      }
+    });
+    expect([...stored.keys()]).toEqual([
+      expect.stringMatching(/page-001-transcoda\.musicxml$/),
+      expect.stringMatching(/page-001-transcoda\.krn$/)
+    ]);
+  });
+
+  it('keeps a successful HOMR page usable when Transcoda fails', async () => {
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    transcodaProvider.scanPage.mockRejectedValue(
+      new ScannerProviderError('no staff', 'provider_no_staff_detected', false)
+    );
+    const scannerWorker = new ScannerWorkerService(
+      {} as any,
+      {} as any,
+      provider,
+      transcodaProvider,
+      {} as any,
+      merger,
+      alerts,
+      {} as any,
+      telemetry,
+      config
+    ) as any;
+    const homrMusicXml = { bucket: 'scanner', objectKey: 'homr.musicxml' };
+
+    const result = await scannerWorker.scanTranscodaPage({
+      job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
+      page: {
+        pageNumber: 1,
+        ordinal: 1,
+        included: true,
+        status: 'succeeded',
+        attempts: 1,
+        idempotencyKey: 'homr-key',
+        musicXml: homrMusicXml,
+        engines: {
+          homr: {
+            engine: 'homr',
+            status: 'succeeded',
+            attempts: 1,
+            idempotencyKey: 'homr-key',
+            artifacts: { musicXml: homrMusicXml }
+          }
+        }
+      },
+      image: Buffer.from('image'),
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash'
+    });
+
+    expect(result.page).toMatchObject({
+      status: 'succeeded',
+      musicXml: homrMusicXml,
+      engines: {
+        homr: { status: 'succeeded' },
+        transcoda: {
+          status: 'failed',
+          errorCode: 'provider_no_staff_detected'
+        }
+      }
+    });
+  });
+
   describe('disablesProvider', () => {
     it('stops the worker when the provider is not the one we pinned', () => {
       // Continuing would produce output we cannot vouch for.
@@ -274,6 +461,7 @@ describe('ScannerWorkerService', () => {
       { findOneAndUpdate } as any,
       {} as any,
       provider,
+      transcodaProvider,
       {} as any,
       merger,
       alerts,
@@ -311,6 +499,7 @@ describe('ScannerWorkerService', () => {
       { updateOne, findOneAndUpdate } as any,
       {} as any,
       provider,
+      transcodaProvider,
       {} as any,
       merger,
       alerts,
@@ -347,6 +536,7 @@ describe('ScannerWorkerService', () => {
         {} as any,
         {} as any,
         provider,
+        transcodaProvider,
         {} as any,
         merger,
         alerts,
@@ -462,6 +652,7 @@ describe('ScannerWorkerService', () => {
       {} as any,
       storage,
       provider,
+      transcodaProvider,
       {} as any,
       merger,
       alerts,

@@ -55,11 +55,16 @@ import {
   scannerArtifactInputSignature,
   scannerArtifactInputMatches,
   scannerEngineArtifactLocators,
+  scannerEngineManifest,
   scannerHomrRun,
   uniqueScannerStorageLocators,
   withScannerHomrRun
 } from './scanner-dual-engine';
-import type { ScannerArtifactInput, ScannerEngineRun } from './scanner-dual-engine';
+import type {
+  ScannerArtifactInput,
+  ScannerEngineName,
+  ScannerEngineRun
+} from './scanner-dual-engine';
 
 const execFileAsync = promisify(execFile);
 const ACTIVE_STATUSES = ['queued', 'preparing', 'ready', 'running', 'rendering'];
@@ -119,7 +124,7 @@ export class ScannerService implements OnModuleInit {
     detectTitle?: boolean;
   }): Promise<any> {
     this.assertAvailable(input.userId);
-    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+    if (this.providerCapacityExhausted()) {
       throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
     const maxBytes = this.number('SCANNER_MAX_UPLOAD_BYTES', 25 * 1024 * 1024);
@@ -381,7 +386,7 @@ export class ScannerService implements OnModuleInit {
 
   async startJob(userId: string, jobId: string): Promise<any> {
     this.assertAvailable(userId);
-    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+    if (this.providerCapacityExhausted()) {
       throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
     const existing = await this.ownedJob(userId, jobId);
@@ -443,7 +448,7 @@ export class ScannerService implements OnModuleInit {
 
   async retryJob(userId: string, jobId: string): Promise<any> {
     this.assertAvailable(userId);
-    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+    if (this.providerCapacityExhausted()) {
       throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
     const existing = await this.ownedJob(userId, jobId);
@@ -454,7 +459,7 @@ export class ScannerService implements OnModuleInit {
 
   async retryPage(userId: string, jobId: string, pageNumber: number): Promise<any> {
     this.assertAvailable(userId);
-    if (this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) {
+    if (this.providerCapacityExhausted()) {
       throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
     const existing = await this.ownedJob(userId, jobId);
@@ -481,8 +486,9 @@ export class ScannerService implements OnModuleInit {
   async getArtifact(
     userId: string,
     jobId: string,
-    kind: 'musicxml' | 'pdf' | 'thumbnail' | 'zip',
-    pageNumber?: number
+    kind: 'musicxml' | 'kern' | 'pdf' | 'thumbnail' | 'zip',
+    pageNumber?: number,
+    engine?: ScannerEngineName
   ): Promise<{ stream: Readable; contentType: string; filename: string }> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
@@ -494,7 +500,34 @@ export class ScannerService implements OnModuleInit {
     const legacyJobInvalidated = superseded || Boolean(job.combinedStale);
     let locator: ScannerStorageLocator | undefined;
     let filename: string;
-    if (kind === 'zip') {
+    if (engine) {
+      if (!pageRequested) {
+        throw new BadRequestException('An engine artifact requires a page number');
+      }
+      if (kind === 'thumbnail' || kind === 'zip') {
+        throw new BadRequestException('This artifact kind is not engine-specific');
+      }
+      const page = job.pages.find((candidate) => candidate.pageNumber === pageNumber);
+      if (!page) throw new NotFoundException('Scanner page not found');
+      const run =
+        engine === 'homr'
+          ? scannerHomrRun(page, {
+              providerRevision: job.providerRevision,
+              modelRevision: job.modelRevision,
+              provenance: job.engineProvenance
+            })
+          : page?.engines?.transcoda;
+      locator =
+        kind === 'musicxml'
+          ? run?.artifacts.musicXml
+          : kind === 'pdf'
+            ? run?.artifacts.pdf
+            : run?.artifacts.kern;
+      const extension = kind === 'musicxml' ? 'musicxml' : kind === 'pdf' ? 'pdf' : 'krn';
+      filename = `scan-page-${pageNumber}-${engine}.${extension}`;
+    } else if (kind === 'kern') {
+      throw new BadRequestException('A kern artifact requires engine=transcoda and a page number');
+    } else if (kind === 'zip') {
       if (
         !this.materializedArtifactIsCurrent(
           job.resultsZip,
@@ -1102,6 +1135,15 @@ export class ScannerService implements OnModuleInit {
     };
   }
 
+  /** Stop new work only when no enabled recognition engine has capacity. */
+  private providerCapacityExhausted(): boolean {
+    if (!this.bool('SCANNER_PROVIDER_BUDGET_EXHAUSTED', false)) return false;
+    return (
+      !this.bool('SCANNER_TRANSCODA_ENABLED', false) ||
+      this.bool('SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED', false)
+    );
+  }
+
   private async detectInputType(path: string): Promise<string> {
     const handle = await fs.open(path, 'r');
     try {
@@ -1325,6 +1367,7 @@ export class ScannerService implements OnModuleInit {
           manualRetries: page.manualRetries || 0,
           errorCode: page.errorCode,
           errorMessage: page.errorMessage,
+          engines: scannerEngineManifest(page),
           musicXmlSha256: musicXml?.checksumSha256,
           pdfSha256: this.materializedArtifactIsCurrent(
             page.pdf,
