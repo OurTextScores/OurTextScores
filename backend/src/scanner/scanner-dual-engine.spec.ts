@@ -7,6 +7,7 @@ import {
   scannerEngineArtifactLocators,
   scannerEnginePlan,
   scannerEnginePlanForJob,
+  scannerEngineReviewContentSignature,
   scannerHomrRun,
   uniqueScannerStorageLocators,
   withScannerArtifactInputSignature,
@@ -62,6 +63,27 @@ describe('dual-engine content identity', () => {
       expect.arrayContaining([{ objectKey: 'page.musicxml' }, { objectKey: 'page.krn' }])
     );
     expect(scannerEngineArtifactLocators(migrated)).toHaveLength(2);
+
+    const legacyReviewed = { objectKey: 'page-reviewed.musicxml' } as any;
+    expect(
+      scannerHomrRun({
+        ...legacy,
+        reviewedMusicXml: legacyReviewed,
+        engines: {
+          ...legacy.engines,
+          homr: {
+            engine: 'homr',
+            status: 'succeeded',
+            attempts: 2,
+            idempotencyKey: 'homr-key',
+            artifacts: {}
+          }
+        }
+      })
+    ).toMatchObject({
+      reviewedMusicXml: legacyReviewed,
+      artifacts: { musicXml: { objectKey: 'page.musicxml' } }
+    });
   });
 
   it('deduplicates dual-written artifact locators by storage identity', () => {
@@ -77,6 +99,31 @@ describe('dual-engine content identity', () => {
         undefined
       ])
     ).toEqual([{ ...locator, checksumSha256: 'same-object-new-metadata' }]);
+  });
+
+  it('owns reviewed artifacts in the engine run and binds decisions to their content', () => {
+    const reviewed = { bucket: 'scanner', objectKey: 'reviewed.musicxml' } as any;
+    const run: any = {
+      engine: 'future-review',
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'future-key',
+      artifacts: { musicXml: { checksumSha256: 'raw' } },
+      reviewedMusicXml: reviewed,
+      review: { staves: [] },
+      corrections: []
+    };
+    const page: any = { engines: { 'future-review': run } };
+    const signature = scannerEngineReviewContentSignature(run);
+
+    expect(scannerEngineArtifactLocators(page)).toContain(reviewed);
+    expect(signature).toMatch(/^scanner-engine-review-v1:[a-f0-9]{64}$/);
+    expect(
+      scannerEngineReviewContentSignature({
+        ...run,
+        corrections: [{ spotId: 0, chosen: 'D4' }]
+      })
+    ).not.toBe(signature);
   });
 
   it('includes engine identity in provider idempotency keys', () => {
@@ -246,7 +293,21 @@ describe('dual-engine content identity', () => {
         { ...page, reviewedMusicXml: { objectKey: 'reviewed.musicxml' } } as any,
         scannerEnginePlan(['audiveris-5', 'transcoda'], 'audiveris-5')
       )
-    ).toEqual({ musicXml: { objectKey: 'reviewed.musicxml' } });
+    ).toEqual({ musicXml: audiveris, engineId: 'audiveris-5' });
+
+    const reviewedAudiveris = { objectKey: 'audiveris-reviewed.musicxml' };
+    expect(
+      effectivePageMusicXmlSelection(
+        {
+          ...page,
+          engines: {
+            ...page.engines,
+            'audiveris-5': { ...page.engines?.['audiveris-5'], reviewedMusicXml: reviewedAudiveris }
+          }
+        } as any,
+        scannerEnginePlan(['audiveris-5', 'transcoda'], 'audiveris-5')
+      )
+    ).toEqual({ musicXml: reviewedAudiveris, engineId: 'audiveris-5' });
   });
 
   it('binds materialized artifacts to page order, checksums and builder version', () => {

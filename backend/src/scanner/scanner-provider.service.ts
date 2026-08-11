@@ -39,6 +39,10 @@ export class ScannerProviderService implements ScannerPageProvider {
    * than re-recognising the page is what makes a correction free.
    */
   async regenerate(staffs: string[][][]): Promise<Buffer> {
+    return this.regenerateReview(staffs);
+  }
+
+  async regenerateReview(staffs: string[][][]): Promise<Buffer> {
     const result = await this.http.postJson({
       connection: { ...this.connection(), timeoutMs: 60_000 },
       path: '/v1/regenerate',

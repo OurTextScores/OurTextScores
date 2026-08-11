@@ -4,6 +4,8 @@ import PageReview, { mergeOptions } from "./page-review";
 function review(overrides: Record<string, unknown> = {}) {
   return {
     pageNumber: 3,
+    engineId: "homr",
+    contentSignature: "scanner-engine-review-v1:before",
     spots: [
       {
         id: 0,
@@ -93,6 +95,11 @@ describe("PageReview", () => {
     render(<PageReview jobId="job-1" pageNumber={3} />);
     const image = await screen.findByRole("img");
     expect(image).toHaveAttribute("src", expect.stringContaining("level=staff"));
+    expect(image).toHaveAttribute("src", expect.stringContaining("engineId=homr"));
+    expect(image).toHaveAttribute(
+      "src",
+      expect.stringContaining("contentSignature=scanner-engine-review-v1%3Abefore"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Show the staves around it" }));
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
@@ -179,14 +186,26 @@ describe("PageReview", () => {
     global.fetch = jest.fn(async (url: any, init: any) => {
       if (init?.method === "POST") {
         calls.push(JSON.parse(init.body));
-        return { ok: true, json: async () => ({ ok: true }) } as Response;
+        return {
+          ok: true,
+          json: async () => ({ ok: true, contentSignature: "scanner-engine-review-v1:after" }),
+        } as Response;
       }
       return { ok: true, json: async () => review() } as Response;
     }) as any;
 
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
-    await waitFor(() => expect(calls).toEqual([{ spotId: 0, chosen: "D4" }]));
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          spotId: 0,
+          chosen: "D4",
+          engineId: "homr",
+          contentSignature: "scanner-engine-review-v1:before",
+        },
+      ]),
+    );
     expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
   });
 
@@ -197,14 +216,54 @@ describe("PageReview", () => {
     global.fetch = jest.fn(async (url: any, init: any) => {
       if (init?.method === "POST") {
         calls.push(JSON.parse(init.body));
-        return { ok: true, json: async () => ({ ok: true }) } as Response;
+        return {
+          ok: true,
+          json: async () => ({ ok: true, contentSignature: "scanner-engine-review-v1:after" }),
+        } as Response;
       }
       return { ok: true, json: async () => review() } as Response;
     }) as any;
 
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: /what the scanner chose/ }));
-    await waitFor(() => expect(calls).toEqual([{ spotId: 0, chosen: "C4" }]));
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          spotId: 0,
+          chosen: "C4",
+          engineId: "homr",
+          contentSignature: "scanner-engine-review-v1:before",
+        },
+      ]),
+    );
+  });
+
+  it("uses the refreshed content signature for the next decision", async () => {
+    const calls: any[] = [];
+    global.fetch = jest.fn(async (_url: any, init: any) => {
+      if (init?.method === "POST") {
+        calls.push(JSON.parse(init.body));
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            contentSignature: `scanner-engine-review-v1:after-${calls.length}`,
+          }),
+        } as Response;
+      }
+      return { ok: true, json: async () => review() } as Response;
+    }) as any;
+
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /sixteenth note/ }));
+
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]).toMatchObject({
+      spotId: 1,
+      engineId: "homr",
+      contentSignature: "scanner-engine-review-v1:after-1",
+    });
   });
 
   it("keeps the reviewer on the spot when saving fails", async () => {
@@ -218,6 +277,28 @@ describe("PageReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
     expect(await screen.findByText(/could not be saved/)).toBeInTheDocument();
     expect(screen.getByText("Which note is this?")).toBeInTheDocument();
+  });
+
+  it("refreshes the review when another change invalidates its signature", async () => {
+    let gets = 0;
+    global.fetch = jest.fn(async (_url: any, init: any) => {
+      if (init?.method === "POST") return { ok: false, status: 409 } as Response;
+      gets += 1;
+      return {
+        ok: true,
+        json: async () =>
+          review({ contentSignature: `scanner-engine-review-v1:version-${gets}` }),
+      } as Response;
+    }) as any;
+
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
+
+    expect(await screen.findByText(/page changed while you were reviewing/)).toBeInTheDocument();
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining("contentSignature=scanner-engine-review-v1%3Aversion-2"),
+    );
   });
 
   it("points at the symbol rather than the whole line", async () => {
@@ -380,7 +461,10 @@ describe("PageReview", () => {
     global.fetch = jest.fn(async (url: any, init: any) => {
       if (init?.method === "POST") {
         calls.push(JSON.parse(init.body));
-        return { ok: true, json: async () => ({ ok: true }) } as Response;
+        return {
+          ok: true,
+          json: async () => ({ ok: true, contentSignature: "scanner-engine-review-v1:after" }),
+        } as Response;
       }
       return {
         ok: true,
@@ -406,7 +490,16 @@ describe("PageReview", () => {
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: /nothing here/ }));
     // The higher-confidence member of the merged pair.
-    await waitFor(() => expect(calls).toEqual([{ spotId: 0, chosen: "." }]));
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          spotId: 0,
+          chosen: ".",
+          engineId: "homr",
+          contentSignature: "scanner-engine-review-v1:before",
+        },
+      ]),
+    );
   });
 });
 

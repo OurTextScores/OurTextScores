@@ -67,6 +67,8 @@ export interface ScannerEngineRun {
   completeness?: ScannerOutputCompleteness;
   /** Capability-owned raw review evidence; currently emitted by HOMR. */
   review?: ScannerPageResult['review'];
+  reviewedMusicXml?: ScannerStorageLocator;
+  corrections?: ScannerPageResult['corrections'];
   artifacts: ScannerEngineArtifacts;
 }
 
@@ -256,25 +258,43 @@ export function scannerHomrRun(
   page: ScannerPageResult,
   metadata: ScannerEngineRunMetadata = {}
 ): ScannerEngineRun {
-  return (
-    page.engines?.homr || {
-      engine: 'homr',
-      status: page.status,
-      attempts: page.attempts,
-      providerAttempts: page.providerAttempts,
-      idempotencyKey: page.idempotencyKey,
-      providerRequestId: page.providerRequestId,
-      durationMs: page.durationMs,
-      inferenceMs: page.inferenceMs,
-      review: page.review,
-      errorCode: page.errorCode,
-      errorMessage: page.errorMessage,
-      providerRevision: metadata.providerRevision,
-      modelRevision: metadata.modelRevision,
-      provenance: metadata.provenance,
-      artifacts: { musicXml: page.musicXml, pdf: page.pdf }
-    }
-  );
+  const existing = page.engines?.homr;
+  if (existing) {
+    const artifacts = existing.artifacts || {};
+    return {
+      ...existing,
+      providerRevision: existing.providerRevision || metadata.providerRevision,
+      modelRevision: existing.modelRevision || metadata.modelRevision,
+      provenance: existing.provenance || metadata.provenance,
+      review: existing.review || page.review,
+      reviewedMusicXml: existing.reviewedMusicXml || page.reviewedMusicXml,
+      corrections: existing.corrections || page.corrections,
+      artifacts: {
+        ...artifacts,
+        musicXml: artifacts.musicXml || page.musicXml,
+        pdf: artifacts.pdf || page.pdf
+      }
+    };
+  }
+  return {
+    engine: 'homr',
+    status: page.status,
+    attempts: page.attempts,
+    providerAttempts: page.providerAttempts,
+    idempotencyKey: page.idempotencyKey,
+    providerRequestId: page.providerRequestId,
+    durationMs: page.durationMs,
+    inferenceMs: page.inferenceMs,
+    review: page.review,
+    reviewedMusicXml: page.reviewedMusicXml,
+    corrections: page.corrections,
+    errorCode: page.errorCode,
+    errorMessage: page.errorMessage,
+    providerRevision: metadata.providerRevision,
+    modelRevision: metadata.modelRevision,
+    provenance: metadata.provenance,
+    artifacts: { musicXml: page.musicXml, pdf: page.pdf }
+  };
 }
 
 /** Dual-write the current legacy HOMR fields into the per-engine record. */
@@ -313,6 +333,8 @@ export function withScannerEngineRun(
     durationMs: run.durationMs,
     inferenceMs: run.inferenceMs,
     review: run.review,
+    reviewedMusicXml: run.reviewedMusicXml,
+    corrections: run.corrections,
     musicXml: run.status === 'succeeded' ? run.artifacts.musicXml : undefined,
     pdf: run.status === 'succeeded' ? run.artifacts.pdf || page.pdf : page.pdf,
     errorCode: run.errorCode,
@@ -320,10 +342,29 @@ export function withScannerEngineRun(
   };
 }
 
+/** Bind a spot-review decision to one exact engine result and its accumulated edits. */
+export function scannerEngineReviewContentSignature(run: ScannerEngineRun): string {
+  return `scanner-engine-review-v1:${createHash('sha256')
+    .update(
+      JSON.stringify({
+        engine: run.engine,
+        rawMusicXmlSha256: run.artifacts.musicXml?.checksumSha256,
+        reviewedMusicXmlSha256: run.reviewedMusicXml?.checksumSha256,
+        review: run.review,
+        corrections: run.corrections || []
+      })
+    )
+    .digest('hex')}`;
+}
+
 /** All artifacts owned by engine runs, including model-native intermediates. */
 export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerStorageLocator[] {
   return Object.values(page.engines || {}).flatMap((run) =>
-    run ? (Object.values(run.artifacts).filter(Boolean) as ScannerStorageLocator[]) : []
+    run
+      ? ([...Object.values(run.artifacts), run.reviewedMusicXml].filter(
+          Boolean
+        ) as ScannerStorageLocator[])
+      : []
   );
 }
 
@@ -349,6 +390,7 @@ export function scannerEngineManifest(page: ScannerPageResult): Record<string, u
                 modelRevision: run.modelRevision,
                 provenance: run.provenance,
                 completeness: run.completeness,
+                reviewedMusicXmlChecksumSha256: run.reviewedMusicXml?.checksumSha256,
                 artifactChecksumsSha256: Object.fromEntries(
                   Object.entries(run.artifacts).flatMap(([kind, locator]) =>
                     locator ? [[kind, locator.checksumSha256]] : []

@@ -195,14 +195,17 @@ export class ScannerController {
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
-    @Body() body: { spotId?: number; chosen?: string }
+    @Body()
+    body: { spotId?: number; chosen?: string; engineId?: string; contentSignature?: string }
   ) {
     return this.scanner.applyCorrection(
       user.userId,
       jobId,
       pageNumber,
       Number(body?.spotId),
-      String(body?.chosen ?? '')
+      String(body?.chosen ?? ''),
+      String(body?.engineId ?? ''),
+      String(body?.contentSignature ?? '')
     );
   }
 
@@ -214,6 +217,8 @@ export class ScannerController {
     @Param('spotId', ParseIntPipe) spotId: number,
     @Query('level', new ParseEnumPipe(SCANNER_CROP_LEVELS, { optional: true }))
     level: 'staff' | 'context' | undefined,
+    @Query('engineId') engineId: string | undefined,
+    @Query('contentSignature') contentSignature: string | undefined,
     @Res({ passthrough: true }) response: Response
   ) {
     const crop = await this.scanner.pageCrop(
@@ -221,7 +226,9 @@ export class ScannerController {
       jobId,
       pageNumber,
       spotId,
-      level || 'staff'
+      level || 'staff',
+      String(engineId ?? ''),
+      String(contentSignature ?? '')
     );
     response.setHeader('Content-Type', crop.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

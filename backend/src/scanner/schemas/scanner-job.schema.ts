@@ -79,21 +79,9 @@ export interface ScannerPageResult {
   inferenceMs?: number;
   errorCode?: string;
   errorMessage?: string;
-  /**
-   * Provider v2 review data, stored raw rather than pre-selected.
-   *
-   * Which spots to ask a reviewer about is computed on read, so the thresholds
-   * can be retuned against real reviewer behaviour without re-scanning the page
-   * through a GPU (review design §4, §10). Only the symbols the provider could
-   * not rule out are here; a confident page stores almost nothing.
-   */
-  /** MusicXML rebuilt from corrected tokens; assembly prefers it (Phase D). */
+  /** Legacy HOMR projection; engine runs own reviewed artifacts. */
   reviewedMusicXml?: ScannerStorageLocator;
-  /**
-   * What the reviewer decided, kept alongside what the model predicted and
-   * offered. A confirmation of a low-confidence prediction is as much signal as
-   * a change, so both outcomes are recorded.
-   */
+  /** Legacy HOMR projection; engine runs own their correction history. */
   corrections?: Array<{
     spotId: number;
     head: string;
@@ -102,8 +90,14 @@ export interface ScannerPageResult {
     offered: Array<{ value: string; confidence: number }>;
     chosen: string;
     outcome: 'confirmed' | 'corrected';
+    /** Engine content against which this decision was made. */
+    contentSignature?: string;
     correctedAt: Date;
   }>;
+  /**
+   * Legacy HOMR projection of capability-owned raw review data.
+   * Selection remains dynamic so thresholds can change without re-scanning.
+   */
   review?: {
     staves: Array<{
       index: number;

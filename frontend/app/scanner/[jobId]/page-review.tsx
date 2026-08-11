@@ -24,6 +24,8 @@ interface Spot {
 
 interface Review {
   pageNumber: number;
+  engineId: string;
+  contentSignature: string;
   spots: Spot[];
   remainingFloor: number | null;
   suitability: { symbols: number; spots: number; askableRatio: number; unsuitable: boolean };
@@ -280,20 +282,47 @@ export default function PageReview({
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ spotId, chosen: value }),
+            body: JSON.stringify({
+              spotId,
+              chosen: value,
+              engineId: review?.engineId,
+              contentSignature: review?.contentSignature,
+            }),
           },
         );
-        if (!response.ok) throw new Error("save failed");
+        if (!response.ok) {
+          if (response.status === 409) {
+            const refreshed = await fetch(
+              `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review`,
+            );
+            if (refreshed.ok) {
+              setReview(await refreshed.json());
+              setPosition(0);
+              setLevel("staff");
+            }
+            throw new Error("review changed");
+          }
+          throw new Error("save failed");
+        }
+        const result = await response.json();
+        if (!result?.contentSignature) throw new Error("save response was incomplete");
+        setReview((current) =>
+          current ? { ...current, contentSignature: result.contentSignature } : current,
+        );
         advance();
-      } catch {
+      } catch (cause) {
         // Keep the reviewer on the spot they were working: silently advancing
         // would lose their decision without saying so.
-        setError("That could not be saved. Try again, or skip this one.");
+        setError(
+          cause instanceof Error && cause.message === "review changed"
+            ? "This page changed while you were reviewing it. The latest spots are shown; choose again."
+            : "That could not be saved. Try again, or skip this one.",
+        );
       } finally {
         setSaving(false);
       }
     },
-    [advance, jobId, pageNumber],
+    [advance, jobId, pageNumber, review?.contentSignature, review?.engineId],
   );
 
   if (loading) {
@@ -358,7 +387,13 @@ export default function PageReview({
           <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/crop/${spot.id}?level=${level}`}
+              src={`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/crop/${spot.id}?${new URLSearchParams(
+                {
+                  level,
+                  engineId: review.engineId,
+                  contentSignature: review.contentSignature,
+                },
+              ).toString()}`}
               alt={`Page ${pageNumber}, the passage the scanner was unsure about`}
               className="max-h-80 w-full object-contain"
             />

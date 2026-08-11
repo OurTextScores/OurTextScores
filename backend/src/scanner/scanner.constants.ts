@@ -41,7 +41,7 @@ export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
 
 export interface EffectivePageMusicXmlSelection {
   musicXml: ScannerStorageLocator;
-  /** Absent when a reviewed or reconciled derivative supersedes raw engine output. */
+  /** Engine owner for raw or reviewed output; absent only for reconciled output. */
   engineId?: string;
 }
 
@@ -71,7 +71,17 @@ export function effectivePageMusicXmlSelection(
 ): EffectivePageMusicXmlSelection | undefined {
   if (!page) return undefined;
   if (page.mergedMusicXml) return { musicXml: page.mergedMusicXml };
-  if (page.reviewedMusicXml) return { musicXml: page.reviewedMusicXml };
+
+  const reviewedForEngine = (engineId: string): EffectivePageMusicXmlSelection | undefined => {
+    const run = page.engines?.[engineId];
+    if (run?.status === 'succeeded' && run.reviewedMusicXml) {
+      return { musicXml: run.reviewedMusicXml, engineId };
+    }
+    if (engineId === 'homr' && page.reviewedMusicXml && (!run || run.status === 'succeeded')) {
+      return { musicXml: page.reviewedMusicXml, engineId };
+    }
+    return undefined;
+  };
 
   const artifactForEngine = (engineId: string): EffectivePageMusicXmlSelection | undefined => {
     const run = page.engines?.[engineId];
@@ -83,7 +93,12 @@ export function effectivePageMusicXmlSelection(
       : undefined;
   };
   if (enginePlan) {
-    for (const engineId of [enginePlan.primaryEngineId, ...enginePlan.fallbackEngineIds]) {
+    const engineIds = [enginePlan.primaryEngineId, ...enginePlan.fallbackEngineIds];
+    for (const engineId of engineIds) {
+      const reviewed = reviewedForEngine(engineId);
+      if (reviewed) return reviewed;
+    }
+    for (const engineId of engineIds) {
       const artifact = artifactForEngine(engineId);
       if (artifact) return artifact;
     }
@@ -92,6 +107,9 @@ export function effectivePageMusicXmlSelection(
 
   // Legacy callers have no job plan. Preserve HOMR precedence, then use the
   // recorded engine insertion order (which new workers create in plan order).
+  if (page.reviewedMusicXml && (!page.engines?.homr || page.engines.homr.status === 'succeeded')) {
+    return { musicXml: page.reviewedMusicXml, engineId: 'homr' };
+  }
   if (page.musicXml && (!page.engines?.homr || page.engines.homr.status === 'succeeded')) {
     return { musicXml: page.musicXml, engineId: 'homr' };
   }
@@ -107,7 +125,13 @@ export function effectivePageMusicXmlSelection(
 
 /** True when pre-review bundles, renders and manifests no longer describe a page. */
 export function pageMusicXmlSuperseded(
-  page: Pick<ScannerPageResult, 'reviewedMusicXml' | 'mergedMusicXml'> | undefined
+  page: Pick<ScannerPageResult, 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'> | undefined
 ): boolean {
-  return Boolean(page?.mergedMusicXml || page?.reviewedMusicXml);
+  return Boolean(
+    page?.mergedMusicXml ||
+      page?.reviewedMusicXml ||
+      Object.values(page?.engines || {}).some(
+        (run) => run?.status === 'succeeded' && run.reviewedMusicXml
+      )
+  );
 }

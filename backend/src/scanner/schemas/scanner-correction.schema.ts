@@ -22,6 +22,9 @@ export class ScannerCorrection {
   @Prop({ required: true, index: true })
   userHash!: string;
 
+  @Prop({ required: true, index: true })
+  engineId!: string;
+
   @Prop({ required: true })
   staffIndex!: number;
 
@@ -57,11 +60,17 @@ export class ScannerCorrection {
    * A correction is only meaningful against the model that produced it.
    * Without these a retrain cannot tell which samples came from which revision.
    */
+  @Prop()
+  homrRevision?: string;
+
   @Prop({ required: true })
-  homrRevision!: string;
+  modelRevision!: string;
 
   @Prop({ required: true })
   providerRevision!: string;
+
+  @Prop({ required: true })
+  contentSignature!: string;
 
   /**
    * Which published terms were in force when this was captured.
@@ -76,4 +85,10 @@ export class ScannerCorrection {
 
 export type ScannerCorrectionDocument = HydratedDocument<ScannerCorrection>;
 export const ScannerCorrectionSchema = SchemaFactory.createForClass(ScannerCorrection);
-ScannerCorrectionSchema.index({ pageSha256: 1, staffIndex: 1, symbolIndex: 1, head: 1 });
+ScannerCorrectionSchema.index({
+  pageSha256: 1,
+  engineId: 1,
+  staffIndex: 1,
+  symbolIndex: 1,
+  head: 1
+});

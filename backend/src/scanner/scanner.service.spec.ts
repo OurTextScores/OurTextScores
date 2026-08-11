@@ -14,7 +14,9 @@ import { ScannerService } from './scanner.service';
 import { scannerUserHash } from './scanner.constants';
 import {
   SCANNER_ARTIFACT_BUILDERS,
+  scannerEngineReviewContentSignature,
   scannerEnginePlan,
+  scannerHomrRun,
   withScannerArtifactInputSignature
 } from './scanner-dual-engine';
 import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
@@ -1476,6 +1478,8 @@ describe('corrections', () => {
     };
   }
 
+  const reviewSignature = (page: any) => scannerEngineReviewContentSignature(scannerHomrRun(page));
+
   it('edits the token the reviewer decided about and rebuilds from it', async () => {
     // The XML is regenerated from symbols, not patched: a rhythm change
     // cascades through its measure and only re-generation stays consistent.
@@ -1495,14 +1499,23 @@ describe('corrections', () => {
       jobsModel,
       corrections,
       {
-        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' })
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }),
+        deleteObject: async () => undefined
       } as any,
       provider,
       telemetry,
       alerts,
       config
     );
-    const result = await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4');
+    const result = await service.applyCorrection(
+      'user-1',
+      'job-1',
+      1,
+      0,
+      'D4',
+      'homr',
+      reviewSignature(job.pages[0])
+    );
 
     expect(result.outcome).toBe('corrected');
     // Field index 1 is pitch; the clef is untouched.
@@ -1573,8 +1586,7 @@ describe('corrections', () => {
       // Apply the $set the way Mongo would, so the second call sees the first.
       updateOne: (_filter: any, update: any) => ({
         exec: async () => {
-          const staves = update.$set?.['pages.$.review.staves'];
-          if (staves) page.review.staves = staves;
+          if (update.$set?.pages) job.pages = update.$set.pages;
           return {};
         }
       })
@@ -1584,7 +1596,8 @@ describe('corrections', () => {
       jobsModel,
       corrections,
       {
-        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' })
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }),
+        deleteObject: async () => undefined
       } as any,
       provider,
       telemetry,
@@ -1592,8 +1605,24 @@ describe('corrections', () => {
       config
     );
 
-    await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4');
-    await service.applyCorrection('user-1', 'job-1', 1, 1, 'F4');
+    await service.applyCorrection(
+      'user-1',
+      'job-1',
+      1,
+      0,
+      'D4',
+      'homr',
+      reviewSignature(job.pages[0])
+    );
+    await service.applyCorrection(
+      'user-1',
+      'job-1',
+      1,
+      1,
+      'F4',
+      'homr',
+      reviewSignature(job.pages[0])
+    );
 
     // The second regeneration must carry both edits, not just its own.
     const second = provider.regenerate.mock.calls[1][0][0];
@@ -1618,14 +1647,23 @@ describe('corrections', () => {
       jobsModel,
       corrections,
       {
-        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' })
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }),
+        deleteObject: async () => undefined
       } as any,
       provider,
       telemetry,
       alerts,
       config
     );
-    const result = await service.applyCorrection('user-1', 'job-1', 1, 0, 'C4');
+    const result = await service.applyCorrection(
+      'user-1',
+      'job-1',
+      1,
+      0,
+      'C4',
+      'homr',
+      reviewSignature(job.pages[0])
+    );
     expect(result.outcome).toBe('confirmed');
     expect(corrections.create).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: 'confirmed', predicted: 'C4', chosen: 'C4' })
@@ -1658,7 +1696,8 @@ describe('corrections', () => {
           bucket: 'd',
           objectKey: 'reviewed.musicxml',
           checksumSha256: 'reviewed'
-        })
+        }),
+        deleteObject: async () => undefined
       } as any,
       provider,
       telemetry,
@@ -1666,16 +1705,16 @@ describe('corrections', () => {
       config
     );
 
-    await expect(service.applyCorrection('user-1', 'job-1', 1, 0, 'C4')).resolves.toMatchObject({
-      combinedStale: true
-    });
-    expect(updates[0].$set['pages.$.reviewedMusicXml']).toMatchObject({
+    await expect(
+      service.applyCorrection('user-1', 'job-1', 1, 0, 'C4', 'homr', reviewSignature(job.pages[0]))
+    ).resolves.toMatchObject({ combinedStale: true });
+    expect(updates[0].$set.pages[0].reviewedMusicXml).toMatchObject({
       objectKey: 'reviewed.musicxml',
       sizeBytes: Buffer.byteLength('<score-partwise/>'),
       contentType: 'application/vnd.recordare.musicxml+xml',
       checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
     });
-    expect(updates).toContainEqual({ $set: { combinedStale: true } });
+    expect(updates[0].$set.combinedStale).toBe(true);
     expect(updates.some((update) => update.$unset?.combinedMusicXml)).toBe(false);
     expect(updates.some((update) => update.$unset?.combinedPdf)).toBe(false);
   });
@@ -1701,8 +1740,167 @@ describe('corrections', () => {
       alerts,
       config
     );
-    await expect(service.applyCorrection('user-1', 'job-1', 1, 0, 'G9')).rejects.toThrow(
-      /not one of the offered/
+    await expect(
+      service.applyCorrection('user-1', 'job-1', 1, 0, 'G9', 'homr', reviewSignature(job.pages[0]))
+    ).rejects.toThrow(/not one of the offered/);
+  });
+
+  it('rejects a correction taken against an older engine result', async () => {
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+    };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: jest.fn()
+    };
+    const storage = { putDerivativeObject: jest.fn(), deleteObject: jest.fn() } as any;
+    provider.regenerate.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await expect(
+      service.applyCorrection(
+        'user-1',
+        'job-1',
+        1,
+        0,
+        'D4',
+        'homr',
+        'scanner-engine-review-v1:stale'
+      )
+    ).rejects.toThrow(/content changed/);
+    expect(provider.regenerate).not.toHaveBeenCalled();
+    expect(storage.putDerivativeObject).not.toHaveBeenCalled();
+    expect(jobsModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('routes review and regeneration through a future engine capability and adapter', async () => {
+    const base = pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']]);
+    const futureRun: any = {
+      engine: 'future-review',
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'future-key',
+      providerRevision: 'future-provider-v2',
+      modelRevision: 'future-model-v3',
+      review: base.review,
+      artifacts: { musicXml: base.musicXml }
+    };
+    const plan = scannerEnginePlan(['future-review'], 'future-review', {
+      'future-review': {
+        displayName: 'Future Review',
+        outputArtifactKinds: ['musicxml'],
+        supportsSpotReview: true,
+        supportsMeasureGeometry: true,
+        unsupportedSemanticClasses: []
+      }
+    });
+    const page: any = {
+      ...base,
+      review: undefined,
+      musicXml: undefined,
+      engines: { 'future-review': futureRun }
+    };
+    const job: any = { _id: 'j', jobId: 'job-1', enginePlan: plan, pages: [page] };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: (_filter: any, update: any) => ({
+        exec: async () => {
+          job.pages = update.$set.pages;
+          return { matchedCount: 1 };
+        }
+      })
+    };
+    const futureAdapter = {
+      engine: 'future-review',
+      regenerateReview: jest.fn(async () => Buffer.from('<future-score/>'))
+    } as any;
+    const registry = {
+      planForJob: () => plan,
+      readable: (engineId: string) =>
+        engineId === 'future-review' ? { adapter: futureAdapter } : undefined
+    } as any;
+    const storage = {
+      putDerivativeObject: jest.fn(async (_key: string) => ({
+        bucket: 'd',
+        objectKey: 'future-reviewed.musicxml'
+      })),
+      deleteObject: jest.fn(async () => undefined)
+    } as any;
+    provider.regenerate.mockClear();
+    corrections.create.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config,
+      registry
+    );
+    const review = await service.pageReview('user-1', 'job-1', 1);
+
+    const result = await service.applyCorrection(
+      'user-1',
+      'job-1',
+      1,
+      0,
+      'D4',
+      review.engineId,
+      review.contentSignature
+    );
+
+    expect(review).toMatchObject({
+      engineId: 'future-review',
+      contentSignature: expect.stringMatching(/^scanner-engine-review-v1:/)
+    });
+    expect(result).toMatchObject({ engineId: 'future-review' });
+    expect(futureAdapter.regenerateReview).toHaveBeenCalled();
+    expect(provider.regenerate).not.toHaveBeenCalled();
+    expect(job.pages[0].reviewedMusicXml).toBeUndefined();
+    expect(job.pages[0].engines['future-review'].reviewedMusicXml).toMatchObject({
+      objectKey: 'future-reviewed.musicxml'
+    });
+    expect(corrections.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engineId: 'future-review',
+        modelRevision: 'future-model-v3',
+        providerRevision: 'future-provider-v2',
+        contentSignature: review.contentSignature
+      })
+    );
+  });
+
+  it('refuses spot review after a page has been reconciled', async () => {
+    const page: any = {
+      ...pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']]),
+      mergedMusicXml: { bucket: 'd', objectKey: 'merged.musicxml' }
+    };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => ({ _id: 'j', jobId: 'job-1', pages: [page] }) })
+    };
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      {} as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await expect(service.pageReview('user-1', 'job-1', 1)).rejects.toThrow(
+      /unavailable after engine reconciliation/
     );
   });
 });

@@ -32,7 +32,7 @@ export interface ScannerProviderResult {
   /** Normalized across provider-specific termination/completeness diagnostics. */
   completeness?: ScannerOutputCompleteness;
   musicXmlSha256: string;
-  /** HOMR-only review data; absent without decoded token geometry. */
+  /** Capability-owned normalized review data; absent without decoded token geometry. */
   review?: { staves: ReviewStaff[] };
 }
 
@@ -47,6 +47,8 @@ export interface ScannerPageProvider {
     generation: number;
   }): string;
   scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult>;
+  /** Optional normalized regeneration contract for engines that support spot review. */
+  regenerateReview?(staves: string[][][]): Promise<Buffer>;
 }
 
 export function scannerProviderIdempotencyKey(input: {

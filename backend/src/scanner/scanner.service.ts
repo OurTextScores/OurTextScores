@@ -54,6 +54,7 @@ import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 import { ScannerEngineRegistry } from './scanner-engine.registry';
 import { scannerEngineOperationalMetrics } from './scanner-engine-operations';
+import type { ScannerPageProvider } from './scanner-provider.contract';
 import {
   SCANNER_ARTIFACT_BUILDERS,
   scannerArtifactInputSignature,
@@ -62,9 +63,11 @@ import {
   scannerEngineArtifactLocators,
   scannerEngineManifest,
   scannerEnginePlanForJob,
+  scannerEngineReviewContentSignature,
   scannerHomrRun,
   isScannerEngineId,
   uniqueScannerStorageLocators,
+  withScannerEngineRun,
   withScannerHomrRun
 } from './scanner-dual-engine';
 import type {
@@ -759,26 +762,21 @@ export class ScannerService implements OnModuleInit {
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.mergedMusicXml) {
+      throw new ConflictException('Spot review is unavailable after engine reconciliation');
+    }
 
-    const staves = (page as any).review?.staves || [];
-    const thresholds = {
-      floor: this.float('SCANNER_REVIEW_CONFIDENCE_FLOOR', DEFAULT_REVIEW_THRESHOLDS.floor),
-      lowImpactFloor: this.float(
-        'SCANNER_REVIEW_LOW_IMPACT_FLOOR',
-        DEFAULT_REVIEW_THRESHOLDS.lowImpactFloor
-      ),
-      minAlternativeRatio: this.float(
-        'SCANNER_REVIEW_MIN_ALTERNATIVE_RATIO',
-        DEFAULT_REVIEW_THRESHOLDS.minAlternativeRatio
-      ),
-      minimum: this.float('SCANNER_REVIEW_CONFIDENCE_MIN', DEFAULT_REVIEW_THRESHOLDS.minimum)
-    };
+    const reviewEngine = this.reviewEngineForPage(job, page);
+    const staves = reviewEngine.run.review?.staves || [];
+    const thresholds = this.reviewThresholds();
     const spots = selectSpots(staves, thresholds);
     const suitability = pageSuitability(staves, spots);
 
     return {
       pageNumber,
       status: page.status,
+      engineId: reviewEngine.engineId,
+      contentSignature: scannerEngineReviewContentSignature(reviewEngine.run),
       // No cap and no truncation: the reviewer stops when the remainder is good
       // enough, which is what `remainingFloor` is for.
       spots: spots.map((spot, index) => {
@@ -815,15 +813,25 @@ export class ScannerService implements OnModuleInit {
     jobId: string,
     pageNumber: number,
     spotId: number,
-    chosen: string
+    chosen: string,
+    engineId: string,
+    contentSignature: string
   ): Promise<any> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
-    const review = (page as any).review;
-    const staves = review?.staves || [];
-    const spots = selectSpots(staves, DEFAULT_REVIEW_THRESHOLDS);
+    if (page.mergedMusicXml) {
+      throw new ConflictException('Spot review is unavailable after engine reconciliation');
+    }
+    if (!engineId) throw new BadRequestException('Scanner engine is required');
+    const reviewEngine = this.reviewEngineForPage(job, page, engineId);
+    const expectedSignature = scannerEngineReviewContentSignature(reviewEngine.run);
+    if (!contentSignature || contentSignature !== expectedSignature) {
+      throw new ConflictException('Scanner review content changed; refresh and try again');
+    }
+    const staves = reviewEngine.run.review?.staves || [];
+    const spots = selectSpots(staves, this.reviewThresholds());
     const spot = spots[spotId];
     if (!spot) throw new NotFoundException('Scanner review spot not found');
 
@@ -852,12 +860,16 @@ export class ScannerService implements OnModuleInit {
       return { ...entry, tokens };
     });
 
-    const musicXmlBuffer = await this.provider.regenerate(
-      editedStaves.map((entry: any) => entry.tokens || [])
-    );
+    const regenerate =
+      reviewEngine.adapter?.regenerateReview?.bind(reviewEngine.adapter) ||
+      (reviewEngine.engineId === 'homr' ? this.provider.regenerate.bind(this.provider) : undefined);
+    if (!regenerate) {
+      throw new ConflictException('This scanner engine cannot regenerate reviewed MusicXML');
+    }
+    const musicXmlBuffer = await regenerate(editedStaves.map((entry: any) => entry.tokens || []));
     const reviewedContentType = 'application/vnd.recordare.musicxml+xml';
     const storedReviewed = await this.storage.putDerivativeObject(
-      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-reviewed.musicxml`,
+      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-${reviewEngine.engineId}-reviewed-${randomUUID()}.musicxml`,
       musicXmlBuffer,
       musicXmlBuffer.length,
       reviewedContentType
@@ -870,6 +882,7 @@ export class ScannerService implements OnModuleInit {
       checksumSha256: createHash('sha256').update(musicXmlBuffer).digest('hex')
     };
 
+    const outcome: 'confirmed' | 'corrected' = chosen === spot.chosen ? 'confirmed' : 'corrected';
     const correction = {
       spotId,
       head: spot.head,
@@ -879,22 +892,50 @@ export class ScannerService implements OnModuleInit {
       chosen,
       // Both are signal: confirming a 61% prediction says the model was right
       // but unsure, which is exactly what improves calibration.
-      outcome: chosen === spot.chosen ? 'confirmed' : 'corrected',
+      outcome,
+      contentSignature: expectedSignature,
       correctedAt: new Date()
     };
-
-    await this.jobs
+    const updatedRun: ScannerEngineRun = {
+      ...reviewEngine.run,
+      review: { staves: editedStaves },
+      reviewedMusicXml: locator,
+      corrections: [...(reviewEngine.run.corrections || []), correction]
+    };
+    const updatedPage = withScannerEngineRun(page, updatedRun);
+    const updatedPages = job.pages.map((entry) =>
+      entry.pageNumber === pageNumber ? updatedPage : entry
+    );
+    const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
+    const write = await this.jobs
       .updateOne(
-        { _id: job._id, 'pages.pageNumber': pageNumber },
+        { _id: job._id, statusVersion: job.statusVersion || 1 },
         {
-          $set: {
-            'pages.$.reviewedMusicXml': locator,
-            'pages.$.review.staves': editedStaves
-          },
-          $push: { 'pages.$.corrections': correction }
+          $set: { pages: updatedPages, ...(hadCombined ? { combinedStale: true } : {}) },
+          $inc: { statusVersion: 1 }
         }
       )
       .exec();
+    if (write?.matchedCount === 0) {
+      await this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined);
+      throw new ConflictException('Scanner review content changed; refresh and try again');
+    }
+    const previousReviewed = reviewEngine.run.reviewedMusicXml;
+    if (
+      previousReviewed &&
+      (previousReviewed.bucket !== locator.bucket ||
+        previousReviewed.objectKey !== locator.objectKey)
+    ) {
+      await this.storage
+        .deleteObject(previousReviewed.bucket, previousReviewed.objectKey)
+        .catch((error) =>
+          this.logger.warn(
+            `Unable to retire superseded scanner review artifact: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+        );
+    }
 
     // Durable training record, deliberately outside the job: jobs and their
     // artifacts expire, and a page reviewed without this is training data
@@ -905,6 +946,7 @@ export class ScannerService implements OnModuleInit {
       await this.corrections.create({
         pageSha256: page.sourceImage?.checksumSha256 || '',
         userHash: this.userHash(userId),
+        engineId: reviewEngine.engineId,
         staffIndex: spot.staffIndex,
         symbolIndex: spot.symbolIndex,
         head: spot.head,
@@ -913,8 +955,27 @@ export class ScannerService implements OnModuleInit {
         offered: spot.alternatives,
         chosen,
         outcome: correction.outcome,
-        homrRevision: this.config.get<string>('SCANNER_EXPECTED_HOMR_COMMIT', ''),
-        providerRevision: this.config.get<string>('SCANNER_EXPECTED_PROVIDER_REVISION', ''),
+        modelRevision:
+          reviewEngine.run.modelRevision ||
+          (reviewEngine.engineId === 'homr'
+            ? this.config.get<string>('SCANNER_EXPECTED_HOMR_COMMIT', '')
+            : '') ||
+          'unknown',
+        ...(reviewEngine.engineId === 'homr'
+          ? {
+              homrRevision:
+                reviewEngine.run.modelRevision ||
+                this.config.get<string>('SCANNER_EXPECTED_HOMR_COMMIT', '') ||
+                'unknown'
+            }
+          : {}),
+        providerRevision:
+          reviewEngine.run.providerRevision ||
+          (reviewEngine.engineId === 'homr'
+            ? this.config.get<string>('SCANNER_EXPECTED_PROVIDER_REVISION', '')
+            : '') ||
+          'unknown',
+        contentSignature: expectedSignature,
         // Which published terms were in force. A scan uploaded under a promise
         // of no training use must not become training data because the Legal
         // page changed later, and only the version at capture time can tell
@@ -932,12 +993,13 @@ export class ScannerService implements OnModuleInit {
     // A combined score built before this correction no longer reflects the
     // page. Keep its locator solely so expiry/deletion can collect the object,
     // but mark it stale so no artifact route or UI offers it as current.
-    const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
-    if (hadCombined) {
-      await this.jobs.updateOne({ _id: job._id }, { $set: { combinedStale: true } }).exec();
-    }
-
-    return { ok: true, outcome: correction.outcome, combinedStale: hadCombined };
+    return {
+      ok: true,
+      outcome: correction.outcome,
+      combinedStale: hadCombined,
+      engineId: reviewEngine.engineId,
+      contentSignature: scannerEngineReviewContentSignature(updatedRun)
+    };
   }
 
   /**
@@ -969,15 +1031,28 @@ export class ScannerService implements OnModuleInit {
     jobId: string,
     pageNumber: number,
     spotId: number,
-    level: CropLevel
+    level: CropLevel,
+    engineId: string,
+    contentSignature: string
   ): Promise<{ body: Buffer; contentType: string }> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page?.sourceImage) throw new NotFoundException('Scanner page image is not available');
+    if (page.mergedMusicXml) {
+      throw new ConflictException('Spot review is unavailable after engine reconciliation');
+    }
+    if (!engineId) throw new BadRequestException('Scanner engine is required');
 
-    const staves = (page as any).review?.staves || [];
-    const spots = selectSpots(staves, DEFAULT_REVIEW_THRESHOLDS);
+    const reviewEngine = this.reviewEngineForPage(job, page, engineId);
+    if (
+      !contentSignature ||
+      contentSignature !== scannerEngineReviewContentSignature(reviewEngine.run)
+    ) {
+      throw new ConflictException('Scanner review content changed; refresh and try again');
+    }
+    const staves = reviewEngine.run.review?.staves || [];
+    const spots = selectSpots(staves, this.reviewThresholds());
     const spot = spots[spotId];
     if (!spot) throw new NotFoundException('Scanner review spot not found');
     const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
@@ -1004,6 +1079,21 @@ export class ScannerService implements OnModuleInit {
   private float(key: string, fallback: number): number {
     const parsed = Number(this.config.get<string>(key, String(fallback)));
     return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : fallback;
+  }
+
+  private reviewThresholds() {
+    return {
+      floor: this.float('SCANNER_REVIEW_CONFIDENCE_FLOOR', DEFAULT_REVIEW_THRESHOLDS.floor),
+      lowImpactFloor: this.float(
+        'SCANNER_REVIEW_LOW_IMPACT_FLOOR',
+        DEFAULT_REVIEW_THRESHOLDS.lowImpactFloor
+      ),
+      minAlternativeRatio: this.float(
+        'SCANNER_REVIEW_MIN_ALTERNATIVE_RATIO',
+        DEFAULT_REVIEW_THRESHOLDS.minAlternativeRatio
+      ),
+      minimum: this.float('SCANNER_REVIEW_CONFIDENCE_MIN', DEFAULT_REVIEW_THRESHOLDS.minimum)
+    };
   }
 
   private async ownedJob(userId: string, jobId: string): Promise<ScannerJobDocument> {
@@ -1566,6 +1656,47 @@ export class ScannerService implements OnModuleInit {
       this.registeredEngines?.planForJob(job) ||
       scannerEnginePlanForJob(job, this.bool('SCANNER_TRANSCODA_ENABLED', false))
     );
+  }
+
+  /** Resolve spot review through the persisted capability plan, never an engine-name branch. */
+  private reviewEngineForPage(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    requestedEngineId?: string
+  ): { engineId: ScannerEngineId; run: ScannerEngineRun; adapter?: ScannerPageProvider } {
+    const plan = this.enginePlanForJob(job);
+    if (requestedEngineId && !isScannerEngineId(requestedEngineId)) {
+      throw new BadRequestException('Invalid scanner engine');
+    }
+    if (requestedEngineId && !plan.engineIds.includes(requestedEngineId)) {
+      throw new BadRequestException('Scanner engine is not part of this job');
+    }
+
+    const engineIds = requestedEngineId ? [requestedEngineId] : plan.engineIds;
+    for (const engineId of engineIds) {
+      if (!plan.capabilitySnapshots[engineId]?.supportsSpotReview) continue;
+      const run =
+        engineId === 'homr'
+          ? scannerHomrRun(page, {
+              providerRevision: job.providerRevision,
+              modelRevision: job.modelRevision,
+              provenance: job.engineProvenance
+            })
+          : page.engines?.[engineId];
+      if (run?.status !== 'succeeded' || !run.review) continue;
+      return {
+        engineId,
+        run,
+        adapter:
+          this.registeredEngines?.readable(engineId)?.adapter ||
+          (engineId === 'homr' ? this.provider : undefined)
+      };
+    }
+
+    if (requestedEngineId && !plan.capabilitySnapshots[requestedEngineId]?.supportsSpotReview) {
+      throw new ConflictException('This scanner engine does not support spot review');
+    }
+    throw new ConflictException('No reviewable scanner engine result is available for this page');
   }
 
   private number(key: string, fallback: number): number {
