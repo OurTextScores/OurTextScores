@@ -19,6 +19,8 @@ export interface ScannerEngineRun {
   hasMusicXml: boolean;
   hasPdf: boolean;
   hasKern: boolean;
+  artifactKinds?: string[];
+  completeness?: "complete" | "possibly-incomplete" | "incomplete" | "unknown";
   generation?: {
     hitMaxLength: boolean;
     sawEos: boolean;
@@ -36,6 +38,22 @@ export interface ScannerJob {
   originalFilename: string;
   pageCount: number;
   includedPageCount: number;
+  enginePlan?: {
+    version: "scanner-engine-plan-v1";
+    engineIds: string[];
+    primaryEngineId: string;
+    fallbackEngineIds: string[];
+    capabilitySnapshots: Record<
+      string,
+      {
+        displayName: string;
+        outputArtifactKinds: string[];
+        supportsSpotReview: boolean;
+        supportsMeasureGeometry: boolean;
+        unsupportedSemanticClasses: string[];
+      }
+    >;
+  };
   pages: Array<{
     pageNumber: number;
     ordinal: number;
@@ -51,10 +69,7 @@ export interface ScannerJob {
     hasMusicXml: boolean;
     hasPdf: boolean;
     canRetry: boolean;
-    engines?: {
-      homr?: ScannerEngineRun;
-      transcoda?: ScannerEngineRun;
-    };
+    engines?: Record<string, ScannerEngineRun | undefined>;
   }>;
   hasMusicXml: boolean;
   hasPdf: boolean;

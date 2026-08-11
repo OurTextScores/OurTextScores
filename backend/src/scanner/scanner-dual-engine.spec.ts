@@ -5,6 +5,8 @@ import {
   scannerAggregatePageStatus,
   scannerBlockContentSignature,
   scannerEngineArtifactLocators,
+  scannerEnginePlan,
+  scannerEnginePlanForJob,
   scannerHomrRun,
   uniqueScannerStorageLocators,
   withScannerArtifactInputSignature,
@@ -92,7 +94,7 @@ describe('dual-engine content identity', () => {
   });
 
   it('derives a usable page when one engine succeeds and the other fails', () => {
-    const run = (engine: 'homr' | 'transcoda', status: any): any => ({
+    const run = (engine: string, status: any): any => ({
       engine,
       status,
       attempts: 1,
@@ -114,6 +116,63 @@ describe('dual-engine content identity', () => {
     ).toBe('running');
     expect(scannerAggregatePageStatus({ homr: run('homr', 'failed') })).toBe('failed');
     expect(scannerAggregatePageStatus({}, false)).toBe('skipped');
+  });
+
+  it('accepts a third engine without changing aggregate or artifact helpers', () => {
+    const audiverisMusicXml = { objectKey: 'audiveris.musicxml' } as any;
+    const page = withScannerEngineRun(
+      {
+        pageNumber: 1,
+        ordinal: 1,
+        rotationDegrees: 0,
+        included: true,
+        status: 'failed',
+        attempts: 1,
+        idempotencyKey: 'homr-key',
+        engines: {
+          homr: {
+            engine: 'homr',
+            status: 'failed',
+            attempts: 1,
+            idempotencyKey: 'homr-key',
+            artifacts: {}
+          }
+        }
+      },
+      {
+        engine: 'audiveris-5',
+        status: 'succeeded',
+        attempts: 1,
+        idempotencyKey: 'audiveris-key',
+        artifacts: { musicXml: audiverisMusicXml }
+      }
+    );
+
+    expect(page.status).toBe('succeeded');
+    expect(page.engines?.['audiveris-5']?.artifacts.musicXml).toBe(audiverisMusicXml);
+    expect(scannerEngineArtifactLocators(page)).toContain(audiverisMusicXml);
+  });
+
+  it('persists ordered engine policy and infers recorded engines for legacy jobs', () => {
+    const plan = scannerEnginePlan(['homr', 'audiveris-5', 'transcoda'], 'audiveris-5');
+    expect(plan).toMatchObject({
+      version: 'scanner-engine-plan-v1',
+      engineIds: ['homr', 'audiveris-5', 'transcoda'],
+      primaryEngineId: 'audiveris-5',
+      fallbackEngineIds: ['homr', 'transcoda']
+    });
+    expect(plan.capabilitySnapshots['audiveris-5']).toMatchObject({
+      displayName: 'audiveris-5',
+      outputArtifactKinds: ['musicxml']
+    });
+    expect(scannerEnginePlanForJob({ enginePlan: plan })).toEqual(plan);
+
+    const inferred = scannerEnginePlanForJob({
+      pages: [{ engines: { 'audiveris-5': {} as any } } as any]
+    });
+    expect(inferred.engineIds).toEqual(['homr', 'audiveris-5']);
+    expect(() => scannerEnginePlan(['homr', 'homr'])).toThrow('Invalid scanner engine plan');
+    expect(() => scannerEnginePlan(['homr', '../unsafe'])).toThrow('Invalid scanner engine plan');
   });
 
   it('uses Transcoda only as a fallback when HOMR has no usable MusicXML', () => {
@@ -198,31 +257,57 @@ describe('dual-engine content identity', () => {
   });
 
   it('invalidates a block decision when either artifact or rich descriptor changes', () => {
-    const input = {
-      homrArtifactChecksumSha256: 'homr-v1',
-      transcodaArtifactChecksumSha256: 'transcoda-v1',
+    const input: Parameters<typeof scannerBlockContentSignature>[0] = {
+      sides: [
+        {
+          role: 'base' as const,
+          engineId: 'homr',
+          artifactChecksumSha256: 'homr-v1',
+          descriptorHashes: ['homr-m1']
+        },
+        {
+          role: 'candidate' as const,
+          engineId: 'audiveris-5',
+          artifactChecksumSha256: 'audiveris-v1',
+          descriptorHashes: ['audiveris-m1']
+        }
+      ],
       partMatchVersion: 'part-match-v1',
+      alignmentVersion: 'measure-alignment-v1',
       descriptorVersion: 'measure-descriptor-v1',
       stablePartKey: 'part-1',
-      homrDescriptorHashes: ['homr-m1'],
-      transcodaDescriptorHashes: ['transcoda-m1'],
       contextBeforeHash: 'before',
       contextAfterHash: 'after'
     };
     const signature = scannerBlockContentSignature(input);
 
-    expect(signature).toMatch(/^scanner-block-content-v1:[a-f0-9]{64}$/);
+    expect(signature).toMatch(/^scanner-block-content-v2:[a-f0-9]{64}$/);
     expect(scannerBlockContentSignature(input)).toBe(signature);
     expect(
       scannerBlockContentSignature({
         ...input,
-        homrArtifactChecksumSha256: 'homr-after-spot-correction'
+        sides: [
+          { ...input.sides[0], artifactChecksumSha256: 'homr-after-spot-correction' },
+          input.sides[1]
+        ]
       })
     ).not.toBe(signature);
     expect(
       scannerBlockContentSignature({
         ...input,
-        transcodaDescriptorHashes: ['transcoda-m1-different-reading']
+        sides: [
+          input.sides[0],
+          { ...input.sides[1], descriptorHashes: ['audiveris-m1-different-reading'] }
+        ]
+      })
+    ).not.toBe(signature);
+    expect(
+      scannerBlockContentSignature({
+        ...input,
+        sides: [
+          { ...input.sides[0], engineId: 'audiveris-5' },
+          { ...input.sides[1], engineId: 'homr' }
+        ]
       })
     ).not.toBe(signature);
   });

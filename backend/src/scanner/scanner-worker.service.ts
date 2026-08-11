@@ -38,6 +38,7 @@ import {
   scannerArtifactInputSignature,
   scannerEngineArtifactLocators,
   scannerEngineManifest,
+  scannerEnginePlanForJob,
   uniqueScannerStorageLocators,
   withScannerArtifactInputSignature,
   withScannerEngineRun,
@@ -229,6 +230,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         if (assets.thumbnail) storedLocators.push(assets.thumbnail);
         pages.push(
           this.withInitialTranscodaRun(
+            job,
             withScannerHomrRun({
               pageNumber: pageFile.pageNumber,
               ordinal: prior?.ordinal || pageFile.pageNumber,
@@ -306,6 +308,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         job.pages.map((page) => [
           page.pageNumber,
           this.withInitialTranscodaRun(
+            job,
             withScannerHomrRun(page, {
               providerRevision: job.providerRevision,
               modelRevision: job.modelRevision,
@@ -318,6 +321,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         .filter((page) => page.included === false)
         .map((page) =>
           this.withInitialTranscodaRun(
+            job,
             withScannerHomrRun(
               { ...page, status: 'skipped' },
               {
@@ -388,7 +392,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               );
             }
           }
-          if (this.transcodaEnabled()) {
+          if (this.transcodaPlanned(job)) {
             await this.updateLease(job.jobId, 'running');
             const transcoda = await this.scanTranscodaPage({
               job,
@@ -427,7 +431,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           this.shouldPreservePriorFailure(prior.engines.homr, idempotencyKey)
         ) {
           let preserved = prior;
-          if (this.transcodaEnabled()) {
+          if (this.transcodaPlanned(job)) {
             await this.updateLease(job.jobId, 'running');
             const transcoda = await this.scanTranscodaPage({
               job,
@@ -657,7 +661,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             retryable: providerError.retryable
           });
         }
-        if (this.transcodaEnabled()) {
+        if (this.transcodaPlanned(job)) {
           await this.updateLease(job.jobId, 'running');
           const homrPage = results.pop();
           if (!homrPage) throw new Error(`Scanner page ${pageNumber} produced no HOMR state`);
@@ -764,8 +768,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private withInitialTranscodaRun(page: ScannerPageResult): ScannerPageResult {
-    if (!this.transcodaEnabled()) return page;
+  private withInitialTranscodaRun(
+    job: ScannerJobDocument,
+    page: ScannerPageResult
+  ): ScannerPageResult {
+    if (!this.transcodaPlanned(job)) return page;
     const existing = page.engines?.transcoda;
     if (existing) return withScannerEngineRun(page, existing);
     return withScannerEngineRun(page, {
@@ -779,6 +786,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
 
   private transcodaEnabled(): boolean {
     return this.bool('SCANNER_TRANSCODA_ENABLED', false);
+  }
+
+  private transcodaPlanned(job: ScannerJobDocument): boolean {
+    return scannerEnginePlanForJob(job, this.transcodaEnabled()).engineIds.includes('transcoda');
   }
 
   private async scanTranscodaPage(input: {
@@ -901,6 +912,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         durationMs: providerMs,
         inferenceMs: scanned.result.inferenceMs,
         generation: scanned.result.generation,
+        completeness: scanned.result.completeness,
         providerRevision: scanned.result.providerRevision,
         modelRevision: scanned.result.modelRevision,
         provenance: scanned.result.provenance,
@@ -1454,6 +1466,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       mergeStatus: summary.combined?.status ?? 'not-requested',
       mergeReason: summary.combined?.reason,
       engine: 'homr',
+      enginePlan: scannerEnginePlanForJob(job, this.transcodaEnabled()),
       serviceRevision: summary.providerRevision,
       modelRevision: summary.modelRevision,
       // Design section 7.1/17: the weights are versioned separately from the

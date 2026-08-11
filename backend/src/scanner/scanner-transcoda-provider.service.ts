@@ -165,6 +165,11 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
         ? Number(envelope.timing.inferenceMs)
         : undefined,
       generation,
+      completeness: generation.truncated
+        ? 'incomplete'
+        : generation.hitMaxLength || !generation.sawEos
+          ? 'possibly-incomplete'
+          : 'complete',
       provenance: {
         modelArtifact,
         modelArtifactSha256,

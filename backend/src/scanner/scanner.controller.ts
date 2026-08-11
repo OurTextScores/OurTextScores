@@ -30,16 +30,6 @@ import { RequestUser } from '../auth/types/auth-user';
 import { ScannerService } from './scanner.service';
 import { SCANNER_REQUEST_OVERHEAD_BYTES, SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
 
-const SCANNER_ARTIFACT_KINDS = {
-  musicxml: 'musicxml',
-  kern: 'kern',
-  pdf: 'pdf',
-  thumbnail: 'thumbnail',
-  zip: 'zip'
-} as const;
-
-const SCANNER_ARTIFACT_ENGINES = { homr: 'homr', transcoda: 'transcoda' } as const;
-
 /** Zoom levels for a review crop; scanner-crop.ts explains why only two. */
 const SCANNER_CROP_LEVELS = { staff: 'staff', context: 'context' } as const;
 
@@ -245,11 +235,9 @@ export class ScannerController {
   async artifact(
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
-    @Param('kind', new ParseEnumPipe(SCANNER_ARTIFACT_KINDS))
-    kind: 'musicxml' | 'kern' | 'pdf' | 'thumbnail' | 'zip',
+    @Param('kind') kind: string,
     @Query('page', new ParseIntPipe({ optional: true })) page: number | undefined,
-    @Query('engine', new ParseEnumPipe(SCANNER_ARTIFACT_ENGINES, { optional: true }))
-    engine: 'homr' | 'transcoda' | undefined,
+    @Query('engine') engine: string | undefined,
     @Res({ passthrough: true }) response: Response
   ) {
     const artifact = await this.scanner.getArtifact(user.userId, jobId, kind, page, engine);

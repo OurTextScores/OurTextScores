@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp = require('sharp');
 import AdmZip = require('adm-zip');
+import { scannerDefaultEnginePlan } from './scanner-dual-engine';
 
 describe('ScannerWorkerService', () => {
   const values: Record<string, string> = {
@@ -54,6 +55,20 @@ describe('ScannerWorkerService', () => {
     delete values.SCANNER_PROVIDER_KIND;
     delete values.SCANNER_TRANSCODA_ENABLED;
     delete values.SCANNER_TEST_WORKER_LEASE_MS;
+  });
+
+  it('uses the persisted engine plan after the new-job flag changes', () => {
+    const scannerWorker = service() as any;
+
+    values.SCANNER_TRANSCODA_ENABLED = 'false';
+    expect(
+      scannerWorker.transcodaPlanned({ enginePlan: scannerDefaultEnginePlan(true), pages: [] })
+    ).toBe(true);
+
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    expect(
+      scannerWorker.transcodaPlanned({ enginePlan: scannerDefaultEnginePlan(false), pages: [] })
+    ).toBe(false);
   });
 
   it('uses the effective page when rebuilding a bundle after review', async () => {

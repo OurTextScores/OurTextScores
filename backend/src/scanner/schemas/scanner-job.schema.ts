@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import type { ScannerPageEngines } from '../scanner-dual-engine';
+import type { ScannerEnginePlan, ScannerPageEngines } from '../scanner-dual-engine';
 
 export type ScannerJobDocument = HydratedDocument<ScannerJob>;
 
@@ -172,6 +172,10 @@ export class ScannerJob {
 
   @Prop({ type: [Object], default: [] })
   pages!: ScannerPageResult[];
+
+  /** Immutable engine selection and capability semantics for this job. */
+  @Prop({ type: Object })
+  enginePlan?: ScannerEnginePlan;
 
   @Prop({ type: [Number] })
   retryPageNumbers?: number[];

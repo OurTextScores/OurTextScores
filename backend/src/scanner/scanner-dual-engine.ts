@@ -5,8 +5,18 @@ import type {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 
-export const SCANNER_ENGINES = ['homr', 'transcoda'] as const;
-export type ScannerEngineName = (typeof SCANNER_ENGINES)[number];
+export const BUILTIN_SCANNER_ENGINE_IDS = ['homr', 'transcoda'] as const;
+/** @deprecated Use BUILTIN_SCANNER_ENGINE_IDS for built-ins or ScannerEngineId for contracts. */
+export const SCANNER_ENGINES = BUILTIN_SCANNER_ENGINE_IDS;
+export type ScannerEngineId = string;
+/** @deprecated Compatibility alias while the Phase C registry migration lands. */
+export type ScannerEngineName = ScannerEngineId;
+
+export const SCANNER_ENGINE_ID_PATTERN = /^[a-z0-9][a-z0-9.-]{0,63}$/;
+
+export function isScannerEngineId(value: unknown): value is ScannerEngineId {
+  return typeof value === 'string' && SCANNER_ENGINE_ID_PATTERN.test(value);
+}
 
 export type ScannerEngineRunStatus =
   | 'pending'
@@ -24,9 +34,23 @@ export interface ScannerGenerationMetadata {
   numBeams?: number;
 }
 
+export type ScannerOutputCompleteness =
+  | 'complete'
+  | 'possibly-incomplete'
+  | 'incomplete'
+  | 'unknown';
+
+export interface ScannerEngineArtifacts {
+  musicXml?: ScannerStorageLocator;
+  pdf?: ScannerStorageLocator;
+  /** A provider-native artifact; retained as an explicit compatibility field. */
+  kern?: ScannerStorageLocator;
+  [kind: string]: ScannerStorageLocator | undefined;
+}
+
 /** Independent state for one engine; page status is derived from both records. */
 export interface ScannerEngineRun {
-  engine: ScannerEngineName;
+  engine: ScannerEngineId;
   status: ScannerEngineRunStatus;
   attempts: number;
   providerAttempts?: number;
@@ -40,17 +64,159 @@ export interface ScannerEngineRun {
   providerRevision?: string;
   modelRevision?: string;
   provenance?: ScannerEngineProvenance;
-  artifacts: {
-    musicXml?: ScannerStorageLocator;
-    pdf?: ScannerStorageLocator;
-    /** Transcoda's model-authored output before music21 conversion. */
-    kern?: ScannerStorageLocator;
+  completeness?: ScannerOutputCompleteness;
+  artifacts: ScannerEngineArtifacts;
+}
+
+export type ScannerPageEngines = Record<ScannerEngineId, ScannerEngineRun | undefined>;
+
+export const SCANNER_ENGINE_PLAN_VERSION = 'scanner-engine-plan-v1';
+
+export interface ScannerEngineCapabilitySnapshot {
+  displayName: string;
+  outputArtifactKinds: string[];
+  supportsSpotReview: boolean;
+  supportsMeasureGeometry: boolean;
+  unsupportedSemanticClasses: string[];
+}
+
+export interface ScannerEnginePlan {
+  version: typeof SCANNER_ENGINE_PLAN_VERSION;
+  engineIds: ScannerEngineId[];
+  primaryEngineId: ScannerEngineId;
+  fallbackEngineIds: ScannerEngineId[];
+  capabilitySnapshots: Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>;
+}
+
+const BUILTIN_SCANNER_CAPABILITIES: Record<string, ScannerEngineCapabilitySnapshot> = {
+  homr: {
+    displayName: 'HOMR',
+    outputArtifactKinds: ['musicxml', 'pdf'],
+    supportsSpotReview: true,
+    supportsMeasureGeometry: true,
+    unsupportedSemanticClasses: []
+  },
+  transcoda: {
+    displayName: 'Transcoda',
+    outputArtifactKinds: ['musicxml', 'kern'],
+    supportsSpotReview: false,
+    supportsMeasureGeometry: false,
+    unsupportedSemanticClasses: ['lyrics', 'dynamics']
+  }
+};
+
+function defaultCapabilitySnapshot(engineId: ScannerEngineId): ScannerEngineCapabilitySnapshot {
+  return (
+    BUILTIN_SCANNER_CAPABILITIES[engineId] || {
+      displayName: engineId,
+      outputArtifactKinds: ['musicxml'],
+      supportsSpotReview: false,
+      supportsMeasureGeometry: false,
+      unsupportedSemanticClasses: []
+    }
+  );
+}
+
+export function scannerEnginePlan(
+  engineIds: ScannerEngineId[],
+  primaryEngineId: ScannerEngineId = engineIds[0],
+  capabilitySnapshots: Partial<Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>> = {}
+): ScannerEnginePlan {
+  const uniqueEngineIds = [...new Set(engineIds)];
+  const suppliedCapabilities = Object.values(capabilitySnapshots);
+  if (
+    engineIds.length === 0 ||
+    engineIds.length > 16 ||
+    uniqueEngineIds.length !== engineIds.length ||
+    engineIds.some((engineId) => !isScannerEngineId(engineId)) ||
+    !uniqueEngineIds.includes(primaryEngineId) ||
+    suppliedCapabilities.some(
+      (capability) => capability && !isScannerEngineCapabilitySnapshot(capability)
+    )
+  ) {
+    throw new Error('Invalid scanner engine plan');
+  }
+  return {
+    version: SCANNER_ENGINE_PLAN_VERSION,
+    engineIds: uniqueEngineIds,
+    primaryEngineId,
+    fallbackEngineIds: uniqueEngineIds.filter((engineId) => engineId !== primaryEngineId),
+    capabilitySnapshots: Object.fromEntries(
+      uniqueEngineIds.map((engineId) => [
+        engineId,
+        capabilitySnapshots[engineId] || defaultCapabilitySnapshot(engineId)
+      ])
+    )
   };
 }
 
-export interface ScannerPageEngines {
-  homr?: ScannerEngineRun;
-  transcoda?: ScannerEngineRun;
+export function scannerDefaultEnginePlan(transcodaEnabled: boolean): ScannerEnginePlan {
+  return scannerEnginePlan(transcodaEnabled ? ['homr', 'transcoda'] : ['homr'], 'homr');
+}
+
+/**
+ * Return a persisted immutable plan, or infer the policy that legacy jobs used.
+ * Inference includes already-recorded engines so disabling one cannot orphan its artifacts.
+ */
+export function scannerEnginePlanForJob(
+  job: { enginePlan?: ScannerEnginePlan; pages?: ScannerPageResult[] },
+  transcodaEnabled = false
+): ScannerEnginePlan {
+  if (job.enginePlan) {
+    const plan = job.enginePlan;
+    if (
+      !Array.isArray(plan.engineIds) ||
+      !Array.isArray(plan.fallbackEngineIds) ||
+      !plan.capabilitySnapshots ||
+      plan.engineIds.some((engineId) => !plan.capabilitySnapshots[engineId])
+    ) {
+      throw new Error('Invalid persisted scanner engine plan');
+    }
+    const normalized = scannerEnginePlan(
+      plan.engineIds,
+      plan.primaryEngineId,
+      plan.capabilitySnapshots
+    );
+    if (
+      plan.version !== SCANNER_ENGINE_PLAN_VERSION ||
+      plan.fallbackEngineIds.length !== normalized.fallbackEngineIds.length ||
+      plan.fallbackEngineIds.some(
+        (engineId, index) => engineId !== normalized.fallbackEngineIds[index]
+      )
+    ) {
+      throw new Error('Invalid persisted scanner engine plan');
+    }
+    return normalized;
+  }
+
+  const recordedEngineIds = (job.pages || []).flatMap((page) => Object.keys(page.engines || {}));
+  const engineIds = [
+    'homr',
+    ...(transcodaEnabled ? ['transcoda'] : []),
+    ...recordedEngineIds.filter((engineId) => engineId !== 'homr')
+  ];
+  return scannerEnginePlan([...new Set(engineIds)], 'homr');
+}
+
+function isScannerEngineCapabilitySnapshot(
+  value: unknown
+): value is ScannerEngineCapabilitySnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const capability = value as ScannerEngineCapabilitySnapshot;
+  return (
+    typeof capability.displayName === 'string' &&
+    capability.displayName.length > 0 &&
+    capability.displayName.length <= 80 &&
+    Array.isArray(capability.outputArtifactKinds) &&
+    capability.outputArtifactKinds.length > 0 &&
+    capability.outputArtifactKinds.every(
+      (kind) => typeof kind === 'string' && /^[a-z0-9][a-z0-9.-]{0,31}$/.test(kind)
+    ) &&
+    typeof capability.supportsSpotReview === 'boolean' &&
+    typeof capability.supportsMeasureGeometry === 'boolean' &&
+    Array.isArray(capability.unsupportedSemanticClasses) &&
+    capability.unsupportedSemanticClasses.every((item) => typeof item === 'string')
+  );
 }
 
 export interface ScannerEngineRunMetadata {
@@ -159,6 +325,13 @@ export function scannerEngineManifest(page: ScannerPageResult): Record<string, u
                 providerRevision: run.providerRevision,
                 modelRevision: run.modelRevision,
                 provenance: run.provenance,
+                completeness: run.completeness,
+                artifactChecksumsSha256: Object.fromEntries(
+                  Object.entries(run.artifacts).flatMap(([kind, locator]) =>
+                    locator ? [[kind, locator.checksumSha256]] : []
+                  )
+                ),
+                // Compatibility projection for manifests produced before the registry migration.
                 artifacts: {
                   musicXmlSha256: run.artifacts.musicXml?.checksumSha256,
                   pdfSha256: run.artifacts.pdf?.checksumSha256,
@@ -185,13 +358,22 @@ export function uniqueScannerStorageLocators(
 
 export type ScannerPartMatchOutcome = 'matched' | 'ambiguous' | 'unmatched';
 
+export interface ScannerComparisonPair {
+  baseEngineId: ScannerEngineId;
+  candidateEngineId: ScannerEngineId;
+}
+
 export interface ScannerPartMatchEvidence {
-  homrOrdinal?: number;
-  transcodaOrdinal?: number;
   normalizedNameEqual?: boolean;
-  homrStaffCount?: number;
-  transcodaStaffCount?: number;
   structureAgreement?: number;
+}
+
+export interface ScannerPartEndpoint {
+  engineId: ScannerEngineId;
+  documentPartId: string;
+  ordinal?: number;
+  normalizedName?: string;
+  staffCount?: number;
 }
 
 /** Auditable evidence for replacing document-local MusicXML part ids. */
@@ -199,14 +381,14 @@ export type ScannerPartMatch =
   | {
       outcome: 'matched';
       stablePartKey: string;
-      homrPartId: string;
-      transcodaPartId: string;
+      base: ScannerPartEndpoint;
+      candidate: ScannerPartEndpoint;
       evidence: ScannerPartMatchEvidence;
     }
   | {
       outcome: Exclude<ScannerPartMatchOutcome, 'matched'>;
-      homrPartId?: string;
-      transcodaPartId?: string;
+      base?: ScannerPartEndpoint;
+      candidate?: ScannerPartEndpoint;
       evidence: ScannerPartMatchEvidence;
       refusalReason: string;
     };
@@ -220,7 +402,7 @@ export interface ScannerMeasureCropRegion {
 
 /** Explicit join from generated MusicXML back to the source-image geometry. */
 export interface ScannerMeasureRef {
-  engine: ScannerEngineName;
+  engine: ScannerEngineId;
   artifactChecksumSha256: string;
   stablePartKey: string;
   documentPartId: string;
@@ -230,7 +412,7 @@ export interface ScannerMeasureRef {
 }
 
 export const SCANNER_ARTIFACT_INPUT_SIGNATURE_VERSION = 'scanner-artifact-input-v1';
-export const SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION = 'scanner-block-content-v1';
+export const SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION = 'scanner-block-content-v2';
 
 export const SCANNER_ARTIFACT_BUILDERS = {
   pagePdf: 'scanner-page-pdf-v1',
@@ -290,24 +472,38 @@ export function scannerArtifactInputMatches(
  * Descriptor hashes come from the equality representation, never the coarse LCS key.
  */
 export function scannerBlockContentSignature(input: {
-  homrArtifactChecksumSha256: string;
-  transcodaArtifactChecksumSha256: string;
+  sides: readonly [
+    {
+      role: 'base';
+      engineId: ScannerEngineId;
+      artifactChecksumSha256: string;
+      descriptorHashes: readonly string[];
+    },
+    {
+      role: 'candidate';
+      engineId: ScannerEngineId;
+      artifactChecksumSha256: string;
+      descriptorHashes: readonly string[];
+    }
+  ];
   partMatchVersion: string;
+  alignmentVersion: string;
   descriptorVersion: string;
   stablePartKey: string;
-  homrDescriptorHashes: string[];
-  transcodaDescriptorHashes: string[];
   contextBeforeHash?: string;
   contextAfterHash?: string;
 }): string {
   return versionedSignature(SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION, [
-    input.homrArtifactChecksumSha256,
-    input.transcodaArtifactChecksumSha256,
+    input.sides.map((side) => [
+      side.role,
+      side.engineId,
+      side.artifactChecksumSha256,
+      side.descriptorHashes
+    ]),
     input.partMatchVersion,
+    input.alignmentVersion,
     input.descriptorVersion,
     input.stablePartKey,
-    input.homrDescriptorHashes,
-    input.transcodaDescriptorHashes,
     input.contextBeforeHash || null,
     input.contextAfterHash || null
   ]);

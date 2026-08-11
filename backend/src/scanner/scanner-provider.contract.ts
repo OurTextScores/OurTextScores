@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { ReviewStaff } from './scanner-review';
-import type { ScannerEngineName, ScannerGenerationMetadata } from './scanner-dual-engine';
+import type {
+  ScannerEngineId,
+  ScannerGenerationMetadata,
+  ScannerOutputCompleteness
+} from './scanner-dual-engine';
 import type { ScannerEngineProvenance } from './schemas/scanner-job.schema';
 
 export interface ScannerProviderScanInput {
@@ -12,7 +16,7 @@ export interface ScannerProviderScanInput {
 }
 
 export interface ScannerProviderResult {
-  engine: ScannerEngineName;
+  engine: ScannerEngineId;
   musicXml: Buffer;
   /** Model-authored kern retained before Transcoda's MusicXML conversion. */
   kern?: Buffer;
@@ -23,6 +27,8 @@ export interface ScannerProviderResult {
   inferenceMs?: number;
   /** Decoder termination diagnostics; currently supplied by Transcoda. */
   generation?: ScannerGenerationMetadata;
+  /** Normalized across provider-specific termination/completeness diagnostics. */
+  completeness?: ScannerOutputCompleteness;
   musicXmlSha256: string;
   /** HOMR-only review data; absent without decoded token geometry. */
   review?: { staves: ReviewStaff[] };
@@ -30,7 +36,7 @@ export interface ScannerProviderResult {
 
 /** Engine adapter consumed by orchestration; transport details stay behind it. */
 export interface ScannerPageProvider {
-  readonly engine: ScannerEngineName;
+  readonly engine: ScannerEngineId;
   readonly expectedRevision: string;
   createIdempotencyKey(input: {
     inputSha256: string;
@@ -42,7 +48,7 @@ export interface ScannerPageProvider {
 }
 
 export function scannerProviderIdempotencyKey(input: {
-  engine: ScannerEngineName;
+  engine: ScannerEngineId;
   modelRevision: string;
   modelArtifactSha256?: string;
   converterVersion?: string;

@@ -90,6 +90,7 @@ describe('ScannerTranscodaProviderService', () => {
       modelRevision: 'model-revision',
       requestId: 'transcoda-request',
       inferenceMs: 123,
+      completeness: 'complete',
       generation: {
         hitMaxLength: false,
         sawEos: true,
@@ -130,6 +131,7 @@ describe('ScannerTranscodaProviderService', () => {
       )
     );
     await expect(scan()).resolves.toMatchObject({
+      completeness: 'incomplete',
       generation: { hitMaxLength: true, sawEos: false, truncated: true, maxLength: 2048 }
     });
 

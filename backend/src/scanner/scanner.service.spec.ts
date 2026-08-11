@@ -14,6 +14,7 @@ import { ScannerService } from './scanner.service';
 import { scannerUserHash } from './scanner.constants';
 import {
   SCANNER_ARTIFACT_BUILDERS,
+  scannerEnginePlan,
   withScannerArtifactInputSignature
 } from './scanner-dual-engine';
 
@@ -116,6 +117,10 @@ describe('ScannerService', () => {
         expect.objectContaining({
           inputContentType: 'multipart/mixed',
           pageCount: 2,
+          enginePlan: expect.objectContaining({
+            engineIds: ['homr'],
+            primaryEngineId: 'homr'
+          }),
           inputs: [
             expect.objectContaining({
               originalFilename: 'page-2.png',
@@ -448,6 +453,13 @@ describe('ScannerService', () => {
                 numBeams: 3
               },
               artifacts: {}
+            },
+            'audiveris-5': {
+              engine: 'audiveris-5',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'audiveris-secret',
+              artifacts: { musicXml: { bucket: 'aux', objectKey: 'audiveris-private-key' } }
             }
           }
         }
@@ -486,6 +498,10 @@ describe('ScannerService', () => {
     expect(result.pages[0].engines.transcoda.generation).toMatchObject({
       truncated: true,
       maxLength: 2048
+    });
+    expect(result.pages[0].engines['audiveris-5']).toMatchObject({
+      status: 'succeeded',
+      artifactKinds: ['musicxml']
     });
     expect(result.pages[0]).not.toHaveProperty('idempotencyKey');
     expect(result.pages[0].engines.homr).not.toHaveProperty('idempotencyKey');
@@ -559,6 +575,68 @@ describe('ScannerService', () => {
     );
     await expect(
       service.getArtifact('user-1', 'job-1', 'musicxml', undefined, 'transcoda')
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('serves a registry-planned third engine and its declared native artifact', async () => {
+    const mei = {
+      bucket: 'scanner',
+      objectKey: 'page-001-audiveris.mei',
+      contentType: 'application/mei+xml'
+    };
+    const capabilities = {
+      displayName: 'Audiveris 5',
+      outputArtifactKinds: ['musicxml', 'mei'],
+      supportsSpotReview: false,
+      supportsMeasureGeometry: true,
+      unsupportedSemanticClasses: []
+    };
+    const job: any = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      pageCount: 1,
+      enginePlan: scannerEnginePlan(['homr', 'audiveris-5'], 'homr', {
+        'audiveris-5': capabilities
+      }),
+      pages: [
+        {
+          pageNumber: 1,
+          status: 'succeeded',
+          attempts: 1,
+          idempotencyKey: 'homr-key',
+          engines: {
+            'audiveris-5': {
+              engine: 'audiveris-5',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'audiveris-key',
+              artifacts: { mei }
+            }
+          }
+        }
+      ]
+    };
+    const engineStorage = {
+      getObjectStream: jest.fn(async () => Readable.from(['<mei/>']))
+    } as any;
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections,
+      engineStorage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    const artifact = await service.getArtifact('user-1', 'job-1', 'mei', 1, 'audiveris-5');
+    expect(artifact.filename).toBe('scan-page-1-audiveris-5.mei');
+    expect((await readStream(artifact.stream)).toString()).toBe('<mei/>');
+    await expect(service.getArtifact('user-1', 'job-1', 'mei', 1, 'transcoda')).rejects.toThrow(
+      BadRequestException
+    );
+    await expect(
+      service.getArtifact('user-1', 'job-1', '../mei', 1, 'audiveris-5')
     ).rejects.toThrow(BadRequestException);
   });
 

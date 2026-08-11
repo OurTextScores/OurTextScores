@@ -54,20 +54,25 @@ import {
   SCANNER_ARTIFACT_BUILDERS,
   scannerArtifactInputSignature,
   scannerArtifactInputMatches,
+  scannerDefaultEnginePlan,
   scannerEngineArtifactLocators,
   scannerEngineManifest,
+  scannerEnginePlanForJob,
   scannerHomrRun,
+  isScannerEngineId,
   uniqueScannerStorageLocators,
   withScannerHomrRun
 } from './scanner-dual-engine';
 import type {
   ScannerArtifactInput,
-  ScannerEngineName,
+  ScannerEngineId,
   ScannerEngineRun
 } from './scanner-dual-engine';
 
 const execFileAsync = promisify(execFile);
 const ACTIVE_STATUSES = ['queued', 'preparing', 'ready', 'running', 'rendering'];
+const SCANNER_JOB_ARTIFACT_KINDS = new Set(['musicxml', 'pdf', 'thumbnail', 'zip']);
+const SCANNER_ENGINE_ARTIFACT_KIND_PATTERN = /^[a-z0-9][a-z0-9.-]{0,31}$/;
 
 @Injectable()
 export class ScannerService implements OnModuleInit {
@@ -226,6 +231,7 @@ export class ScannerService implements OnModuleInit {
         inputs: storedInputs,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
+        enginePlan: scannerDefaultEnginePlan(this.bool('SCANNER_TRANSCODA_ENABLED', false)),
         pages: Array.from({ length: pageCount }, (_value, index) =>
           withScannerHomrRun({
             pageNumber: index + 1,
@@ -486,9 +492,9 @@ export class ScannerService implements OnModuleInit {
   async getArtifact(
     userId: string,
     jobId: string,
-    kind: 'musicxml' | 'kern' | 'pdf' | 'thumbnail' | 'zip',
+    kind: string,
     pageNumber?: number,
-    engine?: ScannerEngineName
+    engine?: ScannerEngineId
   ): Promise<{ stream: Readable; contentType: string; filename: string }> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
@@ -501,14 +507,27 @@ export class ScannerService implements OnModuleInit {
     let locator: ScannerStorageLocator | undefined;
     let filename: string;
     if (engine) {
+      if (!isScannerEngineId(engine)) {
+        throw new BadRequestException('Invalid scanner engine id');
+      }
       if (!pageRequested) {
         throw new BadRequestException('An engine artifact requires a page number');
       }
-      if (kind === 'thumbnail' || kind === 'zip') {
-        throw new BadRequestException('This artifact kind is not engine-specific');
+      if (!SCANNER_ENGINE_ARTIFACT_KIND_PATTERN.test(kind)) {
+        throw new BadRequestException('Invalid scanner artifact kind');
       }
       const page = job.pages.find((candidate) => candidate.pageNumber === pageNumber);
       if (!page) throw new NotFoundException('Scanner page not found');
+      const enginePlan = scannerEnginePlanForJob(
+        job,
+        this.bool('SCANNER_TRANSCODA_ENABLED', false)
+      );
+      if (!enginePlan.engineIds.includes(engine)) {
+        throw new BadRequestException('Scanner engine is not part of this job');
+      }
+      if (!enginePlan.capabilitySnapshots[engine].outputArtifactKinds.includes(kind)) {
+        throw new BadRequestException('Artifact kind is not declared by this scanner engine');
+      }
       const run =
         engine === 'homr'
           ? scannerHomrRun(page, {
@@ -516,17 +535,14 @@ export class ScannerService implements OnModuleInit {
               modelRevision: job.modelRevision,
               provenance: job.engineProvenance
             })
-          : page?.engines?.transcoda;
-      locator =
-        kind === 'musicxml'
-          ? run?.artifacts.musicXml
-          : kind === 'pdf'
-            ? run?.artifacts.pdf
-            : run?.artifacts.kern;
-      const extension = kind === 'musicxml' ? 'musicxml' : kind === 'pdf' ? 'pdf' : 'krn';
+          : page?.engines?.[engine];
+      locator = kind === 'musicxml' ? run?.artifacts.musicXml : run?.artifacts[kind];
+      const extension = kind === 'kern' ? 'krn' : kind;
       filename = `scan-page-${pageNumber}-${engine}.${extension}`;
-    } else if (kind === 'kern') {
-      throw new BadRequestException('A kern artifact requires engine=transcoda and a page number');
+    } else if (!SCANNER_JOB_ARTIFACT_KINDS.has(kind)) {
+      throw new BadRequestException(
+        'A provider-native artifact requires an engine and page number'
+      );
     } else if (kind === 'zip') {
       if (
         !this.materializedArtifactIsCurrent(
@@ -1026,6 +1042,7 @@ export class ScannerService implements OnModuleInit {
   private present(job: ScannerJobDocument): any {
     const superseded = job.pages.some((page) => pageMusicXmlSuperseded(page));
     const legacyJobInvalidated = superseded || Boolean(job.combinedStale);
+    const enginePlan = scannerEnginePlanForJob(job, this.bool('SCANNER_TRANSCODA_ENABLED', false));
     return {
       jobId: job.jobId,
       status: job.status,
@@ -1034,6 +1051,7 @@ export class ScannerService implements OnModuleInit {
       pageCount: job.pageCount,
       includedPageCount: job.pages.filter((page) => page.included !== false).length,
       options: job.options,
+      enginePlan,
       pages: [...job.pages]
         .sort(
           (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
@@ -1065,12 +1083,12 @@ export class ScannerService implements OnModuleInit {
               [page],
               pageMusicXmlSuperseded(page)
             ),
-            engines: {
-              homr: this.presentEngineRun(homr),
-              ...(page.engines?.transcoda
-                ? { transcoda: this.presentEngineRun(page.engines.transcoda) }
-                : {})
-            },
+            engines: Object.fromEntries(
+              enginePlan.engineIds.flatMap((engineId) => {
+                const run = engineId === 'homr' ? homr : page.engines?.[engineId];
+                return run ? [[engineId, this.presentEngineRun(run)]] : [];
+              })
+            ),
             canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
           };
         }),
@@ -1127,13 +1145,17 @@ export class ScannerService implements OnModuleInit {
       durationMs: run.durationMs,
       inferenceMs: run.inferenceMs,
       generation: run.generation,
+      completeness: run.completeness,
       errorCode: run.errorCode,
       errorMessage: run.errorMessage,
       providerRevision: run.providerRevision,
       modelRevision: run.modelRevision,
       hasMusicXml: Boolean(run.artifacts.musicXml),
       hasPdf: Boolean(run.artifacts.pdf),
-      hasKern: Boolean(run.artifacts.kern)
+      hasKern: Boolean(run.artifacts.kern),
+      artifactKinds: Object.entries(run.artifacts).flatMap(([kind, locator]) =>
+        locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
+      )
     };
   }
 
@@ -1343,6 +1365,10 @@ export class ScannerService implements OnModuleInit {
       mergeReason:
         job.mergeReason || 'Stored result artifacts do not match the current page inputs',
       engine: 'homr',
+      enginePlan: scannerEnginePlanForJob(
+        job,
+        this.bool('SCANNER_TRANSCODA_ENABLED', false)
+      ),
       serviceRevision: job.providerRevision,
       modelRevision: job.modelRevision,
       engineProvenance: job.engineProvenance,
