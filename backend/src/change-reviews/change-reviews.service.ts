@@ -22,6 +22,7 @@ import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { WatchesService } from '../watches/watches.service';
 import type { RequestUser } from '../auth/types/auth-user';
+import { alignSequenceLcs } from '../common/sequence-alignment';
 
 type ReviewRole = 'reviewer' | 'owner' | 'all';
 type ReviewStatusFilter = ChangeReviewStatus | 'all';
@@ -1722,42 +1723,13 @@ export class ChangeReviewsService {
    * hundred bars per part, so the quadratic table costs far less than a wrong answer.
    */
   private alignMeasures(baseSignatures: string[], headSignatures: string[]): MeasureAlignmentOp[] {
-    const rows = baseSignatures.length;
-    const cols = headSignatures.length;
-    const lengths: number[][] = Array.from({ length: rows + 1 }, () => new Array<number>(cols + 1).fill(0));
-    for (let i = rows - 1; i >= 0; i -= 1) {
-      for (let j = cols - 1; j >= 0; j -= 1) {
-        lengths[i][j] = baseSignatures[i] === headSignatures[j]
-          ? lengths[i + 1][j + 1] + 1
-          : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+    return alignSequenceLcs(baseSignatures, headSignatures).map((op) => {
+      if (op.type === 'equal') {
+        return { type: 'equal', baseIndex: op.baseIndex, headIndex: op.candidateIndex };
       }
-    }
-
-    const ops: MeasureAlignmentOp[] = [];
-    let i = 0;
-    let j = 0;
-    while (i < rows && j < cols) {
-      if (baseSignatures[i] === headSignatures[j]) {
-        ops.push({ type: 'equal', baseIndex: i, headIndex: j });
-        i += 1;
-        j += 1;
-      } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
-        ops.push({ type: 'removed', baseIndex: i });
-        i += 1;
-      } else {
-        ops.push({ type: 'added', headIndex: j });
-        j += 1;
-      }
-    }
-    while (i < rows) {
-      ops.push({ type: 'removed', baseIndex: i });
-      i += 1;
-    }
-    while (j < cols) {
-      ops.push({ type: 'added', headIndex: j });
-      j += 1;
-    }
-    return ops;
+      if (op.type === 'removed') return op;
+      return { type: 'added', headIndex: op.candidateIndex };
+    });
   }
 
   private diffScoreStructures(baseScore: ScoreStructure, headScore: ScoreStructure) {

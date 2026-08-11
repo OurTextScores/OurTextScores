@@ -14,12 +14,13 @@ export const DEFAULT_MUSICXML_LIMITS: MusicXmlLimits = { maxNodes: 500_000, maxD
  * dropped rather than expanded or rejected — the DOCTYPE check below refuses it
  * outright instead.
  */
-export function musicXmlParser(): XMLParser {
+export function musicXmlParser(options: { preserveOrder?: boolean } = {}): XMLParser {
   return new XMLParser({
     ignoreAttributes: false,
     processEntities: false,
     parseTagValue: false,
     parseAttributeValue: false,
+    preserveOrder: options.preserveOrder || false,
     // Keeps `<part>` singular-vs-plural handling predictable when merging.
     isArray: (name) => ['part', 'measure', 'score-part'].includes(name)
   });
