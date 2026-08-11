@@ -195,6 +195,32 @@ class PageCapture:
             }
         )
 
+    def assign_voice_systems(self, voices: list[list[Any]]) -> None:
+        """Bind physical captures back to HOMR's generated part/voice order.
+
+        `parse_staffs` visits every physical system voice-major, then appends a
+        `newline` to each non-empty system before producing one MusicXML part
+        per voice. Record that identity only when both views agree exactly.
+        """
+        if not voices or len(self.staves) % len(voices) != 0:
+            return
+        systems_per_voice = len(self.staves) // len(voices)
+        assignments: list[tuple[dict[str, Any], int, int]] = []
+        for part_index, voice in enumerate(voices):
+            start = part_index * systems_per_voice
+            physical = self.staves[start : start + systems_per_voice]
+            decoded_systems = sum(1 for staff in physical if staff.get("tokens"))
+            newlines = sum(1 for symbol in voice if getattr(symbol, "rhythm", "") == "newline")
+            if decoded_systems != newlines:
+                return
+            assignments.extend(
+                (staff, part_index, system_index)
+                for system_index, staff in enumerate(physical)
+            )
+        for staff, part_index, system_index in assignments:
+            staff["partIndex"] = part_index
+            staff["systemIndex"] = system_index
+
     def as_dict(self) -> dict[str, Any]:
         return {"staves": self.staves}
 
@@ -219,6 +245,7 @@ class capture_page:  # noqa: N801 - used as a context manager
         self._undo: list[Any] = []
 
     def __enter__(self) -> PageCapture:
+        from homr import main as homr_main
         from homr import staff_parsing
         from homr.transformer import staff2score
 
@@ -260,6 +287,16 @@ class capture_page:  # noqa: N801 - used as a context manager
         self._undo.append(
             lambda: setattr(staff_parsing, "parse_staff_image", original_parse)
         )
+
+        original_parse_staffs = homr_main.parse_staffs
+
+        def parse_staffs(*args: Any, **kwargs: Any) -> Any:
+            voices = original_parse_staffs(*args, **kwargs)
+            page.assign_voice_systems(voices)
+            return voices
+
+        homr_main.parse_staffs = parse_staffs
+        self._undo.append(lambda: setattr(homr_main, "parse_staffs", original_parse_staffs))
         return page
 
     def __exit__(self, *_: Any) -> None:

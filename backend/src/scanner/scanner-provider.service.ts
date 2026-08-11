@@ -94,7 +94,6 @@ export class ScannerProviderService {
     return musicXml;
   }
 
-
   /**
    * Attach the credentials the configured provider expects.
    *
@@ -489,8 +488,18 @@ function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
       ? staff.region.slice(0, 4).map((value: unknown) => Number(value))
       : null;
     const symbols = Array.isArray(staff?.symbols) ? staff.symbols : [];
+    const partIndex = staff?.partIndex;
+    const systemIndex = staff?.systemIndex;
     clean.push({
       index,
+      ...(typeof partIndex === 'number' &&
+      Number.isInteger(partIndex) &&
+      partIndex >= 0 &&
+      typeof systemIndex === 'number' &&
+      Number.isInteger(systemIndex) &&
+      systemIndex >= 0
+        ? { partIndex, systemIndex }
+        : {}),
       region: region && region.every((value: number) => Number.isFinite(value)) ? region : null,
       // Six string fields per symbol; a correction edits one and the provider
       // rebuilds MusicXML from the result.
@@ -523,8 +532,7 @@ function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
                   confidence: Number(alternative?.confidence)
                 }))
                 .filter(
-                  (alternative: any) =>
-                    alternative.value && Number.isFinite(alternative.confidence)
+                  (alternative: any) => alternative.value && Number.isFinite(alternative.confidence)
                 )
             };
           }

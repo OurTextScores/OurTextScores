@@ -1,6 +1,7 @@
 import unittest
+from types import SimpleNamespace
 
-from homr_confidence import _softmax, _top_k
+from homr_confidence import PageCapture, _softmax, _top_k
 from homr_review import prune_staves
 
 
@@ -73,6 +74,33 @@ class PruneTest(unittest.TestCase):
         staves = [staff(0, [symbol(1, {"pitch": head("C4", 0.999, [("D4", 0.0005)])})])]
         pruned = prune_staves(staves)
         self.assertEqual(pruned[0]["region"], [0, 0, 100, 50])
+
+
+class VoiceSystemMappingTest(unittest.TestCase):
+    def test_assigns_voice_major_physical_staves_to_parts_and_systems(self):
+        page = PageCapture()
+        page.staves = [
+            {"index": 0, "tokens": [["note"]]},
+            {"index": 1, "tokens": [["note"]]},
+            {"index": 2, "tokens": [["note"]]},
+            {"index": 3, "tokens": [["note"]]},
+        ]
+        voice = [SimpleNamespace(rhythm="note_4"), SimpleNamespace(rhythm="newline")] * 2
+
+        page.assign_voice_systems([voice, voice])
+
+        self.assertEqual(
+            [(staff["partIndex"], staff["systemIndex"]) for staff in page.staves],
+            [(0, 0), (0, 1), (1, 0), (1, 1)],
+        )
+
+    def test_leaves_mapping_absent_when_newline_counts_do_not_prove_it(self):
+        page = PageCapture()
+        page.staves = [{"index": 0, "tokens": [["note"]]}]
+
+        page.assign_voice_systems([[SimpleNamespace(rhythm="note_4")]])
+
+        self.assertNotIn("partIndex", page.staves[0])
 
 
 if __name__ == "__main__":

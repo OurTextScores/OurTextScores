@@ -36,11 +36,80 @@ export interface ReviewSymbol {
 
 export interface ReviewStaff {
   index: number;
+  /** HOMR MusicXML part/voice index; paired with systemIndex for regeneration. */
+  partIndex?: number;
+  /** Physical system within the HOMR part/voice. */
+  systemIndex?: number;
   region?: number[] | null;
   /** The full decoded sequence, six fields per symbol. */
   tokens?: string[][];
   barLines?: number[];
   symbols: ReviewSymbol[];
+}
+
+const HOMR_NEWLINE_TOKEN = ['newline', '.', '_', '_', '_', 'upper'];
+
+function validTokens(tokens: unknown): tokens is string[][] {
+  return (
+    Array.isArray(tokens) &&
+    tokens.every(
+      (row) =>
+        Array.isArray(row) && row.length === 6 && row.every((field) => typeof field === 'string')
+    )
+  );
+}
+
+/**
+ * Rebuild HOMR's voice-major input from physical staff/system captures.
+ *
+ * A single legacy staff is unambiguous. Multiple legacy staves are not: they
+ * could be several parts in one system or one part over several systems, and
+ * treating both shapes alike silently changes the MusicXML part structure.
+ */
+export function homrReviewVoicesForRegeneration(staves: ReviewStaff[]): string[][][] | null {
+  if (!Array.isArray(staves) || staves.length === 0) return null;
+  if (staves.some((staff) => !validTokens(staff.tokens))) return null;
+
+  const hasMapping = staves.map(
+    (staff) => Number.isInteger(staff.partIndex) && Number.isInteger(staff.systemIndex)
+  );
+  if (hasMapping.every((value) => !value)) {
+    return staves.length === 1 ? [(staves[0].tokens || []).map((row) => [...row])] : null;
+  }
+  if (!hasMapping.every(Boolean)) return null;
+
+  const byPart = new Map<number, ReviewStaff[]>();
+  const identities = new Set<string>();
+  for (const staff of staves) {
+    const partIndex = staff.partIndex!;
+    const systemIndex = staff.systemIndex!;
+    if (partIndex < 0 || systemIndex < 0 || identities.has(`${partIndex}:${systemIndex}`)) {
+      return null;
+    }
+    identities.add(`${partIndex}:${systemIndex}`);
+    const systems = byPart.get(partIndex) || [];
+    systems.push(staff);
+    byPart.set(partIndex, systems);
+  }
+
+  const partIndices = [...byPart.keys()].sort((left, right) => left - right);
+  if (partIndices.some((partIndex, index) => partIndex !== index)) return null;
+  const voices: string[][][] = [];
+  for (const partIndex of partIndices) {
+    const systems = byPart
+      .get(partIndex)!
+      .sort((left, right) => left.systemIndex! - right.systemIndex!);
+    if (systems.some((staff, index) => staff.systemIndex !== index)) return null;
+    const nonEmptySystems = systems.filter((staff) => (staff.tokens || []).length > 0);
+    if (nonEmptySystems.length === 0) return null;
+    const voice: string[][] = [];
+    nonEmptySystems.forEach((staff, index) => {
+      voice.push(...(staff.tokens || []).map((row) => [...row]));
+      if (index < nonEmptySystems.length - 1) voice.push([...HOMR_NEWLINE_TOKEN]);
+    });
+    voices.push(voice);
+  }
+  return voices;
 }
 
 export interface ReviewSpot {
@@ -198,10 +267,7 @@ export function pageSuitability(
   staves: ReviewStaff[],
   spots: ReviewSpot[]
 ): { symbols: number; spots: number; askableRatio: number; unsuitable: boolean } {
-  const symbols = (staves || []).reduce(
-    (total, staff) => total + (staff.symbols?.length || 0),
-    0
-  );
+  const symbols = (staves || []).reduce((total, staff) => total + (staff.symbols?.length || 0), 0);
   const askableRatio = symbols === 0 ? 0 : spots.length / symbols;
   return {
     symbols,

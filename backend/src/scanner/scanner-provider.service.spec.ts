@@ -111,7 +111,27 @@ describe('ScannerProviderService', () => {
           modelRevision: 'homr-revision',
           executionProvider: 'CUDAExecutionProvider',
           inputSha256: createHash('sha256').update(image).digest('hex'),
-          musicXmlBase64: musicXml.toString('base64')
+          musicXmlBase64: musicXml.toString('base64'),
+          review: {
+            staves: [
+              {
+                index: 0,
+                partIndex: 0,
+                systemIndex: 1,
+                region: [0, 0, 100, 50],
+                tokens: [],
+                symbols: []
+              },
+              {
+                index: 1,
+                partIndex: '0',
+                systemIndex: null,
+                region: [0, 50, 100, 100],
+                tokens: [],
+                symbols: []
+              }
+            ]
+          }
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
       )
@@ -129,7 +149,13 @@ describe('ScannerProviderService', () => {
       expect.objectContaining({
         providerRevision: 'ots-homr-modal-v1',
         modelRevision: 'homr-revision',
-        musicXml
+        musicXml,
+        review: {
+          staves: [
+            expect.objectContaining({ index: 0, partIndex: 0, systemIndex: 1 }),
+            expect.not.objectContaining({ partIndex: expect.anything() })
+          ]
+        }
       })
     );
     fetchSpy.mockRestore();
@@ -208,7 +234,9 @@ describe('ScannerProviderService', () => {
     // followed redirect would hand them to the target.
     values.SCANNER_PROVIDER_KIND = 'modal';
     values.SCANNER_PROVIDER_URL = 'https://scanner.example';
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }));
     const service = new ScannerProviderService(config);
     await service
       .scanPage({
@@ -371,9 +399,11 @@ describe('ScannerProviderService', () => {
       // call for nothing — the failure mode `classify_homr_error` warns about.
       values.SCANNER_PROVIDER_KIND = 'modal';
       values.SCANNER_PROVIDER_URL = 'https://scanner.example';
-      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify({ error: { code: 'generation_failed' } }), { status: 500 })
-      );
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify({ error: { code: 'generation_failed' } }), { status: 500 })
+        );
       const service = new ScannerProviderService(config);
       await expect(
         service.scanPage({

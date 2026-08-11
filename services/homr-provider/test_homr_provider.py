@@ -49,6 +49,7 @@ class FakeEngine:
         # pin); `warm_delay` models a cold container that will come good.
         self.warms = True
         self.warm_delay = 0.0
+        self.review: dict[str, object] = {"staves": []}
         self.provenance = EngineProvenance(
             homr_commit="c0ffee",
             execution_provider="CPUExecutionProvider",
@@ -83,7 +84,7 @@ class FakeEngine:
         self.calls += 1
         if self.raises is not None:
             raise self.raises
-        return {"musicxml": MUSICXML, "durationMs": 12}
+        return {"musicxml": MUSICXML, "durationMs": 12, "review": self.review}
 
 
 def build(engine: FakeEngine, **overrides: object) -> TestClient:
@@ -132,6 +133,24 @@ class ProviderContractTest(unittest.TestCase):
         body = post(self.client, page=png_bytes()).json()
         self.assertIn("review", body)
         self.assertIsInstance(body["review"].get("staves"), list)
+
+    def test_carries_verified_part_and_system_identity_for_regeneration(self) -> None:
+        self.engine.review = {
+            "staves": [
+                {
+                    "index": 0,
+                    "partIndex": 1,
+                    "systemIndex": 2,
+                    "region": [0, 0, 100, 50],
+                    "tokens": [],
+                    "symbols": [],
+                }
+            ]
+        }
+
+        staff = post(self.client, page=png_bytes(b"mapped")).json()["review"]["staves"][0]
+
+        self.assertEqual((staff["partIndex"], staff["systemIndex"]), (1, 2))
 
     def test_v2_keeps_every_v1_field(self) -> None:
         # A backend deployed before this contract change must keep working

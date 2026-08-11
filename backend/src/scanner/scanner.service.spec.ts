@@ -79,7 +79,15 @@ describe('ScannerService', () => {
       await Promise.all([fs.writeFile(pageTwoPath, image), fs.writeFile(pageTenPath, image)]);
       const multerFile = (path: string, originalname: string): Express.Multer.File =>
         ({ path, originalname, size: image.length }) as Express.Multer.File;
-      const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+      const service = new ScannerService(
+        jobs,
+        corrections,
+        storage,
+        provider,
+        telemetry,
+        alerts,
+        config
+      );
 
       const result = await service.createJob({
         userId: 'user-1',
@@ -126,7 +134,15 @@ describe('ScannerService', () => {
         .png()
         .toBuffer();
       await Promise.all([fs.writeFile(pdfPath, '%PDF-1.4\n'), fs.writeFile(imagePath, image)]);
-      const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+      const service = new ScannerService(
+        jobs,
+        corrections,
+        storage,
+        provider,
+        telemetry,
+        alerts,
+        config
+      );
 
       await expect(
         service.createJob({
@@ -176,7 +192,15 @@ describe('ScannerService', () => {
       captured = filter;
       return { sort: () => ({ limit: () => ({ exec: () => Promise.resolve(rows) }) }) };
     });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
 
     const first = await service.listJobs('user-1', { limit: 2 });
     expect(first.items.map((job: any) => job.jobId)).toEqual(['job-c', 'job-b']);
@@ -195,7 +219,15 @@ describe('ScannerService', () => {
     jobs.find.mockReturnValue({
       sort: () => ({ limit: () => ({ exec: () => Promise.resolve([]) }) })
     });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     await expect(service.listJobs('user-1', { limit: 5 })).resolves.toMatchObject({
       items: [],
       nextCursor: null
@@ -243,7 +275,15 @@ describe('ScannerService', () => {
       };
     });
 
-    const result = await new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config).metrics(24);
+    const result = await new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    ).metrics(24);
 
     expect(result.pagesByStatus).toEqual({ succeeded: 2, failed: 1 });
     expect(result.pageLatencyMs).toMatchObject({ samples: 2, p50: 9_000, max: 9_000 });
@@ -258,7 +298,15 @@ describe('ScannerService', () => {
   });
 
   it('rejects encrypted PDFs at intake rather than during rasterization', () => {
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     expect(() =>
       service.parsePdfInfo(
         'Title:          Score\nPages:          4\nEncrypted:      yes (print:yes)\n'
@@ -268,26 +316,58 @@ describe('ScannerService', () => {
   });
 
   it('rejects pdfinfo output with no usable page count', () => {
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     expect(() => service.parsePdfInfo('Encrypted:      no\n')).toThrow(BadRequestException);
     expect(() => service.parsePdfInfo('Pages:          0\n')).toThrow(BadRequestException);
   });
 
   it('is disabled by default unless explicitly enabled', () => {
     values.SCANNER_ENABLED = 'false';
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     expect(() => service.assertAvailable('user-1')).toThrow(ServiceUnavailableException);
   });
 
   it('requires the authenticated user to be allowlisted', () => {
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     expect(() => service.assertAvailable('user-2')).toThrow(ForbiddenException);
     expect(() => service.assertAvailable('user-1')).not.toThrow();
   });
 
   it('keeps existing results accessible when provider budget is exhausted', () => {
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'true';
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     expect(() => service.assertAvailable('user-1')).not.toThrow();
   });
 
@@ -321,7 +401,15 @@ describe('ScannerService', () => {
     jobs.find.mockReturnValue({
       sort: () => ({ limit: () => ({ exec: () => Promise.resolve([document]) }) })
     });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     const { items } = await service.listJobs('user-1');
     const [result] = items;
     expect(result.hasMusicXml).toBe(true);
@@ -359,7 +447,15 @@ describe('ScannerService', () => {
     jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
     jobs.countDocuments.mockReturnValue({ exec: () => Promise.resolve(0) });
     jobs.findOneAndUpdate.mockReturnValue({ exec: () => Promise.resolve(queued) });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     const result = await service.retryJob('user-1', 'job-1');
     expect(result.status).toBe('queued');
     expect(jobs.findOneAndUpdate).toHaveBeenCalledWith(
@@ -396,7 +492,15 @@ describe('ScannerService', () => {
       sourceExpiresAt: new Date(Date.now() + 60_000)
     };
     jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     await expect(service.retryJob('user-1', 'job-1')).rejects.toBeInstanceOf(ConflictException);
     expect(jobs.findOneAndUpdate).not.toHaveBeenCalled();
   });
@@ -429,7 +533,15 @@ describe('ScannerService', () => {
     jobs.findOneAndUpdate.mockReturnValue({
       exec: () => Promise.resolve({ ...existing, status: 'queued', generation: 2 })
     });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     await expect(service.retryJob('user-1', 'job-1')).resolves.toMatchObject({
       status: 'queued'
     });
@@ -473,7 +585,15 @@ describe('ScannerService', () => {
     jobs.findOneAndUpdate.mockReturnValue({
       exec: () => Promise.resolve({ ...existing, status: 'queued', generation: 2 })
     });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     await service.retryPage('user-1', 'job-1', 2);
     expect(jobs.findOneAndUpdate).toHaveBeenCalledWith(
       expect.anything(),
@@ -510,7 +630,15 @@ describe('ScannerService', () => {
       sourceExpiresAt: new Date(Date.now() + 60_000)
     };
     jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     await expect(service.retryPage('user-1', 'job-1', 1)).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -549,7 +677,15 @@ describe('ScannerService', () => {
     jobs.findOneAndUpdate.mockImplementation((_query: any, update: any) => ({
       exec: () => Promise.resolve({ ...existing, pages: update.$set.pages })
     }));
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
     const result = await service.configurePages('user-1', 'job-1', [
       { pageNumber: 2, ordinal: 1, rotationDegrees: 90, included: true },
       { pageNumber: 1, ordinal: 2, rotationDegrees: 180, included: false }
@@ -583,7 +719,15 @@ describe('ScannerService', () => {
       pages: [{ pageNumber: 1, ordinal: 1, included: true, status: 'pending' }]
     };
     jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
 
     await expect(
       service.configurePages('user-1', 'job-1', [
@@ -624,7 +768,15 @@ describe('ScannerService', () => {
     jobs.findOneAndUpdate.mockReturnValue({
       exec: () => Promise.resolve({ ...existing, status: 'queued' })
     });
-    const service = new ScannerService(jobs, corrections, storage, provider, telemetry, alerts, config);
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
 
     await expect(service.startJob('user-1', 'job-1')).resolves.toMatchObject({
       status: 'queued'
@@ -661,8 +813,20 @@ describe('corrections', () => {
     return {
       pageNumber: 1,
       status: 'succeeded',
-      sourceImage: { bucket: 'raw', objectKey: 'k', checksumSha256: 'abc', sizeBytes: 1, contentType: 'image/png' },
-      musicXml: { bucket: 'd', objectKey: 'm', checksumSha256: 'x', sizeBytes: 1, contentType: 'application/xml' },
+      sourceImage: {
+        bucket: 'raw',
+        objectKey: 'k',
+        checksumSha256: 'abc',
+        sizeBytes: 1,
+        contentType: 'image/png'
+      },
+      musicXml: {
+        bucket: 'd',
+        objectKey: 'm',
+        checksumSha256: 'x',
+        sizeBytes: 1,
+        contentType: 'application/xml'
+      },
       review: {
         staves: [
           {
@@ -705,7 +869,9 @@ describe('corrections', () => {
     const service = new ScannerService(
       jobsModel,
       corrections,
-      { putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }) } as any,
+      {
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' })
+      } as any,
       provider,
       telemetry,
       alerts,
@@ -719,6 +885,84 @@ describe('corrections', () => {
     expect(provider.regenerate.mock.calls[0][0][0][0][1]).toBe('.');
   });
 
+  it('reassembles physical systems into the original MusicXML part', async () => {
+    const firstSystem = [
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ];
+    const secondSystem = [['note_4', 'E4', '_', '_', '_', 'upper']];
+    const page: any = pageWith(firstSystem);
+    page.review.staves[0].partIndex = 0;
+    page.review.staves[0].systemIndex = 0;
+    page.review.staves.push({
+      index: 1,
+      partIndex: 0,
+      systemIndex: 1,
+      region: [0, 20, 10, 30],
+      tokens: secondSystem,
+      symbols: []
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', pages: [page] };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: () => ({ exec: async () => ({}) })
+    };
+    provider.regenerate.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      { putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o' }) } as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4');
+
+    expect(provider.regenerate).toHaveBeenCalledWith([
+      [
+        firstSystem[0],
+        ['note_4', 'D4', '_', '_', '_', 'upper'],
+        ['newline', '.', '_', '_', '_', 'upper'],
+        secondSystem[0]
+      ]
+    ]);
+  });
+
+  it('refuses ambiguous legacy multi-staff review instead of changing its part structure', async () => {
+    const page: any = pageWith([
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ]);
+    page.review.staves.push({
+      index: 1,
+      region: [0, 20, 10, 30],
+      tokens: [['note_4', 'E4', '_', '_', '_', 'upper']],
+      symbols: []
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', pages: [page] };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: () => ({ exec: async () => ({}) })
+    };
+    provider.regenerate.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      {} as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await expect(service.applyCorrection('user-1', 'job-1', 1, 0, 'D4')).rejects.toThrow(
+      /cannot be regenerated safely/
+    );
+    expect(provider.regenerate).not.toHaveBeenCalled();
+  });
+
   it('accumulates corrections instead of discarding the earlier one', async () => {
     // Regenerating from the original tokens each time and keeping only the
     // latest edit silently destroyed every earlier correction — and a later
@@ -730,8 +974,20 @@ describe('corrections', () => {
     const page: any = {
       pageNumber: 1,
       status: 'succeeded',
-      sourceImage: { bucket: 'raw', objectKey: 'k', checksumSha256: 'abc', sizeBytes: 1, contentType: 'image/png' },
-      musicXml: { bucket: 'd', objectKey: 'm', checksumSha256: 'x', sizeBytes: 1, contentType: 'application/xml' },
+      sourceImage: {
+        bucket: 'raw',
+        objectKey: 'k',
+        checksumSha256: 'abc',
+        sizeBytes: 1,
+        contentType: 'image/png'
+      },
+      musicXml: {
+        bucket: 'd',
+        objectKey: 'm',
+        checksumSha256: 'x',
+        sizeBytes: 1,
+        contentType: 'application/xml'
+      },
       review: {
         staves: [
           {
@@ -739,8 +995,26 @@ describe('corrections', () => {
             region: [0, 0, 10, 10],
             tokens,
             symbols: [
-              { index: 0, heads: { pitch: { chosen: 'C4', confidence: 0.45, alternatives: [{ value: 'D4', confidence: 0.4 }] } } },
-              { index: 1, heads: { pitch: { chosen: 'E4', confidence: 0.46, alternatives: [{ value: 'F4', confidence: 0.4 }] } } }
+              {
+                index: 0,
+                heads: {
+                  pitch: {
+                    chosen: 'C4',
+                    confidence: 0.45,
+                    alternatives: [{ value: 'D4', confidence: 0.4 }]
+                  }
+                }
+              },
+              {
+                index: 1,
+                heads: {
+                  pitch: {
+                    chosen: 'E4',
+                    confidence: 0.46,
+                    alternatives: [{ value: 'F4', confidence: 0.4 }]
+                  }
+                }
+              }
             ]
           }
         ]
@@ -762,7 +1036,9 @@ describe('corrections', () => {
     const service = new ScannerService(
       jobsModel,
       corrections,
-      { putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }) } as any,
+      {
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' })
+      } as any,
       provider,
       telemetry,
       alerts,
@@ -784,7 +1060,12 @@ describe('corrections', () => {
     const job: any = {
       _id: 'j',
       jobId: 'job-1',
-      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+      pages: [
+        pageWith([
+          ['clef_G2', '.', '_', '_', '_', 'upper'],
+          ['note_4', 'C4', '_', '_', '_', 'upper']
+        ])
+      ]
     };
     const jobsModel: any = {
       findOne: () => ({ exec: async () => job }),
@@ -794,7 +1075,9 @@ describe('corrections', () => {
     const service = new ScannerService(
       jobsModel,
       corrections,
-      { putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }) } as any,
+      {
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' })
+      } as any,
       provider,
       telemetry,
       alerts,
@@ -813,7 +1096,12 @@ describe('corrections', () => {
     const job: any = {
       _id: 'j',
       jobId: 'job-1',
-      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+      pages: [
+        pageWith([
+          ['clef_G2', '.', '_', '_', '_', 'upper'],
+          ['note_4', 'C4', '_', '_', '_', 'upper']
+        ])
+      ]
     };
     const jobsModel: any = {
       findOne: () => ({ exec: async () => job }),

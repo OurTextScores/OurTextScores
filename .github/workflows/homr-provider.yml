@@ -59,7 +59,7 @@ jobs:
       - name: Run provider contract tests
         run: |
           docker run --rm ots-homr-cpu:ci \
-            python -m unittest test_homr_provider -v
+            python -m unittest test_homr_provider test_homr_review -v
 
       - name: Verify readiness reports the pinned revision and licences
         # Readiness needs a warm-up inference, so this asserts the disclosure

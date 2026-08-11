@@ -39,16 +39,14 @@ import { locateSymbol } from './scanner-locate';
 const TOKEN_FIELDS = ['rhythm', 'pitch', 'lift', 'articulation', 'slur', 'position'];
 import {
   DEFAULT_REVIEW_THRESHOLDS,
+  homrReviewVoicesForRegeneration,
   pageSuitability,
   remainingFloor,
   selectSpots
 } from './scanner-review';
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerProviderService } from './scanner-provider.service';
-import {
-  ScannerCorrection,
-  ScannerCorrectionDocument
-} from './schemas/scanner-correction.schema';
+import { ScannerCorrection, ScannerCorrectionDocument } from './schemas/scanner-correction.schema';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 
@@ -495,9 +493,7 @@ export class ScannerService implements OnModuleInit {
         : job.previewThumbnail;
       filename = pageRequested ? `scan-page-${pageNumber}.png` : 'scan-preview.png';
     } else if (pageRequested) {
-      locator = effectivePageMusicXml(
-        job.pages.find((page) => page.pageNumber === pageNumber)
-      );
+      locator = effectivePageMusicXml(job.pages.find((page) => page.pageNumber === pageNumber));
       filename = `scan-page-${pageNumber}.musicxml`;
     } else if (job.combinedMusicXml) {
       // A validated assembly is the whole score, so it wins over the per-page
@@ -743,9 +739,13 @@ export class ScannerService implements OnModuleInit {
       return { ...entry, tokens };
     });
 
-    const musicXmlBuffer = await this.provider.regenerate(
-      editedStaves.map((entry: any) => entry.tokens || [])
-    );
+    const regenerationVoices = homrReviewVoicesForRegeneration(editedStaves);
+    if (!regenerationVoices) {
+      throw new ConflictException(
+        'This review cannot be regenerated safely; rescan the page and try again'
+      );
+    }
+    const musicXmlBuffer = await this.provider.regenerate(regenerationVoices);
     const locator = await this.storage.putDerivativeObject(
       `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-reviewed.musicxml`,
       musicXmlBuffer,
