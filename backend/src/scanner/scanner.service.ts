@@ -954,6 +954,68 @@ export class ScannerService implements OnModuleInit {
     });
   }
 
+  /** Serve the exact reviewed-or-raw MusicXML revision named by a comparison response. */
+  async pageComparisonReading(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId: string,
+    statusVersion: number,
+    artifactChecksumSha256: string
+  ): Promise<{ body: Buffer; contentType: string }> {
+    this.assertAvailable(userId);
+    if (!isScannerEngineId(engineId)) {
+      throw new BadRequestException('Scanner comparison engine is invalid');
+    }
+    if (!Number.isInteger(statusVersion) || statusVersion < 1) {
+      throw new BadRequestException('Scanner job status version is required');
+    }
+    if (!/^[a-f0-9]{64}$/i.test(artifactChecksumSha256)) {
+      throw new BadRequestException('Scanner comparison artifact checksum is invalid');
+    }
+
+    const job = await this.ownedJob(userId, jobId);
+    if ((job.statusVersion || 1) !== statusVersion) {
+      throw new ConflictException('Scanner comparison changed; refresh and try again');
+    }
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.mergedMusicXml) {
+      throw new ConflictException('Comparison is unavailable after engine reconciliation');
+    }
+    const plan = this.enginePlanForJob(job);
+    if (!plan.engineIds.includes(engineId)) {
+      throw new BadRequestException(`Scanner engine ${engineId} is not part of this job`);
+    }
+    if (this.registeredEngines && !this.registeredEngines.get(engineId)) {
+      throw new BadRequestException(`Scanner engine ${engineId} is not registered for comparison`);
+    }
+    const run =
+      page.engines?.[engineId] ||
+      (engineId === 'homr'
+        ? scannerHomrRun(page, {
+            providerRevision: job.providerRevision,
+            modelRevision: job.modelRevision,
+            provenance: job.engineProvenance
+          })
+        : undefined);
+    if (run?.status !== 'succeeded') {
+      throw new ConflictException('The selected scanner engine has no successful result');
+    }
+    const artifact = run.reviewedMusicXml || run.artifacts.musicXml;
+    if (
+      !artifact ||
+      artifact.checksumSha256.toLowerCase() !== artifactChecksumSha256.toLowerCase()
+    ) {
+      throw new ConflictException('Scanner comparison reading changed; refresh and try again');
+    }
+    const body = await this.storage.getObjectBuffer(artifact.bucket, artifact.objectKey);
+    if (createHash('sha256').update(body).digest('hex') !== artifact.checksumSha256.toLowerCase()) {
+      throw new ConflictException('Scanner comparison reading changed; refresh and try again');
+    }
+    return { body, contentType: artifact.contentType };
+  }
+
   /** Render the exact evidence crop for one current, grounded comparison block. */
   async pageComparisonBlockCrop(
     userId: string,

@@ -207,6 +207,30 @@ export class ScannerController {
     );
   }
 
+  @Get(':jobId/pages/:pageNumber/comparison/readings/:engineId')
+  async comparisonReading(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('engineId') engineId: string,
+    @Query('statusVersion', ParseIntPipe) statusVersion: number,
+    @Query('artifactChecksumSha256') artifactChecksumSha256: string | undefined,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const reading = await this.scanner.pageComparisonReading(
+      user.userId,
+      jobId,
+      pageNumber,
+      engineId,
+      statusVersion,
+      String(artifactChecksumSha256 ?? '')
+    );
+    response.setHeader('Content-Type', reading.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(reading.body);
+  }
+
   @Get(':jobId/pages/:pageNumber/comparison/blocks/:blockIndex/crop')
   async comparisonBlockCrop(
     @CurrentUser() user: RequestUser,

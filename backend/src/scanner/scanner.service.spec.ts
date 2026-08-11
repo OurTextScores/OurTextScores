@@ -807,6 +807,28 @@ describe('ScannerService', () => {
       ['scanner', 'homr-reviewed.musicxml'],
       ['scanner', 'transcoda.musicxml']
     ]);
+    const reading = await service.pageComparisonReading(
+      'user-1',
+      'job-1',
+      1,
+      'homr',
+      result.statusVersion,
+      result.base.artifactChecksumSha256
+    );
+    expect(reading).toEqual({
+      body: reviewedHomr,
+      contentType: 'application/vnd.recordare.musicxml+xml'
+    });
+    await expect(
+      service.pageComparisonReading(
+        'user-1',
+        'job-1',
+        1,
+        'homr',
+        result.statusVersion,
+        job.pages[0].engines.homr.artifacts.musicXml.checksumSha256
+      )
+    ).rejects.toThrow('reading changed');
     comparisonStorage.getObjectBuffer.mockClear();
     const groundedBlock = result.geometry.blocks[0].block;
     const crop = await service.pageComparisonBlockCrop(
@@ -885,6 +907,17 @@ describe('ScannerService', () => {
         `scanner-measure-geometry-v1:${'f'.repeat(64)}`
       )
     ).rejects.toThrow('geometry changed');
+    bodies[reviewedLocator.objectKey] = Buffer.from('overwritten');
+    await expect(
+      service.pageComparisonReading(
+        'user-1',
+        'job-1',
+        1,
+        'homr',
+        result.statusVersion,
+        result.base.artifactChecksumSha256
+      )
+    ).rejects.toThrow('reading changed');
   });
 
   it('explicitly refuses comparison for a retained job without raster identities', async () => {

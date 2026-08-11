@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import PageComparison from "./page-comparison";
 import PageReview from "./page-review";
 import {
   activeScannerStatuses,
@@ -627,6 +628,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             <div className="mt-4">
               <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
             </div>
+          )}
+          {selected.status === "succeeded" && (
+            <PageComparison jobId={jobId} job={job} page={selected} />
           )}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
