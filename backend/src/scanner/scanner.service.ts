@@ -52,6 +52,7 @@ import { ScannerCorrection, ScannerCorrectionDocument } from './schemas/scanner-
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 import { ScannerEngineRegistry } from './scanner-engine.registry';
+import { scannerEngineOperationalMetrics } from './scanner-engine-operations';
 import {
   SCANNER_ARTIFACT_BUILDERS,
   scannerArtifactInputSignature,
@@ -683,7 +684,7 @@ export class ScannerService implements OnModuleInit {
       this.jobs.find({ status: 'queued' }).sort({ queuedAt: 1 }).limit(1).exec(),
       this.jobs
         .find({ createdAt: { $gte: since } })
-        .select({ pages: 1, timings: 1 })
+        .select({ enginePlan: 1, pages: 1 })
         .lean()
         .exec(),
       // The same evaluation the worker pushes on, so the admin panel and any
@@ -691,30 +692,10 @@ export class ScannerService implements OnModuleInit {
       this.alerts.evaluate()
     ]);
 
-    const pageDurations: number[] = [];
-    const failuresByCode: Record<string, number> = {};
-    let pagesSucceeded = 0;
-    let pagesFailed = 0;
-    let pagesRendered = 0;
-    let providerCalls = 0;
-    let providerMsTotal = 0;
-
-    for (const job of recent as any[]) {
-      providerMsTotal += Number(job.timings?.providerMs || 0);
-      for (const page of job.pages || []) {
-        const homr = page.engines?.homr || page;
-        if (homr.status === 'succeeded') {
-          pagesSucceeded += 1;
-          if (page.pdf) pagesRendered += 1;
-          if (Number.isFinite(homr.durationMs)) pageDurations.push(homr.durationMs);
-        } else if (homr.status === 'failed') {
-          pagesFailed += 1;
-          const code = String(homr.errorCode || 'unknown');
-          failuresByCode[code] = (failuresByCode[code] || 0) + 1;
-        }
-        providerCalls += Number(homr.providerAttempts || homr.attempts || 0);
-      }
-    }
+    const engines = scannerEngineOperationalMetrics(recent as any[]);
+    const homr = engines.homr;
+    const pagesSucceeded = homr?.pagesByStatus.succeeded || 0;
+    const pagesFailed = homr?.pagesByStatus.failed || 0;
 
     const queueDepth = byStatus
       .filter((row: any) => ['queued', 'running', 'rendering'].includes(row._id))
@@ -725,6 +706,7 @@ export class ScannerService implements OnModuleInit {
       generatedAt: new Date().toISOString(),
       alerts,
       jobs: Object.fromEntries(byStatus.map((row: any) => [row._id, row.jobs])),
+      /** Compatibility projection; new consumers should read `engines`. */
       pagesByStatus: { succeeded: pagesSucceeded, failed: pagesFailed },
       queue: {
         depth: queueDepth,
@@ -732,33 +714,13 @@ export class ScannerService implements OnModuleInit {
           ? now - oldestQueued[0].queuedAt.getTime()
           : null
       },
-      pageLatencyMs: {
-        samples: pageDurations.length,
-        p50: this.percentile(pageDurations, 0.5),
-        p95: this.percentile(pageDurations, 0.95),
-        max: pageDurations.length ? Math.max(...pageDurations) : null
-      },
-      failureRate:
-        pagesSucceeded + pagesFailed > 0
-          ? Number((pagesFailed / (pagesSucceeded + pagesFailed)).toFixed(4))
-          : 0,
-      failuresByCode,
-      renderSuccessRate:
-        pagesSucceeded > 0 ? Number((pagesRendered / pagesSucceeded).toFixed(4)) : null,
-      provider: {
-        calls: providerCalls,
-        // Approximate: wall-clock time OTS spent inside provider calls, which
-        // is an upper bound on billable GPU seconds, not a billing figure.
-        approximateSeconds: Math.round(providerMsTotal / 1000)
-      }
+      pageLatencyMs: homr?.pageLatencyMs || { samples: 0, p50: null, p95: null, max: null },
+      failureRate: homr?.failureRate || 0,
+      failuresByCode: homr?.failuresByCode || {},
+      renderSuccessRate: homr?.renderSuccessRate ?? null,
+      provider: homr?.provider || { calls: 0, approximateSeconds: 0 },
+      engines
     };
-  }
-
-  private percentile(values: number[], fraction: number): number | null {
-    if (values.length === 0) return null;
-    const sorted = [...values].sort((left, right) => left - right);
-    const index = Math.min(sorted.length - 1, Math.floor(fraction * sorted.length));
-    return sorted[index];
   }
 
   private async assertQuota(userId: string, pages: number): Promise<void> {

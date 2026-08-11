@@ -95,6 +95,17 @@ describe('ScannerWorkerService', () => {
     });
   });
 
+  it('reports circuit-disabled engines independently to alerting', () => {
+    const scannerWorker = service() as any;
+    scannerWorker.providerDisabledReason = 'HOMR revision mismatch';
+    scannerWorker.engineDisabledReasons.set('audiveris-5', 'Audiveris image mismatch');
+
+    expect(scannerWorker.disabledEngineReasons()).toEqual({
+      homr: 'HOMR revision mismatch',
+      'audiveris-5': 'Audiveris image mismatch'
+    });
+  });
+
   it('uses the effective page when rebuilding a bundle after review', async () => {
     const raw = { bucket: 'd', objectKey: 'raw.musicxml', checksumSha256: 'raw' };
     const reviewed = {

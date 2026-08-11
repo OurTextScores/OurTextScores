@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ScannerJob, ScannerJobDocument } from './schemas/scanner-job.schema';
+import { ScannerEngineRegistry } from './scanner-engine.registry';
+import { scannerEngineOperationalMetrics } from './scanner-engine-operations';
 
 export interface ScannerAlert {
   key: string;
@@ -27,7 +29,8 @@ export class ScannerAlertService {
   constructor(
     @InjectModel(ScannerJob.name)
     private readonly jobs: Model<ScannerJobDocument>,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    @Optional() private readonly registeredEngines?: ScannerEngineRegistry
   ) {}
 
   get enabled(): boolean {
@@ -39,8 +42,10 @@ export class ScannerAlertService {
   }
 
   /** Evaluate the conditions and deliver anything newly firing or newly clear. */
-  async check(providerDisabledReason?: string): Promise<ScannerAlert[]> {
-    const active = await this.evaluate(providerDisabledReason);
+  async check(
+    disabledReasons?: string | Readonly<Record<string, string>>
+  ): Promise<ScannerAlert[]> {
+    const active = await this.evaluate(disabledReasons);
     const activeKeys = new Set(active.map((alert) => alert.key));
     const cooldownMs = this.number('SCANNER_ALERT_COOLDOWN_MS', 60 * 60 * 1000);
     const now = Date.now();
@@ -63,13 +68,20 @@ export class ScannerAlertService {
     return delivered;
   }
 
-  async evaluate(providerDisabledReason?: string): Promise<ScannerAlert[]> {
+  async evaluate(
+    disabledReasons?: string | Readonly<Record<string, string>>
+  ): Promise<ScannerAlert[]> {
     const alerts: ScannerAlert[] = [];
 
-    if (providerDisabledReason) {
+    const disabledEntries =
+      typeof disabledReasons === 'string'
+        ? ([['homr', disabledReasons]] as const)
+        : Object.entries(disabledReasons || {});
+    for (const [engineId, reason] of disabledEntries) {
+      if (!reason) continue;
       alerts.push({
-        key: 'provider_disabled',
-        message: `the provider is disabled and no pages are being scanned (${providerDisabledReason})`
+        key: `provider_disabled:${engineId}`,
+        message: `${engineId} is disabled and its planned pages are not being scanned (${reason})`
       });
     }
 
@@ -77,11 +89,17 @@ export class ScannerAlertService {
     // this flag is set by hand and stays set, so it is exactly the kind of
     // thing that gets left on after the budget is raised — with no symptom
     // beyond the scanner quietly refusing every job.
-    if (this.config.get<string>('SCANNER_PROVIDER_BUDGET_EXHAUSTED', 'false') === 'true') {
+    const budgetDefinitions = this.registeredEngines
+      ? this.registeredEngines.allDefinitions().map((definition) => ({
+          engineId: definition.id,
+          configKey: definition.budgetExhaustedConfigKey
+        }))
+      : [{ engineId: 'homr', configKey: 'SCANNER_PROVIDER_BUDGET_EXHAUSTED' }];
+    for (const { engineId, configKey } of budgetDefinitions) {
+      if (this.config.get<string>(configKey, 'false') !== 'true') continue;
       alerts.push({
-        key: 'budget_stop_engaged',
-        message:
-          'SCANNER_PROVIDER_BUDGET_EXHAUSTED is set, so no scans are being accepted or processed'
+        key: `budget_stop_engaged:${engineId}`,
+        message: `${configKey} is set, so ${engineId} provider calls are stopped`
       });
     }
 
@@ -109,34 +127,22 @@ export class ScannerAlertService {
     const threshold = Number(this.config.get<string>('SCANNER_ALERT_FAILURE_RATE', '0.1'));
     const recent = await this.jobs
       .find({ updatedAt: { $gte: new Date(Date.now() - windowMs) } })
-      .select({ pages: 1 })
+      .select({ enginePlan: 1, pages: 1 })
       .lean()
       .exec();
 
-    let succeeded = 0;
-    let failed = 0;
-    const byCode: Record<string, number> = {};
-    for (const job of recent as any[]) {
-      for (const page of job.pages || []) {
-        // The aggregate page can succeed through Transcoda while HOMR is down.
-        // This alert guards the primary engine, so read its independent run;
-        // legacy jobs fall back to their top-level HOMR fields.
-        const homr = page.engines?.homr || page;
-        if (homr.status === 'succeeded') succeeded += 1;
-        else if (homr.status === 'failed') {
-          failed += 1;
-          const code = String(homr.errorCode || 'unknown');
-          byCode[code] = (byCode[code] || 0) + 1;
-        }
-      }
-    }
-    const total = succeeded + failed;
-    if (total >= minSample && failed / total > threshold) {
-      const worst = Object.entries(byCode).sort((left, right) => right[1] - left[1])[0];
+    const engineMetrics = scannerEngineOperationalMetrics(recent as any[]);
+    for (const [engineId, metrics] of Object.entries(engineMetrics)) {
+      const failed = metrics.pagesByStatus.failed;
+      const total = metrics.terminalPages;
+      if (total < minSample || failed / total <= threshold) continue;
+      const worst = Object.entries(metrics.failuresByCode).sort(
+        (left, right) => right[1] - left[1]
+      )[0];
       alerts.push({
-        key: 'page_failure_rate',
+        key: `page_failure_rate:${engineId}`,
         message:
-          `${failed} of ${total} pages failed in the last ` +
+          `${engineId}: ${failed} of ${total} pages failed in the last ` +
           `${Math.round(windowMs / 60_000)} minutes` +
           (worst ? ` (mostly ${worst[0]})` : '')
       });

@@ -137,7 +137,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         this.lastAlertCheckAt = Date.now();
         // Never let alerting interfere with scanning.
         await this.alerts
-          .check(this.providerDisabledReason)
+          .check(this.disabledEngineReasons())
           .catch((error) =>
             this.logger.error(`Scanner alert check failed: ${this.message(error)}`)
           );
@@ -1075,6 +1075,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         this.transcodaProvider as ScannerTranscodaProviderService
       )
     );
+  }
+
+  private disabledEngineReasons(): Record<string, string> {
+    return {
+      ...(this.providerDisabledReason ? { homr: this.providerDisabledReason } : {}),
+      ...Object.fromEntries(this.engineDisabledReasons)
+    };
   }
 
   private async scanWithRetry(

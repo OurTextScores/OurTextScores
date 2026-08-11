@@ -3,12 +3,9 @@ import { getBackendApiBase } from "../../api/proxy/_lib/upstream";
 
 export const dynamic = "force-dynamic";
 
-type Metrics = {
-  windowHours: number;
-  generatedAt: string;
-  jobs: Record<string, number>;
+type EngineMetrics = {
   pagesByStatus: { succeeded: number; failed: number };
-  queue: { depth: number; oldestQueuedAgeMs: number | null };
+  terminalPages?: number;
   pageLatencyMs: {
     samples: number;
     p50: number | null;
@@ -19,6 +16,15 @@ type Metrics = {
   failuresByCode: Record<string, number>;
   renderSuccessRate: number | null;
   provider: { calls: number; approximateSeconds: number };
+};
+
+type Metrics = EngineMetrics & {
+  windowHours: number;
+  generatedAt: string;
+  jobs: Record<string, number>;
+  queue: { depth: number; oldestQueuedAgeMs: number | null };
+  /** Optional while frontend and backend deployments can briefly straddle versions. */
+  engines?: Record<string, EngineMetrics>;
   alerts: Array<{ key: string; message: string }>;
 };
 
@@ -101,6 +107,18 @@ export default async function AdminScannerPage() {
   const m = result.data;
   const jobEntries = Object.entries(m.jobs).sort((a, b) => b[1] - a[1]);
   const failures = Object.entries(m.failuresByCode).sort((a, b) => b[1] - a[1]);
+  const engineEntries = Object.entries(
+    m.engines || {
+      homr: {
+        pagesByStatus: m.pagesByStatus,
+        pageLatencyMs: m.pageLatencyMs,
+        failureRate: m.failureRate,
+        failuresByCode: m.failuresByCode,
+        renderSuccessRate: m.renderSuccessRate,
+        provider: m.provider,
+      },
+    },
+  );
 
   return (
     <div className="space-y-6">
@@ -141,7 +159,7 @@ export default async function AdminScannerPage() {
           hint={`oldest waiting ${duration(m.queue.oldestQueuedAgeMs)}`}
         />
         <Stat
-          label="Pages succeeded"
+          label="HOMR pages succeeded"
           value={String(m.pagesByStatus.succeeded)}
           hint={`${m.pagesByStatus.failed} failed`}
         />
@@ -159,6 +177,60 @@ export default async function AdminScannerPage() {
           value={`${m.provider.approximateSeconds}s`}
           hint={`${m.provider.calls} calls — upper bound, not a bill`}
         />
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          Recognition engines
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Independent outcomes; an aggregate page may succeed while one engine
+          fails.
+        </p>
+        {engineEntries.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            No engine runs in this window.
+          </p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <tr>
+                  <th className="pb-2 pr-5 font-medium">Engine</th>
+                  <th className="pb-2 pr-5 text-right font-medium">Succeeded</th>
+                  <th className="pb-2 pr-5 text-right font-medium">Failed</th>
+                  <th className="pb-2 pr-5 text-right font-medium">Failure rate</th>
+                  <th className="pb-2 pr-5 text-right font-medium">p95</th>
+                  <th className="pb-2 text-right font-medium">Calls / time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {engineEntries.map(([engineId, engine]) => (
+                  <tr key={engineId}>
+                    <td className="py-2 pr-5 font-mono text-xs text-slate-900 dark:text-slate-100">
+                      {engineId}
+                    </td>
+                    <td className="py-2 pr-5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                      {engine.pagesByStatus.succeeded}
+                    </td>
+                    <td className="py-2 pr-5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                      {engine.pagesByStatus.failed}
+                    </td>
+                    <td className="py-2 pr-5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                      {(engine.failureRate * 100).toFixed(1)}%
+                    </td>
+                    <td className="py-2 pr-5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                      {duration(engine.pageLatencyMs.p95)}
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                      {engine.provider.calls} / {engine.provider.approximateSeconds}s
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -219,7 +291,7 @@ export default async function AdminScannerPage() {
       {failures.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Failures by cause
+            HOMR failures by cause
           </h2>
           <ul className="mt-3 space-y-1 text-sm">
             {failures.map(([code, count]) => (

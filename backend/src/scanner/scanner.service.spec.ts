@@ -298,7 +298,13 @@ describe('ScannerService', () => {
                           errorCode: 'provider_http_503',
                           providerAttempts: 1
                         },
-                        transcoda: { status: 'succeeded', providerAttempts: 1 }
+                        transcoda: { status: 'succeeded', providerAttempts: 1, durationMs: 3000 },
+                        'audiveris-5': {
+                          status: 'failed',
+                          providerAttempts: 2,
+                          durationMs: 4000,
+                          errorCode: 'provider_bad_gateway'
+                        }
                       }
                     }
                   ]
@@ -328,7 +334,18 @@ describe('ScannerService', () => {
     expect(result.failureRate).toBeCloseTo(1 / 2, 3);
     // One of the two successes rendered a PDF.
     expect(result.renderSuccessRate).toBeCloseTo(0.5, 3);
-    expect(result.provider).toEqual({ calls: 5, approximateSeconds: 12 });
+    expect(result.provider).toEqual({ calls: 5, approximateSeconds: 14 });
+    expect(result.engines.transcoda).toMatchObject({
+      pagesByStatus: { succeeded: 1, failed: 0 },
+      failureRate: 0,
+      provider: { calls: 1, approximateSeconds: 3 }
+    });
+    expect(result.engines['audiveris-5']).toMatchObject({
+      pagesByStatus: { succeeded: 0, failed: 1 },
+      failureRate: 1,
+      failuresByCode: { provider_bad_gateway: 1 },
+      provider: { calls: 2, approximateSeconds: 4 }
+    });
     expect(result.queue.oldestQueuedAgeMs).toBeGreaterThanOrEqual(90_000);
     // Aggregates only: no filenames, ids, or artifact locators anywhere.
     expect(JSON.stringify(result)).not.toMatch(/musicxml|objectKey|originalFilename|userId/i);

@@ -35,8 +35,17 @@ describe('ScannerAlertService', () => {
   it('reports a disabled provider', async () => {
     const service = new ScannerAlertService(jobsWith(), config);
     const alerts = await service.evaluate('CUDA expected but absent');
-    expect(alerts.map((a) => a.key)).toEqual(['provider_disabled']);
+    expect(alerts.map((a) => a.key)).toEqual(['provider_disabled:homr']);
     expect(alerts[0].message).toContain('CUDA expected but absent');
+  });
+
+  it('reports disabled providers independently', async () => {
+    const service = new ScannerAlertService(jobsWith(), config);
+    const alerts = await service.evaluate({ homr: 'CUDA absent', 'audiveris-5': 'bad revision' });
+    expect(alerts.map((a) => a.key)).toEqual([
+      'provider_disabled:homr',
+      'provider_disabled:audiveris-5'
+    ]);
   });
 
   it('reports an operator stop that was left engaged', async () => {
@@ -46,7 +55,7 @@ describe('ScannerAlertService', () => {
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'true';
     const service = new ScannerAlertService(jobsWith(), config);
     const alerts = await service.evaluate();
-    expect(alerts.map((a) => a.key)).toEqual(['budget_stop_engaged']);
+    expect(alerts.map((a) => a.key)).toEqual(['budget_stop_engaged:homr']);
     delete values.SCANNER_PROVIDER_BUDGET_EXHAUSTED;
   });
 
@@ -79,7 +88,7 @@ describe('ScannerAlertService', () => {
       ...Array.from({ length: 8 }, () => ({ status: 'succeeded' }))
     ];
     const alerts = await new ScannerAlertService(jobsWith({ pages: many }), config).evaluate();
-    expect(alerts.map((a) => a.key)).toEqual(['page_failure_rate']);
+    expect(alerts.map((a) => a.key)).toEqual(['page_failure_rate:homr']);
     // Naming the dominant cause is what makes the alert actionable.
     expect(alerts[0].message).toContain('provider_no_staff_detected');
     expect(alerts[0].message).toContain('4 of 12');
@@ -99,10 +108,46 @@ describe('ScannerAlertService', () => {
     const alerts = await new ScannerAlertService(jobsWith({ pages: rescued }), config).evaluate();
     expect(alerts).toEqual([
       expect.objectContaining({
-        key: 'page_failure_rate',
+        key: 'page_failure_rate:homr',
         message: expect.stringMatching(/12 of 12.*provider_http_503/)
       })
     ]);
+  });
+
+  it('alerts on a third engine degrading behind successful HOMR pages', async () => {
+    const pages = Array.from({ length: 12 }, () => ({
+      status: 'succeeded',
+      engines: {
+        homr: { status: 'succeeded', attempts: 1, artifacts: {} },
+        'audiveris-5': {
+          status: 'failed',
+          attempts: 1,
+          errorCode: 'provider_http_503',
+          artifacts: {}
+        }
+      }
+    }));
+    const alerts = await new ScannerAlertService(jobsWith({ pages }), config).evaluate();
+    expect(alerts).toEqual([
+      expect.objectContaining({
+        key: 'page_failure_rate:audiveris-5',
+        message: expect.stringMatching(/audiveris-5: 12 of 12.*provider_http_503/)
+      })
+    ]);
+  });
+
+  it('reports per-engine operator budget stops from the registry', async () => {
+    values.SCANNER_AUDIVERIS_BUDGET_EXHAUSTED = 'true';
+    const registry = {
+      allDefinitions: () => [
+        {
+          id: 'audiveris-5',
+          budgetExhaustedConfigKey: 'SCANNER_AUDIVERIS_BUDGET_EXHAUSTED'
+        }
+      ]
+    } as any;
+    const alerts = await new ScannerAlertService(jobsWith(), config, registry).evaluate();
+    expect(alerts).toEqual([expect.objectContaining({ key: 'budget_stop_engaged:audiveris-5' })]);
   });
 
   it('fires once, then again only after the cooldown, then reports recovery', async () => {
