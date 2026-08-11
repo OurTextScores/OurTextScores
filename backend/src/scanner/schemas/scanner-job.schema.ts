@@ -101,6 +101,9 @@ export interface ScannerPageResult {
   review?: {
     staves: Array<{
       index: number;
+      /** HOMR part/voice and physical system identity for safe regeneration. */
+      partIndex?: number;
+      systemIndex?: number;
       region?: number[] | null;
       /** The full decoded sequence; a correction edits this, not the XML. */
       tokens?: string[][];

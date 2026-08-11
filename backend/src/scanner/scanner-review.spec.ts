@@ -1,11 +1,14 @@
 import {
   DEFAULT_REVIEW_THRESHOLDS,
   effectiveCeiling,
+  homrReviewVoicesForRegeneration,
   pageSuitability,
   ReviewStaff,
   remainingFloor,
   selectSpots
 } from './scanner-review';
+
+const token = (rhythm: string, pitch = '.') => [rhythm, pitch, '_', '_', '_', 'upper'];
 
 function head(chosen: string, confidence: number, alternatives: Array<[string, number]>) {
   return {
@@ -110,6 +113,44 @@ describe('selectSpots', () => {
   });
 });
 
+describe('homrReviewVoicesForRegeneration', () => {
+  it('reconstructs voice-major parts and inserts system breaks', () => {
+    const staves: ReviewStaff[] = [
+      { ...staff(0, []), partIndex: 0, systemIndex: 0, tokens: [token('note_4', 'C4')] },
+      { ...staff(1, []), partIndex: 0, systemIndex: 1, tokens: [token('note_4', 'D4')] },
+      { ...staff(2, []), partIndex: 1, systemIndex: 0, tokens: [token('note_4', 'E4')] },
+      { ...staff(3, []), partIndex: 1, systemIndex: 1, tokens: [token('note_4', 'F4')] }
+    ];
+
+    expect(homrReviewVoicesForRegeneration(staves)).toEqual([
+      [token('note_4', 'C4'), token('newline'), token('note_4', 'D4')],
+      [token('note_4', 'E4'), token('newline'), token('note_4', 'F4')]
+    ]);
+  });
+
+  it('keeps a single legacy staff but refuses ambiguous legacy multi-staff data', () => {
+    const legacy = { ...staff(0, []), tokens: [token('note_4', 'C4')] };
+    expect(homrReviewVoicesForRegeneration([legacy])).toEqual([[token('note_4', 'C4')]]);
+    expect(homrReviewVoicesForRegeneration([legacy, { ...legacy, index: 1 }])).toBeNull();
+  });
+
+  it('refuses partial, duplicate, or non-contiguous mappings', () => {
+    const mapped = {
+      ...staff(0, []),
+      partIndex: 0,
+      systemIndex: 0,
+      tokens: [token('note_4', 'C4')]
+    };
+    expect(
+      homrReviewVoicesForRegeneration([mapped, { ...mapped, index: 1, systemIndex: undefined }])
+    ).toBeNull();
+    expect(homrReviewVoicesForRegeneration([mapped, { ...mapped, index: 1 }])).toBeNull();
+    expect(
+      homrReviewVoicesForRegeneration([mapped, { ...mapped, index: 1, systemIndex: 2 }])
+    ).toBeNull();
+  });
+});
+
 describe('remainingFloor', () => {
   it('rises as the reviewer works and ends at null', () => {
     const staves = [
@@ -175,9 +216,7 @@ describe('pageSuitability', () => {
     const staves = [
       staff(
         0,
-        Array.from({ length: 10 }, (_, i) =>
-          symbol(i, { pitch: head('C4', 0.45, [['D4', 0.4]]) })
-        )
+        Array.from({ length: 10 }, (_, i) => symbol(i, { pitch: head('C4', 0.45, [['D4', 0.4]]) }))
       )
     ];
     const spots = selectSpots(staves);

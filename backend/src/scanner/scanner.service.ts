@@ -43,6 +43,7 @@ import { locateSymbol } from './scanner-locate';
 const TOKEN_FIELDS = ['rhythm', 'pitch', 'lift', 'articulation', 'slur', 'position'];
 import {
   DEFAULT_REVIEW_THRESHOLDS,
+  homrReviewVoicesForRegeneration,
   pageSuitability,
   remainingFloor,
   selectSpots
@@ -866,7 +867,17 @@ export class ScannerService implements OnModuleInit {
     if (!regenerate) {
       throw new ConflictException('This scanner engine cannot regenerate reviewed MusicXML');
     }
-    const musicXmlBuffer = await regenerate(editedStaves.map((entry: any) => entry.tokens || []));
+    let regenerationInput = editedStaves.map((entry: any) => entry.tokens || []);
+    if (reviewEngine.engineId === 'homr') {
+      const homrVoices = homrReviewVoicesForRegeneration(editedStaves);
+      if (!homrVoices) {
+        throw new ConflictException(
+          'This review cannot be regenerated safely; rescan the page and try again'
+        );
+      }
+      regenerationInput = homrVoices;
+    }
+    const musicXmlBuffer = await regenerate(regenerationInput);
     const reviewedContentType = 'application/vnd.recordare.musicxml+xml';
     const storedReviewed = await this.storage.putDerivativeObject(
       `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-${reviewEngine.engineId}-reviewed-${randomUUID()}.musicxml`,

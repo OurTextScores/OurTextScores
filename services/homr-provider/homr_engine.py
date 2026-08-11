@@ -219,20 +219,25 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
             # that is where homr is imported, not because it needs the GPU.
             try:
                 from homr.music_xml_generator import generate_xml
-                from homr.transformer.vocabulary import EncodedSymbol
+                from homr.transformer.vocabulary import (
+                    EncodedSymbol,
+                    remove_duplicated_symbols,
+                )
 
                 staffs = [
-                    [
-                        EncodedSymbol(
-                            rhythm=token[0],
-                            pitch=token[1],
-                            lift=token[2],
-                            articulation=token[3],
-                            slur=token[4],
-                            position=token[5],
-                        )
-                        for token in staff
-                    ]
+                    remove_duplicated_symbols(
+                        [
+                            EncodedSymbol(
+                                rhythm=token[0],
+                                pitch=token[1],
+                                lift=token[2],
+                                articulation=token[3],
+                                slur=token[4],
+                                position=token[5],
+                            )
+                            for token in staff
+                        ]
+                    )
                     for staff in request["staffs"]
                 ]
                 xml = generate_xml(

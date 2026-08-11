@@ -158,7 +158,27 @@ describe('ScannerProviderService', () => {
           modelRevision: 'homr-revision',
           executionProvider: 'CUDAExecutionProvider',
           inputSha256: createHash('sha256').update(image).digest('hex'),
-          musicXmlBase64: musicXml.toString('base64')
+          musicXmlBase64: musicXml.toString('base64'),
+          review: {
+            staves: [
+              {
+                index: 0,
+                partIndex: 0,
+                systemIndex: 1,
+                region: [0, 0, 100, 50],
+                tokens: [],
+                symbols: []
+              },
+              {
+                index: 1,
+                partIndex: '0',
+                systemIndex: null,
+                region: [0, 50, 100, 100],
+                tokens: [],
+                symbols: []
+              }
+            ]
+          }
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
       )
@@ -176,7 +196,13 @@ describe('ScannerProviderService', () => {
       expect.objectContaining({
         providerRevision: 'ots-homr-modal-v1',
         modelRevision: 'homr-revision',
-        musicXml
+        musicXml,
+        review: {
+          staves: [
+            expect.objectContaining({ index: 0, partIndex: 0, systemIndex: 1 }),
+            expect.not.objectContaining({ partIndex: expect.anything() })
+          ]
+        }
       })
     );
     fetchSpy.mockRestore();

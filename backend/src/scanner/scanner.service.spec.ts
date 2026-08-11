@@ -1523,6 +1523,87 @@ describe('corrections', () => {
     expect(provider.regenerate.mock.calls[0][0][0][0][1]).toBe('.');
   });
 
+  it('reassembles physical systems into the original MusicXML part', async () => {
+    const firstSystem = [
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ];
+    const secondSystem = [['note_4', 'E4', '_', '_', '_', 'upper']];
+    const page: any = pageWith(firstSystem);
+    page.review.staves[0].partIndex = 0;
+    page.review.staves[0].systemIndex = 0;
+    page.review.staves.push({
+      index: 1,
+      partIndex: 0,
+      systemIndex: 1,
+      region: [0, 20, 10, 30],
+      tokens: secondSystem,
+      symbols: []
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', pages: [page] };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: () => ({ exec: async () => ({}) })
+    };
+    provider.regenerate.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      {
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o' }),
+        deleteObject: async () => undefined
+      } as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4', 'homr', reviewSignature(page));
+
+    expect(provider.regenerate).toHaveBeenCalledWith([
+      [
+        firstSystem[0],
+        ['note_4', 'D4', '_', '_', '_', 'upper'],
+        ['newline', '.', '_', '_', '_', 'upper'],
+        secondSystem[0]
+      ]
+    ]);
+  });
+
+  it('refuses ambiguous legacy multi-staff review instead of changing its part structure', async () => {
+    const page: any = pageWith([
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ]);
+    page.review.staves.push({
+      index: 1,
+      region: [0, 20, 10, 30],
+      tokens: [['note_4', 'E4', '_', '_', '_', 'upper']],
+      symbols: []
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', pages: [page] };
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: () => ({ exec: async () => ({}) })
+    };
+    provider.regenerate.mockClear();
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      {} as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await expect(
+      service.applyCorrection('user-1', 'job-1', 1, 0, 'D4', 'homr', reviewSignature(page))
+    ).rejects.toThrow(/cannot be regenerated safely/);
+    expect(provider.regenerate).not.toHaveBeenCalled();
+  });
+
   it('accumulates corrections instead of discarding the earlier one', async () => {
     // Regenerating from the original tokens each time and keeping only the
     // latest edit silently destroyed every earlier correction — and a later
@@ -1636,7 +1717,12 @@ describe('corrections', () => {
     const job: any = {
       _id: 'j',
       jobId: 'job-1',
-      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+      pages: [
+        pageWith([
+          ['clef_G2', '.', '_', '_', '_', 'upper'],
+          ['note_4', 'C4', '_', '_', '_', 'upper']
+        ])
+      ]
     };
     const jobsModel: any = {
       findOne: () => ({ exec: async () => job }),
@@ -1676,7 +1762,12 @@ describe('corrections', () => {
       jobId: 'job-1',
       combinedMusicXml: { bucket: 'd', objectKey: 'combined.musicxml' },
       combinedPdf: { bucket: 'd', objectKey: 'combined.pdf' },
-      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+      pages: [
+        pageWith([
+          ['clef_G2', '.', '_', '_', '_', 'upper'],
+          ['note_4', 'C4', '_', '_', '_', 'upper']
+        ])
+      ]
     };
     const updates: any[] = [];
     const jobsModel: any = {
@@ -1725,7 +1816,12 @@ describe('corrections', () => {
     const job: any = {
       _id: 'j',
       jobId: 'job-1',
-      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+      pages: [
+        pageWith([
+          ['clef_G2', '.', '_', '_', '_', 'upper'],
+          ['note_4', 'C4', '_', '_', '_', 'upper']
+        ])
+      ]
     };
     const jobsModel: any = {
       findOne: () => ({ exec: async () => job }),
@@ -1749,7 +1845,12 @@ describe('corrections', () => {
     const job: any = {
       _id: 'j',
       jobId: 'job-1',
-      pages: [pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']])]
+      pages: [
+        pageWith([
+          ['clef_G2', '.', '_', '_', '_', 'upper'],
+          ['note_4', 'C4', '_', '_', '_', 'upper']
+        ])
+      ]
     };
     const jobsModel: any = {
       findOne: () => ({ exec: async () => job }),
@@ -1784,7 +1885,10 @@ describe('corrections', () => {
   });
 
   it('routes review and regeneration through a future engine capability and adapter', async () => {
-    const base = pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']]);
+    const base = pageWith([
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ]);
     const futureRun: any = {
       engine: 'future-review',
       status: 'succeeded',
@@ -1883,7 +1987,10 @@ describe('corrections', () => {
 
   it('refuses spot review after a page has been reconciled', async () => {
     const page: any = {
-      ...pageWith([[], ['note_4', 'C4', '_', '_', '_', 'upper']]),
+      ...pageWith([
+        ['clef_G2', '.', '_', '_', '_', 'upper'],
+        ['note_4', 'C4', '_', '_', '_', 'upper']
+      ]),
       mergedMusicXml: { bucket: 'd', objectKey: 'merged.musicxml' }
     };
     const jobsModel: any = {
