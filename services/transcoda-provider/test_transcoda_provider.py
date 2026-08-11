@@ -13,9 +13,11 @@ from fastapi.testclient import TestClient
 from transcoda_engine import (
     CODE_FAILED,
     CODE_GENERATION_FAILED,
+    CODE_GENERATION_RUNAWAY,
     CODE_TIMEOUT,
     EngineProvenance,
     InferenceError,
+    reject_runaway_kern_body,
     strip_musicxml_doctype,
 )
 from transcoda_provider import create_provider_app
@@ -83,7 +85,9 @@ class FakeEngine:
                 "sawEos": True,
                 "truncated": False,
                 "maxLength": 2048,
-                "numBeams": 3,
+                "strategy": "greedy",
+                "numBeams": 1,
+                "repetitionPenalty": 1.1,
             },
         }
 
@@ -184,6 +188,7 @@ class ProviderContractTest(unittest.TestCase):
         for error, status in (
             (InferenceError(CODE_TIMEOUT, "too slow"), 504),
             (InferenceError(CODE_GENERATION_FAILED, "bad conversion"), 422),
+            (InferenceError(CODE_GENERATION_RUNAWAY, "runaway"), 422),
         ):
             self.engine.raises = error
             self.assertEqual(post(self.client, key=OTHER_KEY).status_code, status)
@@ -221,7 +226,15 @@ class ProviderContractTest(unittest.TestCase):
         self.assertEqual(capabilities["providerLicense"], "AGPL-3.0-or-later")
         self.assertEqual(capabilities["transcodaLicense"], "AGPL-3.0-only")
         self.assertEqual(capabilities["modelLicense"], "CC-BY-4.0")
-        self.assertEqual(capabilities["decoding"]["numBeams"], 3)
+        self.assertEqual(
+            capabilities["decoding"],
+            {
+                "strategy": "greedy",
+                "numBeams": 1,
+                "maxLength": 2048,
+                "repetitionPenalty": 1.1,
+            },
+        )
         self.assertIn("82041ce", capabilities["upstreamSource"])
         self.engine.ready = False
         self.assertEqual(self.client.get("/readyz").status_code, 503)
@@ -256,6 +269,32 @@ class DoctypeTest(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 strip_musicxml_doctype(document)
+
+
+class RunawayGenerationTest(unittest.TestCase):
+    def test_rejects_the_observed_rest_barline_loop_even_when_decode_saw_eos(
+        self,
+    ) -> None:
+        body = "\n".join(["*clefF4", "*M3/8", "8r", *["=\n4.r"] * 100])
+        with self.assertRaises(InferenceError) as raised:
+            reject_runaway_kern_body(body)
+        self.assertEqual(raised.exception.code, CODE_GENERATION_RUNAWAY)
+
+    def test_accepts_long_notation_and_rest_heavy_music_without_dense_barlines(
+        self,
+    ) -> None:
+        varied_music = "\n".join(
+            [
+                "*clefG2",
+                *[
+                    f"{4 if index % 2 else 8}{'r' if index % 5 == 0 else 'c'}"
+                    for index in range(128)
+                ],
+            ]
+        )
+        rest_heavy_music = "\n".join(["*clefF4", *(["4.r"] * 100), "=1", "=2"])
+        reject_runaway_kern_body(varied_music)
+        reject_runaway_kern_body(rest_heavy_music)
 
 
 if __name__ == "__main__":

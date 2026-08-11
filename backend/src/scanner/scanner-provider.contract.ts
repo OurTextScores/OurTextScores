@@ -57,6 +57,7 @@ export function scannerProviderIdempotencyKey(input: {
   modelArtifactSha256?: string;
   converterVersion?: string;
   preprocessingRevision: string;
+  decodingRevision?: string;
   inputSha256: string;
   pageNumber: number;
   detectTitle: boolean;

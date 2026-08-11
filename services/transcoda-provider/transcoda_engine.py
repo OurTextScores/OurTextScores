@@ -17,12 +17,14 @@ import tempfile
 import threading
 import time
 import traceback
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 CODE_FAILED = "inference_failed"
 CODE_GENERATION_FAILED = "generation_failed"
+CODE_GENERATION_RUNAWAY = "generation_runaway"
 CODE_INVALID_IMAGE = "invalid_image"
 CODE_NO_STAFF = "no_staff_detected"
 CODE_NOT_READY = "model_not_ready"
@@ -145,6 +147,7 @@ def _canonical_kern_body(text: str) -> bytes:
     body = text.strip("\n")
     if not body:
         raise InferenceError(CODE_NO_STAFF, "Transcoda produced no notation")
+    reject_runaway_kern_body(body)
     first_record = next(
         (
             line
@@ -159,6 +162,42 @@ def _canonical_kern_body(text: str) -> bytes:
     header = "\t".join(["**kern"] * field_count)
     canonical = append_terminator_if_missing(f"{header}\n{body}")
     return (canonical.rstrip("\n") + "\n").encode("utf-8")
+
+
+def reject_runaway_kern_body(text: str) -> None:
+    """Reject the model's observed rest/barline repetition failure mode.
+
+    The bad beam decode repeats one notation record and one barline until EOS
+    or the token cap. EOS therefore cannot be used as proof of completeness.
+    Requiring both a long run and nearly one barline per data record avoids
+    classifying ordinary repeated notes or a rest-heavy passage as runaway.
+    """
+    records = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("!")
+    ]
+    data_records = [line for line in records if not line.startswith(("*", "=", "+"))]
+    barline_count = sum(1 for line in records if line.startswith("="))
+    if len(data_records) < 64 or barline_count < 64:
+        return
+
+    dominant_record, dominant_count = Counter(data_records).most_common(1)[0]
+    dominant_ratio = dominant_count / len(data_records)
+    barline_ratio = barline_count / len(data_records)
+    if dominant_ratio < 0.9 or barline_ratio < 0.8:
+        return
+
+    raise InferenceError(
+        CODE_GENERATION_RUNAWAY,
+        "Transcoda produced a degenerate repeated sequence",
+        (
+            f"dataRecords={len(data_records)} barlines={barline_count} "
+            f"dominantRatio={dominant_ratio:.3f} "
+            f"barlineRatio={barline_ratio:.3f} "
+            f"dominantRecord={dominant_record[:120]!r}"
+        ),
+    )
 
 
 def _child_main(
@@ -228,8 +267,8 @@ def _child_main(
             EncoderLoader._load_transformers = staticmethod(original_load_transformers)
         settings = apply_generation_overrides(
             settings_from_decoding_spec(loaded.artifact.decoding),
-            strategy="beam",
-            num_beams=3,
+            strategy="greedy",
+            num_beams=1,
             length_penalty=1.0,
             repetition_penalty=1.1,
         )
@@ -324,7 +363,9 @@ def _child_main(
                         "sawEos": bool(finalized.saw_eos),
                         "truncated": bool(finalized.truncated),
                         "maxLength": max_length,
-                        "numBeams": 3,
+                        "strategy": "greedy",
+                        "numBeams": 1,
+                        "repetitionPenalty": 1.1,
                     },
                 }
             )
@@ -575,6 +616,7 @@ class TranscodaEngine:
         messages = {
             CODE_INVALID_IMAGE: "The page image could not be decoded",
             CODE_NO_STAFF: "No notation was detected on this page",
+            CODE_GENERATION_RUNAWAY: "Transcoda produced a degenerate repeated sequence",
             CODE_GENERATION_FAILED: "The recognised page could not be converted",
             CODE_FAILED: "Transcoda could not process this page",
         }

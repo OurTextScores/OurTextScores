@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from transcoda_engine import (
     CODE_FAILED,
     CODE_GENERATION_FAILED,
+    CODE_GENERATION_RUNAWAY,
     CODE_INVALID_IMAGE,
     CODE_NO_STAFF,
     CODE_NOT_READY,
@@ -41,6 +42,7 @@ _STATUS_BY_CODE = {
     CODE_INVALID_IMAGE: 422,
     CODE_NO_STAFF: 422,
     CODE_GENERATION_FAILED: 422,
+    CODE_GENERATION_RUNAWAY: 422,
     "invalid_option": 400,
     "busy": 429,
     CODE_NOT_READY: 503,
@@ -270,8 +272,8 @@ def create_provider_app(
             "maxPageBytes": max_page_bytes,
             "hardTimeoutSeconds": hard_timeout_seconds,
             "decoding": {
-                "strategy": "beam",
-                "numBeams": 3,
+                "strategy": "greedy",
+                "numBeams": 1,
                 "maxLength": 2048,
                 "repetitionPenalty": 1.1,
             },

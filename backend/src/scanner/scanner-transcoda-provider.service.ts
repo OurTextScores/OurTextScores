@@ -45,6 +45,7 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
         .get<string>('SCANNER_EXPECTED_TRANSCODA_CONVERTER_VERSION', '')
         .trim(),
       preprocessingRevision: 'ots-transcoda-1485x1050-v1',
+      decodingRevision: 'ots-transcoda-greedy-rp1.1-v1',
       ...input
     });
   }
@@ -361,7 +362,9 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
     sawEos: boolean;
     truncated: boolean;
     maxLength?: number;
+    strategy: string;
     numBeams?: number;
+    repetitionPenalty: number;
   } {
     if (!value || typeof value !== 'object') {
       throw this.invalidResponse('Scanner provider returned incomplete generation diagnostics');
@@ -381,12 +384,25 @@ export class ScannerTranscodaProviderService implements ScannerPageProvider {
       }
       return parsed;
     };
+    const requiredPositiveNumber = (key: string): number => {
+      const parsed = Number(generation[key]);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw this.invalidResponse('Scanner provider returned invalid generation diagnostics');
+      }
+      return parsed;
+    };
+    const strategy = this.requiredText(generation.strategy);
+    if (strategy !== 'greedy' && strategy !== 'beam') {
+      throw this.invalidResponse('Scanner provider returned invalid generation diagnostics');
+    }
     return {
       hitMaxLength: requiredBoolean('hitMaxLength'),
       sawEos: requiredBoolean('sawEos'),
       truncated: requiredBoolean('truncated'),
       maxLength: optionalPositiveInteger('maxLength'),
-      numBeams: optionalPositiveInteger('numBeams')
+      strategy,
+      numBeams: optionalPositiveInteger('numBeams'),
+      repetitionPenalty: requiredPositiveNumber('repetitionPenalty')
     };
   }
 

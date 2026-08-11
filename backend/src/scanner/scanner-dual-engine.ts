@@ -31,7 +31,9 @@ export interface ScannerGenerationMetadata {
   sawEos: boolean;
   truncated: boolean;
   maxLength?: number;
+  strategy?: string;
   numBeams?: number;
+  repetitionPenalty?: number;
 }
 
 export type ScannerOutputCompleteness =

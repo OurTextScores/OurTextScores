@@ -53,7 +53,9 @@ describe('ScannerTranscodaProviderService', () => {
         sawEos: true,
         truncated: false,
         maxLength: 2048,
-        numBeams: 3
+        strategy: 'greedy',
+        numBeams: 1,
+        repetitionPenalty: 1.1
       }
     },
     timing: { inferenceMs: 123 },
@@ -96,7 +98,9 @@ describe('ScannerTranscodaProviderService', () => {
         sawEos: true,
         truncated: false,
         maxLength: 2048,
-        numBeams: 3
+        strategy: 'greedy',
+        numBeams: 1,
+        repetitionPenalty: 1.1
       },
       provenance: {
         modelArtifact: 'btrkeks/transcoda-59M-zeroshot-v1',
@@ -122,7 +126,9 @@ describe('ScannerTranscodaProviderService', () => {
                 sawEos: false,
                 truncated: true,
                 maxLength: 2048,
-                numBeams: 3
+                strategy: 'greedy',
+                numBeams: 1,
+                repetitionPenalty: 1.1
               }
             }
           })
@@ -132,7 +138,14 @@ describe('ScannerTranscodaProviderService', () => {
     );
     await expect(scan()).resolves.toMatchObject({
       completeness: 'incomplete',
-      generation: { hitMaxLength: true, sawEos: false, truncated: true, maxLength: 2048 }
+      generation: {
+        hitMaxLength: true,
+        sawEos: false,
+        truncated: true,
+        maxLength: 2048,
+        strategy: 'greedy',
+        repetitionPenalty: 1.1
+      }
     });
 
     jest

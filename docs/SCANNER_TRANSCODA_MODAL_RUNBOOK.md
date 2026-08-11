@@ -397,8 +397,8 @@ assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest), digest
 assert "torch.cuda" in caps.get("availableExecutionProviders", []), caps
 assert os.environ["EXPECTED_OTS_COMMIT"] in caps.get("source", ""), caps.get("source")
 assert caps.get("decoding") == {
-    "strategy": "beam",
-    "numBeams": 3,
+    "strategy": "greedy",
+    "numBeams": 1,
     "maxLength": 2048,
     "repetitionPenalty": 1.1,
 }
@@ -465,6 +465,9 @@ assert b"<!DOCTYPE" not in upper_xml
 assert b"<!ENTITY" not in upper_xml
 assert b"<score-partwise" in xml or b"<score-timewise" in xml
 assert not result["generation"]["truncated"], result["generation"]
+assert result["generation"]["strategy"] == "greedy", result["generation"]
+assert result["generation"]["numBeams"] == 1, result["generation"]
+assert result["generation"]["repetitionPenalty"] == 1.1, result["generation"]
 
 Path("/tmp/ots-transcoda-smoke.krn").write_bytes(kern)
 Path("/tmp/ots-transcoda-smoke.musicxml").write_bytes(xml)
@@ -641,6 +644,7 @@ immediately affects every client and environment that uses it.
 | Scan returns `422 invalid_image` | Multipart media type/magic bytes or image decoding failed. |
 | Scan returns `422 no_staff_detected` | The image decoded but Transcoda produced no notation. This is deterministic for that page. |
 | Scan returns `422 generation_failed` | Recognition returned kern but music21 could not convert it. Preserve logs and the request ID; retrying the same bytes is not useful. |
+| Scan returns `422 generation_runaway` | The decoder repeated one notation/barline cycle instead of producing a score. The provider rejects this deterministic bad output even if the model emitted EOS; preserve the request ID and input digest for model-quality analysis. |
 | Scan returns `429 busy` | One page is already in flight; the caller should back off. |
 | Scan returns `504 inference_timeout` | The model child exceeded 450 seconds and was killed. The next request will re-warm a replacement. |
 | Capabilities digest differs after a deploy | Expected whenever a covered source/build input changed. Verify source and pins, then update Phase B configuration deliberately. |

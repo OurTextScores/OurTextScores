@@ -38,6 +38,10 @@ const PROVIDER_ERROR_CODES: Record<string, { message: string; retryable: boolean
   generation_failed: {
     message: 'The scanner recognised this page but could not build a score from it',
     retryable: false
+  },
+  generation_runaway: {
+    message: 'The scanner produced a degenerate repeated sequence for this page',
+    retryable: false
   }
 };
 
