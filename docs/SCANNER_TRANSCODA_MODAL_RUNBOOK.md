@@ -299,6 +299,10 @@ history:
 
 ```bash
 export TRANSCODA_MODAL_URL='https://<deployment>.modal.run'
+# Prevent `$TRANSCODA_MODAL_URL/healthz` from becoming `//healthz` when the URL
+# was copied from a source that included a trailing slash.
+TRANSCODA_MODAL_URL="${TRANSCODA_MODAL_URL%/}"
+export TRANSCODA_MODAL_URL
 read -r -p 'Transcoda Modal token ID: ' TRANSCODA_MODAL_TOKEN_ID
 read -r -s -p 'Transcoda Modal token secret: ' TRANSCODA_MODAL_TOKEN_SECRET
 echo
@@ -605,6 +609,7 @@ immediately affects every client and environment that uses it.
 | Checkpoint or encoder `sha256sum` fails | Remote bytes differ from the reviewed artifact. Stop and investigate; do not copy the new hash blindly. |
 | `/healthz` returns `401` | Missing or wrong proxy-token credentials. Verify the `wk-` ID and `ws-` secret. |
 | `/healthz` returns `403` | A valid RBAC-scoped token is not associated with this environment. Workspace-wide tokens need no association. |
+| Authenticated `/healthz` returns `404` with `{"detail":"Not Found"}` | FastAPI was reached, but the path is wrong. Use the exact Function URL printed by `modal deploy` as `TRANSCODA_MODAL_URL`, with no path or trailing slash. |
 | Authenticated `/healthz` hangs or returns `5xx` | The protected request reached Modal but its container did not start. Inspect App logs for an image or module-import failure before retrying. |
 | `/healthz` returns plain-text `404` saying the workspace is disabled | Modal's workspace budget cap fired. Restore budget deliberately; do not treat it as a missing route. |
 | `/readyz` stays `503 model_not_ready` | Inspect App logs. Common causes are unavailable CUDA, artifact mismatch, missing offline encoder files, converter mismatch, or failed warm-up conversion. |
