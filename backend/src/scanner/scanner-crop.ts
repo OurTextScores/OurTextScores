@@ -21,6 +21,11 @@ export interface CropRect {
   height: number;
 }
 
+export interface ComparisonCropRegion {
+  systemIndex: number;
+  region: [number, number, number, number];
+}
+
 /** Grow a region by a margin, then clamp it to the image. */
 export function padAndClamp(
   region: number[],
@@ -73,8 +78,53 @@ export function cropForLevel(
   for (const region of neighbourRegions) {
     if (!region || region.length !== 4) continue;
     top = Math.min(top, Math.max(0, Math.floor(Math.min(region[1], region[3]) - 12)));
-    bottom = Math.max(bottom, Math.min(image.height, Math.ceil(Math.max(region[1], region[3]) + 12)));
+    bottom = Math.max(
+      bottom,
+      Math.min(image.height, Math.ceil(Math.max(region[1], region[3]) + 12))
+    );
   }
   // Horizontal extent is untouched, so the band stays aligned.
   return { left: base.left, top, width: base.width, height: Math.max(1, bottom - top) };
+}
+
+/** Merge consecutive measure boxes into one padded crop per physical system. */
+export function comparisonCropRects(
+  regions: ComparisonCropRegion[],
+  image: { width: number; height: number },
+  padding = 12
+): CropRect[] {
+  const systems = new Map<number, [number, number, number, number]>();
+  for (const crop of regions) {
+    if (
+      !Number.isInteger(crop?.systemIndex) ||
+      crop.systemIndex < 0 ||
+      !Array.isArray(crop.region) ||
+      crop.region.length !== 4 ||
+      crop.region.some((coordinate) => !Number.isFinite(coordinate))
+    ) {
+      continue;
+    }
+    const [x0, y0, x1, y1] = crop.region;
+    const normalized: [number, number, number, number] = [
+      Math.min(x0, x1),
+      Math.min(y0, y1),
+      Math.max(x0, x1),
+      Math.max(y0, y1)
+    ];
+    const current = systems.get(crop.systemIndex);
+    systems.set(
+      crop.systemIndex,
+      current
+        ? [
+            Math.min(current[0], normalized[0]),
+            Math.min(current[1], normalized[1]),
+            Math.max(current[2], normalized[2]),
+            Math.max(current[3], normalized[3])
+          ]
+        : normalized
+    );
+  }
+  return [...systems.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, region]) => padAndClamp(region, padding, image));
 }

@@ -36,7 +36,7 @@ import {
   SCANNER_UPLOAD_DIRECTORY,
   scannerUserHash
 } from './scanner.constants';
-import { CropLevel, cropForLevel } from './scanner-crop';
+import { comparisonCropRects, CropLevel, cropForLevel } from './scanner-crop';
 import { locateSymbol } from './scanner-locate';
 
 /** Field order within a captured token; mirrors the provider's capture. */
@@ -58,6 +58,7 @@ import { scannerEngineOperationalMetrics } from './scanner-engine-operations';
 import type { ScannerPageProvider } from './scanner-provider.contract';
 import {
   SCANNER_ARTIFACT_BUILDERS,
+  SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION,
   scannerArtifactInputSignature,
   scannerArtifactInputMatches,
   scannerDefaultEnginePlan,
@@ -74,14 +75,20 @@ import {
 import type {
   ScannerArtifactInput,
   ScannerEngineId,
-  ScannerEngineRun
+  ScannerEngineRun,
+  ScannerMeasureCropRegion
 } from './scanner-dual-engine';
+import type { ScannerRasterIdentity } from './schemas/scanner-job.schema';
 import { compareScannerPage, SCANNER_PAGE_COMPARISON_VERSION } from './scanner-page-comparison';
+import { SCANNER_MEASURE_GEOMETRY_VERSION } from './scanner-comparison-geometry';
 
 const execFileAsync = promisify(execFile);
 const ACTIVE_STATUSES = ['queued', 'preparing', 'ready', 'running', 'rendering'];
 const SCANNER_JOB_ARTIFACT_KINDS = new Set(['musicxml', 'pdf', 'thumbnail', 'zip']);
 const SCANNER_ENGINE_ARTIFACT_KIND_PATTERN = /^[a-z0-9][a-z0-9.-]{0,31}$/;
+const MAX_SCANNER_COMPARISON_CROP_SYSTEMS = 64;
+const MAX_SCANNER_COMPARISON_CROP_PIXELS = 30_000_000;
+const SCANNER_COMPARISON_CROP_GUTTER = 8;
 
 @Injectable()
 export class ScannerService implements OnModuleInit {
@@ -820,6 +827,18 @@ export class ScannerService implements OnModuleInit {
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
+    return {
+      ...(await this.pageComparisonForJob(job, page, baseEngineId, candidateEngineId)),
+      statusVersion: job.statusVersion || 1
+    };
+  }
+
+  private async pageComparisonForJob(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    baseEngineId: ScannerEngineId,
+    candidateEngineId: ScannerEngineId
+  ): Promise<any> {
     if (page.mergedMusicXml) {
       throw new ConflictException('Comparison is unavailable after engine reconciliation');
     }
@@ -933,6 +952,131 @@ export class ScannerService implements OnModuleInit {
         measureGeometryProducer: candidateDefinition?.measureGeometryProducer
       }
     });
+  }
+
+  /** Render the exact evidence crop for one current, grounded comparison block. */
+  async pageComparisonBlockCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    blockIndex: number,
+    baseEngineId: string,
+    candidateEngineId: string,
+    statusVersion: number,
+    contentSignature: string,
+    geometrySignature: string
+  ): Promise<{ body: Buffer; contentType: 'image/png' }> {
+    this.assertAvailable(userId);
+    if (
+      !isScannerEngineId(baseEngineId) ||
+      !isScannerEngineId(candidateEngineId) ||
+      baseEngineId === candidateEngineId
+    ) {
+      throw new BadRequestException('Comparison requires two distinct valid scanner engines');
+    }
+    if (!Number.isInteger(blockIndex) || blockIndex < 0) {
+      throw new BadRequestException('Comparison block index is invalid');
+    }
+    if (!Number.isInteger(statusVersion) || statusVersion < 1) {
+      throw new BadRequestException('Scanner job status version is required');
+    }
+    if (
+      !new RegExp(`^${SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION}:[a-f0-9]{64}$`).test(
+        contentSignature
+      ) ||
+      !new RegExp(`^${SCANNER_MEASURE_GEOMETRY_VERSION}:[a-f0-9]{64}$`).test(geometrySignature)
+    ) {
+      throw new BadRequestException('Comparison crop signatures are invalid');
+    }
+
+    const job = await this.ownedJob(userId, jobId);
+    if ((job.statusVersion || 1) !== statusVersion) {
+      throw new ConflictException('Scanner comparison changed; refresh and try again');
+    }
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const comparison = await this.pageComparisonForJob(job, page, baseEngineId, candidateEngineId);
+    if (comparison.status !== 'ready' || comparison.geometry?.status !== 'ready') {
+      throw new ConflictException('This comparison block has no verified image evidence');
+    }
+    if (comparison.geometry.geometrySignature !== geometrySignature) {
+      throw new ConflictException('Scanner comparison geometry changed; refresh and try again');
+    }
+    const blockResult = comparison.geometry.blocks.find(
+      (entry: any) => entry.block.blockIndex === blockIndex
+    );
+    if (!blockResult || blockResult.status !== 'ready') {
+      throw new NotFoundException('Scanner comparison block crop is not available');
+    }
+    if (blockResult.block.contentSignature !== contentSignature) {
+      throw new ConflictException('Scanner comparison block changed; refresh and try again');
+    }
+    if (!page.recognitionRaster?.storage || !comparison.sourceImage) {
+      throw new NotFoundException('Scanner recognition raster is not available');
+    }
+
+    const source = await this.storage.getObjectBuffer(
+      page.recognitionRaster.storage.bucket,
+      page.recognitionRaster.storage.objectKey
+    );
+    return {
+      body: await this.renderComparisonBlockCrop(
+        source,
+        comparison.sourceImage,
+        blockResult.block.cropRegions
+      ),
+      contentType: 'image/png'
+    };
+  }
+
+  private async renderComparisonBlockCrop(
+    source: Buffer,
+    expectedIdentity: ScannerRasterIdentity,
+    cropRegions: ScannerMeasureCropRegion[]
+  ): Promise<Buffer> {
+    const metadata = await sharp(source).metadata();
+    const actualIdentity = {
+      checksumSha256: createHash('sha256').update(source).digest('hex'),
+      width: Number(metadata.width || 0),
+      height: Number(metadata.height || 0)
+    };
+    if (
+      actualIdentity.checksumSha256 !== expectedIdentity.checksumSha256 ||
+      actualIdentity.width !== expectedIdentity.width ||
+      actualIdentity.height !== expectedIdentity.height
+    ) {
+      throw new ConflictException('Scanner recognition raster changed; refresh and try again');
+    }
+    const rects = comparisonCropRects(cropRegions, actualIdentity);
+    if (rects.length === 0) {
+      throw new NotFoundException('Scanner comparison block crop is not available');
+    }
+    if (rects.length > MAX_SCANNER_COMPARISON_CROP_SYSTEMS) {
+      throw new PayloadTooLargeException('Scanner comparison block spans too many systems');
+    }
+    const width = Math.max(...rects.map((rect) => rect.width));
+    const height =
+      rects.reduce((total, rect) => total + rect.height, 0) +
+      SCANNER_COMPARISON_CROP_GUTTER * (rects.length - 1);
+    if (width * height > MAX_SCANNER_COMPARISON_CROP_PIXELS) {
+      throw new PayloadTooLargeException('Scanner comparison block crop is too large');
+    }
+
+    const pieces: Array<{ input: Buffer; left: number; top: number }> = [];
+    let top = 0;
+    for (const rect of rects) {
+      const body = await sharp(source).extract(rect).png().toBuffer();
+      pieces.push({ input: body, left: Math.floor((width - rect.width) / 2), top });
+      top += rect.height + SCANNER_COMPARISON_CROP_GUTTER;
+    }
+    return pieces.length === 1
+      ? pieces[0].input
+      : await sharp({
+          create: { width, height, channels: 3, background: '#f3f4f6' }
+        })
+          .composite(pieces)
+          .png()
+          .toBuffer();
   }
 
   /**

@@ -207,6 +207,36 @@ export class ScannerController {
     );
   }
 
+  @Get(':jobId/pages/:pageNumber/comparison/blocks/:blockIndex/crop')
+  async comparisonBlockCrop(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('blockIndex', ParseIntPipe) blockIndex: number,
+    @Query('baseEngine') baseEngine: string | undefined,
+    @Query('candidateEngine') candidateEngine: string | undefined,
+    @Query('statusVersion', ParseIntPipe) statusVersion: number,
+    @Query('contentSignature') contentSignature: string | undefined,
+    @Query('geometrySignature') geometrySignature: string | undefined,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const crop = await this.scanner.pageComparisonBlockCrop(
+      user.userId,
+      jobId,
+      pageNumber,
+      blockIndex,
+      String(baseEngine ?? ''),
+      String(candidateEngine ?? ''),
+      statusVersion,
+      String(contentSignature ?? ''),
+      String(geometrySignature ?? '')
+    );
+    response.setHeader('Content-Type', crop.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(crop.body);
+  }
+
   @Post(':jobId/pages/:pageNumber/corrections')
   correct(
     @CurrentUser() user: RequestUser,

@@ -1,4 +1,4 @@
-import { cropForLevel, padAndClamp } from './scanner-crop';
+import { comparisonCropRects, cropForLevel, padAndClamp } from './scanner-crop';
 
 const IMAGE = { width: 1000, height: 800 };
 
@@ -61,9 +61,7 @@ describe('cropForLevel', () => {
 
   it('is the staff itself when there are no neighbours', () => {
     const staff = [178, 341, 811, 537];
-    expect(cropForLevel('context', staff, IMAGE, [])).toEqual(
-      cropForLevel('staff', staff, IMAGE)
-    );
+    expect(cropForLevel('context', staff, IMAGE, [])).toEqual(cropForLevel('staff', staff, IMAGE));
   });
 
   it('does not run past the image for an edge staff', () => {
@@ -79,5 +77,37 @@ describe('cropForLevel', () => {
     // rather than failing the request.
     expect(cropForLevel('staff', null, IMAGE).width).toBe(1000);
     expect(cropForLevel('staff', [1, 2], IMAGE).width).toBe(1000);
+  });
+});
+
+describe('comparisonCropRects', () => {
+  it('unions adjacent measures on one system and keeps systems separate', () => {
+    expect(
+      comparisonCropRects(
+        [
+          { systemIndex: 1, region: [100, 300, 500, 380] },
+          { systemIndex: 0, region: [100, 100, 300, 180] },
+          { systemIndex: 0, region: [300, 100, 500, 180] }
+        ],
+        { width: 800, height: 600 },
+        0
+      )
+    ).toEqual([
+      { left: 100, top: 100, width: 400, height: 80 },
+      { left: 100, top: 300, width: 400, height: 80 }
+    ]);
+  });
+
+  it('ignores malformed regions and clamps valid evidence to the image', () => {
+    expect(
+      comparisonCropRects(
+        [
+          { systemIndex: -1, region: [0, 0, 10, 10] },
+          { systemIndex: 0, region: [-5, -5, 105, 55] }
+        ],
+        { width: 100, height: 50 },
+        0
+      )
+    ).toEqual([{ left: 0, top: 0, width: 100, height: 50 }]);
   });
 });

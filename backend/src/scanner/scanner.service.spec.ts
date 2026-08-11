@@ -706,8 +706,13 @@ describe('ScannerService', () => {
     const reviewedHomr = score('P1', 1);
     const rawTranscoda = score('T9', 2);
     const checksum = (body: Buffer) => createHash('sha256').update(body).digest('hex');
+    const recognitionImage = await sharp({
+      create: { width: 100, height: 50, channels: 3, background: '#ffffff' }
+    })
+      .png()
+      .toBuffer();
     const raster = {
-      checksumSha256: createHash('sha256').update('raster').digest('hex'),
+      checksumSha256: checksum(recognitionImage),
       width: 100,
       height: 50
     };
@@ -723,6 +728,7 @@ describe('ScannerService', () => {
     const job: any = {
       jobId: 'job-1',
       userId: 'user-1',
+      statusVersion: 7,
       pageCount: 1,
       enginePlan: scannerEnginePlan(['homr', 'transcoda']),
       pages: [
@@ -770,7 +776,8 @@ describe('ScannerService', () => {
     };
     const bodies: Record<string, Buffer> = {
       [reviewedLocator.objectKey]: reviewedHomr,
-      [candidateLocator.objectKey]: rawTranscoda
+      [candidateLocator.objectKey]: rawTranscoda,
+      'recognition.png': recognitionImage
     };
     const comparisonStorage = {
       getObjectBuffer: jest.fn(async (_bucket: string, objectKey: string) => bodies[objectKey])
@@ -791,6 +798,7 @@ describe('ScannerService', () => {
 
     expect(result).toMatchObject({
       status: 'ready',
+      statusVersion: 7,
       base: { artifactChecksumSha256: reviewedLocator.checksumSha256 },
       candidate: { artifactChecksumSha256: candidateLocator.checksumSha256 },
       geometry: { status: 'ready' }
@@ -799,6 +807,84 @@ describe('ScannerService', () => {
       ['scanner', 'homr-reviewed.musicxml'],
       ['scanner', 'transcoda.musicxml']
     ]);
+    comparisonStorage.getObjectBuffer.mockClear();
+    const groundedBlock = result.geometry.blocks[0].block;
+    const crop = await service.pageComparisonBlockCrop(
+      'user-1',
+      'job-1',
+      1,
+      groundedBlock.blockIndex,
+      'homr',
+      'transcoda',
+      result.statusVersion,
+      groundedBlock.contentSignature,
+      result.geometry.geometrySignature
+    );
+    await expect(sharp(crop.body).metadata()).resolves.toMatchObject({
+      format: 'png',
+      width: 100,
+      height: 50
+    });
+    expect(comparisonStorage.getObjectBuffer.mock.calls).toEqual([
+      ['scanner', 'homr-reviewed.musicxml'],
+      ['scanner', 'transcoda.musicxml'],
+      ['scanner', 'recognition.png']
+    ]);
+    const montage = await (service as any).renderComparisonBlockCrop(recognitionImage, raster, [
+      { systemIndex: 0, staffIndices: [0], region: [0, 0, 100, 20] },
+      { systemIndex: 1, staffIndices: [1], region: [0, 30, 100, 50] }
+    ]);
+    await expect(sharp(montage).metadata()).resolves.toMatchObject({
+      format: 'png',
+      width: 100,
+      height: 72
+    });
+    await expect(
+      (service as any).renderComparisonBlockCrop(
+        recognitionImage,
+        { ...raster, checksumSha256: '0'.repeat(64) },
+        [{ systemIndex: 0, staffIndices: [0], region: [0, 0, 100, 20] }]
+      )
+    ).rejects.toThrow('recognition raster changed');
+    await expect(
+      service.pageComparisonBlockCrop(
+        'user-1',
+        'job-1',
+        1,
+        groundedBlock.blockIndex,
+        'homr',
+        'transcoda',
+        result.statusVersion - 1,
+        groundedBlock.contentSignature,
+        result.geometry.geometrySignature
+      )
+    ).rejects.toThrow('refresh and try again');
+    await expect(
+      service.pageComparisonBlockCrop(
+        'user-1',
+        'job-1',
+        1,
+        groundedBlock.blockIndex,
+        'homr',
+        'transcoda',
+        result.statusVersion,
+        `scanner-block-content-v2:${'f'.repeat(64)}`,
+        result.geometry.geometrySignature
+      )
+    ).rejects.toThrow('block changed');
+    await expect(
+      service.pageComparisonBlockCrop(
+        'user-1',
+        'job-1',
+        1,
+        groundedBlock.blockIndex,
+        'homr',
+        'transcoda',
+        result.statusVersion,
+        groundedBlock.contentSignature,
+        `scanner-measure-geometry-v1:${'f'.repeat(64)}`
+      )
+    ).rejects.toThrow('geometry changed');
   });
 
   it('explicitly refuses comparison for a retained job without raster identities', async () => {
