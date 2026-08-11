@@ -430,11 +430,15 @@ export interface ScannerComparisonPair {
 
 export interface ScannerPartMatchEvidence {
   normalizedNameEqual?: boolean;
+  ordinalEqual?: boolean;
+  staffCountEqual?: boolean;
   structureAgreement?: number;
+  matchScore?: number;
 }
 
 export interface ScannerPartEndpoint {
   engineId: ScannerEngineId;
+  artifactChecksumSha256: string;
   documentPartId: string;
   ordinal?: number;
   normalizedName?: string;
