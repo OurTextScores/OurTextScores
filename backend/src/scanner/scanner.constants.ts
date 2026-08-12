@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { scannerMergedScoreStale } from './scanner-dual-engine';
 import type { ScannerPageResult, ScannerStorageLocator } from './schemas/scanner-job.schema';
 
 /**
@@ -39,6 +40,17 @@ export const SCANNER_UPLOAD_DIRECTORY =
  */
 export const SCANNER_REQUEST_OVERHEAD_BYTES = 64 * 1024;
 
+/**
+ * Ceiling on a saved merged score.
+ *
+ * One page of MusicXML from either engine is a few hundred kilobytes at most;
+ * this leaves generous room for a heavily edited orchestral page while keeping
+ * a runaway client from writing an unbounded object under the reviewer's name.
+ * Shared with the body parser in `main.ts` so the two cannot drift — a parser
+ * limit below this one rejects with a 413 the service never sees.
+ */
+export const SCANNER_MAX_MERGED_SCORE_BYTES = 8 * 1024 * 1024;
+
 export interface EffectivePageMusicXmlSelection {
   musicXml: ScannerStorageLocator;
   /** Engine owner for raw or reviewed output; absent only for reconciled output. */
@@ -55,7 +67,10 @@ export interface EffectivePageMusicXmlSelection {
  */
 export function effectivePageMusicXml(
   page:
-    | Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'>
+    | Pick<
+        ScannerPageResult,
+        'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'mergedScore' | 'engines'
+      >
     | undefined,
   enginePlan?: { primaryEngineId: string; fallbackEngineIds: string[] }
 ): ScannerStorageLocator | undefined {
@@ -65,12 +80,23 @@ export function effectivePageMusicXml(
 /** Resolve the artifact and, for raw recognition output, the engine that supplied it. */
 export function effectivePageMusicXmlSelection(
   page:
-    | Pick<ScannerPageResult, 'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'>
+    | Pick<
+        ScannerPageResult,
+        'musicXml' | 'reviewedMusicXml' | 'mergedMusicXml' | 'mergedScore' | 'engines'
+      >
     | undefined,
   enginePlan?: { primaryEngineId: string; fallbackEngineIds: string[] }
 ): EffectivePageMusicXmlSelection | undefined {
   if (!page) return undefined;
-  if (page.mergedMusicXml) return { musicXml: page.mergedMusicXml };
+  // A stale merge is kept but not used. It survives a re-run because it is the
+  // reviewer's own work (comparator design §3.1), and it stops being the page
+  // in the same breath, because it answers readings that no longer exist —
+  // assembling from it would graft old hand corrections onto a new recognition
+  // without anyone deciding that was right. It becomes effective again the
+  // moment the reviewer accepts it against the current readings.
+  if (page.mergedMusicXml && !scannerMergedScoreStale(page)) {
+    return { musicXml: page.mergedMusicXml };
+  }
 
   const reviewedForEngine = (engineId: string): EffectivePageMusicXmlSelection | undefined => {
     const run = page.engines?.[engineId];
@@ -125,10 +151,12 @@ export function effectivePageMusicXmlSelection(
 
 /** True when pre-review bundles, renders and manifests no longer describe a page. */
 export function pageMusicXmlSuperseded(
-  page: Pick<ScannerPageResult, 'reviewedMusicXml' | 'mergedMusicXml' | 'engines'> | undefined
+  page:
+    | Pick<ScannerPageResult, 'reviewedMusicXml' | 'mergedMusicXml' | 'mergedScore' | 'engines'>
+    | undefined
 ): boolean {
   return Boolean(
-    page?.mergedMusicXml ||
+    (page?.mergedMusicXml && !scannerMergedScoreStale(page)) ||
       page?.reviewedMusicXml ||
       Object.values(page?.engines || {}).some(
         (run) => run?.status === 'succeeded' && run.reviewedMusicXml

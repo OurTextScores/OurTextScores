@@ -525,7 +525,13 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               ...startingPage,
               status: 'pending' as const,
               reviewedMusicXml: undefined,
-              mergedMusicXml: undefined,
+              // A merged score deliberately survives a retry. It is the
+              // reviewer's own work, not a derivative of the readings, and
+              // dropping it here would destroy typed corrections in the
+              // background — the single worst failure this feature could have
+              // (comparator design §3.1). The new readings will not match the
+              // basis it recorded, so `scannerMergedScoreStale` reports it as
+              // stale and the reviewer decides what to do with it.
               pdf: undefined,
               errorCode: undefined,
               errorMessage: undefined

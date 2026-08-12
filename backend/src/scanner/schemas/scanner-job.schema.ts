@@ -66,6 +66,33 @@ export interface ScannerEngineProvenance {
   executionProvider?: string;
 }
 
+/**
+ * A reviewer's merged reading of one page, and what it was made against.
+ *
+ * The merged score begins as one engine's reading and stops being a function of
+ * its inputs the moment a decision or an edit lands on it — so it is the page's
+ * own artifact, not a derivative, and `effectivePageMusicXml` prefers it over
+ * everything else. What is recorded here is the provenance that entitles it to
+ * that position: which engine it started from, and which readings it answers.
+ */
+export interface ScannerMergedScore {
+  /** The engine whose reading the merge started from, wholesale. */
+  sourceEngineId: string;
+  /** `scannerMergedScoreBasis` of the readings this merge was built against. */
+  basisSignature: string;
+  /**
+   * True once the reviewer has hand-corrected the merged score.
+   *
+   * Kept separate from the decision record because an edited bar is evidence
+   * that *both* engines were wrong, and filing it as an engine win would poison
+   * the corpus this feature exists to build.
+   */
+  edited?: boolean;
+  /** Saves of this merged score; increments on every accepted write. */
+  revision: number;
+  updatedAt: Date;
+}
+
 export interface ScannerPageResult {
   pageNumber: number;
   ordinal: number;
@@ -86,6 +113,8 @@ export interface ScannerPageResult {
   musicXml?: ScannerStorageLocator;
   /** MusicXML produced by dual-engine reconciliation; preferred over spot review. */
   mergedMusicXml?: ScannerStorageLocator;
+  /** Provenance for `mergedMusicXml`; absent until a reviewer saves a merge. */
+  mergedScore?: ScannerMergedScore;
   /** Phase 0 dual-engine state; legacy top-level HOMR fields remain during migration. */
   engines?: ScannerPageEngines;
   pdf?: ScannerStorageLocator;

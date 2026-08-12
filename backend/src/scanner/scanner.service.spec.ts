@@ -12,12 +12,13 @@ import { createHash } from 'node:crypto';
 import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { ScannerService } from './scanner.service';
-import { scannerUserHash } from './scanner.constants';
+import { effectivePageMusicXml, scannerUserHash } from './scanner.constants';
 import {
   SCANNER_ARTIFACT_BUILDERS,
   scannerEngineReviewContentSignature,
   scannerEnginePlan,
   scannerHomrRun,
+  scannerMergedScoreBasis,
   withScannerArtifactInputSignature
 } from './scanner-dual-engine';
 import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
@@ -2420,4 +2421,318 @@ describe('corrections', () => {
       /unavailable after engine reconciliation/
     );
   });
+});
+
+describe('ScannerService merged score', () => {
+  const values: Record<string, string> = {
+    SCANNER_ENABLED: 'true',
+    SCANNER_BETA_USER_IDS: 'user-1',
+    SCANNER_TRANSCODA_ENABLED: 'true'
+  };
+  const config = {
+    get: jest.fn((key: string, fallback?: string) => values[key] ?? fallback)
+  } as any;
+  const corrections = { create: jest.fn(async (doc: any) => doc) } as any;
+  const provider = { engine: 'homr', regenerate: jest.fn() } as any;
+  const alerts = { evaluate: jest.fn().mockResolvedValue([]) } as any;
+  const telemetry = {
+    emit: jest.fn(),
+    userHash: jest.fn(() => 'user-hash'),
+    trackJobCreated: jest.fn().mockResolvedValue(undefined)
+  } as any;
+
+  const MUSICXML =
+    '<score-partwise><part-list><score-part id="P1"><part-name>Cello</part-name>' +
+    '</score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step>' +
+    '<octave>4</octave></pitch><duration>1</duration></note></measure></part></score-partwise>';
+
+  const locator = (checksum: string) => ({
+    bucket: 'd',
+    objectKey: `o-${checksum}`,
+    sizeBytes: 1,
+    contentType: 'application/xml',
+    checksumSha256: checksum
+  });
+
+  const run = (engine: string, checksum: string) => ({
+    engine,
+    status: 'succeeded',
+    attempts: 1,
+    idempotencyKey: `k-${engine}`,
+    artifacts: { musicXml: locator(checksum) }
+  });
+
+  const pageWithReadings = (extra: any = {}) => ({
+    pageNumber: 1,
+    ordinal: 1,
+    status: 'succeeded',
+    attempts: 1,
+    idempotencyKey: 'k',
+    engines: { homr: run('homr', 'homr-a'), transcoda: run('transcoda', 'transcoda-b') },
+    ...extra
+  });
+
+  const buildService = (job: any, options: { writes?: any[]; deleted?: string[] } = {}) => {
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: (_filter: any, update: any) => {
+        options.writes?.push(update);
+        return { exec: async () => ({ matchedCount: 1 }) };
+      }
+    };
+    const storage = {
+      putDerivativeObject: jest.fn(async (objectKey: string) => ({
+        bucket: 'derived',
+        objectKey,
+        checksumSha256: 'ignored'
+      })),
+      deleteObject: jest.fn(async (_bucket: string, objectKey: string) => {
+        options.deleted?.push(objectKey);
+      }),
+      getObjectBuffer: jest.fn(async () => Buffer.from(MUSICXML))
+    } as any;
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+    return { service, storage };
+  };
+
+  const currentBasis = (page: any) => scannerMergedScoreBasis(page);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('makes the merged score the page and asks for a rebuild', async () => {
+    // The gate for this step: once saved, the merged score *is* the page, and
+    // every derivative built from the engine reading now describes something
+    // that no longer exists.
+    const page = pageWithReadings();
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      status: 'succeeded',
+      statusVersion: 3,
+      combinedMusicXml: locator('combined'),
+      pages: [page]
+    };
+    const writes: any[] = [];
+    const { service, storage } = buildService(job, { writes });
+
+    const result = await service.saveMergedScore('user-1', 'job-1', 1, {
+      musicXml: MUSICXML,
+      sourceEngineId: 'transcoda',
+      basisSignature: currentBasis(page),
+      revision: 0
+    });
+
+    expect(result).toMatchObject({ present: true, revision: 1, sourceEngineId: 'transcoda' });
+    const saved = writes[0].$set.pages[0];
+    expect(effectivePageMusicXml(saved)).toMatchObject(saved.mergedMusicXml);
+    expect(writes[0].$set.reassembleRequestedAt).toBeInstanceOf(Date);
+    expect(writes[0].$set.combinedStale).toBe(true);
+    expect(storage.putDerivativeObject).toHaveBeenCalled();
+  });
+
+  it('refuses a save made against readings that have since moved', async () => {
+    const page = pageWithReadings();
+    const staleSignature = currentBasis({ engines: { homr: run('homr', 'homr-before') } });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service, storage } = buildService(job);
+
+    await expect(
+      service.saveMergedScore('user-1', 'job-1', 1, {
+        musicXml: MUSICXML,
+        sourceEngineId: 'homr',
+        basisSignature: staleSignature,
+        revision: 0
+      })
+    ).rejects.toThrow(/readings changed/);
+    // Nothing is written on a refusal, so the reviewer's tab still holds the
+    // only copy and can offer them the choice.
+    expect(storage.putDerivativeObject).not.toHaveBeenCalled();
+
+    const accepted = await service.saveMergedScore('user-1', 'job-1', 1, {
+      musicXml: MUSICXML,
+      sourceEngineId: 'homr',
+      basisSignature: staleSignature,
+      revision: 0,
+      acceptStale: true
+    });
+    expect(accepted.stale).toBe(false);
+  });
+
+  it('refuses a second tab writing over the first', async () => {
+    const page = pageWithReadings({
+      mergedMusicXml: locator('merged'),
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: currentBasis(pageWithReadings()),
+        revision: 2,
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+
+    await expect(
+      service.saveMergedScore('user-1', 'job-1', 1, {
+        musicXml: MUSICXML,
+        sourceEngineId: 'homr',
+        basisSignature: currentBasis(page),
+        revision: 1
+      })
+    ).rejects.toThrow(/merged score changed/);
+  });
+
+  it('keeps the edited mark once hand work has landed', async () => {
+    // An edited bar means both engines were wrong there. A later save that
+    // happens to touch nothing must not quietly return the credit to an engine.
+    const basis = currentBasis(pageWithReadings());
+    const page = pageWithReadings({
+      mergedMusicXml: locator('merged'),
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: basis,
+        edited: true,
+        revision: 1,
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const writes: any[] = [];
+    const { service } = buildService(job, { writes });
+
+    const result = await service.saveMergedScore('user-1', 'job-1', 1, {
+      musicXml: MUSICXML,
+      sourceEngineId: 'homr',
+      basisSignature: basis,
+      revision: 1,
+      edited: false
+    });
+    expect(result.edited).toBe(true);
+    expect(writes[0].$set.pages[0].mergedScore.edited).toBe(true);
+  });
+
+  it('refuses a document that would fail assembly later', async () => {
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+
+    await expect(
+      service.saveMergedScore('user-1', 'job-1', 1, {
+        musicXml: '<score-partwise><part-list/></score-partwise>',
+        sourceEngineId: 'homr',
+        basisSignature: currentBasis(page),
+        revision: 0
+      })
+    ).rejects.toThrow(/not usable MusicXML/);
+  });
+
+  it('reports a merge as stale rather than losing it after a re-run', async () => {
+    const page = pageWithReadings({
+      engines: { homr: run('homr', 'homr-rescanned'), transcoda: run('transcoda', 'transcoda-b') },
+      mergedMusicXml: locator('merged'),
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: currentBasis(pageWithReadings()),
+        edited: true,
+        revision: 4,
+        updatedAt: new Date()
+      }
+    });
+    // The stored object is re-verified on read, so the fixture's checksum has
+    // to be the real one.
+    page.mergedMusicXml.checksumSha256 = createHash('sha256').update(MUSICXML).digest('hex');
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', statusVersion: 9, pages: [page] };
+    const { service } = buildService(job);
+
+    const state = await service.pageMergedScore('user-1', 'job-1', 1);
+    expect(state).toMatchObject({ present: true, stale: true, edited: true, revision: 4 });
+    // Still retrievable: the reviewer has to be able to see what they would lose.
+    await expect(service.pageMergedScoreMusicXml('user-1', 'job-1', 1, 4)).resolves.toMatchObject({
+      contentType: 'application/xml'
+    });
+  });
+
+  it('discards a merged score only on the reviewer\'s explicit act', async () => {
+    const basis = currentBasis(pageWithReadings());
+    const page = pageWithReadings({
+      mergedMusicXml: locator('merged'),
+      mergedScore: { sourceEngineId: 'homr', basisSignature: basis, revision: 2, updatedAt: new Date() }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const writes: any[] = [];
+    const deleted: string[] = [];
+    const { service } = buildService(job, { writes, deleted });
+
+    await expect(service.discardMergedScore('user-1', 'job-1', 1, 1)).rejects.toThrow(
+      /merged score changed/
+    );
+    expect(writes).toHaveLength(0);
+
+    const result = await service.discardMergedScore('user-1', 'job-1', 1, 2);
+    expect(result.present).toBe(false);
+    expect(writes[0].$set.pages[0].mergedMusicXml).toBeUndefined();
+    expect(writes[0].$set.reassembleRequestedAt).toBeInstanceOf(Date);
+    expect(deleted).toContain('o-merged');
+  });
+
+  it('keeps serving the readings a merge is judged against', async () => {
+    // The comparison is where the merge is made and revised; withholding the
+    // readings once one exists would leave the merged pane nothing to compare to.
+    const basis = currentBasis(pageWithReadings());
+    const page = pageWithReadings({
+      mergedMusicXml: locator('merged'),
+      mergedScore: { sourceEngineId: 'homr', basisSignature: basis, revision: 1, updatedAt: new Date() }
+    });
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      status: 'succeeded',
+      statusVersion: 1,
+      pages: [page]
+    };
+    const { service } = buildService(job);
+
+    await expect(
+      service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, 'homr-a'.padEnd(64, '0'))
+    ).rejects.toThrow(/checksum is invalid|reading changed/);
+    // Spot review, by contrast, stays closed: it regenerates the engine's own
+    // XML, which the merged score would silently shadow.
+    await expect(service.pageReview('user-1', 'job-1', 1)).rejects.toThrow(
+      /unavailable after engine reconciliation/
+    );
+  });
+});
+
+describe('scanner comparison relative URLs', () => {
+    // Every URL in the regions document resolves against the document's own
+    // URL, because the browser reaches this process through the host's proxy
+    // and neither the embed nor this service knows the prefix. The regions
+    // document sits at `…/pages/N/comparison/regions`, which makes the correct
+    // prefix depend on whether the target lives under `comparison/`.
+    const regionsUrl =
+      'https://host/api/proxy/scanner/jobs/job-1/pages/1/comparison/regions?baseEngine=homr';
+    const resolve = (relative: string) => new URL(relative, regionsUrl).pathname;
+
+    it('resolves a system crop, which lives under comparison', () => {
+      expect(resolve('systems/3/crop?statusVersion=7')).toBe(
+        '/api/proxy/scanner/jobs/job-1/pages/1/comparison/systems/3/crop'
+      );
+    });
+
+    it('resolves the merged score, which does not', () => {
+      expect(resolve('../merged')).toBe('/api/proxy/scanner/jobs/job-1/pages/1/merged');
+      expect(resolve('../merged/musicxml?revision=1')).toBe(
+        '/api/proxy/scanner/jobs/job-1/pages/1/merged/musicxml'
+      );
+      // The shape that shipped broken: it lands on a route that does not exist,
+      // and the only symptom is a 404 inside the embed.
+      expect(resolve('merged')).not.toBe('/api/proxy/scanner/jobs/job-1/pages/1/merged');
+    });
 });

@@ -9,13 +9,19 @@ import {
   scannerEnginePlanForJob,
   scannerEngineReviewContentSignature,
   scannerHomrRun,
+  scannerMergedScoreBasis,
+  scannerMergedScoreStale,
   uniqueScannerStorageLocators,
   withScannerArtifactInputSignature,
   withScannerEngineRun,
   withScannerHomrRun
 } from './scanner-dual-engine';
 import { scannerProviderIdempotencyKey } from './scanner-provider.contract';
-import { effectivePageMusicXml, effectivePageMusicXmlSelection } from './scanner.constants';
+import {
+  effectivePageMusicXml,
+  effectivePageMusicXmlSelection,
+  pageMusicXmlSuperseded
+} from './scanner.constants';
 
 describe('dual-engine content identity', () => {
   it('synthesizes legacy HOMR state and dual-writes it without disturbing Transcoda', () => {
@@ -423,5 +429,97 @@ describe('dual-engine content identity', () => {
         ]
       })
     ).not.toBe(signature);
+  });
+});
+
+describe('merged score basis', () => {
+  const locator = (checksum: string) => ({
+    bucket: 'd',
+    objectKey: `o-${checksum}`,
+    sizeBytes: 1,
+    contentType: 'application/xml',
+    checksumSha256: checksum
+  });
+  const run = (engine: string, checksum: string, status = 'succeeded') =>
+    ({
+      engine,
+      status,
+      attempts: 1,
+      idempotencyKey: `k-${engine}`,
+      artifacts: { musicXml: locator(checksum) }
+    }) as any;
+
+  const pageWithMerge = (engines: any, basisSignature: string) => ({
+    engines,
+    mergedMusicXml: locator('merged'),
+    mergedScore: {
+      sourceEngineId: 'homr',
+      basisSignature,
+      revision: 1,
+      updatedAt: new Date()
+    }
+  });
+
+  it('ignores the order engines happen to be recorded in', () => {
+    // Insertion order is a worker detail. If it reached the signature, merely
+    // re-running the pages in a different sequence would mark every merge stale.
+    expect(
+      scannerMergedScoreBasis({
+        engines: { homr: run('homr', 'a'), transcoda: run('transcoda', 'b') }
+      })
+    ).toBe(
+      scannerMergedScoreBasis({
+        engines: { transcoda: run('transcoda', 'b'), homr: run('homr', 'a') }
+      })
+    );
+  });
+
+  it('follows the reviewed artifact, because that is what the comparison shows', () => {
+    const raw = { engines: { homr: run('homr', 'a') } };
+    const reviewed = {
+      engines: { homr: { ...run('homr', 'a'), reviewedMusicXml: locator('a-reviewed') } }
+    };
+    expect(scannerMergedScoreBasis(reviewed)).not.toBe(scannerMergedScoreBasis(raw));
+  });
+
+  it('does not move when a failed engine retries', () => {
+    // A failed engine contributed no reading, so nothing the merge answers has
+    // changed and the reviewer should not be asked to re-examine it.
+    const before = { engines: { homr: run('homr', 'a'), transcoda: run('transcoda', '', 'failed') } };
+    const after = {
+      engines: { homr: run('homr', 'a'), transcoda: run('transcoda', '', 'running') }
+    };
+    expect(scannerMergedScoreBasis(after)).toBe(scannerMergedScoreBasis(before));
+  });
+
+  it('marks a merge stale when a reading it answers is replaced', () => {
+    const engines = { homr: run('homr', 'a'), transcoda: run('transcoda', 'b') };
+    const page = pageWithMerge(engines, scannerMergedScoreBasis({ engines }));
+    expect(scannerMergedScoreStale(page)).toBe(false);
+
+    const rescanned = {
+      ...page,
+      engines: { homr: run('homr', 'a-rescanned'), transcoda: run('transcoda', 'b') }
+    };
+    expect(scannerMergedScoreStale(rescanned)).toBe(true);
+  });
+
+  it('keeps a stale merge but stops treating it as the page', () => {
+    // Design 3.1: losing typed corrections to a background re-scan is the worst
+    // failure this feature could have — but assembling from a merge that
+    // answers readings which no longer exist is not the fix.
+    const engines = { homr: run('homr', 'a') };
+    const page: any = pageWithMerge(engines, scannerMergedScoreBasis({ engines }));
+    expect(effectivePageMusicXml(page)?.checksumSha256).toBe('merged');
+    expect(pageMusicXmlSuperseded(page)).toBe(true);
+
+    const rescanned: any = { ...page, engines: { homr: run('homr', 'a-rescanned') } };
+    expect(rescanned.mergedMusicXml).toBeDefined();
+    expect(effectivePageMusicXml(rescanned)?.checksumSha256).toBe('a-rescanned');
+    expect(pageMusicXmlSuperseded(rescanned)).toBe(false);
+  });
+
+  it('has no opinion about a page that was never merged', () => {
+    expect(scannerMergedScoreStale({ engines: { homr: run('homr', 'a') } })).toBe(false);
   });
 });

@@ -25,14 +25,19 @@ import { StorageService } from '../storage/storage.service';
 import {
   ScannerJob,
   ScannerJobDocument,
+  ScannerMergedScore,
   ScannerPageResult,
   ScannerSourceInput,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
+import { assertValidMusicXml } from './scanner-musicxml';
+
+
 import {
   effectivePageMusicXml,
   effectivePageMusicXmlSelection,
   pageMusicXmlSuperseded,
+  SCANNER_MAX_MERGED_SCORE_BYTES,
   SCANNER_UPLOAD_DIRECTORY,
   scannerUserHash
 } from './scanner.constants';
@@ -68,6 +73,8 @@ import {
   scannerEnginePlanForJob,
   scannerEngineReviewContentSignature,
   scannerHomrRun,
+  scannerMergedScoreBasis,
+  scannerMergedScoreStale,
   isScannerEngineId,
   uniqueScannerStorageLocators,
   withScannerEngineRun,
@@ -872,9 +879,27 @@ export class ScannerService implements OnModuleInit {
       unsupportedSemanticClasses: value.unsupportedSemanticClasses || []
     });
 
+    // The merged score travels with the regions document because the embed
+    // reaches this process only through the frontend's proxy and cannot
+    // construct scanner URLs of its own. Same reasoning as `cropUrl` below.
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    // `../` because these resolve against *this document's* URL, which ends
+    // `…/pages/N/comparison/regions`. A bare `merged` would land on
+    // `…/comparison/merged`, which is not a route — unlike `cropUrl` below,
+    // whose target really does live under `comparison/`.
+    const merged = page
+      ? {
+          ...this.mergedScoreState(job, page),
+          url: '../merged',
+          musicXmlUrl: `../merged/musicxml?revision=${page.mergedScore?.revision ?? 0}`
+        }
+      : undefined;
+
     const base = {
       version: SCANNER_COMPARE_REGIONS_VERSION,
       statusVersion: comparison.statusVersion,
+      merged,
       // Two different questions, and conflating them would withhold highlights
       // that are perfectly good. `analysisStatus` says whether the measure
       // comparison itself succeeded, which is all highlighting needs.
@@ -990,9 +1015,11 @@ export class ScannerService implements OnModuleInit {
     baseEngineId: ScannerEngineId,
     candidateEngineId: ScannerEngineId
   ): Promise<any> {
-    if (page.mergedMusicXml) {
-      throw new ConflictException('Comparison is unavailable after engine reconciliation');
-    }
+    // A merged score does not close the comparison: the comparison is where the
+    // merge is made and revised, and the engine readings remain the evidence
+    // for every bar still under review. Spot review is a different matter — it
+    // regenerates an engine's own XML, which a merged score would shadow — so
+    // that guard stays where it is.
     const plan = this.enginePlanForJob(job);
     for (const engineId of [baseEngineId, candidateEngineId]) {
       if (!plan.engineIds.includes(engineId)) {
@@ -1137,9 +1164,9 @@ export class ScannerService implements OnModuleInit {
     }
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
-    if (page.mergedMusicXml) {
-      throw new ConflictException('Comparison is unavailable after engine reconciliation');
-    }
+    // Readings stay served once a merge exists; they are the evidence the merge
+    // is judged against, and withholding them would leave the merged pane with
+    // nothing to compare to.
     const plan = this.enginePlanForJob(job);
     if (!plan.engineIds.includes(engineId)) {
       throw new BadRequestException(`Scanner engine ${engineId} is not part of this job`);
@@ -1171,6 +1198,284 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Scanner comparison reading changed; refresh and try again');
     }
     return { body, contentType: artifact.contentType };
+  }
+
+  /**
+   * What the reviewer has merged for this page, and whether it still answers
+   * the readings it was made against.
+   *
+   * Metadata only; the document itself is served by `pageMergedScoreMusicXml`
+   * so a poll for staleness does not drag a whole score across the wire.
+   */
+  async pageMergedScore(userId: string, jobId: string, pageNumber: number): Promise<any> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    return this.mergedScoreState(job, page);
+  }
+
+  private mergedScoreState(job: ScannerJobDocument, page: ScannerPageResult): any {
+    const basisSignature = scannerMergedScoreBasis(page);
+    return {
+      pageNumber: page.pageNumber,
+      statusVersion: job.statusVersion || 1,
+      present: Boolean(page.mergedMusicXml),
+      sourceEngineId: page.mergedScore?.sourceEngineId,
+      revision: page.mergedScore?.revision ?? 0,
+      edited: Boolean(page.mergedScore?.edited),
+      updatedAt: page.mergedScore?.updatedAt,
+      checksumSha256: page.mergedMusicXml?.checksumSha256,
+      sizeBytes: page.mergedMusicXml?.sizeBytes,
+      /** Quote this when saving; a mismatch means the readings moved. */
+      basisSignature,
+      recordedBasisSignature: page.mergedScore?.basisSignature,
+      stale: scannerMergedScoreStale(page)
+    };
+  }
+
+  /** Stream the merged score itself, pinned to the exact revision the caller holds. */
+  async pageMergedScoreMusicXml(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    revision: number
+  ): Promise<{ body: Buffer; contentType: string }> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page?.mergedMusicXml || !page.mergedScore) {
+      throw new NotFoundException('This page has no merged score');
+    }
+    if (Number.isInteger(revision) && revision !== page.mergedScore.revision) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+    const artifact = page.mergedMusicXml;
+    const body = await this.storage.getObjectBuffer(artifact.bucket, artifact.objectKey);
+    if (createHash('sha256').update(body).digest('hex') !== artifact.checksumSha256.toLowerCase()) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+    return { body, contentType: artifact.contentType };
+  }
+
+  /**
+   * Save the reviewer's merged reading of a page.
+   *
+   * Three guards, each for a distinct way this goes wrong:
+   *
+   * - `revision` is optimistic concurrency for the merged score itself. Two
+   *   tabs on the same page must not silently overwrite each other; the job's
+   *   `statusVersion` cannot serve here because it also moves for reasons that
+   *   have nothing to do with this document.
+   * - `basisSignature` binds the save to the readings it was made against. If
+   *   an engine re-ran underneath the reviewer, the merge answers a question
+   *   that no longer exists, and `acceptStale` is the reviewer saying they know.
+   * - The document is validated to exactly the bar provider output is held to,
+   *   because from here on it *is* the page (`effectivePageMusicXml`).
+   */
+  async saveMergedScore(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    input: {
+      musicXml: string;
+      sourceEngineId: string;
+      basisSignature: string;
+      revision: number;
+      edited?: boolean;
+      acceptStale?: boolean;
+    }
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.status !== 'succeeded') {
+      throw new ConflictException('Only a succeeded page can carry a merged score');
+    }
+    if (!isScannerEngineId(input.sourceEngineId)) {
+      throw new BadRequestException('A merged score must name the engine it started from');
+    }
+    const plan = this.enginePlanForJob(job);
+    if (!plan.engineIds.includes(input.sourceEngineId)) {
+      throw new BadRequestException(
+        `Scanner engine ${input.sourceEngineId} is not part of this job`
+      );
+    }
+    if (page.engines?.[input.sourceEngineId]?.status !== 'succeeded') {
+      throw new ConflictException('That engine has no successful reading of this page');
+    }
+
+    const currentRevision = page.mergedScore?.revision ?? 0;
+    if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+    const basisSignature = scannerMergedScoreBasis(page);
+    if (input.basisSignature !== basisSignature && !input.acceptStale) {
+      throw new ConflictException(
+        'The engine readings changed since this merge was made; review it before saving'
+      );
+    }
+
+    const buffer = Buffer.from(input.musicXml ?? '', 'utf8');
+    if (buffer.length === 0) throw new BadRequestException('A merged score cannot be empty');
+    if (buffer.length > SCANNER_MAX_MERGED_SCORE_BYTES) {
+      throw new PayloadTooLargeException('That merged score is too large to store');
+    }
+    try {
+      assertValidMusicXml(buffer);
+    } catch {
+      // The merged score becomes the page, so a document that would fail
+      // assembly must fail here, where the reviewer can still see why.
+      throw new BadRequestException('That merged score is not usable MusicXML');
+    }
+
+    const contentType = 'application/vnd.recordare.musicxml+xml';
+    const stored = await this.storage.putDerivativeObject(
+      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-merged-${randomUUID()}.musicxml`,
+      buffer,
+      buffer.length,
+      contentType
+    );
+    const locator: ScannerStorageLocator = {
+      bucket: stored.bucket,
+      objectKey: stored.objectKey,
+      sizeBytes: buffer.length,
+      contentType,
+      checksumSha256: createHash('sha256').update(buffer).digest('hex')
+    };
+    const mergedScore: ScannerMergedScore = {
+      sourceEngineId: input.sourceEngineId,
+      basisSignature,
+      // Once hand work has landed it stays recorded, because what it marks is
+      // that neither engine can be credited for this page — and a later save
+      // that happens to touch no bars does not undo that.
+      edited: Boolean(input.edited) || Boolean(page.mergedScore?.edited),
+      revision: currentRevision + 1,
+      updatedAt: new Date()
+    };
+    const updatedPage: ScannerPageResult = { ...page, mergedMusicXml: locator, mergedScore };
+    const updatedPages = job.pages.map((entry) =>
+      entry.pageNumber === pageNumber ? updatedPage : entry
+    );
+    const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
+    const write = await this.jobs
+      .updateOne(
+        { _id: job._id, statusVersion: job.statusVersion || 1 },
+        {
+          $set: {
+            pages: updatedPages,
+            ...(hadCombined ? { combinedStale: true } : {}),
+            // The merged score is now this page's effective MusicXML, so every
+            // derivative built from the old one describes a page that no longer
+            // exists. Same reasoning as a spot correction.
+            ...(['succeeded', 'partial'].includes(job.status)
+              ? { reassembleRequestedAt: new Date() }
+              : {})
+          },
+          $inc: { statusVersion: 1 }
+        }
+      )
+      .exec();
+    if (write?.matchedCount === 0) {
+      await this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined);
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+
+    const superseded = page.mergedMusicXml;
+    if (
+      superseded &&
+      (superseded.bucket !== locator.bucket || superseded.objectKey !== locator.objectKey)
+    ) {
+      await this.storage
+        .deleteObject(superseded.bucket, superseded.objectKey)
+        .catch((error) =>
+          this.logger.warn(
+            `Unable to retire superseded scanner merged score: ${this.messageOf(error)}`
+          )
+        );
+    }
+
+    this.telemetry.emit('merged_score_saved', {
+      jobId,
+      pageNumber,
+      engine: mergedScore.sourceEngineId,
+      mergedRevision: mergedScore.revision,
+      mergedEdited: mergedScore.edited,
+      mergedAcceptedStale: input.basisSignature !== basisSignature
+    });
+
+    return this.mergedScoreState(
+      { ...job, statusVersion: (job.statusVersion || 1) + 1 } as ScannerJobDocument,
+      updatedPage
+    );
+  }
+
+  /**
+   * Discard a merged score, returning the page to its engine readings.
+   *
+   * Only ever the reviewer's explicit act. Nothing else in the system removes a
+   * merged score — a re-run marks it stale and leaves it (§3.1).
+   */
+  async discardMergedScore(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    revision: number
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    if (!page.mergedMusicXml || !page.mergedScore) {
+      throw new NotFoundException('This page has no merged score');
+    }
+    if (!Number.isInteger(revision) || revision !== page.mergedScore.revision) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+    const discarded = page.mergedMusicXml;
+    const updatedPage: ScannerPageResult = {
+      ...page,
+      mergedMusicXml: undefined,
+      mergedScore: undefined
+    };
+    const updatedPages = job.pages.map((entry) =>
+      entry.pageNumber === pageNumber ? updatedPage : entry
+    );
+    const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
+    const write = await this.jobs
+      .updateOne(
+        { _id: job._id, statusVersion: job.statusVersion || 1 },
+        {
+          $set: {
+            pages: updatedPages,
+            ...(hadCombined ? { combinedStale: true } : {}),
+            ...(['succeeded', 'partial'].includes(job.status)
+              ? { reassembleRequestedAt: new Date() }
+              : {})
+          },
+          $inc: { statusVersion: 1 }
+        }
+      )
+      .exec();
+    if (write?.matchedCount === 0) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+    await this.storage
+      .deleteObject(discarded.bucket, discarded.objectKey)
+      .catch((error) =>
+        this.logger.warn(`Unable to delete discarded scanner merged score: ${this.messageOf(error)}`)
+      );
+    this.telemetry.emit('merged_score_discarded', {
+      jobId,
+      pageNumber,
+      engine: page.mergedScore.sourceEngineId,
+      mergedRevision: revision
+    });
+    return this.mergedScoreState(
+      { ...job, statusVersion: (job.statusVersion || 1) + 1 } as ScannerJobDocument,
+      updatedPage
+    );
   }
 
   /** Render the exact evidence crop for one current, grounded comparison block. */
@@ -2249,6 +2554,10 @@ export class ScannerService implements OnModuleInit {
 
   private userHash(userId: string): string {
     return scannerUserHash(userId, this.config.get<string>('SCANNER_OBJECT_KEY_SALT', ''));
+  }
+
+  private messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private newJobEnginePlan() {

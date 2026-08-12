@@ -363,6 +363,54 @@ export function scannerEngineReviewContentSignature(run: ScannerEngineRun): stri
     .digest('hex')}`;
 }
 
+export const SCANNER_MERGED_SCORE_BASIS_VERSION = 'scanner-merged-basis-v1';
+
+/**
+ * The engine readings a merged score was built against.
+ *
+ * A merged score starts as one engine's reading and diverges from it as the
+ * reviewer decides and edits, so it is no longer a function of its inputs — but
+ * it is still an answer to a specific *question*, namely what these two
+ * readings of this page say. When an engine re-runs and produces something
+ * different, the question changed, and the merge has to be re-examined rather
+ * than silently retained or silently thrown away.
+ *
+ * Only succeeded runs contribute: a failed engine has no reading to disagree
+ * with, so its retry does not by itself invalidate anything.
+ */
+export function scannerMergedScoreBasis(page: {
+  engines?: ScannerPageEngines;
+}): string {
+  const readings = Object.entries(page.engines || {})
+    .filter(([, run]) => run?.status === 'succeeded')
+    .map(([engineId, run]) => [
+      engineId,
+      // The reviewed artifact is what the comparison shows when it exists, so
+      // it is what the merge was made against.
+      run?.reviewedMusicXml?.checksumSha256 || run?.artifacts.musicXml?.checksumSha256 || null
+    ])
+    // Engine insertion order is a worker detail, not content.
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return versionedSignature(SCANNER_MERGED_SCORE_BASIS_VERSION, readings);
+}
+
+/**
+ * True when the readings moved underneath a merged score.
+ *
+ * Deliberately not "delete the merge": §3.1 of the comparator design treats
+ * losing typed corrections to a background re-scan as the single worst failure
+ * this feature could have. Staleness is information for the reviewer, who
+ * decides.
+ */
+export function scannerMergedScoreStale(page: {
+  engines?: ScannerPageEngines;
+  mergedScore?: { basisSignature?: string };
+}): boolean {
+  const recorded = page.mergedScore?.basisSignature;
+  if (!recorded) return false;
+  return recorded !== scannerMergedScoreBasis(page);
+}
+
 /** All artifacts owned by engine runs, including model-native intermediates. */
 export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerStorageLocator[] {
   return Object.values(page.engines || {}).flatMap((run) =>

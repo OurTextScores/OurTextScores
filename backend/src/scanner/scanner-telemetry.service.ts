@@ -47,6 +47,12 @@ export interface ScannerTelemetryFields {
   retryable?: boolean;
   leaseReclaimed?: boolean;
   cold?: boolean;
+  /** Saves of a page's merged score; see the comparator design's §3.1. */
+  mergedRevision?: number;
+  /** The merged score carries hand corrections, so neither engine gets credit. */
+  mergedEdited?: boolean;
+  /** The reviewer saved a merge against readings that had already moved. */
+  mergedAcceptedStale?: boolean;
 }
 
 const ALLOWED_FIELDS: ReadonlyArray<keyof ScannerTelemetryFields> = [
@@ -84,7 +90,10 @@ const ALLOWED_FIELDS: ReadonlyArray<keyof ScannerTelemetryFields> = [
   'errorCode',
   'retryable',
   'leaseReclaimed',
-  'cold'
+  'cold',
+  'mergedRevision',
+  'mergedEdited',
+  'mergedAcceptedStale'
 ];
 
 export type ScannerTelemetryEvent =
@@ -104,6 +113,8 @@ export type ScannerTelemetryEvent =
   | 'page_engine_failed'
   | 'page_render_failed'
   | 'provider_disabled'
+  | 'merged_score_saved'
+  | 'merged_score_discarded'
   | 'artifacts_purged';
 
 @Injectable()

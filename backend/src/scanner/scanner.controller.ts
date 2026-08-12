@@ -10,6 +10,7 @@ import {
   PayloadTooLargeException,
   ParseIntPipe,
   Post,
+  Put,
   Query,
   Res,
   StreamableFile,
@@ -307,6 +308,80 @@ export class ScannerController {
     response.setHeader('Cache-Control', 'private, no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     return new StreamableFile(crop.body);
+  }
+
+  @Get(':jobId/pages/:pageNumber/merged')
+  mergedScore(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number
+  ) {
+    return this.scanner.pageMergedScore(user.userId, jobId, pageNumber);
+  }
+
+  @Get(':jobId/pages/:pageNumber/merged/musicxml')
+  async mergedScoreMusicXml(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Query('revision') revision: string | undefined,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const merged = await this.scanner.pageMergedScoreMusicXml(
+      user.userId,
+      jobId,
+      pageNumber,
+      revision === undefined ? Number.NaN : Number(revision)
+    );
+    response.setHeader('Content-Type', merged.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(merged.body);
+  }
+
+  /**
+   * The body is the MusicXML itself, sent as
+   * `application/vnd.recordare.musicxml+xml`; everything about the save travels
+   * in the query string. A JSON envelope would escape a whole score into a
+   * string field and, at the default 100 kB body limit, reject an ordinary page
+   * with a 413 the reviewer can do nothing about. `main.ts` mounts a parser for
+   * exactly this content type.
+   */
+  @Put(':jobId/pages/:pageNumber/merged')
+  saveMergedScore(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body() musicXml: unknown,
+    @Query('sourceEngineId') sourceEngineId: string | undefined,
+    @Query('basisSignature') basisSignature: string | undefined,
+    @Query('revision') revision: string | undefined,
+    @Query('edited') edited: string | undefined,
+    @Query('acceptStale') acceptStale: string | undefined
+  ) {
+    return this.scanner.saveMergedScore(user.userId, jobId, pageNumber, {
+      musicXml: typeof musicXml === 'string' ? musicXml : '',
+      sourceEngineId: String(sourceEngineId ?? ''),
+      basisSignature: String(basisSignature ?? ''),
+      revision: revision === undefined ? Number.NaN : Number(revision),
+      edited: edited === 'true',
+      acceptStale: acceptStale === 'true'
+    });
+  }
+
+  @Delete(':jobId/pages/:pageNumber/merged')
+  discardMergedScore(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Query('revision') revision: string | undefined
+  ) {
+    return this.scanner.discardMergedScore(
+      user.userId,
+      jobId,
+      pageNumber,
+      revision === undefined ? Number.NaN : Number(revision)
+    );
   }
 
   @Post(':jobId/pages/:pageNumber/corrections')

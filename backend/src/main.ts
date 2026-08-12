@@ -24,6 +24,8 @@ import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware';
 import { requestLogMiddleware } from './common/middleware/request-log.middleware';
 import { traceContextMiddleware } from './common/middleware/trace-context.middleware';
 import { startOpenTelemetry, stopOpenTelemetry } from './observability/otel';
+import { text } from 'express';
+import { SCANNER_MAX_MERGED_SCORE_BYTES } from './scanner/scanner.constants';
 
 async function bootstrap() {
   await startOpenTelemetry();
@@ -32,6 +34,16 @@ async function bootstrap() {
   });
   app.enableCors({ origin: true });
   app.setGlobalPrefix('api');
+  // A saved merged score is a document, not a record: sending it as a JSON
+  // string would both inflate it by escaping and run into the default 100 kB
+  // body limit, which showed up as a 413 the reviewer could do nothing about.
+  // Scoped by content type, so no other route's parsing changes.
+  app.use(
+    text({
+      type: 'application/vnd.recordare.musicxml+xml',
+      limit: SCANNER_MAX_MERGED_SCORE_BYTES
+    })
+  );
   app.use(requestIdMiddleware);
   app.use(traceContextMiddleware);
   const jsonRequestLogsEnabled =

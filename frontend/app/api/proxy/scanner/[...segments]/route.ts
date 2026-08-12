@@ -54,6 +54,11 @@ export function PATCH(request: Request, context: Context) {
   return proxyScanner(request, context.params.segments || []);
 }
 
+/** Saving a page's merged score; see the scanner's merged-score routes. */
+export function PUT(request: Request, context: Context) {
+  return proxyScanner(request, context.params.segments || []);
+}
+
 export function DELETE(request: Request, context: Context) {
   return proxyScanner(request, context.params.segments || []);
 }
