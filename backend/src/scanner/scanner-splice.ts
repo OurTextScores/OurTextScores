@@ -133,6 +133,26 @@ function reconcileAttributes(
   }
 }
 
+/**
+ * Renumber a part's measures after its length changed.
+ *
+ * An insertion or a deletion leaves the labels wrong — bars 1..19 then 21 — and
+ * measure numbers are what a reader and every later reference count by. The
+ * numbering restarts from whatever the first bar already claimed, so a part
+ * beginning at 5 keeps doing so, and a pickup marked `implicit` is skipped
+ * because it is conventionally unnumbered.
+ */
+function renumberMeasures(partChildren: OrderedEntry[]): void {
+  const measures = directEntries(partChildren, 'measure');
+  const first = Number(attrs(measures[0] || {})['@_number']);
+  let next = Number.isFinite(first) && first > 0 ? first : 1;
+  for (const measure of measures) {
+    const isImplicit = String(attrs(measure)['@_implicit'] || '') === 'yes';
+    measure[':@'] = { ...(measure[':@'] || {}), '@_number': String(next) };
+    if (!isImplicit) next += 1;
+  }
+}
+
 /** Every `<slur>` in a part, in document order, with the note that carries it. */
 function slurElements(partChildren: OrderedEntry[]): OrderedEntry[] {
   const found: OrderedEntry[] = [];
@@ -217,6 +237,8 @@ export function spliceScannerMeasures(input: {
   candidatePartIndex: number;
   baseMeasureIndexes: readonly number[];
   candidateMeasureIndexes: readonly number[];
+  /** Where an insertion goes; see `ScannerComparisonBlock.baseAnchorIndex`. */
+  baseAnchorIndex?: number;
 }): ScannerSpliceOutcome {
   const base = readScannerSpliceFacts(input.baseXml);
   const candidate = readScannerSpliceFacts(input.candidateXml);
@@ -226,7 +248,8 @@ export function spliceScannerMeasures(input: {
     basePartIndex: input.basePartIndex,
     candidatePartIndex: input.candidatePartIndex,
     baseMeasureIndexes: input.baseMeasureIndexes,
-    candidateMeasureIndexes: input.candidateMeasureIndexes
+    candidateMeasureIndexes: input.candidateMeasureIndexes,
+    baseAnchorIndex: input.baseAnchorIndex
   });
   if (!assessment.safe) {
     return {
@@ -260,37 +283,81 @@ export function spliceScannerMeasures(input: {
   const baseMeasures = directEntries(basePartChildren, 'measure');
   const candidateMeasures = directEntries(candidatePartEntry.part, 'measure');
 
-  const baseUnit = BigInt(base[input.basePartIndex].measures[input.baseMeasureIndexes[0]].divisions);
-  const candidateUnit = BigInt(
-    candidate[input.candidatePartIndex].measures[input.candidateMeasureIndexes[0]].divisions
+  const deleting = input.candidateMeasureIndexes.length === 0;
+  const inserting = input.baseMeasureIndexes.length === 0;
+  // Divisions in force at the join, which is what an inserted bar has to be
+  // written in. For a replacement that is the bar being replaced; for an
+  // insertion it is whatever the bar before it established, or the first bar's
+  // if it is going at the very start.
+  const anchorIndex = inserting
+    ? (input.baseAnchorIndex ?? -1)
+    : input.baseMeasureIndexes[0];
+  const baseMeasureFacts = base[input.basePartIndex].measures;
+  const baseUnit = BigInt(
+    (baseMeasureFacts[anchorIndex] || baseMeasureFacts[0] || { divisions: '1' }).divisions
   );
+  const candidateUnit = deleting
+    ? baseUnit
+    : BigInt(
+        candidate[input.candidatePartIndex].measures[input.candidateMeasureIndexes[0]].divisions
+      );
 
   const replacements = input.candidateMeasureIndexes.map((candidateIndex, position) => {
     const copy: OrderedEntry = clone(candidateMeasures[candidateIndex]);
     const children: OrderedEntry[] = copy.measure;
     rescaleDurations(children, baseUnit, candidateUnit);
-    // Keep the base's numbering: the reviewer is replacing what a bar *says*,
-    // not where it sits, and every reference to this page counts from the base.
-    const baseIndex = input.baseMeasureIndexes[position];
-    const original = baseMeasures[baseIndex];
-    reconcileAttributes(contents(original, 'measure'), children);
-    copy[':@'] = { ...(copy[':@'] || {}), ...(original[':@'] || {}) };
+    const original = baseMeasures[input.baseMeasureIndexes[position]];
+    if (original) {
+      // Keep the base's numbering: the reviewer is replacing what a bar *says*,
+      // not where it sits, and every reference counts from the base.
+      reconcileAttributes(contents(original, 'measure'), children);
+      copy[':@'] = { ...(copy[':@'] || {}), ...(original[':@'] || {}) };
+    } else {
+      // An inserted bar has no counterpart to inherit numbering from — the
+      // whole part is renumbered afterwards — but it must not carry the
+      // candidate's `divisions`, having just been written in the base's.
+      reconcileAttributes(
+        contents(baseMeasures[Math.max(anchorIndex, 0)] || {}, 'measure'),
+        children
+      );
+    }
     return copy;
   });
 
-  let replaced = 0;
-  const spliced = basePartChildren.map((entry) => {
-    if (tagOf(entry) !== 'measure') return entry;
+  let touched = 0;
+  const spliced: OrderedEntry[] = [];
+  for (const entry of basePartChildren) {
+    if (tagOf(entry) !== 'measure') {
+      spliced.push(entry);
+      continue;
+    }
     const index = baseMeasures.indexOf(entry);
+    if (deleting && input.baseMeasureIndexes.includes(index)) {
+      // Removed outright: the reviewer is saying this bar is not on the page.
+      touched += 1;
+      continue;
+    }
     const position = input.baseMeasureIndexes.indexOf(index);
-    if (position < 0) return entry;
-    replaced += 1;
-    return replacements[position];
-  });
-  if (replaced !== input.baseMeasureIndexes.length) {
-    throw new Error('Scanner splice could not locate every measure it was asked to replace');
+    spliced.push(position >= 0 ? (touched += 1, replacements[position]) : entry);
+    if (inserting && index === anchorIndex) {
+      spliced.push(...replacements);
+      touched += replacements.length;
+    }
+  }
+  if (inserting && anchorIndex < 0) {
+    // Before the first bar; nothing preceded it to insert after.
+    const first = spliced.findIndex((entry) => tagOf(entry) === 'measure');
+    spliced.splice(first < 0 ? spliced.length : first, 0, ...replacements);
+    touched += replacements.length;
+  }
+  const expected = inserting
+    ? input.candidateMeasureIndexes.length
+    : input.baseMeasureIndexes.length;
+  if (touched !== expected) {
+    throw new Error('Scanner splice could not locate every measure it was asked to change');
   }
   basePartEntry.part = spliced;
+  if (inserting || deleting) renumberMeasures(basePartEntry.part);
 
   const dangling = dropDanglingSlurs(basePartEntry.part);
   const repairs: ScannerSpliceRepair[] = [...assessment.repairs];

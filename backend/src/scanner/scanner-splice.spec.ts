@@ -195,4 +195,86 @@ describe('scanner splice', () => {
     expect((xml.match(/<step>G<\/step>/g) || []).length).toBe(8);
     expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
   });
+
+  it('deletes a bar the other reading does not have, and renumbers', () => {
+    // Two of the three blocks on the real Bach page are this shape. Bars 1..3
+    // become 1..2, and the labels have to follow or a reader counts wrong.
+    const base = part(
+      bar(fullBar(4), { attributes: attributes(4) }) +
+        bar(fullBar(4, 'G'), { number: '2' }) +
+        bar(fullBar(4), { number: '3' })
+    );
+    const result = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: base,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [1],
+      candidateMeasureIndexes: []
+    });
+
+    expect(result.musicXml).not.toBeNull();
+    const facts = readScannerSpliceFacts(result.musicXml!)[0].measures;
+    expect(facts).toHaveLength(2);
+    expect(facts.map((measure) => measure.measureNumber)).toEqual(['1', '2']);
+    // The G bar is the one that went.
+    expect(result.musicXml!.toString('utf8')).not.toContain('<step>G</step>');
+    expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
+  });
+
+  it('inserts a bar the base never read, after the bar it belongs behind', () => {
+    const base = part(
+      bar(fullBar(4), { attributes: attributes(4) }) + bar(fullBar(4), { number: '2' })
+    );
+    const candidate = part(
+      bar(fullBar(10080), { attributes: attributes(10080) }) +
+        bar(fullBar(10080, 'G'), { number: '2' }) +
+        bar(fullBar(10080), { number: '3' })
+    );
+    const result = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: candidate,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [],
+      candidateMeasureIndexes: [1],
+      baseAnchorIndex: 0
+    });
+
+    expect(result.musicXml).not.toBeNull();
+    const facts = readScannerSpliceFacts(result.musicXml!)[0].measures;
+    expect(facts).toHaveLength(3);
+    expect(facts.map((measure) => measure.measureNumber)).toEqual(['1', '2', '3']);
+    // Written in the base's time units, not its own.
+    expect(facts.map((measure) => `${measure.duration}@${measure.divisions}`)).toEqual([
+      '16@4',
+      '16@4',
+      '16@4'
+    ]);
+    expect(result.musicXml!.toString('utf8')).not.toContain('10080');
+    // It landed second, after the bar it was anchored behind.
+    expect(result.musicXml!.toString('utf8').split('<measure')[2]).toContain('<step>G</step>');
+    expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
+  });
+
+  it('inserts before the first bar when it belongs at the start', () => {
+    const base = part(bar(fullBar(4), { attributes: attributes(4) }));
+    const candidate = part(
+      bar(fullBar(4, 'G'), { attributes: attributes(4) }) + bar(fullBar(4), { number: '2' })
+    );
+    const result = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: candidate,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [],
+      candidateMeasureIndexes: [0],
+      baseAnchorIndex: -1
+    });
+
+    const xml = result.musicXml!.toString('utf8');
+    expect(xml.split('<measure')[1]).toContain('<step>G</step>');
+    expect(readScannerSpliceFacts(result.musicXml!)[0].measures).toHaveLength(2);
+  });
+
 });

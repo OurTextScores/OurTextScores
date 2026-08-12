@@ -25,6 +25,7 @@ export const SCANNER_SPLICE_SAFETY_VERSION = 'scanner-splice-safety-v1';
 export type ScannerSpliceRefusalCode =
   | 'divisions-incommensurable'
   | 'span-empty'
+  | 'joins-severed-tie'
   | 'tie-crosses-boundary'
   | 'slur-crosses-boundary'
   | 'duration-differs'
@@ -286,6 +287,107 @@ function slurTypesOf(noteChildren: OrderedEntry[]): string[] {
   return types;
 }
 
+/**
+ * Assess an insertion or a deletion.
+ *
+ * A replacement asks whether the new bars can be *expressed* in the old ones'
+ * terms. This asks something narrower and different: after the change, which
+ * two bars are next to each other, and does anything that used to cross between
+ * them still have both ends? Length and divisions are irrelevant — nothing is
+ * being converted, only added or removed — so refusing on them, as the first
+ * version of this did, refuses two of the three real blocks for no reason.
+ */
+function assessStructuralChange(input: {
+  base: ScannerSplicePartFacts[];
+  candidate: ScannerSplicePartFacts[];
+  basePartIndex: number;
+  candidatePartIndex: number;
+  baseMeasureIndexes: readonly number[];
+  candidateMeasureIndexes: readonly number[];
+  baseAnchorIndex?: number;
+}): ScannerSpliceAssessment {
+  const refusals: ScannerSpliceRefusal[] = [];
+  const repairs: ScannerSpliceRepair[] = [];
+  const basePart = input.base[input.basePartIndex];
+  const candidatePart = input.candidate[input.candidatePartIndex];
+  if (!basePart || !candidatePart) {
+    return {
+      safe: false,
+      refusals: [
+        { code: 'span-missing', detail: 'This decision names a part that is not in both readings.' }
+      ],
+      repairs: []
+    };
+  }
+
+  const deleting = input.candidateMeasureIndexes.length === 0;
+  const removed = deleting ? spanOf(basePart, input.baseMeasureIndexes) : [];
+  const added = deleting ? [] : spanOf(candidatePart, input.candidateMeasureIndexes);
+  if ((deleting && !removed) || (!deleting && !added)) {
+    return {
+      safe: false,
+      refusals: [
+        {
+          code: 'span-missing',
+          detail: 'The measures this decision refers to are not present in the reading it names.'
+        }
+      ],
+      repairs: []
+    };
+  }
+
+  // The bars that become neighbours once the change is made.
+  const anchor = deleting
+    ? Math.min(...input.baseMeasureIndexes) - 1
+    : (input.baseAnchorIndex ?? -1);
+  const before = basePart.measures[anchor];
+  const after = deleting
+    ? basePart.measures[Math.max(...input.baseMeasureIndexes) + 1]
+    : basePart.measures[anchor + 1];
+  const leading = deleting ? after : (added as ScannerSpliceMeasureFacts[])[0];
+  const trailing = deleting
+    ? before
+    : (added as ScannerSpliceMeasureFacts[])[(added as ScannerSpliceMeasureFacts[]).length - 1];
+
+  const sameNotes = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((value, index) => value === b[index]);
+
+  if (before && leading && !sameNotes(before.tieOut, leading.tieIn)) {
+    refusals.push({
+      code: 'joins-severed-tie',
+      detail:
+        `${deleting ? 'Removing' : 'Inserting'} here would put two bars next to each other that do ` +
+        'not agree about a tie between them. A tie joins two noteheads into one sounding note, so ' +
+        'this cannot be patched without changing either a pitch or how the passage sounds.',
+      measureIndex: Math.max(anchor, 0)
+    });
+  }
+  if (!deleting && after && trailing && !sameNotes(trailing.tieOut, after.tieIn)) {
+    refusals.push({
+      code: 'joins-severed-tie',
+      detail:
+        'Inserting here would leave a tie between the new bars and the one after them with only ' +
+        'one end.',
+      measureIndex: Math.max(anchor, 0)
+    });
+  }
+
+  const slurBreaks =
+    (before && leading && before.slurOut !== leading.slurIn) ||
+    (!deleting && after && trailing && trailing.slurOut !== after.slurIn);
+  if (slurBreaks) {
+    repairs.push({
+      code: 'drop-dangling-slur',
+      detail:
+        'A slur across this join will lose one end and is dropped. The phrase mark goes; no note ' +
+        'changes.',
+      measureIndex: Math.max(anchor, 0)
+    });
+  }
+
+  return { safe: refusals.length === 0, refusals, repairs };
+}
+
 const spanOf = (
   part: ScannerSplicePartFacts | undefined,
   indexes: readonly number[]
@@ -314,6 +416,14 @@ export function assessScannerSplice(input: {
   candidatePartIndex: number;
   baseMeasureIndexes: readonly number[];
   candidateMeasureIndexes: readonly number[];
+  /**
+   * Where an insertion goes: the base measure it follows, `-1` for the start.
+   *
+   * Required only when `baseMeasureIndexes` is empty, because that is the one
+   * case with no position of its own. `ScannerComparisonBlock.baseAnchorIndex`
+   * is where this comes from.
+   */
+  baseAnchorIndex?: number;
 }): ScannerSpliceAssessment {
   const refusals: ScannerSpliceRefusal[] = [];
   const repairs: ScannerSpliceRepair[] = [];
@@ -322,20 +432,13 @@ export function assessScannerSplice(input: {
   const baseSpan = spanOf(basePart, input.baseMeasureIndexes);
   const candidateSpan = spanOf(candidatePart, input.candidateMeasureIndexes);
 
+  // An insertion or a deletion, which changes how many bars the part has. It is
+  // assessed differently from a replacement: nothing is being converted, so
+  // divisions and length do not come into it, but the two bars that end up
+  // adjacent afterwards have to meet — the same edge question, asked about a
+  // join that does not exist yet.
   if (input.baseMeasureIndexes.length === 0 || input.candidateMeasureIndexes.length === 0) {
-    return {
-      safe: false,
-      refusals: [
-        {
-          code: 'span-empty',
-          detail:
-            'One reading has no measure here, so this is an insertion or a deletion rather than a ' +
-            'replacement — it changes how many bars the part has, and every later bar with it. That ' +
-            'is a different decision from taking a bar, and is not offered yet.'
-        }
-      ],
-      repairs: []
-    };
+    return assessStructuralChange(input);
   }
   if (!baseSpan || !candidateSpan) {
     return {

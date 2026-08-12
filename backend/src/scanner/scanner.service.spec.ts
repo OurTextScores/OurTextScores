@@ -2831,6 +2831,41 @@ describe('ScannerService merged score', () => {
     ).rejects.toThrow(/already reads this passage/);
   });
 
+  it('refuses further takes once bars have been added or removed', async () => {
+    // Every decision addresses its passage by the engine's measure index, and a
+    // structural change shifts everything after it. Guessing would put the take
+    // on the wrong bar and look like it worked.
+    const page = pageWithReadings({
+      mergedMusicXml: {
+        bucket: 'd',
+        objectKey: 'o-merged',
+        sizeBytes: 1,
+        contentType: 'application/xml',
+        checksumSha256: 'merged'
+      },
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: 'basis',
+        revision: 2,
+        structurallyChanged: true,
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-0',
+        engineId: 'transcoda',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 2
+      })
+    ).rejects.toThrow(/no longer line up/);
+  });
+
   it('refuses an engine that is not one of the two being compared', async () => {
     const page = pageWithReadings();
     const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };

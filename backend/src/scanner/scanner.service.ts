@@ -1495,6 +1495,16 @@ export class ScannerService implements OnModuleInit {
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
+    if (page.mergedScore?.structurallyChanged) {
+      // Every decision addresses its passage by the engine's measure index, and
+      // an earlier insertion or deletion shifted everything after it. Refusing
+      // is the honest answer until a map between the two numberings exists;
+      // guessing would put the take on the wrong bar and look like it worked.
+      throw new ConflictException(
+        'This page has had bars added or removed, so bar numbers no longer line up with the ' +
+          'engine readings. Further takes are unavailable until that is reconciled.'
+      );
+    }
 
     const comparison = await this.pageComparisonForJob(
       job,
@@ -1537,6 +1547,17 @@ export class ScannerService implements OnModuleInit {
         'The merged score already reads this passage the way that engine does'
       );
     }
+    // A block only one engine read is an insertion or a deletion rather than a
+    // replacement, and the anchor is the only thing that says where. It is
+    // meaningful only when the merged score is expressed in the base engine's
+    // numbering, which it is: `baseAnchorIndex` counts base measures.
+    const baseAnchorIndex =
+      mergedSourceEngineId === input.baseEngineId ? block.baseAnchorIndex : undefined;
+    if (baseMeasureIndexes.length === 0 && baseAnchorIndex === undefined) {
+      throw new ConflictException(
+        'This passage can only be inserted into a merged score that follows the base reading'
+      );
+    }
 
     const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId);
     const candidateXml = await this.engineMusicXml(page, input.engineId);
@@ -1546,7 +1567,8 @@ export class ScannerService implements OnModuleInit {
       basePartIndex: 0,
       candidatePartIndex: 0,
       baseMeasureIndexes,
-      candidateMeasureIndexes
+      candidateMeasureIndexes,
+      baseAnchorIndex
     });
     if (!outcome.musicXml) {
       // Refusals are information, not an error to swallow: the reviewer is
@@ -1572,6 +1594,9 @@ export class ScannerService implements OnModuleInit {
       edited: Boolean(page.mergedScore?.edited),
       revision: currentRevision + 1,
       decisions: [...(page.mergedScore?.decisions || []), decision],
+      structurallyChanged:
+        Boolean(page.mergedScore?.structurallyChanged) ||
+        baseMeasureIndexes.length !== candidateMeasureIndexes.length,
       updatedAt: new Date()
     };
     const state = await this.persistMergedScore({

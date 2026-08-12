@@ -13,6 +13,17 @@ import {
  * transformation", and this is the second.
  */
 
+/** A three-measure part, so a deletion has bars on both sides of it. */
+const threeBars = (first: string, second: string, third: string, divisions = 8) => `<?xml version="1.0"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Cello</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>${divisions}</divisions></attributes>${first}</measure>
+    <measure number="2">${second}</measure>
+    <measure number="3">${third}</measure>
+  </part>
+</score-partwise>`;
+
 /** A two-measure part, so an edge has a neighbour to meet. */
 const twoBars = (first: string, second: string, divisions = 8) => `<?xml version="1.0"?>
 <score-partwise version="4.0">
@@ -223,22 +234,88 @@ describe('scanner splice safety', () => {
     expect(result.refusals[0].code).toBe('span-missing');
   });
 
-  it('refuses a one-sided block, which is an insertion, not a replacement', () => {
-    // The Bach page has two of these: measures only one engine read. Taking
-    // them changes how many bars the part has, and every later bar with it —
-    // a different decision from taking a bar, and not one offered yet.
-    const base = score(note(4) + note(4), 4);
+  it('allows a deletion when the bars it joins agree', () => {
+    // Two of the three blocks on the real Bach page are this shape — measures
+    // only one engine read. A deletion converts nothing, so length and
+    // divisions are irrelevant to it; what matters is the join it creates.
+    const three = threeBars(note(8) + note(8), note(8) + note(8), note(8) + note(8));
     const result = assessScannerSplice({
-      base: factsFor(base),
-      candidate: factsFor(base),
+      base: factsFor(three),
+      candidate: factsFor(three),
       basePartIndex: 0,
       candidatePartIndex: 0,
-      baseMeasureIndexes: [0],
+      baseMeasureIndexes: [1],
       candidateMeasureIndexes: []
     });
 
-    expect(result.refusals[0].code).toBe('span-empty');
-    expect(result.refusals[0].detail).toMatch(/insertion or a deletion/);
+    expect(result).toEqual({ safe: true, refusals: [], repairs: [] });
+  });
+
+  it('refuses a deletion that would strand a tie across the new join', () => {
+    // Bar 1 ties into bar 2. Removing bar 2 puts bar 1 next to bar 3, which
+    // expects nothing — the tie would have one end.
+    const three = threeBars(
+      note(8) + note(8, { tie: 'start' }),
+      note(8, { tie: 'stop' }) + note(8),
+      note(8) + note(8)
+    );
+    const result = assessScannerSplice({
+      base: factsFor(three),
+      candidate: factsFor(three),
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [1],
+      candidateMeasureIndexes: []
+    });
+
+    expect(codesOf(result)).toContain('joins-severed-tie');
+  });
+
+  it('allows an insertion, and repairs a slur the join breaks', () => {
+    const base = threeBars(
+      note(8) + note(8, { slur: 'start' }),
+      note(8, { slur: 'stop' }) + note(8),
+      note(8) + note(8)
+    );
+    const candidate = threeBars(note(8) + note(8), note(8) + note(8), note(8) + note(8));
+    const result = assessScannerSplice({
+      base: factsFor(base),
+      candidate: factsFor(candidate),
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [],
+      candidateMeasureIndexes: [1],
+      // Between the base's first and second bars — where the slur runs.
+      baseAnchorIndex: 0
+    });
+
+    expect(result.safe).toBe(true);
+    expect(result.repairs.map((repair) => repair.code)).toEqual(['drop-dangling-slur']);
+  });
+
+  it('does not judge a structural change on length or divisions', () => {
+    // The first version of this refused every one-sided block outright, which
+    // refused two of the three real ones for reasons that do not apply: nothing
+    // is being converted, so nothing has to convert exactly.
+    const base = threeBars(note(8) + note(8), note(8) + note(8), note(8) + note(8));
+    const candidate = threeBars(
+      note(10080) + note(10080) + note(10080),
+      note(10080),
+      note(10080),
+      10080
+    );
+    const result = assessScannerSplice({
+      base: factsFor(base),
+      candidate: factsFor(candidate),
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [],
+      candidateMeasureIndexes: [1],
+      baseAnchorIndex: 0
+    });
+
+    expect(codesOf(result)).not.toContain('divisions-incommensurable');
+    expect(codesOf(result)).not.toContain('duration-differs');
   });
 
   it('compares lengths in a shared unit, not raw counts', () => {
