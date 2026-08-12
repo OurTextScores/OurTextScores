@@ -13,6 +13,16 @@ import {
  * transformation", and this is the second.
  */
 
+/** A two-measure part, so an edge has a neighbour to meet. */
+const twoBars = (first: string, second: string, divisions = 8) => `<?xml version="1.0"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Cello</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>${divisions}</divisions></attributes>${first}</measure>
+    <measure number="2">${second}</measure>
+  </part>
+</score-partwise>`;
+
 const score = (measures: string, divisions = 4, partId = 'P1') => `<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list><score-part id="${partId}"><part-name>Cello</part-name></score-part></part-list>
@@ -27,11 +37,18 @@ const score = (measures: string, divisions = 4, partId = 'P1') => `<?xml version
 /** One quarter note in `divisions`, optionally carrying tie/slur markup. */
 const note = (
   divisions: number,
-  options: { voice?: string; staff?: string; tie?: string; slur?: string; chord?: boolean } = {}
+  options: {
+    voice?: string;
+    staff?: string;
+    tie?: string;
+    slur?: string;
+    chord?: boolean;
+    step?: string;
+  } = {}
 ) => `
   <note>
     ${options.chord ? '<chord/>' : ''}
-    <pitch><step>C</step><octave>4</octave></pitch>
+    <pitch><step>${options.step || 'C'}</step><octave>4</octave></pitch>
     <duration>${divisions}</duration>
     <voice>${options.voice || '1'}</voice>
     <staff>${options.staff || '1'}</staff>
@@ -65,7 +82,7 @@ describe('scanner splice safety', () => {
   it('allows a splice when the two readings agree on shape', () => {
     const base = score(note(4) + note(4), 4);
     const candidate = score(note(4) + note(4), 4);
-    expect(assess(base, candidate)).toEqual({ safe: true, refusals: [] });
+    expect(assess(base, candidate)).toEqual({ safe: true, refusals: [], repairs: [] });
   });
 
   it('allows differing divisions when the conversion is exact', () => {
@@ -76,7 +93,7 @@ describe('scanner splice safety', () => {
     // against the retained page before it was changed.
     const base = score(note(4) + note(4), 4);
     const candidate = score(note(10080) + note(10080), 10080);
-    expect(assess(base, candidate)).toEqual({ safe: true, refusals: [] });
+    expect(assess(base, candidate)).toEqual({ safe: true, refusals: [], repairs: [] });
   });
 
   it('refuses when the conversion would have to round', () => {
@@ -109,7 +126,7 @@ describe('scanner splice safety', () => {
     // look longer than it is and refuse a splice that is perfectly safe.
     const base = score(note(4) + note(4, { chord: true }) + note(4), 4);
     const candidate = score(note(4) + note(4), 4);
-    expect(assess(base, candidate)).toEqual({ safe: true, refusals: [] });
+    expect(assess(base, candidate)).toEqual({ safe: true, refusals: [], repairs: [] });
   });
 
   it('measures parallel voices by the longest, not the sum', () => {
@@ -126,20 +143,37 @@ describe('scanner splice safety', () => {
     expect(facts[0].measures[0].voices).toEqual(['1', '2']);
   });
 
-  it('refuses when a tie runs out of the passage', () => {
-    // A measure is not independent of its neighbours. Severing a tie emits a
-    // document that looks plausible and is wrong.
-    const base = score(note(4) + note(4, { tie: 'start' }), 4);
-    const candidate = score(note(4) + note(4), 4);
-    const result = assess(base, candidate);
+  it('lets a tie through when the replacement continues the same note', () => {
+    // A tie says two noteheads are one sounding note. If the bar being spliced
+    // in ends on the pitch the next bar continues, nothing is severed and there
+    // is nothing to repair.
+    const withTie = twoBars(note(8) + note(8, { tie: 'start' }), note(8, { tie: 'stop' }) + note(8));
+    const result = assess(withTie, withTie, [0]);
 
-    expect(codesOf(result)).toContain('tie-crosses-boundary');
+    expect(result.safe).toBe(true);
+    expect(result.repairs).toEqual([]);
   });
 
-  it('refuses when a tie runs into the passage from before it', () => {
-    const base = score(note(4, { tie: 'stop' }) + note(4), 4);
-    const candidate = score(note(4) + note(4), 4);
-    const result = assess(base, candidate);
+  it('refuses when the replacement does not carry the tied note across', () => {
+    const base = twoBars(note(8) + note(8, { tie: 'start' }), note(8, { tie: 'stop' }) + note(8));
+    // The candidate's first bar ends untied, so the base's second bar is left
+    // with a tie stop that has nothing to join.
+    const candidate = twoBars(note(8) + note(8), note(8, { tie: 'stop' }) + note(8));
+    const result = assess(base, candidate, [0]);
+
+    expect(codesOf(result)).toContain('tie-crosses-boundary');
+    expect(result.refusals[0].detail).toMatch(/one sounding note/);
+  });
+
+  it('refuses when the tie would join two different pitches', () => {
+    // The check is by pitch, not by count: a tie between C4 and G4 is not a
+    // tie, and repairing it would mean changing a note.
+    const base = twoBars(note(8) + note(8, { tie: 'start' }), note(8, { tie: 'stop' }) + note(8));
+    const candidate = twoBars(
+      note(8) + note(8, { tie: 'start', step: 'G' }),
+      note(8, { tie: 'stop', step: 'G' }) + note(8)
+    );
+    const result = assess(base, candidate, [0]);
 
     expect(codesOf(result)).toContain('tie-crosses-boundary');
   });
@@ -147,15 +181,25 @@ describe('scanner splice safety', () => {
   it('allows a tie that opens and closes inside the passage', () => {
     // Self-contained: nothing outside the span depends on it.
     const contained = note(4, { tie: 'start' }) + note(4, { tie: 'stop' });
-    expect(assess(score(contained, 4), score(contained, 4))).toEqual({ safe: true, refusals: [] });
+    expect(assess(score(contained, 4), score(contained, 4))).toEqual({
+      safe: true,
+      refusals: [],
+      repairs: []
+    });
   });
 
-  it('refuses a slur that crosses the boundary, like a tie', () => {
-    const base = score(note(4) + note(4, { slur: 'start' }), 4);
-    const candidate = score(note(4) + note(4), 4);
-    const result = assess(base, candidate);
+  it('repairs a severed slur rather than refusing it', () => {
+    // A slur is a marking about the notes, not part of what a note is, so the
+    // cost of severing one is a lost phrase mark — and OMR slur detection is
+    // the least reliable thing either engine produces.
+    const base = twoBars(note(8) + note(8, { slur: 'start' }), note(8, { slur: 'stop' }) + note(8));
+    const candidate = twoBars(note(8) + note(8), note(8, { slur: 'stop' }) + note(8));
+    const result = assess(base, candidate, [0]);
 
-    expect(codesOf(result)).toContain('slur-crosses-boundary');
+    expect(result.safe).toBe(true);
+    expect(result.refusals).toEqual([]);
+    expect(result.repairs.map((repair) => repair.code)).toEqual(['drop-dangling-slur']);
+    expect(result.repairs[0].detail).toMatch(/no note changes/);
   });
 
   it('refuses when the passage does not have the same voices on both sides', () => {
@@ -210,11 +254,11 @@ describe('scanner splice safety', () => {
   });
 
   it('reports every reason at once rather than the first', () => {
-    // A reviewer told "the divisions differ", who fixes that, should not then
-    // be told about the tie. Refusals are information, so give all of it.
-    const base = score(note(4) + note(4, { tie: 'start' }), 4);
-    const candidate = score(note(10080) + note(10080) + note(10080), 10080);
-    const result = assess(base, candidate);
+    // A reviewer told "the lengths differ", who fixes that, should not then be
+    // told about the tie. Refusals are information, so give all of it.
+    const base = twoBars(note(8) + note(8, { tie: 'start' }), note(8, { tie: 'stop' }) + note(8));
+    const candidate = twoBars(note(8) + note(8) + note(8), note(8) + note(8));
+    const result = assess(base, candidate, [0]);
 
     const codes = codesOf(result);
     expect(codes).toContain('duration-differs');

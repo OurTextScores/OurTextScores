@@ -49,9 +49,25 @@ export interface ScannerSpliceRefusal {
  * shape that needs no narrowing is the right one here, and it reads better
  * anyway: a caller that wants to log why can, whatever the verdict.
  */
+/**
+ * Something the splice will change beyond copying measures across.
+ *
+ * A repair is not a refusal and not a silent fix: it is work the splice has to
+ * do for the result to be well formed, which the reviewer is told about. The
+ * same principle as an edited bar not counting as an engine win — anything the
+ * system decides on its own has to be visible, or phase E learns from it as
+ * though an engine had produced it.
+ */
+export interface ScannerSpliceRepair {
+  code: 'drop-dangling-slur';
+  detail: string;
+  measureIndex?: number;
+}
+
 export interface ScannerSpliceAssessment {
   safe: boolean;
   refusals: ScannerSpliceRefusal[];
+  repairs: ScannerSpliceRepair[];
 }
 
 /** Everything about one measure that decides whether it can be spliced. */
@@ -73,12 +89,25 @@ export interface ScannerSpliceMeasureFacts {
   durationGcd: string;
   voices: string[];
   staves: string[];
-  /** A tie or slur that begins here and is not closed before the measure ends. */
-  opensTie: boolean;
-  opensSlur: boolean;
-  /** A tie or slur that closes here but was opened in an earlier measure. */
-  closesTie: boolean;
-  closesSlur: boolean;
+  /**
+   * Pitches of ties left open at the end of this measure, and of tie stops that
+   * had no start inside it.
+   *
+   * Pitches rather than counts because a tie is only valid between the same
+   * pitch: it says two noteheads are one sounding note. That makes a severed
+   * tie checkable — if the bar being spliced in ends on the pitch the next bar
+   * continues, the tie survives untouched.
+   */
+  tieOut: string[];
+  tieIn: string[];
+  /**
+   * Slurs left open, and closed from earlier, as counts.
+   *
+   * Counts suffice because a slur is a marking *about* the notes rather than
+   * part of what a note is, so nothing has to match for it to be well formed.
+   */
+  slurOut: number;
+  slurIn: number;
 }
 
 export interface ScannerSplicePartFacts {
@@ -150,10 +179,10 @@ function readMeasure(
   let cursor = BigInt(0);
   let longest = BigInt(0);
   let gcd = BigInt(0);
-  let openTies = 0;
+  const openTies: string[] = [];
+  const tieIn: string[] = [];
   let openSlurs = 0;
-  let closedTiesFromEarlier = 0;
-  let closedSlursFromEarlier = 0;
+  let slurIn = 0;
 
   for (const child of children) {
     const [tag] = Object.keys(child).filter((key) => key !== ':@');
@@ -183,18 +212,20 @@ function readMeasure(
       if (cursor > longest) longest = cursor;
     }
 
+    const pitch = pitchOf(inner);
     for (const type of tieTypesOf(inner)) {
-      if (type === 'start') openTies += 1;
+      if (type === 'start') openTies.push(pitch);
       else if (type === 'stop') {
-        if (openTies > 0) openTies -= 1;
-        else closedTiesFromEarlier += 1;
+        const matching = openTies.indexOf(pitch);
+        if (matching >= 0) openTies.splice(matching, 1);
+        else tieIn.push(pitch);
       }
     }
     for (const type of slurTypesOf(inner)) {
       if (type === 'start') openSlurs += 1;
       else if (type === 'stop') {
         if (openSlurs > 0) openSlurs -= 1;
-        else closedSlursFromEarlier += 1;
+        else slurIn += 1;
       }
     }
   }
@@ -204,26 +235,44 @@ function readMeasure(
     durationGcd: gcd.toString(),
     voices: [...voices].sort(),
     staves: [...staves].sort(),
-    opensTie: openTies > 0,
-    opensSlur: openSlurs > 0,
-    closesTie: closedTiesFromEarlier > 0,
-    closesSlur: closedSlursFromEarlier > 0
+    tieOut: [...openTies].sort(),
+    tieIn: [...tieIn].sort(),
+    slurOut: openSlurs,
+    slurIn
   };
 }
 
+/** `C#4`, `rest`, or `unpitched` — enough to tell whether a tie can survive. */
+function pitchOf(noteChildren: OrderedEntry[]): string {
+  const pitch = directEntries(noteChildren, 'pitch')[0];
+  if (!pitch) return directEntries(noteChildren, 'rest').length > 0 ? 'rest' : 'unpitched';
+  const inner = contents(pitch, 'pitch');
+  const step = directText(inner, 'step');
+  const alter = directText(inner, 'alter');
+  const octave = directText(inner, 'octave');
+  return `${step}${alter ? `(${alter})` : ''}${octave}`;
+}
+
+/**
+ * The tie types on one note, deduplicated.
+ *
+ * `<tie>` is the sounding element and `<tied>` is the notation of the same tie,
+ * so a well-formed note carrying one tie has both. Counting them separately
+ * reports two ties where there is one, and then no join ever matches.
+ */
 function tieTypesOf(noteChildren: OrderedEntry[]): string[] {
-  const types: string[] = [];
+  const types = new Set<string>();
   for (const tie of directEntries(noteChildren, 'tie')) {
     const type = attrs(tie)['@_type'];
-    if (type) types.push(String(type));
+    if (type) types.add(String(type));
   }
   for (const notations of directEntries(noteChildren, 'notations')) {
     for (const tied of directEntries(contents(notations, 'notations'), 'tied')) {
       const type = attrs(tied)['@_type'];
-      if (type) types.push(String(type));
+      if (type) types.add(String(type));
     }
   }
-  return types;
+  return [...types];
 }
 
 function slurTypesOf(noteChildren: OrderedEntry[]): string[] {
@@ -267,6 +316,7 @@ export function assessScannerSplice(input: {
   candidateMeasureIndexes: readonly number[];
 }): ScannerSpliceAssessment {
   const refusals: ScannerSpliceRefusal[] = [];
+  const repairs: ScannerSpliceRepair[] = [];
   const basePart = input.base[input.basePartIndex];
   const candidatePart = input.candidate[input.candidatePartIndex];
   const baseSpan = spanOf(basePart, input.baseMeasureIndexes);
@@ -283,7 +333,8 @@ export function assessScannerSplice(input: {
             'replacement — it changes how many bars the part has, and every later bar with it. That ' +
             'is a different decision from taking a bar, and is not offered yet.'
         }
-      ]
+      ],
+      repairs: []
     };
   }
   if (!baseSpan || !candidateSpan) {
@@ -295,7 +346,8 @@ export function assessScannerSplice(input: {
           detail:
             'The measures this decision refers to are not present in both readings, so there is nothing to splice.'
         }
-      ]
+      ],
+      repairs: []
     };
   }
 
@@ -381,41 +433,74 @@ export function assessScannerSplice(input: {
     });
   }
 
-  // A measure is not independent of its neighbours. Ties, slurs and beams cross
-  // boundaries, and a splice that severs one emits a document that looks
-  // plausible and is wrong — exactly what assembly already declines to do.
-  const first = 0;
-  const last = baseSpan.length - 1;
-  const crossings: Array<[boolean, ScannerSpliceRefusalCode, string]> = [
-    [
-      baseSpan[first].closesTie || candidateSpan[first].closesTie,
-      'tie-crosses-boundary',
-      'A tie begins before this passage and ends inside it'
-    ],
-    [
-      baseSpan[last].opensTie || candidateSpan[candidateSpan.length - 1].opensTie,
-      'tie-crosses-boundary',
-      'A tie begins inside this passage and ends after it'
-    ],
-    [
-      baseSpan[first].closesSlur || candidateSpan[first].closesSlur,
-      'slur-crosses-boundary',
-      'A slur begins before this passage and ends inside it'
-    ],
-    [
-      baseSpan[last].opensSlur || candidateSpan[candidateSpan.length - 1].opensSlur,
-      'slur-crosses-boundary',
-      'A slur begins inside this passage and ends after it'
-    ]
-  ];
-  for (const [crosses, code, description] of crossings) {
-    if (!crosses) continue;
+  // A measure is not independent of its neighbours, so what the spliced bars
+  // must meet is the *base bars on either side of them* — not the base bars
+  // they replace. Comparing the span against itself would refuse a passage
+  // whose ties happen to be internal, and miss one whose edges do not line up.
+  const before = basePart.measures[Math.min(...input.baseMeasureIndexes) - 1];
+  const after = basePart.measures[Math.max(...input.baseMeasureIndexes) + 1];
+  const incoming = candidateSpan[0];
+  const outgoing = candidateSpan[candidateSpan.length - 1];
+  const firstIndex = Math.min(...input.baseMeasureIndexes);
+  const lastIndex = Math.max(...input.baseMeasureIndexes);
+
+  const sameNotes = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((value, index) => value === b[index]);
+
+  /**
+   * A tie is only valid between the same pitch — it says two noteheads are one
+   * sounding note — so a severed tie cannot be repaired without either changing
+   * a pitch, which falsifies the reading, or dropping the tie, which changes
+   * how the passage sounds rather than how it is marked. When the pitches do
+   * meet, nothing needs doing and the tie simply survives.
+   */
+  if (before && !sameNotes(before.tieOut, incoming.tieIn)) {
     refusals.push({
-      code,
-      detail: `${description}, so replacing it would leave the other end unresolved.`,
-      measureIndex: input.baseMeasureIndexes[first]
+      code: 'tie-crosses-boundary',
+      detail:
+        `A tie runs into this passage from the bar before it, and the replacement does not continue ` +
+        `the same note${before.tieOut.length ? ` (${before.tieOut.join(', ')})` : ''}. A tie joins two ` +
+        'noteheads into one sounding note, so this cannot be patched without changing either a pitch ' +
+        'or how the passage sounds.',
+      measureIndex: firstIndex
+    });
+  }
+  if (after && !sameNotes(outgoing.tieOut, after.tieIn)) {
+    refusals.push({
+      code: 'tie-crosses-boundary',
+      detail:
+        `A tie runs out of this passage into the bar after it, and the replacement does not carry the ` +
+        `same note${after.tieIn.length ? ` (${after.tieIn.join(', ')})` : ''} across. A tie joins two ` +
+        'noteheads into one sounding note, so this cannot be patched without changing either a pitch ' +
+        'or how the passage sounds.',
+      measureIndex: lastIndex
     });
   }
 
-  return { safe: refusals.length === 0, refusals };
+  /**
+   * A slur is a marking about the notes rather than part of what a note is, so
+   * a severed one costs a phrase mark, not a performance — and OMR slur
+   * detection is the least reliable thing either engine produces. Dropping the
+   * half that no longer has an end is a repair, reported rather than silent.
+   */
+  if (before && before.slurOut !== incoming.slurIn) {
+    repairs.push({
+      code: 'drop-dangling-slur',
+      detail:
+        'A slur reaching into this passage from the bar before it will lose its end. The phrase mark ' +
+        'is dropped; no note changes.',
+      measureIndex: firstIndex
+    });
+  }
+  if (after && outgoing.slurOut !== after.slurIn) {
+    repairs.push({
+      code: 'drop-dangling-slur',
+      detail:
+        'A slur reaching out of this passage into the bar after it will lose its start. The phrase ' +
+        'mark is dropped; no note changes.',
+      measureIndex: lastIndex
+    });
+  }
+
+  return { safe: refusals.length === 0, refusals, repairs };
 }
