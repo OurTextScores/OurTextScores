@@ -287,9 +287,52 @@ describe('SourceCard', () => {
             expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
         });
 
-        const sourcePdfDetails = screen.getByText('Browse Source').closest('details');
+        const sourcePdfDetails = screen.getByText('Generated PDF').closest('details');
 
         expect(sourcePdfDetails).toHaveAttribute('open');
+    });
+
+    it('distinguishes the dated PDF from the live preview', async () => {
+        // Two renderings of the same source, both by MuseScore but by
+        // different paths: the PDF is engraved when the derivative pipeline
+        // runs, the preview reads the canonical XML at view time. Only one of
+        // them is necessarily current, so the labels have to say which.
+        const sourceWithPdf: SourceView = {
+            ...mockSource,
+            derivatives: {
+                pdf: {
+                    bucket: 'derivs',
+                    objectKey: 'score.pdf',
+                    sizeBytes: 1024,
+                    contentType: 'application/pdf',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z',
+                },
+            },
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithPdf}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (!header) throw new Error('Header not found');
+        fireEvent.click(header);
+
+        expect(screen.getByText('Generated PDF')).toBeInTheDocument();
+        expect(screen.getByText(/rendered/)).toBeInTheDocument();
+        expect(screen.getByText('Preview score')).toBeInTheDocument();
+        expect(
+            screen.getByText('live from the current canonical XML'),
+        ).toBeInTheDocument();
+        // The old name said nothing about which rendering it was.
+        expect(screen.queryByText('Browse Source')).not.toBeInTheDocument();
     });
 
     it('passes launch context when opening the score editor', async () => {

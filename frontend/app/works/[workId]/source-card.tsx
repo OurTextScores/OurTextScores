@@ -748,6 +748,9 @@ export default function SourceCard({
                             summary={
                                 <summary className="cursor-pointer text-xs font-semibold text-cyan-700 dark:text-cyan-300">
                                     Preview score
+                                    <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
+                                        live from the current canonical XML
+                                    </span>
                                 </summary>
                             }
                         >
@@ -900,7 +903,19 @@ export default function SourceCard({
                             onToggle={(event) => setIsSourcePdfOpen(event.currentTarget.open)}
                             summary={
                                 <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
-                                    Browse Source
+                                    Generated PDF
+                                    {/*
+                                        Named and dated because this and the
+                                        preview above are two renderings of the
+                                        same source, and only one of them is
+                                        necessarily current. The PDF is
+                                        engraved by MuseScore when the
+                                        derivative pipeline runs; a revision
+                                        uploaded since then is not in it.
+                                    */}
+                                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                                        rendered {formatDate(source.derivatives?.pdf?.lastModifiedAt)}
+                                    </span>
                                 </summary>
                             }
                         >
