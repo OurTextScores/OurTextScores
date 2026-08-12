@@ -133,6 +133,23 @@ export class ScannerController {
     });
   }
 
+  @Get('merge-decisions/export')
+  @UseGuards(AdminRequiredGuard)
+  exportMergeDecisions(
+    @Query('policyVersion') policyVersion?: string,
+    @Query('since') since?: string,
+    @Query('limit') limit?: string,
+    @Query('outcome') outcome?: string
+  ) {
+    const parsedSince = since ? new Date(since) : undefined;
+    return this.scanner.exportMergeDecisions({
+      policyVersion,
+      since: parsedSince && !Number.isNaN(parsedSince.getTime()) ? parsedSince : undefined,
+      limit: limit ? Number(limit) : undefined,
+      outcome
+    });
+  }
+
   @Get(':jobId')
   get(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.getJob(user.userId, jobId);

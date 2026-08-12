@@ -2472,7 +2472,17 @@ describe('ScannerService merged score', () => {
     ...extra
   });
 
-  const buildService = (job: any, options: { writes?: any[]; deleted?: string[] } = {}) => {
+  const SPLICEABLE =
+    '<?xml version="1.0"?><score-partwise version="4.0"><part-list><score-part id="P1">' +
+    '<part-name>Cello</part-name></score-part></part-list><part id="P1"><measure number="1">' +
+    '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>' +
+    '</attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>16</duration>' +
+    '<voice>1</voice></note></measure></part></score-partwise>';
+
+  const buildService = (
+    job: any,
+    options: { writes?: any[]; deleted?: string[]; mergeDecisions?: any[] } = {}
+  ) => {
     const jobsModel: any = {
       findOne: () => ({ exec: async () => job }),
       updateOne: (_filter: any, update: any) => {
@@ -2491,6 +2501,12 @@ describe('ScannerService merged score', () => {
       }),
       getObjectBuffer: jest.fn(async () => Buffer.from(MUSICXML))
     } as any;
+    const mergeDecisions = {
+      create: jest.fn(async (doc: any) => {
+        options.mergeDecisions?.push(doc);
+        return doc;
+      })
+    } as any;
     const service = new ScannerService(
       jobsModel,
       corrections,
@@ -2498,7 +2514,9 @@ describe('ScannerService merged score', () => {
       provider,
       telemetry,
       alerts,
-      config
+      config,
+      undefined,
+      mergeDecisions
     );
     return { service, storage };
   };
@@ -2879,6 +2897,112 @@ describe('ScannerService merged score', () => {
         revision: 2
       })
     ).rejects.toThrow(/an earlier decision removed it/);
+  });
+
+  it('records a take as a preference between two readings', async () => {
+    // The signal a comparison produces and spot review cannot: not "the model
+    // was unsure and here is the answer" but "two independent readings
+    // disagreed and here is which one a human believed".
+    const created: any[] = [];
+    const page = pageWithReadings({
+      sourceImage: {
+        bucket: 'src',
+        objectKey: 'page.png',
+        sizeBytes: 1,
+        contentType: 'image/png',
+        checksumSha256: 'page-sha'
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job, { mergeDecisions: created });
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseAnchorIndex: -1,
+            differenceClasses: ['notation'],
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+    jest
+      .spyOn(service as any, 'mergedOrEngineMusicXml')
+      .mockResolvedValue(Buffer.from(SPLICEABLE));
+    jest.spyOn(service as any, 'engineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
+
+    await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+      blockIndex: 0,
+      contentSignature: 'sig-0',
+      engineId: 'transcoda',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 0
+    });
+
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      pageSha256: 'page-sha',
+      outcome: 'took-notes',
+      engineId: 'transcoda',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      // The most directly useful column: which engine wins when they disagree
+      // about *what*.
+      differenceClasses: ['notation']
+    });
+  });
+
+  it('never credits an engine for a bar a human had to fix', async () => {
+    // The invariant §3.1 is most insistent about. An edited bar is evidence
+    // that *both* engines were wrong there; filing it as either one being right
+    // poisons the corpus this feature exists to build.
+    const created: any[] = [];
+    const page = pageWithReadings({
+      sourceImage: {
+        bucket: 'src',
+        objectKey: 'page.png',
+        sizeBytes: 1,
+        contentType: 'image/png',
+        checksumSha256: 'page-sha'
+      },
+      mergedMusicXml: {
+        bucket: 'd',
+        objectKey: 'o-merged',
+        sizeBytes: 1,
+        contentType: 'application/xml',
+        checksumSha256: 'merged'
+      },
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: scannerMergedScoreBasis(pageWithReadings()),
+        revision: 1,
+        decisions: [{ blockIndex: 0 }, { blockIndex: 1 }],
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job, { mergeDecisions: created });
+
+    await service.saveMergedScore('user-1', 'job-1', 1, {
+      musicXml: MUSICXML,
+      sourceEngineId: 'homr',
+      basisSignature: scannerMergedScoreBasis(page),
+      revision: 1,
+      edited: true
+    });
+
+    expect(created).toHaveLength(1);
+    expect(created[0].outcome).toBe('edited');
+    expect(created[0].engineId).toBeUndefined();
+    // An edit is page-level, so a consumer weighting the per-bar takes on this
+    // page has to know there were some.
+    expect(created[0].priorDecisions).toBe(2);
   });
 
   it('refuses an engine that is not one of the two being compared', async () => {

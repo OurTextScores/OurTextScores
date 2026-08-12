@@ -7,6 +7,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { WorksModule } from '../works/works.module';
 import { ScannerJob, ScannerJobSchema } from './schemas/scanner-job.schema';
 import { ScannerCorrection, ScannerCorrectionSchema } from './schemas/scanner-correction.schema';
+import {
+  ScannerMergeDecision,
+  ScannerMergeDecisionSchema
+} from './schemas/scanner-merge-decision.schema';
 import { ScannerController } from './scanner.controller';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerService } from './scanner.service';
@@ -27,7 +31,8 @@ import { ScannerEngineRegistry } from './scanner-engine.registry';
     WorksModule,
     MongooseModule.forFeature([
       { name: ScannerJob.name, schema: ScannerJobSchema },
-      { name: ScannerCorrection.name, schema: ScannerCorrectionSchema }
+      { name: ScannerCorrection.name, schema: ScannerCorrectionSchema },
+      { name: ScannerMergeDecision.name, schema: ScannerMergeDecisionSchema }
     ])
   ],
   controllers: [ScannerController],

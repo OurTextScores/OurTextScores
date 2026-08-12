@@ -67,6 +67,11 @@ import {
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerCorrection, ScannerCorrectionDocument } from './schemas/scanner-correction.schema';
+import {
+  ScannerMergeDecision,
+  ScannerMergeDecisionDocument,
+  type ScannerMergeOutcome
+} from './schemas/scanner-merge-decision.schema';
 import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { isRetryableScannerErrorCode } from './scanner.errors';
 import { ScannerEngineRegistry } from './scanner-engine.registry';
@@ -123,7 +128,12 @@ export class ScannerService implements OnModuleInit {
     private readonly telemetry: ScannerTelemetryService,
     private readonly alerts: ScannerAlertService,
     private readonly config: ConfigService,
-    @Optional() private readonly registeredEngines?: ScannerEngineRegistry
+    @Optional() private readonly registeredEngines?: ScannerEngineRegistry,
+    // Optional so every existing construction of this service — and there are
+    // many, in tests — keeps working; a missing model simply records nothing.
+    @Optional()
+    @InjectModel(ScannerMergeDecision.name)
+    private readonly mergeDecisions?: Model<ScannerMergeDecisionDocument>
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1362,7 +1372,7 @@ export class ScannerService implements OnModuleInit {
       decisions: page.mergedScore?.decisions,
       updatedAt: new Date()
     };
-    return this.persistMergedScore({
+    const state = await this.persistMergedScore({
       userId,
       jobId,
       pageNumber,
@@ -1372,6 +1382,26 @@ export class ScannerService implements OnModuleInit {
       mergedScore,
       acceptedStale: input.basisSignature !== basisSignature
     });
+    // A hand edit is the strongest signal this feature produces and the easiest
+    // to file wrongly: "both engines were wrong here, and this is what the page
+    // says" beats any choice between them, but only if it is never recorded as
+    // one of them having been right. Emitted once, when the edit first lands.
+    if (mergedScore.edited && !page.mergedScore?.edited) {
+      const plan = this.enginePlanForJob(job);
+      const [baseEngineId, candidateEngineId] = plan.engineIds;
+      await this.recordMergeDecision({
+        page,
+        userId,
+        baseEngineId: baseEngineId || input.sourceEngineId,
+        candidateEngineId: candidateEngineId || input.sourceEngineId,
+        outcome: 'edited',
+        // An edit is page-level: nothing records which bars it touched, so a
+        // consumer weighting per-bar takes on this page needs to know there
+        // were some.
+        priorDecisions: (page.mergedScore?.decisions || []).length
+      });
+    }
+    return state;
   }
 
   /**
@@ -1595,6 +1625,23 @@ export class ScannerService implements OnModuleInit {
       buffer: outcome.musicXml,
       mergedScore
     });
+    await this.recordMergeDecision({
+      page,
+      userId,
+      baseEngineId: input.baseEngineId,
+      candidateEngineId: input.candidateEngineId,
+      engineId: input.engineId,
+      outcome:
+        candidateMeasureIndexes.length === 0
+          ? 'removed-bars'
+          : mergedMeasureIndexes.length === 0
+            ? 'inserted-bars'
+            : 'took-notes',
+      blockIndex: input.blockIndex,
+      contentSignature: block.contentSignature,
+      differenceClasses: block.differenceClasses,
+      repairs: decision.repairs
+    });
     return { ...state, decision, repairs: outcome.repairs };
   }
 
@@ -1768,7 +1815,88 @@ export class ScannerService implements OnModuleInit {
       buffer: outcome.musicXml,
       mergedScore
     });
+    await this.recordMergeDecision({
+      page,
+      userId,
+      baseEngineId: input.baseEngineId,
+      candidateEngineId: input.candidateEngineId,
+      engineId: input.engineId,
+      // Distinct from a note win: the notes these markings sit over came from
+      // somewhere else, and may have come from the engine that lost.
+      outcome: input.kind === 'lyrics' ? 'took-lyrics' : 'took-dynamics',
+      blockIndex: input.blockIndex,
+      contentSignature: block.contentSignature,
+      differenceClasses: block.differenceClasses
+    });
     return { ...state, decision, transferred: outcome.transferred };
+  }
+
+  /**
+   * Keep what a reviewer decided, for training.
+   *
+   * A comparison produces a kind of signal spot review cannot: a correction
+   * says the model was unsure and here is the right answer; this says two
+   * independent readings disagreed and here is which one a human believed. That
+   * is a labelled preference over the exact page both engines saw, and the only
+   * place in the product where one exists.
+   *
+   * Best-effort, like a correction: a training record that fails to write must
+   * never fail the decision the reviewer just made.
+   */
+  private async recordMergeDecision(input: {
+    page: ScannerPageResult;
+    userId: string;
+    baseEngineId: string;
+    candidateEngineId: string;
+    outcome: ScannerMergeOutcome;
+    engineId?: string;
+    blockIndex?: number;
+    contentSignature?: string;
+    differenceClasses?: string[];
+    repairs?: Array<{ code: string; detail: string }>;
+    priorDecisions?: number;
+  }): Promise<void> {
+    if (!this.mergeDecisions) return;
+    try {
+      const pageSha256 = input.page.recognitionRaster?.storage?.checksumSha256
+        || input.page.sourceImage?.checksumSha256;
+      if (!pageSha256) return;
+      const artifactOf = (engineId: string) => {
+        const run = input.page.engines?.[engineId];
+        return run?.reviewedMusicXml?.checksumSha256 || run?.artifacts?.musicXml?.checksumSha256;
+      };
+      const revisionsOf = (engineId: string) => {
+        const run = input.page.engines?.[engineId];
+        return { modelRevision: run?.modelRevision, providerRevision: run?.providerRevision };
+      };
+      await this.mergeDecisions.create({
+        pageSha256,
+        userHash: this.telemetry.userHash(input.userId),
+        baseEngineId: input.baseEngineId,
+        candidateEngineId: input.candidateEngineId,
+        // The invariant, in the one place it can be enforced: an edited bar is
+        // evidence that *both* engines were wrong there, so no engine is
+        // credited for it however it is called.
+        ...(input.outcome === 'edited' || !input.engineId ? {} : { engineId: input.engineId }),
+        outcome: input.outcome,
+        blockIndex: input.blockIndex,
+        contentSignature: input.contentSignature,
+        differenceClasses: input.differenceClasses || [],
+        baseArtifactSha256: artifactOf(input.baseEngineId),
+        candidateArtifactSha256: artifactOf(input.candidateEngineId),
+        engineRevisions: {
+          [input.baseEngineId]: revisionsOf(input.baseEngineId),
+          [input.candidateEngineId]: revisionsOf(input.candidateEngineId)
+        },
+        repairs: input.repairs || [],
+        priorDecisions: input.priorDecisions,
+        policyVersion: this.config.get<string>('SCANNER_TRAINING_POLICY_VERSION', 'unset')
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Scanner merge decision not recorded for training: ${this.messageOf(error)}`
+      );
+    }
   }
 
   /** The merged score when there is one, otherwise the engine it would start from. */
@@ -2286,6 +2414,34 @@ export class ScannerService implements OnModuleInit {
    * decides what may lawfully be used: samples captured while the published
    * terms promised no training use must be excluded, not silently swept in.
    */
+  /**
+   * Merge decisions for training.
+   *
+   * Alongside `exportCorrections` rather than merged into it, because they are
+   * different kinds of sample: a correction is a labelled answer to an uncertain
+   * symbol, and this is a labelled preference between two whole readings of the
+   * same page. A consumer wants to weight them differently, which it can only do
+   * if they arrive apart.
+   */
+  async exportMergeDecisions(options: {
+    policyVersion?: string;
+    since?: Date;
+    limit?: number;
+    outcome?: string;
+  }): Promise<any[]> {
+    if (!this.mergeDecisions) return [];
+    const filter: Record<string, unknown> = {};
+    if (options.policyVersion) filter.policyVersion = options.policyVersion;
+    if (options.outcome) filter.outcome = options.outcome;
+    if (options.since) filter.createdAt = { $gte: options.since };
+    return this.mergeDecisions
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(options.limit || 1000, 1), 10_000))
+      .lean()
+      .exec();
+  }
+
   async exportCorrections(options: {
     policyVersion?: string;
     since?: Date;
