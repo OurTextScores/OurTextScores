@@ -115,16 +115,15 @@ export interface ScannerMergedScore {
   /** Bar-level takes, in the order they were made. */
   decisions?: ScannerMergedDecision[];
   /**
-   * A take has added or removed bars, so the merged score no longer counts the
-   * same way the engine readings do.
+   * Which engine measure each merged bar corresponds to; see
+   * `scanner-merged-measure-map.ts`.
    *
-   * Every decision locates its passage by the *engine's* measure index, and an
-   * insertion or deletion shifts everything after it — so once this is set,
-   * further index-addressed takes would land on the wrong bar. They are refused
-   * rather than allowed to be silently wrong. Lifting this needs a map between
-   * merged and engine numbering, which does not exist yet.
+   * Absent means the two numberings still coincide, which is true until the
+   * first insertion or deletion. Present, it is what lets a decision expressed
+   * in engine measure indexes find the right bar of a merged score whose length
+   * has changed.
    */
-  structurallyChanged?: boolean;
+  measureMap?: Array<number | null>;
   updatedAt: Date;
 }
 

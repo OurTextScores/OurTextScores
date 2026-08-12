@@ -1,6 +1,11 @@
 import { spliceScannerMeasures } from './scanner-splice';
 import { readScannerSpliceFacts } from './scanner-splice-safety';
 import { validateScannerMusicXmlSemantics } from './scanner-musicxml-semantics';
+import {
+  identityMeasureMap,
+  resolveMergedIndexes,
+  withRemovedMeasures
+} from './scanner-merged-measure-map';
 
 /**
  * S3's take-bar operation. §5.2 recommends rebuilding from the aligned measure
@@ -277,4 +282,56 @@ describe('scanner splice', () => {
     expect(readScannerSpliceFacts(result.musicXml!)[0].measures).toHaveLength(2);
   });
 
+
+  it('lands on the right bar after an earlier decision changed the length', () => {
+    // The composition the measure map exists for, and the one a reviewer
+    // reaches without being told it is special: delete a bar the other reading
+    // does not have, then take a later bar. The engine still calls that bar 2;
+    // the merged score now keeps it at 1, and without the map the take would
+    // hit the untouched bar beside it and look like it had worked.
+    const base = part(
+      bar(fullBar(4), { attributes: attributes(4) }) +
+        bar(fullBar(4), { number: '2' }) +
+        bar(fullBar(4), { number: '3' }) +
+        bar(fullBar(4), { number: '4' })
+    );
+    const candidate = part(
+      bar(fullBar(4), { attributes: attributes(4) }) +
+        bar(fullBar(4, 'G'), { number: '2' }) +
+        bar(fullBar(4), { number: '3' })
+    );
+
+    let map = identityMeasureMap(4);
+    const deletion = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: candidate,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: resolveMergedIndexes(map, [1])!,
+      candidateMeasureIndexes: []
+    });
+    expect(deletion.musicXml).not.toBeNull();
+    map = withRemovedMeasures(map, [1]);
+    expect(map).toEqual([0, 2, 3]);
+
+    const positions = resolveMergedIndexes(map, [2])!;
+    expect(positions).toEqual([1]);
+    const take = spliceScannerMeasures({
+      baseXml: deletion.musicXml!,
+      candidateXml: candidate,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: positions,
+      candidateMeasureIndexes: [1]
+    });
+
+    expect(take.musicXml).not.toBeNull();
+    const bars = take.musicXml!.toString('utf8').split('<measure').slice(1);
+    expect(bars).toHaveLength(3);
+    // The G landed in the second bar, which is where engine bar 2 now lives.
+    expect(bars[1]).toContain('<step>G</step>');
+    expect(bars[0]).not.toContain('<step>G</step>');
+    expect(bars[2]).not.toContain('<step>G</step>');
+    expect(validateScannerMusicXmlSemantics(take.musicXml!).valid).toBe(true);
+  });
 });

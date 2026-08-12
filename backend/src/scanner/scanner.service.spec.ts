@@ -2831,10 +2831,9 @@ describe('ScannerService merged score', () => {
     ).rejects.toThrow(/already reads this passage/);
   });
 
-  it('refuses further takes once bars have been added or removed', async () => {
-    // Every decision addresses its passage by the engine's measure index, and a
-    // structural change shifts everything after it. Guessing would put the take
-    // on the wrong bar and look like it worked.
+  it('refuses a take on a bar an earlier decision removed', async () => {
+    // The map says that engine measure is no longer anywhere in the merged
+    // score. Acting on a neighbour instead is the failure it exists to prevent.
     const page = pageWithReadings({
       mergedMusicXml: {
         bucket: 'd',
@@ -2847,12 +2846,28 @@ describe('ScannerService merged score', () => {
         sourceEngineId: 'homr',
         basisSignature: 'basis',
         revision: 2,
-        structurallyChanged: true,
+        // Engine bar 1 was deleted by an earlier take.
+        measureMap: [0, 2, 3],
         updatedAt: new Date()
       }
     });
     const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
     const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseAnchorIndex: 0,
+            baseMeasureRefs: [{ measureIndex: 1 }],
+            candidateMeasureRefs: [{ measureIndex: 1 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
 
     await expect(
       service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
@@ -2863,7 +2878,7 @@ describe('ScannerService merged score', () => {
         candidateEngineId: 'transcoda',
         revision: 2
       })
-    ).rejects.toThrow(/no longer line up/);
+    ).rejects.toThrow(/an earlier decision removed it/);
   });
 
   it('refuses an engine that is not one of the two being compared', async () => {

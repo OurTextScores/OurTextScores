@@ -33,6 +33,14 @@ import {
 } from './schemas/scanner-job.schema';
 import { assertValidMusicXml } from './scanner-musicxml';
 import { spliceScannerMeasures } from './scanner-splice';
+import { readScannerSpliceFacts } from './scanner-splice-safety';
+import {
+  identityMeasureMap,
+  resolveMergedAnchor,
+  resolveMergedIndexes,
+  withInsertedMeasures,
+  withRemovedMeasures
+} from './scanner-merged-measure-map';
 
 
 import {
@@ -1495,16 +1503,6 @@ export class ScannerService implements OnModuleInit {
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
-    if (page.mergedScore?.structurallyChanged) {
-      // Every decision addresses its passage by the engine's measure index, and
-      // an earlier insertion or deletion shifted everything after it. Refusing
-      // is the honest answer until a map between the two numberings exists;
-      // guessing would put the take on the wrong bar and look like it worked.
-      throw new ConflictException(
-        'This page has had bars added or removed, so bar numbers no longer line up with the ' +
-          'engine readings. Further takes are unavailable until that is reconciled.'
-      );
-    }
 
     const comparison = await this.pageComparisonForJob(
       job,
@@ -1548,27 +1546,50 @@ export class ScannerService implements OnModuleInit {
       );
     }
     // A block only one engine read is an insertion or a deletion rather than a
-    // replacement, and the anchor is the only thing that says where. It is
-    // meaningful only when the merged score is expressed in the base engine's
-    // numbering, which it is: `baseAnchorIndex` counts base measures.
-    const baseAnchorIndex =
+    // replacement, and the anchor is the only thing that says where. It counts
+    // base measures, so it is meaningful only when the merged score follows the
+    // base reading — which is also the only case its indexes are expressed in.
+    const sourceAnchorIndex =
       mergedSourceEngineId === input.baseEngineId ? block.baseAnchorIndex : undefined;
-    if (baseMeasureIndexes.length === 0 && baseAnchorIndex === undefined) {
+    if (baseMeasureIndexes.length === 0 && sourceAnchorIndex === undefined) {
       throw new ConflictException(
         'This passage can only be inserted into a merged score that follows the base reading'
       );
     }
 
     const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId);
+    // The decision names its passage in the *engine's* numbering, because that
+    // is what the comparison computed and what the reviewer was shown. The
+    // splice acts on the *merged* document, whose numbering has moved with
+    // every bar added or removed. The map is what keeps a take on the bar the
+    // reviewer pointed at.
+    const map =
+      page.mergedScore?.measureMap ||
+      identityMeasureMap(readScannerSpliceFacts(baseXml)[0]?.measures.length ?? 0);
+    const mergedMeasureIndexes = resolveMergedIndexes(map, baseMeasureIndexes);
+    if (!mergedMeasureIndexes) {
+      throw new ConflictException(
+        'That passage is no longer in the merged score — an earlier decision removed it.'
+      );
+    }
+    const mergedAnchorIndex =
+      sourceAnchorIndex === undefined ? undefined : resolveMergedAnchor(map, sourceAnchorIndex);
+    if (mergedAnchorIndex === null) {
+      throw new ConflictException(
+        'The bar this passage would follow is no longer in the merged score, so there is nowhere ' +
+          'to put it.'
+      );
+    }
+
     const candidateXml = await this.engineMusicXml(page, input.engineId);
     const outcome = spliceScannerMeasures({
       baseXml,
       candidateXml,
       basePartIndex: 0,
       candidatePartIndex: 0,
-      baseMeasureIndexes,
+      baseMeasureIndexes: mergedMeasureIndexes,
       candidateMeasureIndexes,
-      baseAnchorIndex
+      baseAnchorIndex: mergedAnchorIndex
     });
     if (!outcome.musicXml) {
       // Refusals are information, not an error to swallow: the reviewer is
@@ -1580,11 +1601,20 @@ export class ScannerService implements OnModuleInit {
       });
     }
 
+    // Carry the map forward by exactly what the splice did, so the next
+    // decision sees this one.
+    const nextMap =
+      candidateMeasureIndexes.length === 0
+        ? withRemovedMeasures(map, mergedMeasureIndexes)
+        : mergedMeasureIndexes.length === 0
+          ? withInsertedMeasures(map, mergedAnchorIndex ?? -1, candidateMeasureIndexes.length)
+          : map;
+
     const decision: ScannerMergedDecision = {
       blockIndex: input.blockIndex,
       contentSignature: block.contentSignature,
       engineId: input.engineId,
-      measureIndexes: baseMeasureIndexes,
+      measureIndexes: mergedMeasureIndexes,
       repairs: outcome.repairs.map((repair) => ({ code: repair.code, detail: repair.detail })),
       decidedAt: new Date()
     };
@@ -1594,9 +1624,7 @@ export class ScannerService implements OnModuleInit {
       edited: Boolean(page.mergedScore?.edited),
       revision: currentRevision + 1,
       decisions: [...(page.mergedScore?.decisions || []), decision],
-      structurallyChanged:
-        Boolean(page.mergedScore?.structurallyChanged) ||
-        baseMeasureIndexes.length !== candidateMeasureIndexes.length,
+      measureMap: nextMap,
       updatedAt: new Date()
     };
     const state = await this.persistMergedScore({
