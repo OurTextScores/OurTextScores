@@ -544,7 +544,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     for (const engineId of this.engineRegistry().planForJob(job).engineIds) {
       const existing = current.engines?.[engineId];
       if (existing) {
-        current = withScannerEngineRun(current, existing);
+        // A page excluded after preparation already carries seeded runs. Left
+        // alone they stay 'pending', so an excluded page reports as still
+        // awaiting an engine that will never be asked to read it.
+        const abandoned =
+          page.included === false && (existing.status === 'pending' || existing.status === 'running');
+        current = withScannerEngineRun(
+          current,
+          abandoned ? { ...existing, status: 'skipped' } : existing
+        );
         continue;
       }
       const readable = this.engineRegistry().readable(engineId);

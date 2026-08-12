@@ -214,6 +214,60 @@ describe('ScannerWorkerService', () => {
     expect(reported.at(-1)).toEqual({ homr: 'running', transcoda: 'running' });
   });
 
+  it('abandons seeded runs on a page excluded after preparation', () => {
+    // Deselecting pages 2 and 3 left their Transcoda runs seeded as pending, so
+    // the page claimed to be awaiting an engine that would never read it.
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    const scannerWorker = service() as any;
+    const result = scannerWorker.withInitialPlannedEngineRuns(
+      { enginePlan: scannerEnginePlan(['homr', 'transcoda']), pages: [] },
+      {
+        included: false,
+        status: 'skipped',
+        attempts: 0,
+        idempotencyKey: '',
+        engines: {
+          homr: { engine: 'homr', status: 'skipped', attempts: 0, idempotencyKey: '', artifacts: {} },
+          transcoda: {
+            engine: 'transcoda',
+            status: 'pending',
+            attempts: 0,
+            idempotencyKey: '',
+            artifacts: {}
+          }
+        }
+      }
+    );
+
+    expect(result.engines.transcoda.status).toBe('skipped');
+    expect(result.status).toBe('skipped');
+  });
+
+  it('keeps a finished run on an excluded page rather than rewriting history', () => {
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    const scannerWorker = service() as any;
+    const result = scannerWorker.withInitialPlannedEngineRuns(
+      { enginePlan: scannerEnginePlan(['homr', 'transcoda']), pages: [] },
+      {
+        included: false,
+        status: 'skipped',
+        attempts: 0,
+        idempotencyKey: '',
+        engines: {
+          transcoda: {
+            engine: 'transcoda',
+            status: 'succeeded',
+            attempts: 1,
+            idempotencyKey: 'transcoda-key',
+            artifacts: {}
+          }
+        }
+      }
+    );
+
+    expect(result.engines.transcoda.status).toBe('succeeded');
+  });
+
   it('fails a planned run explicitly when its registry definition is unavailable', () => {
     const scannerWorker = service() as any;
     const result = scannerWorker.withInitialPlannedEngineRuns(
