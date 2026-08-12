@@ -289,6 +289,12 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
             with tempfile.TemporaryDirectory(prefix="ots-homr-") as directory:
                 source = Path(directory) / f"page{request['suffix']}"
                 source.write_bytes(request["page"])
+                import cv2
+
+                source_image = cv2.imread(str(source), cv2.IMREAD_UNCHANGED)
+                if source_image is None:
+                    raise InferenceError(CODE_INVALID_IMAGE, "The page image could not be decoded")
+                source_height, source_width = source_image.shape[:2]
                 config = ProcessingConfig(
                     False,  # enable_debug
                     False,  # enable_cache
@@ -305,7 +311,7 @@ def _child_main(connection: Any, use_gpu: bool) -> None:
                 # and changes nothing about what is predicted.
                 with capture_page() as captured:
                     process_image(str(source), config, XmlGeneratorArguments())
-                review = captured.as_dict()
+                review = captured.as_dict(int(source_width), int(source_height))
                 output = source.with_suffix(".musicxml")
                 if not output.is_file():
                     raise InferenceError(CODE_FAILED, "HOMR produced no MusicXML")

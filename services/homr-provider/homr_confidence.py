@@ -86,6 +86,8 @@ class PageCapture:
         self.staves: list[dict[str, Any]] = []
         self._steps: list[list[Any]] = []
         self._decoder: Any = None
+        self._page_width = 0
+        self._page_height = 0
         # `detect_staffs_in_image` computes trustworthy segmentation boxes for
         # bar lines, but HOMR only uses them while finding/grouping staves and
         # never adds them to `Staff.symbols`. Consequently
@@ -160,6 +162,13 @@ class PageCapture:
             setattr(symbol, CONFIDENCE_ATTR, heads)
 
     # -- page side --------------------------------------------------------
+
+    def record_page_canvas(self, image: Any) -> None:
+        try:
+            self._page_height, self._page_width = [int(value) for value in image.shape[:2]]
+        except (AttributeError, TypeError, ValueError):
+            self._page_width = 0
+            self._page_height = 0
 
     def record_detected_bar_lines(
         self, bar_lines: list[Any], candidates: list[Any] | None = None
@@ -331,8 +340,48 @@ class PageCapture:
             staff["partIndex"] = part_index
             staff["systemIndex"] = system_index
 
-    def as_dict(self) -> dict[str, Any]:
-        return {"staves": self.staves}
+    def as_dict(
+        self, source_width: int | None = None, source_height: int | None = None
+    ) -> dict[str, Any]:
+        """Return geometry in the uploaded source image's coordinate space.
+
+        HOMR normalizes pages to a 1,920px working width before staff parsing.
+        The Scanner stores and crops the exact raster it uploaded, so leaking
+        working-canvas coordinates makes every region invalid for smaller
+        images. Attention stays staff-canvas-local; only page geometry scales.
+        """
+        if (
+            not source_width
+            or not source_height
+            or self._page_width <= 0
+            or self._page_height <= 0
+        ):
+            return {"staves": self.staves}
+        scale_x = source_width / self._page_width
+        scale_y = source_height / self._page_height
+        staves: list[dict[str, Any]] = []
+        for staff in self.staves:
+            region = staff.get("region")
+            scaled_region = (
+                [
+                    round(float(region[0]) * scale_x),
+                    round(float(region[1]) * scale_y),
+                    round(float(region[2]) * scale_x),
+                    round(float(region[3]) * scale_y),
+                ]
+                if isinstance(region, list) and len(region) == 4
+                else region
+            )
+            staves.append(
+                {
+                    **staff,
+                    "region": scaled_region,
+                    "barLines": [
+                        round(float(value) * scale_x) for value in staff.get("barLines", [])
+                    ],
+                }
+            )
+        return {"staves": staves}
 
 
 def _attention_point(coordinates: Any) -> list[float] | None:
@@ -392,6 +441,7 @@ class capture_page:  # noqa: N801 - used as a context manager
         def parse_staff_image(
             debug: Any, index: int, staff: Any, image: Any, regions: Any, config: Any
         ) -> Any:
+            page.record_page_canvas(image)
             symbols = original_parse(debug, index, staff, image, regions, config)
             region = None
             try:

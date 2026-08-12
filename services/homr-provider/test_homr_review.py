@@ -158,6 +158,26 @@ class BarLineCaptureTest(unittest.TestCase):
             [100, 600, 900],
         )
 
+    def test_scales_page_geometry_back_to_the_uploaded_raster(self):
+        page = PageCapture()
+        page.record_page_canvas(SimpleNamespace(shape=(2160, 1920, 3)))
+        page.staves = [
+            {
+                "index": 0,
+                "region": [120, 216, 1800, 432],
+                "barLines": [600, 1200, 1800],
+                "tokens": [],
+                "symbols": [{"attention": [640, 50]}],
+            }
+        ]
+
+        staff = page.as_dict(960, 1080)["staves"][0]
+
+        self.assertEqual(staff["region"], [60, 108, 900, 216])
+        self.assertEqual(staff["barLines"], [300, 600, 900])
+        # Decoder attention is local to the fixed staff canvas, not the page.
+        self.assertEqual(staff["symbols"][0]["attention"], [640, 50])
+
 
 if __name__ == "__main__":
     unittest.main()
