@@ -30,6 +30,22 @@ describe('ScannerEngineRegistry', () => {
     expect(registry.newJobCapacityExhausted()).toBe(true);
   });
 
+  it('lets every reading engine be previewed beside the scan', () => {
+    // The page preview is rendered by us from an engine's MusicXML; it is not a
+    // provider output. Transcoda declared only its native musicxml and kern, so
+    // it produced a reading with no preview and the page showed one engine
+    // where it should have shown two. Any engine that reads a page must be
+    // renderable, or it will silently be missing from the comparison.
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    const registry = new ScannerEngineRegistry(config, homr, transcoda);
+    for (const engineId of registry.newJobPlan().engineIds) {
+      const definition = registry.get(engineId);
+      expect(definition?.artifacts.musicxml).toBeDefined();
+      expect(definition?.artifacts.pdf).toBeDefined();
+      expect(definition?.capabilities.outputArtifactKinds).toContain('pdf');
+    }
+  });
+
   it('adds a third adapter through one definition and preserves it in legacy inference', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
     const audiveris: ScannerEngineDefinition = {

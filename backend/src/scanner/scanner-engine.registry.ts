@@ -128,7 +128,7 @@ export class ScannerEngineRegistry {
       timeoutConfigKey: 'SCANNER_TRANSCODA_PROVIDER_TIMEOUT_MS',
       capabilities: {
         displayName: 'Transcoda',
-        outputArtifactKinds: ['musicxml', 'kern'],
+        outputArtifactKinds: ['musicxml', 'kern', 'pdf'],
         supportsSpotReview: false,
         supportsMeasureGeometry: false,
         unsupportedSemanticClasses: ['lyrics', 'dynamics']
@@ -147,6 +147,14 @@ export class ScannerEngineRegistry {
           maxBytes: 10_485_760,
           maxBytesConfigKey: 'SCANNER_MAX_KERN_BYTES',
           requiredProviderOutput: true
+        },
+        // Not a provider output: we render it from this engine's MusicXML so
+        // the page can show what Transcoda made of the scan beside the scan.
+        pdf: {
+          contentType: 'application/pdf',
+          extension: 'pdf',
+          maxBytes: 52_428_800,
+          requiredProviderOutput: false
         }
       }
     });
