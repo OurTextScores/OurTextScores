@@ -727,11 +727,13 @@ export default function PageComparison({
               {/*
                 Two whole scores side by side need far more width than the
                 page's centered column allows, so the frame is pulled out of it
-                and centered on the viewport instead. The width subtracts a
-                little from 100vw so a vertical scrollbar cannot push a
-                horizontal one onto the page.
+                and centered on the viewport instead. It takes the full width
+                deliberately — measured on a 2560px display, an earlier 120rem
+                cap left 320px of dead margin on each side. The 2rem it gives
+                back stops a vertical scrollbar pushing a horizontal one onto
+                the page.
               */}
-              <div className="relative left-1/2 mt-3 w-[min(100vw-2rem,120rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
+              <div className="relative left-1/2 mt-3 w-[calc(100vw-2rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
                 <iframe
                   key={embeddedCompareUrl}
                   src={embeddedCompareUrl}
