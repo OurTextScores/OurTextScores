@@ -432,6 +432,8 @@ export default function PageComparison({
             candidateEngine: comparison.candidate.engineId,
           },
         ).toString()}`,
+        // One row per system of the scan, each engine's reading beneath it.
+        compareMode: "rows",
       }).toString()}`
     : undefined;
 

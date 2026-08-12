@@ -892,7 +892,20 @@ export class ScannerService implements OnModuleInit {
         systemIndex: system.systemIndex,
         region: system.region,
         leftMeasureIndexes: system.baseMeasureIndexes,
-        rightMeasureIndexes: system.candidateMeasureIndexes
+        rightMeasureIndexes: system.candidateMeasureIndexes,
+        // Relative to this document's own URL, so it resolves correctly
+        // whatever prefix the caller reached us through — the browser arrives
+        // via the frontend's proxy, which this process cannot know. Built here
+        // rather than by the client because the crop is status-version bound,
+        // and a consumer assembling it would be one refactor away from pinning
+        // the wrong revision.
+        cropUrl:
+          `systems/${system.systemIndex}/crop?` +
+          new URLSearchParams({
+            baseEngine: baseEngineId,
+            candidateEngine: candidateEngineId,
+            statusVersion: String(comparison.statusVersion)
+          }).toString()
       })),
       regions: [] as any[],
       warnings: [] as any[],
@@ -1235,6 +1248,66 @@ export class ScannerService implements OnModuleInit {
         comparison.sourceImage,
         blockResult.block.cropRegions
       ),
+      contentType: 'image/png'
+    };
+  }
+
+  /**
+   * The scan of one physical system, for a row-per-system view.
+   *
+   * Bound to the job's status version so a page that moves on cannot be
+   * reviewed against a stale image, and verified against the retained
+   * recognition raster exactly as the block crop is. No content signature: a
+   * system is a property of the scan, not of any comparison block, and it stays
+   * valid while the engines' readings change.
+   */
+  async pageComparisonSystemCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    systemIndex: number,
+    baseEngineId: string,
+    candidateEngineId: string,
+    statusVersion: number
+  ): Promise<{ body: Buffer; contentType: 'image/png' }> {
+    this.assertAvailable(userId);
+    if (
+      !isScannerEngineId(baseEngineId) ||
+      !isScannerEngineId(candidateEngineId) ||
+      baseEngineId === candidateEngineId
+    ) {
+      throw new BadRequestException('Comparison requires two distinct valid scanner engines');
+    }
+    if (!Number.isInteger(systemIndex) || systemIndex < 0) {
+      throw new BadRequestException('Comparison system index is invalid');
+    }
+    if (!Number.isInteger(statusVersion) || statusVersion < 1) {
+      throw new BadRequestException('Scanner job status version is required');
+    }
+
+    const job = await this.ownedJob(userId, jobId);
+    if ((job.statusVersion || 1) !== statusVersion) {
+      throw new ConflictException('Scanner comparison changed; refresh and try again');
+    }
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const comparison = await this.pageComparisonForJob(job, page, baseEngineId, candidateEngineId);
+    const system = (comparison.systems || []).find(
+      (entry: any) => entry.systemIndex === systemIndex
+    );
+    if (!system) throw new NotFoundException('Scanner comparison system is not available');
+    if (!page.recognitionRaster?.storage || !comparison.sourceImage) {
+      throw new NotFoundException('Scanner recognition raster is not available');
+    }
+
+    const source = await this.storage.getObjectBuffer(
+      page.recognitionRaster.storage.bucket,
+      page.recognitionRaster.storage.objectKey
+    );
+    return {
+      body: await this.renderComparisonBlockCrop(source, comparison.sourceImage, [
+        { systemIndex: system.systemIndex, staffIndices: [], region: system.region }
+      ]),
       contentType: 'image/png'
     };
   }
