@@ -88,6 +88,61 @@ describe("ScannerJobClient", () => {
     );
   });
 
+  it("previews every engine that read the page, each beside the scan", async () => {
+    // One preview per engine: comparing an engine against the source should not
+    // require holding the other engine's rendering in your head.
+    const dualEngineJob: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      enginePlan: {
+        primaryEngineId: "homr",
+        fallbackEngineIds: ["transcoda"],
+        engineIds: ["homr", "transcoda"],
+        capabilitySnapshots: {
+          homr: { displayName: "HOMR", unsupportedSemanticClasses: [] },
+          transcoda: { displayName: "Transcoda", unsupportedSemanticClasses: [] },
+        },
+      },
+      pages: [
+        {
+          ...partialJob.pages[0],
+          engines: {
+            homr: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: true,
+            },
+            transcoda: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: true,
+            },
+          },
+        },
+      ],
+    } as ScannerJob;
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => dualEngineJob,
+    });
+
+    const { container } = render(<ScannerJobClient jobId="job-1" />);
+    expect(await screen.findByText("Scan versus HOMR")).toBeInTheDocument();
+    expect(screen.getByText("Scan versus Transcoda")).toBeInTheDocument();
+
+    const previews = [...container.querySelectorAll("object")].map((node) =>
+      node.getAttribute("data"),
+    );
+    expect(previews).toEqual([
+      "/api/proxy/scanner/jobs/job-1/artifacts/pdf?page=1&engine=homr",
+      "/api/proxy/scanner/jobs/job-1/artifacts/pdf?page=1&engine=transcoda",
+    ]);
+    // The scan itself is shown against each engine, not just once.
+    expect(screen.getAllByAltText("Source preview for page 1")).toHaveLength(2);
+  });
+
   it("queues only the selected failed page", async () => {
     render(<ScannerJobClient jobId="job-1" />);
     const pageTwo = await screen.findByRole("button", {

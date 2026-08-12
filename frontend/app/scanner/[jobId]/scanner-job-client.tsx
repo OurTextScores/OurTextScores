@@ -146,8 +146,17 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   }, [job, pageSetupDirty]);
 
   const artifactUrl = useCallback(
-    (kind: "musicxml" | "pdf" | "thumbnail" | "zip", pageNumber?: number) =>
-      `${base}/artifacts/${kind}${pageNumber ? `?page=${pageNumber}` : ""}`,
+    (
+      kind: "musicxml" | "pdf" | "thumbnail" | "zip",
+      pageNumber?: number,
+      engineId?: string,
+    ) => {
+      const query = new URLSearchParams();
+      if (pageNumber) query.set("page", String(pageNumber));
+      if (engineId) query.set("engine", engineId);
+      const search = query.toString();
+      return `${base}/artifacts/${kind}${search ? `?${search}` : ""}`;
+    },
     [base],
   );
 
@@ -322,6 +331,10 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
     ? job.enginePlan?.capabilitySnapshots[effectiveEngineId]
         ?.unsupportedSemanticClasses || []
     : [];
+  // Every engine that produced a reading gets its own preview beside the scan.
+  const previewEngineIds = engineIds.filter(
+    (engineId) => selected?.engines?.[engineId]?.status === "succeeded",
+  );
   const supportsSpotReview = engineIds.some((engineId) => {
     const run = selected?.engines?.[engineId];
     const capability = job.enginePlan?.capabilitySnapshots[engineId];
@@ -766,48 +779,79 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
           {selected.status === "succeeded" && (
             <PageComparison jobId={jobId} job={job} page={selected} />
           )}
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-              {selected.hasThumbnail ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={artifactUrl("thumbnail", selected.pageNumber)}
-                  alt={`Source preview for page ${selected.pageNumber}`}
-                  className="max-h-[70vh] w-full object-contain"
-                  style={{
-                    transform: `rotate(${selected.rotationDegrees}deg)`,
-                  }}
-                />
-              ) : (
-                <p className="p-5 text-sm text-slate-500">
-                  Source preview is unavailable or has expired.
-                </p>
-              )}
-            </div>
-            <div className="min-h-[420px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
-              {selected.hasPdf ? (
-                <object
-                  data={artifactUrl("pdf", selected.pageNumber)}
-                  type="application/pdf"
-                  className="h-[70vh] min-h-[420px] w-full"
-                >
-                  <p className="p-4 text-sm">
-                    PDF preview is unavailable in this browser.{" "}
-                    <a
-                      className="text-blue-600 underline"
-                      href={artifactUrl("pdf", selected.pageNumber)}
+          {/*
+            One preview per engine that produced a reading, each beside the scan
+            it read, so a reviewer can check either engine against the source
+            without holding the other in their head. Falls back to a single
+            effective preview for jobs that ran one engine.
+          */}
+          {(previewEngineIds.length > 0
+            ? previewEngineIds.map((engineId) => ({
+                key: engineId,
+                label: engineLabel(job, engineId),
+                pdfUrl: selected.engines?.[engineId]?.hasPdf
+                  ? artifactUrl("pdf", selected.pageNumber, engineId)
+                  : undefined,
+              }))
+            : [
+                {
+                  key: "effective",
+                  label: effectiveLabel,
+                  pdfUrl: selected.hasPdf
+                    ? artifactUrl("pdf", selected.pageNumber)
+                    : undefined,
+                },
+              ]
+          ).map((preview) => (
+            <div key={preview.key} className="mt-5">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                Scan versus {preview.label}
+              </p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
+                  {selected.hasThumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={artifactUrl("thumbnail", selected.pageNumber)}
+                      alt={`Source preview for page ${selected.pageNumber}`}
+                      className="max-h-[70vh] w-full object-contain"
+                      style={{
+                        transform: `rotate(${selected.rotationDegrees}deg)`,
+                      }}
+                    />
+                  ) : (
+                    <p className="p-5 text-sm text-slate-500">
+                      Source preview is unavailable or has expired.
+                    </p>
+                  )}
+                </div>
+                <div className="min-h-[420px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                  {preview.pdfUrl ? (
+                    <object
+                      data={preview.pdfUrl}
+                      type="application/pdf"
+                      className="h-[70vh] min-h-[420px] w-full"
                     >
-                      Download it instead.
-                    </a>
-                  </p>
-                </object>
-              ) : (
-                <p className="flex min-h-[420px] items-center justify-center p-5 text-sm text-slate-500">
-                  No rendered PDF is available for this page.
-                </p>
-              )}
+                      <p className="p-4 text-sm">
+                        PDF preview is unavailable in this browser.{" "}
+                        <a
+                          className="text-blue-600 underline"
+                          href={preview.pdfUrl}
+                        >
+                          Download it instead.
+                        </a>
+                      </p>
+                    </object>
+                  ) : (
+                    <p className="flex min-h-[420px] items-center justify-center p-5 text-sm text-slate-500">
+                      No rendered PDF is available for {preview.label} on this
+                      page.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </section>
       )}
 

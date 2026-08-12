@@ -436,6 +436,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         page = rendered.page;
         renderMsTotal += rendered.renderMs;
         previewThumbnail ??= rendered.thumbnail;
+        const perEngine = await this.renderEnginePreviews(job, page, userHash);
+        page = perEngine.page;
+        renderMsTotal += perEngine.renderMs;
         results.push(page);
         await this.persistPageProgress(
           job,
@@ -589,41 +592,81 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     userHash: string;
     onPageChange?: (page: ScannerPageResult) => Promise<void>;
   }): Promise<{ page: ScannerPageResult; providerMs: number }> {
+    /**
+     * Engines are independent recognitions of the same image, so they run
+     * concurrently: a page costs the slowest engine rather than the sum, and a
+     * slow engine no longer holds a fast one's result hostage. Only each
+     * engine's own preview depends on that engine.
+     *
+     * `scanEnginePage` changes a page solely through `withScannerEngineRun`, so
+     * every run can start from the same base state and be folded back
+     * afterwards. Progress reporting is the one shared thing: each engine
+     * reports its own run, which is merged into one page here so a concurrent
+     * report cannot persist a page that has forgotten the other engine.
+     */
     let page = input.page;
     let providerMs = 0;
-    for (const engineId of this.engineRegistry().planForJob(input.job).engineIds) {
+
+    const mergeRun = async (run: ScannerEngineRun | undefined): Promise<void> => {
+      if (!run) return;
+      page = withScannerEngineRun(page, run);
+      await input.onPageChange?.(page);
+    };
+
+    const cancelled = await this.isCancelled(input.job.jobId);
+    const planned = cancelled ? [] : this.engineRegistry().planForJob(input.job).engineIds;
+
+    const unregistered = planned.filter((engineId) => !this.engineRegistry().readable(engineId));
+    for (const engineId of unregistered) {
+      await mergeRun({
+        engine: engineId,
+        status: 'failed',
+        attempts: 0,
+        providerAttempts: page.engines?.[engineId]?.providerAttempts,
+        idempotencyKey: page.engines?.[engineId]?.idempotencyKey || '',
+        errorCode: 'engine_not_registered',
+        errorMessage: `Scanner engine ${engineId} is not registered for execution`,
+        recognitionRaster: input.recognitionRaster,
+        artifacts: page.engines?.[engineId]?.artifacts || {}
+      });
+      this.telemetry.emit('page_engine_failed', {
+        jobId: input.job.jobId,
+        userHash: input.userHash,
+        pageNumber: input.pageNumber,
+        ordinal: input.page.ordinal || input.pageNumber,
+        generation: input.job.generation,
+        engine: engineId,
+        attempt: 0,
+        inputBytes: input.image.length,
+        errorCode: 'engine_not_registered',
+        retryable: false
+      });
+    }
+
+    const runnable = planned.flatMap((engineId) => {
       const definition = this.engineRegistry().readable(engineId);
-      if (!definition) {
-        page = withScannerEngineRun(page, {
-          engine: engineId,
-          status: 'failed',
-          attempts: 0,
-          providerAttempts: page.engines?.[engineId]?.providerAttempts,
-          idempotencyKey: page.engines?.[engineId]?.idempotencyKey || '',
-          errorCode: 'engine_not_registered',
-          errorMessage: `Scanner engine ${engineId} is not registered for execution`,
-          recognitionRaster: input.recognitionRaster,
-          artifacts: page.engines?.[engineId]?.artifacts || {}
+      return definition ? [{ engineId, definition }] : [];
+    });
+
+    await this.updateLease(input.job.jobId, 'running');
+    const outcomes = await Promise.all(
+      runnable.map(async ({ engineId, definition }) => {
+        const scanned = await this.scanEnginePage({
+          ...input,
+          page: input.page,
+          definition,
+          // Report this engine's run only; the merge above owns the page.
+          onPageChange: input.onPageChange
+            ? async (partial) => mergeRun(partial.engines?.[engineId])
+            : undefined
         });
-        this.telemetry.emit('page_engine_failed', {
-          jobId: input.job.jobId,
-          userHash: input.userHash,
-          pageNumber: input.pageNumber,
-          ordinal: input.page.ordinal || input.pageNumber,
-          generation: input.job.generation,
-          engine: engineId,
-          attempt: 0,
-          inputBytes: input.image.length,
-          errorCode: 'engine_not_registered',
-          retryable: false
-        });
-        continue;
-      }
-      await this.updateLease(input.job.jobId, 'running');
-      const scanned = await this.scanEnginePage({ ...input, page, definition });
-      page = scanned.page;
+        return { engineId, scanned };
+      })
+    );
+
+    for (const { engineId, scanned } of outcomes) {
       providerMs += scanned.providerMs;
-      if (await this.isCancelled(input.job.jobId)) break;
+      page = withScannerEngineRun(page, scanned.page.engines![engineId]!);
     }
     return { page, providerMs };
   }
@@ -930,6 +973,70 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
       return { page, providerMs };
     }
+  }
+
+  /**
+   * Materialize one preview per engine that produced a reading.
+   *
+   * The effective preview above answers "what did this page become"; a reviewer
+   * comparing engines needs to see what *each* engine made of the scan, beside
+   * the scan itself. Engines already selected as effective keep the preview
+   * they were just given rather than rendering the same MusicXML twice.
+   */
+  private async renderEnginePreviews(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    userHash: string
+  ): Promise<{ page: ScannerPageResult; renderMs: number }> {
+    let rendered = page;
+    let renderMs = 0;
+    for (const engineId of this.engineRegistry().planForJob(job).engineIds) {
+      const run = rendered.engines?.[engineId];
+      const musicXml = run?.artifacts.musicXml;
+      if (!run || !musicXml) continue;
+      if (!this.engineRegistry().get(engineId)?.artifacts.pdf) continue;
+      const inputs = [
+        { ordinal: page.ordinal || page.pageNumber, checksumSha256: musicXml.checksumSha256 }
+      ];
+      if (scannerArtifactInputMatches(run.artifacts.pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf, inputs))
+        continue;
+
+      const startedAt = Date.now();
+      try {
+        await this.updateLease(job.jobId, 'rendering');
+        const body = await this.storage.getObjectBuffer(musicXml.bucket, musicXml.objectKey);
+        const output = await this.renderer.renderMusicXmlPdf(body);
+        const pdf = withScannerArtifactInputSignature(
+          await this.store(
+            `${this.baseKey(job)}/page-${String(page.pageNumber).padStart(3, '0')}-${engineId}.pdf`,
+            output.pdf,
+            'application/pdf'
+          ),
+          SCANNER_ARTIFACT_BUILDERS.pagePdf,
+          inputs
+        );
+        rendered = withScannerEngineRun(rendered, {
+          ...run,
+          artifacts: { ...run.artifacts, pdf }
+        });
+      } catch (error) {
+        // One engine's preview failing must not cost the other its preview, nor
+        // the page its result.
+        this.logger.warn(
+          `PDF rendering failed for ${job.jobId} page ${page.pageNumber} ${engineId}: ${this.message(error)}`
+        );
+        this.telemetry.emit('page_render_failed', {
+          jobId: job.jobId,
+          userHash,
+          pageNumber: page.pageNumber,
+          engine: engineId,
+          errorCode: 'render_failed',
+          retryable: true
+        });
+      }
+      renderMs += Date.now() - startedAt;
+    }
+    return { page: rendered, renderMs };
   }
 
   /** Materialize the page preview from the plan-selected MusicXML, regardless of engine. */

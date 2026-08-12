@@ -88,6 +88,132 @@ describe('ScannerWorkerService', () => {
     ).toBeUndefined();
   });
 
+  it('recognizes planned engines concurrently rather than queuing one behind the other', async () => {
+    // Two engines reading the same image are independent, so a page should cost
+    // the slowest of them rather than their sum. This asserts real overlap, not
+    // just that both eventually ran.
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    const scannerWorker = service() as any;
+    scannerWorker.updateLease = jest.fn().mockResolvedValue(undefined);
+    scannerWorker.isCancelled = jest.fn().mockResolvedValue(false);
+
+    const active = new Set<string>();
+    let peak = 0;
+    scannerWorker.scanEnginePage = jest.fn(async (input: any) => {
+      const engineId = input.definition.id;
+      active.add(engineId);
+      peak = Math.max(peak, active.size);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      active.delete(engineId);
+      return {
+        page: {
+          ...input.page,
+          engines: {
+            ...input.page.engines,
+            [engineId]: {
+              engine: engineId,
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: `${engineId}-key`,
+              artifacts: {}
+            }
+          }
+        },
+        providerMs: 5
+      };
+    });
+
+    const result = await scannerWorker.scanPlannedEngines({
+      job: {
+        jobId: 'job-1',
+        generation: 1,
+        enginePlan: scannerEnginePlan(['homr', 'transcoda'])
+      },
+      page: {
+        pageNumber: 1,
+        ordinal: 1,
+        included: true,
+        status: 'pending',
+        attempts: 0,
+        idempotencyKey: ''
+      },
+      image: Buffer.from('image'),
+      recognitionRaster,
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash'
+    });
+
+    expect(peak).toBe(2);
+    expect(scannerWorker.scanEnginePage).toHaveBeenCalledTimes(2);
+    // Both runs survive the fold; neither overwrote the other's state.
+    expect(result.page.engines.homr.status).toBe('succeeded');
+    expect(result.page.engines.transcoda.status).toBe('succeeded');
+    expect(result.providerMs).toBe(10);
+  });
+
+  it('merges concurrent engine progress into one page rather than racing it', async () => {
+    // Each engine reports only its own run. If a report persisted that engine's
+    // view of the page, the last writer would erase the other engine's state.
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    const scannerWorker = service() as any;
+    scannerWorker.updateLease = jest.fn().mockResolvedValue(undefined);
+    scannerWorker.isCancelled = jest.fn().mockResolvedValue(false);
+
+    scannerWorker.scanEnginePage = jest.fn(async (input: any) => {
+      const engineId = input.definition.id;
+      const running = {
+        ...input.page,
+        engines: {
+          ...input.page.engines,
+          [engineId]: {
+            engine: engineId,
+            status: 'running',
+            attempts: 1,
+            idempotencyKey: `${engineId}-key`,
+            artifacts: {}
+          }
+        }
+      };
+      await input.onPageChange?.(running);
+      return { page: running, providerMs: 1 };
+    });
+
+    const reported: Array<Record<string, string>> = [];
+    await scannerWorker.scanPlannedEngines({
+      job: {
+        jobId: 'job-1',
+        generation: 1,
+        enginePlan: scannerEnginePlan(['homr', 'transcoda'])
+      },
+      page: {
+        pageNumber: 1,
+        ordinal: 1,
+        included: true,
+        status: 'pending',
+        attempts: 0,
+        idempotencyKey: ''
+      },
+      image: Buffer.from('image'),
+      recognitionRaster,
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash',
+      onPageChange: async (page: any) => {
+        reported.push(
+          Object.fromEntries(
+            Object.entries(page.engines || {}).map(([id, run]: [string, any]) => [id, run.status])
+          )
+        );
+      }
+    });
+
+    // The final report carries both engines, whichever order they finished in.
+    expect(reported.at(-1)).toEqual({ homr: 'running', transcoda: 'running' });
+  });
+
   it('fails a planned run explicitly when its registry definition is unavailable', () => {
     const scannerWorker = service() as any;
     const result = scannerWorker.withInitialPlannedEngineRuns(
