@@ -59,6 +59,7 @@ import type { ScannerPageProvider } from './scanner-provider.contract';
 import {
   SCANNER_ARTIFACT_BUILDERS,
   SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION,
+  SCANNER_COMPARE_REGIONS_VERSION,
   scannerArtifactInputSignature,
   scannerArtifactInputMatches,
   scannerDefaultEnginePlan,
@@ -809,6 +810,106 @@ export class ScannerService implements OnModuleInit {
   }
 
   /** Build a fresh, read-only comparison from the selected stored engine revisions. */
+  /**
+   * The comparison projected for a renderer that only needs to know what to
+   * highlight.
+   *
+   * The score editor computes its own measure diff, and cannot tell these two
+   * documents apart: HOMR writes a sixteenth as duration 1 at divisions 4 and
+   * Transcoda writes the same note as 2520 at divisions 10080, so a textual
+   * per-measure signature marks every measure of an agreeing page as changed.
+   * This hands it the answer instead. See
+   * OTS_Web/docs/private/SCANNER_COMPARATOR_DESIGN_2026-08-12.md.
+   */
+  async pageComparisonRegions(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    baseEngineId: string,
+    candidateEngineId: string
+  ): Promise<any> {
+    const comparison = await this.pageComparison(
+      userId,
+      jobId,
+      pageNumber,
+      baseEngineId,
+      candidateEngineId
+    );
+
+    const side = (value: any) => ({
+      engineId: value.engineId,
+      displayName: value.displayName,
+      artifactChecksumSha256: value.artifactChecksumSha256,
+      completeness: value.completeness,
+      unsupportedSemanticClasses: value.unsupportedSemanticClasses || []
+    });
+
+    const base = {
+      version: SCANNER_COMPARE_REGIONS_VERSION,
+      statusVersion: comparison.statusVersion,
+      // Two different questions, and conflating them would withhold highlights
+      // that are perfectly good. `analysisStatus` says whether the measure
+      // comparison itself succeeded, which is all highlighting needs.
+      // `status` is page-wide and includes geometry, which gates crops and, in
+      // phase D, decisions — a page is refused if any single block's location
+      // cannot be proven.
+      analysisStatus: comparison.analysis?.status === 'succeeded' ? 'succeeded' : 'refused',
+      status: comparison.status,
+      left: side(comparison.base),
+      right: side(comparison.candidate),
+      regions: [] as any[],
+      warnings: [] as any[],
+      refusalReasons: comparison.refusalReasons || []
+    };
+    if (comparison.analysis?.status !== 'succeeded') return base;
+
+    // Part ordinals can differ between engines — part 0 in one may match part 2
+    // in the other — so each side carries its own index. Change review's single
+    // partIndex works only because both its sides are revisions of one score.
+    const ordinals = new Map<string, { left?: number; right?: number }>();
+    for (const match of comparison.analysis.partMatches || []) {
+      if (match.outcome !== 'matched') continue;
+      ordinals.set(match.stablePartKey, {
+        left: match.base?.ordinal,
+        right: match.candidate?.ordinal
+      });
+    }
+
+    const groundedBlockIndexes = new Set(
+      (comparison.geometry?.blocks || [])
+        .filter((entry: any) => entry.status === 'ready')
+        .map((entry: any) => entry.block.blockIndex)
+    );
+
+    const warnings = new Map<string, any>();
+    for (const block of comparison.analysis.blocks || []) {
+      for (const warning of block.completenessWarnings || []) {
+        warnings.set(JSON.stringify(warning), warning);
+      }
+    }
+
+    return {
+      ...base,
+      regions: (comparison.analysis.blocks || []).map((block: any) => {
+        const part = ordinals.get(block.stablePartKey) || {};
+        return {
+          blockIndex: block.blockIndex,
+          stablePartKey: block.stablePartKey,
+          leftPartIndex: part.left,
+          rightPartIndex: part.right,
+          leftMeasureIndexes: (block.baseMeasureRefs || []).map((ref: any) => ref.measureIndex),
+          rightMeasureIndexes: (block.candidateMeasureRefs || []).map(
+            (ref: any) => ref.measureIndex
+          ),
+          differenceClasses: block.differenceClasses || [],
+          contentSignature: block.contentSignature,
+          grounded: groundedBlockIndexes.has(block.blockIndex)
+        };
+      }),
+      warnings: [...warnings.values()]
+    };
+  }
+
   async pageComparison(
     userId: string,
     jobId: string,

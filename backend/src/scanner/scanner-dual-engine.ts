@@ -490,6 +490,12 @@ export interface ScannerMeasureRef {
 export const SCANNER_ARTIFACT_INPUT_SIGNATURE_VERSION = 'scanner-artifact-input-v1';
 export const SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION = 'scanner-block-content-v2';
 
+/**
+ * The comparison projected for a renderer: which measures to highlight, and
+ * nothing about how. Consumed by the score editor's supplied-regions mode.
+ */
+export const SCANNER_COMPARE_REGIONS_VERSION = 'scanner-compare-regions-v1';
+
 export const SCANNER_ARTIFACT_BUILDERS = {
   pagePdf: 'scanner-page-pdf-v1',
   musicXmlBundle: 'scanner-musicxml-bundle-v1',

@@ -207,6 +207,23 @@ export class ScannerController {
     );
   }
 
+  @Get(':jobId/pages/:pageNumber/comparison/regions')
+  comparisonRegions(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Query('baseEngine') baseEngine: string | undefined,
+    @Query('candidateEngine') candidateEngine: string | undefined
+  ) {
+    return this.scanner.pageComparisonRegions(
+      user.userId,
+      jobId,
+      pageNumber,
+      String(baseEngine ?? ''),
+      String(candidateEngine ?? '')
+    );
+  }
+
   @Get(':jobId/pages/:pageNumber/comparison/readings/:engineId')
   async comparisonReading(
     @CurrentUser() user: RequestUser,

@@ -422,6 +422,16 @@ export default function PageComparison({
         compareRight: readingUrl(comparison.candidate),
         leftLabel: comparison.base.displayName,
         rightLabel: comparison.candidate.displayName,
+        // Hand the editor the differences we already computed. Its own measure
+        // signature cannot separate these two documents — it does not normalise
+        // <duration> against <divisions> — so it marks every measure of an
+        // agreeing page as changed.
+        compareRegions: `${base}/pages/${page.pageNumber}/comparison/regions?${new URLSearchParams(
+          {
+            baseEngine: comparison.base.engineId,
+            candidateEngine: comparison.candidate.engineId,
+          },
+        ).toString()}`,
       }).toString()}`
     : undefined;
 

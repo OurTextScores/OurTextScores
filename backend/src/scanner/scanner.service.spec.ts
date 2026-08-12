@@ -807,6 +807,34 @@ describe('ScannerService', () => {
       ['scanner', 'homr-reviewed.musicxml'],
       ['scanner', 'transcoda.musicxml']
     ]);
+
+    // The renderer needs which measures differ and nothing about how to draw
+    // them. Each side carries its own part index, because a part matched across
+    // engines need not sit at the same ordinal in both documents.
+    const regions = await service.pageComparisonRegions(
+      'user-1',
+      'job-1',
+      1,
+      'homr',
+      'transcoda'
+    );
+    expect(regions).toMatchObject({
+      version: 'scanner-compare-regions-v1',
+      statusVersion: 7,
+      // Highlighting depends on the analysis, not on page-wide geometry: a page
+      // is refused when any one block's location cannot be proven, and
+      // withholding every highlight for that would be wrong.
+      analysisStatus: 'succeeded',
+      left: { engineId: 'homr' },
+      right: { engineId: 'transcoda' }
+    });
+    expect(regions.regions.length).toBe(result.analysis.blocks.length);
+    for (const region of regions.regions) {
+      expect(Array.isArray(region.leftMeasureIndexes)).toBe(true);
+      expect(Array.isArray(region.rightMeasureIndexes)).toBe(true);
+      expect(typeof region.contentSignature).toBe('string');
+      expect(typeof region.grounded).toBe('boolean');
+    }
     const reading = await service.pageComparisonReading(
       'user-1',
       'job-1',

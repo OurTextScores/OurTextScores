@@ -385,6 +385,17 @@ describe("PageComparison", () => {
     expect(url.pathname).toBe("/score-editor/index.html");
     expect(url.searchParams.get("leftLabel")).toBe("HOMR");
     expect(url.searchParams.get("rightLabel")).toBe("Transcoda");
+    // The editor is handed our differences; its own measure signature cannot
+    // separate two independently generated documents.
+    const regions = new URL(
+      String(url.searchParams.get("compareRegions")),
+      "http://localhost",
+    );
+    expect(regions.pathname).toBe(
+      "/api/proxy/scanner/jobs/job-1/pages/1/comparison/regions",
+    );
+    expect(regions.searchParams.get("baseEngine")).toBe("homr");
+    expect(regions.searchParams.get("candidateEngine")).toBe("transcoda");
     // Both sides are the signed, status-bound reading routes, so the embed
     // cannot silently read a different revision than the analysis did.
     for (const [param, engineId, checksum] of [
