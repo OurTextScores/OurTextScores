@@ -103,5 +103,40 @@ class VoiceSystemMappingTest(unittest.TestCase):
         self.assertNotIn("partIndex", page.staves[0])
 
 
+class BarLineCaptureTest(unittest.TestCase):
+    @staticmethod
+    def line(x, y, width, height):
+        return SimpleNamespace(center=(x, y), size=(width, height))
+
+    def test_assigns_segmented_bar_lines_that_intersect_the_staff_region(self):
+        page = PageCapture()
+        page.record_detected_bar_lines(
+            [
+                self.line(10, 50, 2, 80),
+                self.line(55, 110, 2, 80),
+                self.line(90, 50, 2, 80),
+            ]
+        )
+
+        # The line at x=55 spans into this staff even though its centre is
+        # below the region. That is how one system bar line belongs to each
+        # staff it crosses.
+        self.assertEqual(page.bar_lines_for_region([0, 10, 100, 80]), [10, 55, 90])
+
+    def test_rejects_lines_outside_the_staff_extent_and_deduplicates_centres(self):
+        page = PageCapture()
+        page.record_detected_bar_lines(
+            [
+                self.line(-5, 40, 2, 20),
+                self.line(50.2, 40, 2, 20),
+                self.line(50.4, 40, 2, 20),
+                self.line(105, 40, 2, 20),
+                self.line(75, 200, 2, 20),
+            ]
+        )
+
+        self.assertEqual(page.bar_lines_for_region([0, 0, 100, 100]), [50])
+
+
 if __name__ == "__main__":
     unittest.main()

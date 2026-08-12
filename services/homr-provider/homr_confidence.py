@@ -80,6 +80,13 @@ class PageCapture:
         self.staves: list[dict[str, Any]] = []
         self._steps: list[list[Any]] = []
         self._decoder: Any = None
+        # `detect_staffs_in_image` computes trustworthy segmentation boxes for
+        # bar lines, but HOMR only uses them while finding/grouping staves and
+        # never adds them to `Staff.symbols`. Consequently
+        # `Staff.get_bar_lines()` is empty even on an ordinary engraved page.
+        # Keep the segmentation result at the page boundary and associate it
+        # with physical staff regions below.
+        self._detected_bar_lines: list[Any] = []
 
     # -- decoder side -----------------------------------------------------
 
@@ -146,6 +153,40 @@ class PageCapture:
             setattr(symbol, CONFIDENCE_ATTR, heads)
 
     # -- page side --------------------------------------------------------
+
+    def record_detected_bar_lines(self, bar_lines: list[Any]) -> None:
+        self._detected_bar_lines = list(bar_lines)
+
+    def bar_lines_for_region(self, region: Any) -> list[int]:
+        """Return segmented bar-line x centres that intersect a staff region.
+
+        A system bar line can span several staves, so intersection (rather
+        than centre containment on y) deliberately assigns the same physical
+        boundary to every staff it crosses. The x centre must still sit inside
+        the staff's horizontal extent.
+        """
+        if region is None or len(region) != 4:
+            return []
+        left, top, right, bottom = [float(value) for value in region]
+        left, right = min(left, right), max(left, right)
+        top, bottom = min(top, bottom), max(top, bottom)
+        result: list[int] = []
+        for line in self._detected_bar_lines:
+            try:
+                center_x = float(line.center[0])
+                polygon = getattr(line, "polygon", None)
+                if polygon is not None and len(polygon) > 0:
+                    ys = [float(point[1]) for point in polygon]
+                    line_top, line_bottom = min(ys), max(ys)
+                else:
+                    center_y = float(line.center[1])
+                    half_height = float(line.size[1]) / 2
+                    line_top, line_bottom = center_y - half_height, center_y + half_height
+            except (AttributeError, IndexError, TypeError, ValueError):
+                continue
+            if left <= center_x <= right and line_bottom >= top and line_top <= bottom:
+                result.append(round(center_x))
+        return sorted(set(result))
 
     def add_staff(
         self, index: int, region: Any, symbols: list[Any], bar_lines: Any = None
@@ -266,6 +307,18 @@ class capture_page:  # noqa: N801 - used as a context manager
 
         original_parse = staff_parsing.parse_staff_image
 
+        original_detect_bar_lines = homr_main.detect_bar_lines
+
+        def detect_bar_lines(*args: Any, **kwargs: Any) -> Any:
+            lines = original_detect_bar_lines(*args, **kwargs)
+            page.record_detected_bar_lines(lines)
+            return lines
+
+        homr_main.detect_bar_lines = detect_bar_lines
+        self._undo.append(
+            lambda: setattr(homr_main, "detect_bar_lines", original_detect_bar_lines)
+        )
+
         def parse_staff_image(
             debug: Any, index: int, staff: Any, image: Any, regions: Any, config: Any
         ) -> Any:
@@ -275,11 +328,15 @@ class capture_page:  # noqa: N801 - used as a context manager
                 region = staff_parsing._calculate_region(staff, regions)
             except Exception:  # pragma: no cover - geometry is best effort
                 region = None
-            bar_lines: list[int] = []
+            bar_lines: list[int] = page.bar_lines_for_region(region)
             try:
-                bar_lines = [int(line.center[0]) for line in staff.get_bar_lines()]
+                # Retain any future/upstream HOMR change that starts attaching
+                # bar lines to Staff.symbols, while the segmentation capture
+                # remains the source that works with the pinned revision.
+                bar_lines.extend(int(line.center[0]) for line in staff.get_bar_lines())
+                bar_lines = sorted(set(bar_lines))
             except Exception:  # pragma: no cover - geometry is best effort
-                bar_lines = []
+                pass
             page.add_staff(index, region, symbols, bar_lines)
             return symbols
 
