@@ -885,6 +885,15 @@ export class ScannerService implements OnModuleInit {
       status: comparison.status,
       left: side(comparison.base),
       right: side(comparison.candidate),
+      // The scan's own lines, for a row-per-system view. Present even when the
+      // page-wide join refuses: the systems are known regardless of whether
+      // every block's location could be proven.
+      systems: (comparison.systems || []).map((system: any) => ({
+        systemIndex: system.systemIndex,
+        region: system.region,
+        leftMeasureIndexes: system.baseMeasureIndexes,
+        rightMeasureIndexes: system.candidateMeasureIndexes
+      })),
       regions: [] as any[],
       warnings: [] as any[],
       refusalReasons: comparison.refusalReasons || []

@@ -69,6 +69,8 @@ export interface ScannerPageComparisonResult {
   sourceImage?: ScannerRasterIdentity;
   analysis?: ScannerComparisonAnalysis;
   geometry?: ScannerComparisonGeometryJoinResult;
+  /** The scan's own systems, for a view that goes line by line (§2.1). */
+  systems?: ScannerComparisonSystem[];
   refusalReasons: ScannerPageComparisonRefusal[];
 }
 
@@ -112,6 +114,7 @@ function refused(
     sourceImage?: ScannerRasterIdentity;
     analysis?: ScannerComparisonAnalysis;
     geometry?: ScannerComparisonGeometryJoinResult;
+    systems?: ScannerComparisonSystem[];
   } = {}
 ): ScannerPageComparisonResult {
   return {
@@ -142,6 +145,65 @@ function geometryInput(
     loadArtifact: side.loadArtifact,
     loadRecognitionRaster: side.loadRecognitionRaster
   };
+}
+
+export interface ScannerComparisonSystem {
+  systemIndex: number;
+  /** Source-page pixel bounds covering every staff of this system. */
+  region: [number, number, number, number];
+  baseMeasureIndexes: number[];
+  candidateMeasureIndexes: number[];
+}
+
+/**
+ * The page's systems as the *scan* has them, with each engine's measures.
+ *
+ * A row-per-system view cannot take its lines from either engine — they break
+ * systems differently, and the question being asked is what the scanned page
+ * says. The geometry manifest already answers it: every measure reference
+ * carries the physical system its crop came from, for both engines once aligned
+ * geometry has copied the reference side's crops across.
+ */
+export function scannerComparisonSystems(
+  geometry: { measureRefs: Array<Record<string, any>> } | undefined,
+  pair: ScannerComparisonPair
+): ScannerComparisonSystem[] {
+  const bySystem = new Map<number, ScannerComparisonSystem>();
+  for (const ref of geometry?.measureRefs || []) {
+    for (const crop of ref.cropRegions || []) {
+      const systemIndex = Number(crop.systemIndex);
+      if (!Number.isInteger(systemIndex)) continue;
+      const entry = bySystem.get(systemIndex) || {
+        systemIndex,
+        region: [...crop.region] as [number, number, number, number],
+        baseMeasureIndexes: [],
+        candidateMeasureIndexes: []
+      };
+      // A system spans every staff that shares it, so the row's crop is the
+      // union rather than any one measure's box.
+      entry.region = [
+        Math.min(entry.region[0], crop.region[0]),
+        Math.min(entry.region[1], crop.region[1]),
+        Math.max(entry.region[2], crop.region[2]),
+        Math.max(entry.region[3], crop.region[3])
+      ];
+      const side =
+        ref.engine === pair.baseEngineId
+          ? entry.baseMeasureIndexes
+          : ref.engine === pair.candidateEngineId
+            ? entry.candidateMeasureIndexes
+            : undefined;
+      if (side && !side.includes(ref.measureIndex)) side.push(ref.measureIndex);
+      bySystem.set(systemIndex, entry);
+    }
+  }
+  return [...bySystem.values()]
+    .sort((left, right) => left.systemIndex - right.systemIndex)
+    .map((entry) => ({
+      ...entry,
+      baseMeasureIndexes: [...entry.baseMeasureIndexes].sort((a, b) => a - b),
+      candidateMeasureIndexes: [...entry.candidateMeasureIndexes].sort((a, b) => a - b)
+    }));
 }
 
 /**
@@ -271,6 +333,9 @@ export async function compareScannerPage(input: {
 
   const producerAttempts: ScannerPageComparisonRefusal[] = [];
   let lastGeometry: ScannerComparisonGeometryJoinResult | undefined;
+  // Kept even when the join refuses: a row-per-system view needs the scan's
+  // lines, and those are known whether or not every block could be grounded.
+  let lastSystems: ScannerComparisonSystem[] | undefined;
   for (const side of [base, candidate]) {
     if (!side.measureGeometryProducer) continue;
     const parts = side.engineId === base.engineId ? baseParts : candidateParts;
@@ -330,11 +395,13 @@ export async function compareScannerPage(input: {
       sourceImage
     });
     lastGeometry = geometry;
+    lastSystems = scannerComparisonSystems(aligned.geometry, pair);
     if (geometry.status === 'ready') {
       return {
         version: SCANNER_PAGE_COMPARISON_VERSION,
         status: 'ready',
         pair,
+        systems: lastSystems,
         base: presentSide(base),
         candidate: presentSide(candidate),
         sourceImage,
@@ -367,6 +434,6 @@ export async function compareScannerPage(input: {
             detail: 'Neither selected engine has a registered measure-geometry producer'
           }
         ],
-    { sourceImage, analysis, geometry }
+    { sourceImage, analysis, geometry, systems: lastSystems }
   );
 }
