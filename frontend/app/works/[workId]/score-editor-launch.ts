@@ -61,6 +61,14 @@ export function sanitizeScoreEditorLaunchContext(value: unknown): ScoreEditorLau
 export function buildScoreEditorLaunchUrl(args: {
   scoreUrl: string;
   launchContext?: ScoreEditorLaunchContext | null;
+  /**
+   * Render one score with no editor chrome, for an inline preview.
+   *
+   * Opt-in rather than implied by `scoreUrl`, because the same URL shape opens
+   * the full editor from elsewhere in the product and that must keep its
+   * toolbar. The editor reads this as `embed=1`.
+   */
+  embed?: boolean;
 }) {
   const params = new URLSearchParams();
   params.set('score', args.scoreUrl);
@@ -68,5 +76,28 @@ export function buildScoreEditorLaunchUrl(args: {
   if (launchContext) {
     params.set('launchContext', JSON.stringify(launchContext));
   }
+  if (args.embed) {
+    params.set('embed', '1');
+  }
   return `/score-editor/index.html?${params.toString()}`;
+}
+
+/**
+ * The canonical MusicXML of a source, as an absolute URL.
+ *
+ * Absolute because the score editor is served as a static export and fetches
+ * this itself; a path relative to the page would resolve against the editor's
+ * own origin in development, where the API is on another port.
+ */
+export function canonicalScoreUrl(args: {
+  apiBase: string;
+  workId: string;
+  sourceId: string;
+}) {
+  const absoluteApiBase = args.apiBase.startsWith('http')
+    ? args.apiBase
+    : `${window.location.protocol}//${window.location.hostname}:4000${args.apiBase}`;
+  return `${absoluteApiBase}/works/${encodeURIComponent(args.workId)}/sources/${encodeURIComponent(
+    args.sourceId,
+  )}/canonical.xml`;
 }

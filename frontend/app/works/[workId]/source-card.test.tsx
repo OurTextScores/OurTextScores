@@ -287,9 +287,52 @@ describe('SourceCard', () => {
             expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
         });
 
-        const sourcePdfDetails = screen.getByText('Browse Source').closest('details');
+        const sourcePdfDetails = screen.getByText('Generated PDF').closest('details');
 
         expect(sourcePdfDetails).toHaveAttribute('open');
+    });
+
+    it('distinguishes the dated PDF from the live preview', async () => {
+        // Two renderings of the same source, both by MuseScore but by
+        // different paths: the PDF is engraved when the derivative pipeline
+        // runs, the preview reads the canonical XML at view time. Only one of
+        // them is necessarily current, so the labels have to say which.
+        const sourceWithPdf: SourceView = {
+            ...mockSource,
+            derivatives: {
+                pdf: {
+                    bucket: 'derivs',
+                    objectKey: 'score.pdf',
+                    sizeBytes: 1024,
+                    contentType: 'application/pdf',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z',
+                },
+            },
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithPdf}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (!header) throw new Error('Header not found');
+        fireEvent.click(header);
+
+        expect(screen.getByText('Generated PDF')).toBeInTheDocument();
+        expect(screen.getByText(/rendered/)).toBeInTheDocument();
+        expect(screen.getByText('Preview score')).toBeInTheDocument();
+        expect(
+            screen.getByText('live from the current canonical XML'),
+        ).toBeInTheDocument();
+        // The old name said nothing about which rendering it was.
+        expect(screen.queryByText('Browse Source')).not.toBeInTheDocument();
     });
 
     it('passes launch context when opening the score editor', async () => {
@@ -370,5 +413,42 @@ describe('SourceCard', () => {
         });
 
         openSpy.mockRestore();
+    });
+
+    it('does not load a score until the reader asks for a preview', async () => {
+        // A work can carry a dozen sources. Mounting a score engine for each
+        // one on expand is what made an inline preview unaffordable before.
+        renderWithProviders(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (!header) throw new Error('Header not found');
+        fireEvent.click(header);
+
+        expect(screen.getByText('Preview score')).toBeInTheDocument();
+        expect(screen.queryByTestId('score-preview-frame')).not.toBeInTheDocument();
+
+        const details = screen.getByText('Preview score').closest('details');
+        if (!details) throw new Error('Preview details not found');
+        // jsdom does not implement <details> toggling, so open it and dispatch
+        // the event the component listens for.
+        (details as HTMLDetailsElement).open = true;
+        fireEvent(details, new Event('toggle', { bubbles: false }));
+
+        const frame = await screen.findByTestId('score-preview-frame');
+        const src = new URL(frame.getAttribute('src') || '', 'http://localhost');
+        expect(src.pathname).toBe('/score-editor/index.html');
+        // Chrome-free, so the preview is a score rather than an editor.
+        expect(src.searchParams.get('embed')).toBe('1');
+        expect(src.searchParams.get('score')).toContain(
+            '/works/work-123/sources/source-1/canonical.xml',
+        );
     });
 });

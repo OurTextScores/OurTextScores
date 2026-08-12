@@ -11,7 +11,7 @@ import DeleteSourceButton from "./delete-source-button";
 import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
 import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction, migrateSourceAction } from "./admin-actions";
-import { buildScoreEditorLaunchUrl } from "./score-editor-launch";
+import { buildScoreEditorLaunchUrl, canonicalScoreUrl } from "./score-editor-launch";
 
 const PUBLIC_API_BASE = getPublicApiBase();
 
@@ -513,6 +513,7 @@ export default function SourceCard({
             className="rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-xl dark:bg-midnight-900/50 dark:shadow-none dark:ring-white/10"
         >
             <div
+                data-testid="source-card-header"
                 className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800 md:flex-row md:items-center md:justify-between cursor-pointer"
                 onClick={() => setIsOpen(!isOpen)}
             >
@@ -694,10 +695,11 @@ export default function SourceCard({
                             </Link>
                             <button
                                 onClick={() => {
-                                    const absoluteApiBase = PUBLIC_API_BASE.startsWith('http')
-                                        ? PUBLIC_API_BASE
-                                        : `${window.location.protocol}//${window.location.hostname}:4000${PUBLIC_API_BASE}`;
-                                    const canonicalUrl = `${absoluteApiBase}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/canonical.xml`;
+                                    const canonicalUrl = canonicalScoreUrl({
+                                        apiBase: PUBLIC_API_BASE,
+                                        workId,
+                                        sourceId: source.sourceId,
+                                    });
                                     const editorUrl = buildScoreEditorLaunchUrl({
                                         scoreUrl: canonicalUrl,
                                         launchContext: {
@@ -733,6 +735,42 @@ export default function SourceCard({
 
             {isOpen && (
                 <div data-testid="source-card-body">
+                    {latest && (
+                        /*
+                            The score itself, engraved by MuseScore — the same
+                            engine the editor and the scanner comparator use.
+                            `LazyDetails` mounts the frame only once the reader
+                            asks for it, so a work with a dozen sources does not
+                            start a dozen score engines on expand.
+                        */
+                        <LazyDetails
+                            className="border-b border-slate-200 px-5 py-3 dark:border-slate-800"
+                            summary={
+                                <summary className="cursor-pointer text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                                    Preview score
+                                    <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
+                                        live from the current canonical XML
+                                    </span>
+                                </summary>
+                            }
+                        >
+                            <div className="mt-3">
+                                <iframe
+                                    data-testid="score-preview-frame"
+                                    src={buildScoreEditorLaunchUrl({
+                                        scoreUrl: canonicalScoreUrl({
+                                            apiBase: PUBLIC_API_BASE,
+                                            workId,
+                                            sourceId: source.sourceId,
+                                        }),
+                                        embed: true,
+                                    })}
+                                    title={`Score preview of ${source.label || source.sourceId}`}
+                                    className="h-[min(70vh,44rem)] min-h-[24rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                                />
+                            </div>
+                        </LazyDetails>
+                    )}
                     {latest && (
                         <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
                             <div>
@@ -865,7 +903,19 @@ export default function SourceCard({
                             onToggle={(event) => setIsSourcePdfOpen(event.currentTarget.open)}
                             summary={
                                 <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 transition hover:bg-slate-100 group-open:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/40 dark:group-open:text-slate-100">
-                                    Browse Source
+                                    Generated PDF
+                                    {/*
+                                        Named and dated because this and the
+                                        preview above are two renderings of the
+                                        same source, and only one of them is
+                                        necessarily current. The PDF is
+                                        engraved by MuseScore when the
+                                        derivative pipeline runs; a revision
+                                        uploaded since then is not in it.
+                                    */}
+                                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">
+                                        rendered {formatDate(source.derivatives?.pdf?.lastModifiedAt)}
+                                    </span>
                                 </summary>
                             }
                         >
