@@ -33,6 +33,7 @@ import {
 } from './schemas/scanner-job.schema';
 import { assertValidMusicXml } from './scanner-musicxml';
 import { spliceScannerMeasures } from './scanner-splice';
+import { transferScannerMarkings } from './scanner-marking-transfer';
 import { readScannerSpliceFacts } from './scanner-splice-safety';
 import {
   identityMeasureMap,
@@ -1485,49 +1486,14 @@ export class ScannerService implements OnModuleInit {
       revision: number;
     }
   ): Promise<any> {
-    this.assertAvailable(userId);
-    const job = await this.ownedJob(userId, jobId);
-    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
-    if (!page) throw new NotFoundException('Scanner page not found');
-    if (page.status !== 'succeeded') {
-      throw new ConflictException('Only a succeeded page can carry a merged score');
-    }
-    if (!isScannerEngineId(input.engineId)) {
-      throw new BadRequestException('A decision must name the engine it takes from');
-    }
-    if (input.engineId !== input.baseEngineId && input.engineId !== input.candidateEngineId) {
-      throw new BadRequestException('That engine is not one of the two being compared');
-    }
-
-    const currentRevision = page.mergedScore?.revision ?? 0;
-    if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
-      throw new ConflictException('The merged score changed; refresh and try again');
-    }
-
-    const comparison = await this.pageComparisonForJob(
+    const {
       job,
       page,
-      input.baseEngineId,
-      input.candidateEngineId
-    );
-    if (comparison.analysis?.status !== 'succeeded') {
-      throw new ConflictException('These readings could not be compared, so nothing can be taken');
-    }
-    const block = (comparison.analysis.blocks || []).find(
-      (entry: any) => entry.blockIndex === input.blockIndex
-    );
-    if (!block) throw new NotFoundException('That comparison block does not exist');
-    if (!input.contentSignature || input.contentSignature !== block.contentSignature) {
-      throw new ConflictException('The readings changed since this block was shown; refresh');
-    }
-    const grounded = (comparison.geometry?.blocks || []).some(
-      (entry: any) => entry.status === 'ready' && entry.block.blockIndex === input.blockIndex
-    );
-    if (!grounded) {
-      throw new ConflictException(
-        'This difference has no verified place on the scan, so it cannot be decided'
-      );
-    }
+      block,
+      mergedSourceEngineId,
+      map,
+      currentRevision
+    } = await this.resolveDecisionContext(userId, jobId, pageNumber, input);
 
     const indexesFor = (engineId: string): number[] =>
       (engineId === input.baseEngineId
@@ -1535,9 +1501,6 @@ export class ScannerService implements OnModuleInit {
         : block.candidateMeasureRefs || []
       ).map((ref: any) => ref.measureIndex);
 
-    // The merged score's measure numbering follows whichever engine it started
-    // from, so that is the side its indexes are expressed in.
-    const mergedSourceEngineId = page.mergedScore?.sourceEngineId || input.baseEngineId;
     const baseMeasureIndexes = indexesFor(mergedSourceEngineId);
     const candidateMeasureIndexes = indexesFor(input.engineId);
     if (input.engineId === mergedSourceEngineId) {
@@ -1558,14 +1521,6 @@ export class ScannerService implements OnModuleInit {
     }
 
     const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId);
-    // The decision names its passage in the *engine's* numbering, because that
-    // is what the comparison computed and what the reviewer was shown. The
-    // splice acts on the *merged* document, whose numbering has moved with
-    // every bar added or removed. The map is what keeps a take on the bar the
-    // reviewer pointed at.
-    const map =
-      page.mergedScore?.measureMap ||
-      identityMeasureMap(readScannerSpliceFacts(baseXml)[0]?.measures.length ?? 0);
     const mergedMeasureIndexes = resolveMergedIndexes(map, baseMeasureIndexes);
     if (!mergedMeasureIndexes) {
       throw new ConflictException(
@@ -1637,6 +1592,174 @@ export class ScannerService implements OnModuleInit {
       mergedScore
     });
     return { ...state, decision, repairs: outcome.repairs };
+  }
+
+  /**
+   * Everything a decision has to establish before it can act.
+   *
+   * Shared by taking a bar and taking markings because the refusals are the
+   * same for both: they differ only in what they then do with the passage. The
+   * signature binds the decision to both artifact revisions, the revision stops
+   * a second tab overwriting the first, and §7's groundedness rule is enforced
+   * here as well as by withholding the signature in the first place.
+   */
+  private async resolveDecisionContext(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    input: {
+      blockIndex: number;
+      contentSignature: string;
+      engineId: string;
+      baseEngineId: string;
+      candidateEngineId: string;
+      revision: number;
+    }
+  ) {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.status !== 'succeeded') {
+      throw new ConflictException('Only a succeeded page can carry a merged score');
+    }
+    if (!isScannerEngineId(input.engineId)) {
+      throw new BadRequestException('A decision must name the engine it takes from');
+    }
+    if (input.engineId !== input.baseEngineId && input.engineId !== input.candidateEngineId) {
+      throw new BadRequestException('That engine is not one of the two being compared');
+    }
+
+    const currentRevision = page.mergedScore?.revision ?? 0;
+    if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+
+    const comparison = await this.pageComparisonForJob(
+      job,
+      page,
+      input.baseEngineId,
+      input.candidateEngineId
+    );
+    if (comparison.analysis?.status !== 'succeeded') {
+      throw new ConflictException('These readings could not be compared, so nothing can be taken');
+    }
+    const block = (comparison.analysis.blocks || []).find(
+      (entry: any) => entry.blockIndex === input.blockIndex
+    );
+    if (!block) throw new NotFoundException('That comparison block does not exist');
+    if (!input.contentSignature || input.contentSignature !== block.contentSignature) {
+      throw new ConflictException('The readings changed since this block was shown; refresh');
+    }
+    const grounded = (comparison.geometry?.blocks || []).some(
+      (entry: any) => entry.status === 'ready' && entry.block.blockIndex === input.blockIndex
+    );
+    if (!grounded) {
+      throw new ConflictException(
+        'This difference has no verified place on the scan, so it cannot be decided'
+      );
+    }
+
+    // The merged score's measure numbering follows whichever engine it started
+    // from, so that is the side its indexes are expressed in. The map keeps the
+    // two reconciled once a decision has changed the merged score's length.
+    const mergedSourceEngineId = page.mergedScore?.sourceEngineId || input.baseEngineId;
+    const map =
+      page.mergedScore?.measureMap ||
+      identityMeasureMap(
+        readScannerSpliceFacts(
+          await this.mergedOrEngineMusicXml(page, mergedSourceEngineId)
+        )[0]?.measures.length ?? 0
+      );
+
+    return { job, page, block, comparison, mergedSourceEngineId, map, currentRevision };
+  }
+
+  /**
+   * Take one engine's dynamics and lyrics without taking its notes.
+   *
+   * §4 calls this the clearest single argument for a purpose-built mode, and it
+   * exists because Transcoda declares `lyrics` and `dynamics` unsupported: when
+   * its notes are the better reading, everything the other engine heard *about*
+   * those notes is only in the other engine. No other comparator in this
+   * product has an operation like it, because no other one compares two
+   * machines with different blind spots.
+   */
+  async takeMarkingsIntoMergedScore(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    input: {
+      blockIndex: number;
+      contentSignature: string;
+      engineId: string;
+      baseEngineId: string;
+      candidateEngineId: string;
+      revision: number;
+    }
+  ): Promise<any> {
+    const decided = await this.resolveDecisionContext(userId, jobId, pageNumber, input);
+    const { job, page, block, mergedSourceEngineId, map, currentRevision } = decided;
+
+    const indexesFor = (engineId: string): number[] =>
+      (engineId === input.baseEngineId
+        ? block.baseMeasureRefs || []
+        : block.candidateMeasureRefs || []
+      ).map((ref: any) => ref.measureIndex);
+    const mergedMeasureIndexes = resolveMergedIndexes(map, indexesFor(mergedSourceEngineId));
+    if (!mergedMeasureIndexes) {
+      throw new ConflictException(
+        'That passage is no longer in the merged score — an earlier decision removed it.'
+      );
+    }
+
+    const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId);
+    const candidateXml = await this.engineMusicXml(page, input.engineId);
+    const outcome = transferScannerMarkings({
+      baseXml,
+      candidateXml,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: mergedMeasureIndexes,
+      candidateMeasureIndexes: indexesFor(input.engineId)
+    });
+    if (!outcome.musicXml) {
+      throw new ConflictException({
+        message: 'Those markings cannot be taken onto this passage',
+        refusals: outcome.refusals,
+        violations: outcome.violations
+      });
+    }
+
+    const decision: ScannerMergedDecision = {
+      blockIndex: input.blockIndex,
+      contentSignature: block.contentSignature,
+      engineId: input.engineId,
+      measureIndexes: mergedMeasureIndexes,
+      // Recorded distinctly from a bar take: phase E must not read "HOMR was
+      // right here" from a decision that only moved a dynamic.
+      markingsOnly: true,
+      decidedAt: new Date()
+    };
+    const mergedScore: ScannerMergedScore = {
+      sourceEngineId: mergedSourceEngineId,
+      basisSignature: scannerMergedScoreBasis(page),
+      edited: Boolean(page.mergedScore?.edited),
+      revision: currentRevision + 1,
+      decisions: [...(page.mergedScore?.decisions || []), decision],
+      measureMap: page.mergedScore?.measureMap,
+      updatedAt: new Date()
+    };
+    const state = await this.persistMergedScore({
+      userId,
+      jobId,
+      pageNumber,
+      job,
+      page,
+      buffer: outcome.musicXml,
+      mergedScore
+    });
+    return { ...state, decision, transferred: outcome.transferred };
   }
 
   /** The merged score when there is one, otherwise the engine it would start from. */

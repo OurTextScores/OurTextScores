@@ -401,6 +401,37 @@ export class ScannerController {
     });
   }
 
+  /**
+   * Take one engine's dynamics and lyrics without taking its notes.
+   *
+   * Same guards as a bar take — the two differ only in what they do with the
+   * passage once everything has been established.
+   */
+  @Post(':jobId/pages/:pageNumber/merged/decisions/markings')
+  takeMarkings(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body()
+    body: {
+      blockIndex?: number;
+      contentSignature?: string;
+      engineId?: string;
+      baseEngine?: string;
+      candidateEngine?: string;
+      revision?: number;
+    }
+  ) {
+    return this.scanner.takeMarkingsIntoMergedScore(user.userId, jobId, pageNumber, {
+      blockIndex: Number(body?.blockIndex),
+      contentSignature: String(body?.contentSignature ?? ''),
+      engineId: String(body?.engineId ?? ''),
+      baseEngineId: String(body?.baseEngine ?? ''),
+      candidateEngineId: String(body?.candidateEngine ?? ''),
+      revision: Number(body?.revision)
+    });
+  }
+
   @Delete(':jobId/pages/:pageNumber/merged')
   discardMergedScore(
     @CurrentUser() user: RequestUser,

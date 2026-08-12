@@ -94,6 +94,14 @@ export interface ScannerMergedDecision {
   measureIndexes: number[];
   /** Anything the splice changed beyond copying, reported at the time. */
   repairs?: Array<{ code: string; detail: string }>;
+  /**
+   * This took dynamics and lyrics only, leaving the notes alone.
+   *
+   * Recorded distinctly because phase E must not read "that engine was right
+   * here" from a decision that moved a dynamic — the notes it sits over came
+   * from somewhere else, and may have come from the engine that lost.
+   */
+  markingsOnly?: boolean;
   decidedAt: Date;
 }
 
