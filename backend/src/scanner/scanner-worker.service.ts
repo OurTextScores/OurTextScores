@@ -1667,6 +1667,30 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           await this.storage.getObjectBuffer(page.pdf.bucket, page.pdf.objectKey)
         );
       }
+
+      // Every engine's own reading, beside the effective one. A download that
+      // carried only the selected engine would silently discard the second
+      // transcription the job was run to produce.
+      // The page's own runs, not just the plan's: a legacy job can carry a run
+      // for an engine its inferred plan does not list, and dropping it here
+      // would silently shrink the download.
+      const zipEngineIds = [
+        ...new Set([...enginePlan.engineIds, ...Object.keys(page.engines || {})])
+      ];
+      for (const engineId of zipEngineIds) {
+        const run = page.engines?.[engineId];
+        const definition = this.engineRegistry().get(engineId);
+        if (!run || !definition) continue;
+        for (const [kind, locator] of Object.entries(run.artifacts)) {
+          if (!locator) continue;
+          const extension = definition.artifacts[kind === 'musicXml' ? 'musicxml' : kind]?.extension;
+          if (!extension) continue;
+          zip.addFile(
+            `engines/${engineId}/page-${pageSegment}.${extension}`,
+            await this.storage.getObjectBuffer(locator.bucket, locator.objectKey)
+          );
+        }
+      }
     }
     for (const [name, locator] of [
       ['combined.musicxml', summary.combined?.musicXml],

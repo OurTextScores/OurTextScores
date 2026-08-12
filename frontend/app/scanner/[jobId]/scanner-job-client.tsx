@@ -147,7 +147,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
 
   const artifactUrl = useCallback(
     (
-      kind: "musicxml" | "pdf" | "thumbnail" | "zip",
+      kind: "musicxml" | "pdf" | "thumbnail" | "zip" | "kern",
       pageNumber?: number,
       engineId?: string,
     ) => {
@@ -160,18 +160,22 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
     [base],
   );
 
-  const editorUrl = (pageNumber?: number) => {
-    const scoreUrl = artifactUrl("musicxml", pageNumber);
+  const editorUrl = (pageNumber?: number, engineId?: string) => {
+    const scoreUrl = artifactUrl("musicxml", pageNumber, engineId);
     const displayPage = job?.pages.find(
       (page) => page.pageNumber === pageNumber,
     )?.ordinal;
+    // Name the engine in the label: two readings of one page are otherwise
+    // indistinguishable once they are open in the editor.
+    const engineSuffix =
+      engineId && job ? ` — ${engineLabel(job, engineId)}` : "";
     const params = new URLSearchParams({
       score: scoreUrl,
       launchContext: JSON.stringify({
         source: "scanner",
         sourceLabel: pageNumber
-          ? `${job?.originalFilename} — page ${displayPage || pageNumber}`
-          : job?.originalFilename,
+          ? `${job?.originalFilename} — page ${displayPage || pageNumber}${engineSuffix}`
+          : `${job?.originalFilename}${engineSuffix}`,
         canonicalXmlUrl: scoreUrl,
       }),
     });
@@ -702,36 +706,71 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                       : "Retry page"}
                 </button>
               )}
-              {selected.hasMusicXml && (
-                <a
-                  href={artifactUrl("musicxml", selected.pageNumber)}
-                  download
-                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  Download MusicXML
-                </a>
-              )}
-              {selected.hasPdf && (
-                <a
-                  href={artifactUrl("pdf", selected.pageNumber)}
-                  download
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
-                >
-                  Download PDF
-                </a>
-              )}
-              {selected.hasMusicXml && (
-                <a
-                  href={editorUrl(selected.pageNumber)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
-                >
-                  Open in Score Editor
-                </a>
-              )}
             </div>
           </div>
+          {/*
+            Downloads are named by engine. Unlabelled actions silently meant
+            "whichever engine the plan selected", which is unguessable once two
+            engines have read the same page.
+          */}
+          {previewEngineIds.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {previewEngineIds.map((engineId) => {
+                const run = selected.engines?.[engineId];
+                return (
+                  <div
+                    key={`downloads-${engineId}`}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <span className="min-w-24 text-xs font-medium uppercase tracking-wide text-slate-500">
+                      {engineLabel(job, engineId)}
+                    </span>
+                    {run?.hasMusicXml && (
+                      <a
+                        href={artifactUrl(
+                          "musicxml",
+                          selected.pageNumber,
+                          engineId,
+                        )}
+                        download
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                      >
+                        MusicXML
+                      </a>
+                    )}
+                    {run?.hasPdf && (
+                      <a
+                        href={artifactUrl("pdf", selected.pageNumber, engineId)}
+                        download
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                      >
+                        PDF
+                      </a>
+                    )}
+                    {run?.hasKern && (
+                      <a
+                        href={artifactUrl("kern", selected.pageNumber, engineId)}
+                        download
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                      >
+                        Kern
+                      </a>
+                    )}
+                    {run?.hasMusicXml && (
+                      <a
+                        href={editorUrl(selected.pageNumber, engineId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                      >
+                        Open in Score Editor
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {active &&
             selected.hasMusicXml &&
             runningEngine &&

@@ -329,6 +329,18 @@ describe('ScannerWorkerService', () => {
         kernSha256: 'kern-checksum'
       }
     });
+
+    // Every engine's own reading ships too. A download carrying only the
+    // selected engine would discard the second transcription the job exists to
+    // produce, while still describing it in the manifest.
+    const entries = new AdmZip(storedBody).getEntries().map((entry) => entry.entryName);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        'page-001.musicxml',
+        'engines/transcoda/page-001.musicxml',
+        'engines/transcoda/page-001.krn'
+      ])
+    );
   });
 
   it('retries one transient failure with exactly the same idempotency key', async () => {
