@@ -137,6 +137,27 @@ class BarLineCaptureTest(unittest.TestCase):
 
         self.assertEqual(page.bar_lines_for_region([0, 0, 100, 100]), [50])
 
+    def test_matches_decoder_boundaries_to_physical_candidates_in_order(self):
+        page = PageCapture()
+        accepted = [
+            self.line(100, 40, 2, 50),
+            self.line(400, 40, 2, 50),  # segmentation false positive
+            self.line(700, 40, 2, 50),
+            self.line(900, 40, 2, 50),
+        ]
+        candidates = [*accepted, self.line(600, 40, 8, 35)]
+        page.record_detected_bar_lines(accepted, candidates)
+        symbols = [
+            SimpleNamespace(rhythm="barline", coordinates=(105, 20)),
+            SimpleNamespace(rhythm="repeatEnd", coordinates=(595, 20)),
+            SimpleNamespace(rhythm="barline", coordinates=(895, 20)),
+        ]
+
+        self.assertEqual(
+            page.matched_bar_lines_for_staff([0, 0, 1280, 100], symbols),
+            [100, 600, 900],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

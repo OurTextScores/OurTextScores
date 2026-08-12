@@ -38,6 +38,12 @@ HEAD_NAMES = ("rhythm", "pitch", "lift", "position", "articulation", "slur")
 # including the chosen value.
 TOP_K = 4
 
+# The decoder attention coordinates are expressed on HOMR's fixed staff canvas
+# (`default_config.max_width`). They are never used as crop boundaries by
+# themselves; they only associate an ordered decoded bar-line token with a
+# nearby physical segmentation box.
+MODEL_STAFF_WIDTH = 1280
+
 # Attribute stamped onto each EncodedSymbol.
 CONFIDENCE_ATTR = "_ots_heads"
 
@@ -87,6 +93,7 @@ class PageCapture:
         # Keep the segmentation result at the page boundary and associate it
         # with physical staff regions below.
         self._detected_bar_lines: list[Any] = []
+        self._bar_line_candidates: list[Any] = []
 
     # -- decoder side -----------------------------------------------------
 
@@ -154,24 +161,21 @@ class PageCapture:
 
     # -- page side --------------------------------------------------------
 
-    def record_detected_bar_lines(self, bar_lines: list[Any]) -> None:
+    def record_detected_bar_lines(
+        self, bar_lines: list[Any], candidates: list[Any] | None = None
+    ) -> None:
         self._detected_bar_lines = list(bar_lines)
+        self._bar_line_candidates = list(candidates or bar_lines)
 
-    def bar_lines_for_region(self, region: Any) -> list[int]:
-        """Return segmented bar-line x centres that intersect a staff region.
-
-        A system bar line can span several staves, so intersection (rather
-        than centre containment on y) deliberately assigns the same physical
-        boundary to every staff it crosses. The x centre must still sit inside
-        the staff's horizontal extent.
-        """
+    @staticmethod
+    def _lines_for_region(lines: list[Any], region: Any) -> list[Any]:
         if region is None or len(region) != 4:
             return []
         left, top, right, bottom = [float(value) for value in region]
         left, right = min(left, right), max(left, right)
         top, bottom = min(top, bottom), max(top, bottom)
-        result: list[int] = []
-        for line in self._detected_bar_lines:
+        result: list[Any] = []
+        for line in lines:
             try:
                 center_x = float(line.center[0])
                 polygon = getattr(line, "polygon", None)
@@ -185,8 +189,73 @@ class PageCapture:
             except (AttributeError, IndexError, TypeError, ValueError):
                 continue
             if left <= center_x <= right and line_bottom >= top and line_top <= bottom:
-                result.append(round(center_x))
-        return sorted(set(result))
+                result.append(line)
+        return result
+
+    def bar_lines_for_region(self, region: Any) -> list[int]:
+        """Return segmented bar-line x centres that intersect a staff region.
+
+        A system bar line can span several staves, so intersection (rather
+        than centre containment on y) deliberately assigns the same physical
+        boundary to every staff it crosses. The x centre must still sit inside
+        the staff's horizontal extent.
+        """
+        return sorted(
+            {
+                round(float(line.center[0]))
+                for line in self._lines_for_region(self._detected_bar_lines, region)
+            }
+        )
+
+    def matched_bar_lines_for_staff(self, region: Any, symbols: list[Any]) -> list[int]:
+        """Cross-check decoded bar-line tokens against physical segmentation.
+
+        Attention is monotonic but approximate, while segmentation can include
+        stems/rests and can reject a wide repeat line. A boundary is retained
+        only when an ordered decoder token has a nearby segmented candidate;
+        the returned coordinate is always the physical candidate's x, never
+        the attention estimate.
+        """
+        if region is None or len(region) != 4:
+            return []
+        left, _top, right, _bottom = [float(value) for value in region]
+        left, right = min(left, right), max(left, right)
+        width = right - left
+        if width <= 0:
+            return []
+        accepted = self._lines_for_region(self._detected_bar_lines, region)
+        candidates = self._lines_for_region(self._bar_line_candidates, region)
+        max_distance = max(24.0, width * 0.05)
+        selected: list[int] = []
+        last_x = float("-inf")
+        for symbol in symbols:
+            rhythm = str(getattr(symbol, "rhythm", ""))
+            if "barline" not in rhythm and not rhythm.startswith("repeat"):
+                continue
+            attention = _attention_point(getattr(symbol, "coordinates", None))
+            if attention is None:
+                continue
+            target_x = left + max(0.0, min(1.0, attention[0] / MODEL_STAFF_WIDTH)) * width
+
+            def nearest(lines: list[Any]) -> Any:
+                eligible = [
+                    line
+                    for line in lines
+                    if float(line.center[0]) > last_x
+                    and round(float(line.center[0])) not in selected
+                ]
+                if not eligible:
+                    return None
+                return min(eligible, key=lambda line: abs(float(line.center[0]) - target_x))
+
+            match = nearest(accepted)
+            if match is None or abs(float(match.center[0]) - target_x) > max_distance:
+                match = nearest(candidates)
+            if match is None or abs(float(match.center[0]) - target_x) > max_distance:
+                continue
+            last_x = float(match.center[0])
+            selected.append(round(last_x))
+        return selected
 
     def add_staff(
         self, index: int, region: Any, symbols: list[Any], bar_lines: Any = None
@@ -311,7 +380,8 @@ class capture_page:  # noqa: N801 - used as a context manager
 
         def detect_bar_lines(*args: Any, **kwargs: Any) -> Any:
             lines = original_detect_bar_lines(*args, **kwargs)
-            page.record_detected_bar_lines(lines)
+            candidates = args[0] if args else kwargs.get("bar_lines", [])
+            page.record_detected_bar_lines(lines, candidates)
             return lines
 
         homr_main.detect_bar_lines = detect_bar_lines
@@ -328,15 +398,7 @@ class capture_page:  # noqa: N801 - used as a context manager
                 region = staff_parsing._calculate_region(staff, regions)
             except Exception:  # pragma: no cover - geometry is best effort
                 region = None
-            bar_lines: list[int] = page.bar_lines_for_region(region)
-            try:
-                # Retain any future/upstream HOMR change that starts attaching
-                # bar lines to Staff.symbols, while the segmentation capture
-                # remains the source that works with the pinned revision.
-                bar_lines.extend(int(line.center[0]) for line in staff.get_bar_lines())
-                bar_lines = sorted(set(bar_lines))
-            except Exception:  # pragma: no cover - geometry is best effort
-                pass
+            bar_lines = page.matched_bar_lines_for_staff(region, symbols)
             page.add_staff(index, region, symbols, bar_lines)
             return symbols
 
