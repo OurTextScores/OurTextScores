@@ -31,6 +31,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Shared with scanner_worker, which runs the same code under a different
+    # command. Without an explicit name compose derives one per service, so the
+    # two built separately and the worker silently kept running old code
+    # whenever only `build backend` was run.
+    image: ourtextscores-backend
     container_name: ourtextscores_backend
     ports:
       - "4000:4000"
@@ -99,6 +104,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Same image as `backend` by name, so building either updates both.
+    image: ourtextscores-backend
     container_name: ourtextscores_scanner_worker
     command: ["node", "dist/scanner-worker.main.js"]
     restart: unless-stopped
