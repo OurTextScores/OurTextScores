@@ -45,6 +45,7 @@ function block(blockIndex = 0): ScannerComparisonBlock {
   return {
     version: SCANNER_COMPARISON_BLOCK_VERSION,
     blockIndex,
+    baseAnchorIndex: blockIndex - 1,
     pair: { baseEngineId: 'engine-a', candidateEngineId: 'engine-b' },
     stablePartKey: 'scanner-part-v1:part-one',
     baseMeasureRefs: [identity('engine-a', baseChecksum, 'P1', blockIndex)],

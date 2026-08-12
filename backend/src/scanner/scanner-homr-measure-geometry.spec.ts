@@ -175,6 +175,7 @@ describe('HOMR measure geometry producer', () => {
         {
           version: SCANNER_COMPARISON_BLOCK_VERSION,
           blockIndex: 0,
+          baseAnchorIndex: -1,
           pair: { baseEngineId: 'homr', candidateEngineId: 'transcoda' },
           stablePartKey: match.stablePartKey,
           baseMeasureRefs: [

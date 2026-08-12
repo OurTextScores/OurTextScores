@@ -65,6 +65,16 @@ export interface ScannerComparisonBlock {
   stablePartKey: string;
   baseMeasureRefs: ScannerComparisonMeasureIdentity[];
   candidateMeasureRefs: ScannerComparisonMeasureIdentity[];
+  /**
+   * The base measure this block sits after; `-1` means the start of the part.
+   *
+   * Only a block with base measures of its own knows where it is from those.
+   * A block the base does not read at all — a passage only the candidate saw —
+   * has no position without this, and "insert these bars" is meaningless
+   * without one. Blocks cover differing runs only, so the matched measures
+   * between them cannot supply it either; the op walk can, and does.
+   */
+  baseAnchorIndex: number;
   baseDescriptorHashes: string[];
   candidateDescriptorHashes: string[];
   differenceClasses: ScannerComparisonDifferenceClass[];
@@ -91,6 +101,8 @@ export type ScannerComparisonAnalysis =
 type MatchedPart = Extract<ScannerPartMatch, { outcome: 'matched' }>;
 
 interface PendingBlock {
+  /** Base measure last seen before this block began; -1 at the start of a part. */
+  anchorIndex: number;
   baseIndices: number[];
   candidateIndices: number[];
   differenceClasses: Set<ScannerComparisonDifferenceClass>;
@@ -103,7 +115,8 @@ const contextHash = (base: ScannerMeasureDescriptor, candidate: ScannerMeasureDe
     .update(JSON.stringify([base.richHash, candidate.richHash]))
     .digest('hex')}`;
 
-const newPending = (contextBeforeHash?: string): PendingBlock => ({
+const newPending = (contextBeforeHash?: string, anchorIndex = -1): PendingBlock => ({
+  anchorIndex,
   baseIndices: [],
   candidateIndices: [],
   differenceClasses: new Set(),
@@ -198,6 +211,8 @@ export function buildScannerComparisonBlocks(input: {
   const blocks: ScannerComparisonBlock[] = [];
   let pending = newPending();
   let previousPairContextHash: string | undefined;
+  /** Last base measure consumed by the walk; anchors a candidate-only block. */
+  let lastBaseIndex = -1;
 
   const flush = (contextAfterHash?: string): void => {
     if (!isPending(pending)) return;
@@ -244,6 +259,10 @@ export function buildScannerComparisonBlocks(input: {
       ),
       baseDescriptorHashes,
       candidateDescriptorHashes,
+      // A block with base measures is anchored by its own first one; one
+      // without is anchored by the last base measure seen before it.
+      baseAnchorIndex:
+        pending.baseIndices.length > 0 ? Math.min(...pending.baseIndices) - 1 : pending.anchorIndex,
       differenceClasses,
       completenessWarnings: [
         ...warningsFor(base, pending.differenceClasses),
@@ -272,7 +291,7 @@ export function buildScannerComparisonBlocks(input: {
         contextAfterHash
       })
     });
-    pending = newPending(contextAfterHash);
+    pending = newPending(contextAfterHash, lastBaseIndex);
   };
 
   const pairContextFor = (op: (typeof ops)[number]): string | undefined => {
@@ -289,7 +308,7 @@ export function buildScannerComparisonBlocks(input: {
       const differences = classifyScannerMeasureDifference(baseDescriptor, candidateDescriptor);
       if (op.type === 'aligned') {
         flush(pairContextHash);
-        pending = newPending(previousPairContextHash);
+        pending = newPending(previousPairContextHash, lastBaseIndex);
         pending.baseIndices.push(op.baseIndex);
         pending.candidateIndices.push(op.candidateIndex);
         pending.hasCoarseMismatch = true;
@@ -298,14 +317,16 @@ export function buildScannerComparisonBlocks(input: {
           .slice(opIndex + 1)
           .map(pairContextFor)
           .find(Boolean);
+        lastBaseIndex = op.baseIndex;
         flush(nextPairContextHash);
         previousPairContextHash = pairContextHash;
-        pending = newPending(pairContextHash);
+        pending = newPending(pairContextHash, lastBaseIndex);
         continue;
       }
       if (differences.length === 0) {
+        lastBaseIndex = op.baseIndex;
         flush(pairContextHash);
-        pending = newPending(pairContextHash);
+        pending = newPending(pairContextHash, lastBaseIndex);
         previousPairContextHash = pairContextHash;
         continue;
       }
@@ -313,11 +334,14 @@ export function buildScannerComparisonBlocks(input: {
       pending.candidateIndices.push(op.candidateIndex);
       differences.forEach((difference) => pending.differenceClasses.add(difference));
       previousPairContextHash = pairContextHash;
+      lastBaseIndex = op.baseIndex;
       continue;
     }
     pending.hasCoarseMismatch = true;
-    if (op.type === 'removed') pending.baseIndices.push(op.baseIndex);
-    else pending.candidateIndices.push(op.candidateIndex);
+    if (op.type === 'removed') {
+      pending.baseIndices.push(op.baseIndex);
+      lastBaseIndex = op.baseIndex;
+    } else pending.candidateIndices.push(op.candidateIndex);
   }
   flush();
   return blocks;

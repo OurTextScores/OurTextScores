@@ -224,6 +224,58 @@ describe('scanner comparison blocks', () => {
     });
   });
 
+  it('anchors a block the base does not read to the measure it follows', () => {
+    // A block with base measures knows where it is from those. One the base
+    // never read has no position at all without this, and "insert these bars"
+    // is meaningless without one — the matched measures between blocks are not
+    // themselves blocks, so nothing else can supply it.
+    const match = matchedPart();
+    const candidate = [
+      equalDescriptor(0, 'before'),
+      equalDescriptor(1, 'also-before'),
+      descriptor(2, 'inserted', 'inserted'),
+      equalDescriptor(3, 'after')
+    ];
+    const base = [
+      equalDescriptor(0, 'before'),
+      equalDescriptor(1, 'also-before'),
+      equalDescriptor(2, 'after')
+    ];
+
+    const insertion = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(base, candidate, match)
+    });
+    expect(insertion[0]).toMatchObject({
+      baseMeasureRefs: [],
+      candidateMeasureRefs: [{ measureIndex: 2 }],
+      // The inserted bar belongs after the base's measure 1, not at the start.
+      baseAnchorIndex: 1
+    });
+
+    // A block the base *does* read is anchored by its own first measure.
+    const removal = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(candidate, base, match)
+    });
+    expect(removal[0]).toMatchObject({
+      baseMeasureRefs: [{ measureIndex: 2 }],
+      baseAnchorIndex: 1
+    });
+  });
+
+  it('anchors a block before the first bar to the start of the part', () => {
+    const match = matchedPart();
+    const candidate = [descriptor(0, 'inserted', 'inserted'), equalDescriptor(1, 'after')];
+    const base = [equalDescriptor(0, 'after')];
+
+    const blocks = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(base, candidate, match)
+    });
+    expect(blocks[0]).toMatchObject({ baseMeasureRefs: [], baseAnchorIndex: -1 });
+  });
+
   it('uses a conservative fuzzy pair as a block boundary, not an equality claim', () => {
     const match = matchedPart();
     const before = equalDescriptor(0, 'before');
