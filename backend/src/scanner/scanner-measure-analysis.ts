@@ -1,6 +1,15 @@
 import { createHash } from 'node:crypto';
 import { alignSequenceLcs } from '../common/sequence-alignment';
 import { musicXmlParser, parseValidMusicXml } from './scanner-musicxml';
+import {
+  attrs,
+  contents,
+  directEntries,
+  directText,
+  entryText,
+  firstEntry,
+  type OrderedEntry
+} from './scanner-musicxml-tree';
 
 export const SCANNER_COARSE_MEASURE_KEY_VERSION = 'scanner-measure-coarse-v1';
 export const SCANNER_MEASURE_DESCRIPTOR_VERSION = 'scanner-measure-descriptor-v1';
@@ -64,7 +73,6 @@ export type ScannerMeasureAlignmentOp =
   | { type: 'removed'; baseIndex: number }
   | { type: 'added'; candidateIndex: number };
 
-type OrderedEntry = Record<string, any>;
 type Fraction = readonly [bigint, bigint];
 
 interface SemanticNote {
@@ -124,25 +132,6 @@ const parseInteger = (value: string, label: string): bigint => {
   return BigInt(value);
 };
 
-const attrs = (entry: OrderedEntry): Record<string, string> => entry?.[':@'] || {};
-
-const contents = (entry: OrderedEntry, tag: string): OrderedEntry[] =>
-  Array.isArray(entry?.[tag]) ? entry[tag] : [];
-
-const directEntries = (children: OrderedEntry[], tag: string): OrderedEntry[] =>
-  children.filter((entry) => Object.prototype.hasOwnProperty.call(entry, tag));
-
-const firstEntry = (children: OrderedEntry[], tag: string): OrderedEntry | undefined =>
-  directEntries(children, tag)[0];
-
-const entryText = (entry: OrderedEntry | undefined, tag: string): string => {
-  const child = entry ? contents(entry, tag) : [];
-  const textEntry = child.find((item) => Object.prototype.hasOwnProperty.call(item, '#text'));
-  return String(textEntry?.['#text'] ?? '').trim();
-};
-
-const directText = (children: OrderedEntry[], tag: string): string =>
-  entryText(firstEntry(children, tag), tag);
 
 const canonicalNumber = (value: string): string => {
   if (!value) return '';
