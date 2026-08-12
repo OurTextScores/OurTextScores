@@ -75,6 +75,8 @@ const execFileAsync = promisify(execFile);
 export function disablesProvider(code: string): boolean {
   return (
     code === 'provider_service_revision_mismatch' ||
+    code === 'provider_source_revision_missing' ||
+    code === 'provider_source_revision_mismatch' ||
     code === 'provider_model_revision_mismatch' ||
     code === 'provider_model_artifact_mismatch' ||
     code === 'provider_container_image_mismatch' ||

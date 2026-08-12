@@ -41,6 +41,62 @@ function selectedRawEngineId(
   });
 }
 
+const terminalEngineStatuses = new Set([
+  "succeeded",
+  "failed",
+  "cancelled",
+  "skipped",
+]);
+
+function engineRunLabel(status: ScannerEngineRunStatus): string {
+  switch (status) {
+    case "running":
+      return "Recognizing…";
+    case "succeeded":
+      return "Complete";
+    case "pending":
+      return "Waiting";
+    default:
+      return scannerStatusLabel(status);
+  }
+}
+
+type ScannerEngineRunStatus = NonNullable<
+  NonNullable<ScannerPage["engines"]>[string]
+>["status"];
+
+function activePage(
+  job: ScannerJob,
+  selected?: ScannerPage,
+): ScannerPage | undefined {
+  return (
+    job.pages.find((page) =>
+      Object.values(page.engines || {}).some(
+        (run) => run?.status === "running",
+      ),
+    ) ||
+    (job.status === "rendering"
+      ? job.pages.find((page) => page.hasMusicXml && !page.hasPdf)
+      : undefined) ||
+    selected
+  );
+}
+
+function pageStageLabel(job: ScannerJob, page: ScannerPage): string {
+  const running = Object.entries(page.engines || {}).find(
+    ([, run]) => run?.status === "running",
+  );
+  if (running) return `${engineLabel(job, running[0])} recognizing`;
+  if (job.status === "rendering" && page.hasMusicXml && !page.hasPdf)
+    return "Rendering preview";
+  const pending = plannedEngineIds(job, page).find(
+    (engineId) => page.engines?.[engineId]?.status === "pending",
+  );
+  if (pending && activeScannerStatuses.includes(job.status))
+    return `Waiting for ${engineLabel(job, pending)}`;
+  return scannerStatusLabel(page.status);
+}
+
 export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const router = useRouter();
   const [job, setJob] = useState<ScannerJob | null>(null);
@@ -271,6 +327,44 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
     const capability = job.enginePlan?.capabilitySnapshots[engineId];
     return run?.status === "succeeded" && capability?.supportsSpotReview;
   });
+  const progressPage = activePage(job, selected);
+  const progressEngineIds = progressPage
+    ? plannedEngineIds(job, progressPage)
+    : engineIds;
+  const includedPages = job.pages.filter((page) => page.included);
+  const progressMaximum = includedPages.reduce(
+    (sum, page) => sum + plannedEngineIds(job, page).length + 1,
+    0,
+  );
+  const progressValue = includedPages.reduce((sum, page) => {
+    const planned = plannedEngineIds(job, page);
+    const completedEngines = planned.filter((engineId) => {
+      const status = page.engines?.[engineId]?.status;
+      return status ? terminalEngineStatuses.has(status) : false;
+    }).length;
+    const allEnginesTerminal = planned.every((engineId) => {
+      const status = page.engines?.[engineId]?.status;
+      return status ? terminalEngineStatuses.has(status) : false;
+    });
+    const previewFinished =
+      page.hasPdf || (allEnginesTerminal && !page.hasMusicXml);
+    return sum + completedEngines + (previewFinished ? 1 : 0);
+  }, 0);
+  const runningEngine = progressPage
+    ? Object.entries(progressPage.engines || {}).find(
+        ([, run]) => run?.status === "running",
+      )
+    : undefined;
+  const activeStage =
+    job.status === "queued"
+      ? "Waiting for a scanner worker…"
+      : job.status === "preparing"
+        ? "Preparing page images…"
+        : job.status === "rendering" && progressPage
+          ? `Rendering preview for page ${progressPage.ordinal}…`
+          : runningEngine && progressPage
+            ? `${engineLabel(job, runningEngine[0])} is recognizing page ${progressPage.ordinal} of ${job.includedPageCount}…`
+            : "Finishing scan results…";
 
   return (
     <div className="space-y-6">
@@ -290,8 +384,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               {job.originalFilename}
             </h1>
             <p className="mt-2 text-sm text-slate-500" aria-live="polite">
-              {completedPages}/{job.includedPageCount} included pages complete ·{" "}
-              {scannerStatusLabel(job.status)}
+              {active
+                ? activeStage
+                : `${completedPages}/${job.includedPageCount} included pages complete · ${scannerStatusLabel(job.status)}`}
             </p>
           </div>
           {active || reviewing ? (
@@ -337,15 +432,44 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             className="mt-5 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={job.includedPageCount}
-            aria-valuenow={completedPages}
+            aria-valuemax={progressMaximum}
+            aria-valuenow={progressValue}
+            aria-label="Recognition and preview progress"
           >
             <div
               className="h-full bg-blue-600 transition-all"
               style={{
-                width: `${Math.max(5, (completedPages / job.includedPageCount) * 100)}%`,
+                width: `${Math.max(5, (progressValue / Math.max(1, progressMaximum)) * 100)}%`,
               }}
             />
+          </div>
+        )}
+        {active && progressPage && (
+          <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
+            <p className="font-medium text-slate-800 dark:text-slate-200">
+              Page {progressPage.ordinal}
+            </p>
+            <ul className="mt-2 space-y-1 text-slate-600 dark:text-slate-400">
+              {progressEngineIds.map((engineId) => {
+                const run = progressPage.engines?.[engineId];
+                return (
+                  <li key={engineId} className="flex justify-between gap-4">
+                    <span>{engineLabel(job, engineId)}</span>
+                    <span>{run ? engineRunLabel(run.status) : "Waiting"}</span>
+                  </li>
+                );
+              })}
+              <li className="flex justify-between gap-4">
+                <span>Preview</span>
+                <span>
+                  {progressPage.hasPdf
+                    ? "Complete"
+                    : job.status === "rendering"
+                      ? "Rendering…"
+                      : "Waiting"}
+                </span>
+              </li>
+            </ul>
           </div>
         )}
         {job.errorMessage && (
@@ -523,7 +647,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                   </span>
                 )}
                 <span className="block px-2 pb-2 text-[11px] capitalize text-slate-500">
-                  {scannerStatusLabel(page.status)}
+                  {pageStageLabel(job, page)}
                 </span>
               </button>
             ))}
@@ -539,8 +663,8 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                 Page {selected.ordinal}
               </h2>
               <p className="text-sm text-slate-500">
-                {scannerStatusLabel(selected.status)} · {selected.attempts}{" "}
-                provider {selected.attempts === 1 ? "attempt" : "attempts"}
+                {pageStageLabel(job, selected)} · {selected.attempts} provider{" "}
+                {selected.attempts === 1 ? "attempt" : "attempts"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -595,6 +719,16 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               )}
             </div>
           </div>
+          {active &&
+            selected.hasMusicXml &&
+            runningEngine &&
+            progressPage === selected && (
+              <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+                {effectiveLabel} MusicXML is already available.{" "}
+                {engineLabel(job, runningEngine[0])} is still recognizing this
+                page; comparison will appear when it finishes.
+              </p>
+            )}
           {fallbackUsed && (
             <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               {primaryLabel} failed for this page, so the available MusicXML

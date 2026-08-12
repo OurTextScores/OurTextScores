@@ -28,7 +28,10 @@ The condensed version:
    now ship a PEP 668 "externally managed" Python, so install it in its own
    environment: `pipx install 'modal>=1.2,<2'` (or `uv tool install`), then
    `modal setup`. Verified against CLI 1.5.3.
-3. Deploy with `modal deploy modal_app.py`.
+3. From a clean, committed OTS checkout, export
+   `OTS_SOURCE_COMMIT=$(git rev-parse HEAD)` and deploy with
+   `modal deploy modal_app.py`. Configure OTS with the same value as
+   `SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT`; scans fail closed if it differs.
 4. Create a proxy token with `modal workspace proxy-tokens create`. If your
    workspace uses environments, authorise it with
    `modal workspace proxy-tokens allow <token-id> --environment <name>`.

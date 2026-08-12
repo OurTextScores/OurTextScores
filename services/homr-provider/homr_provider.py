@@ -87,12 +87,14 @@ def create_provider_app(
     service_revision: str,
     max_page_bytes: int,
     hard_timeout_seconds: int,
+    provider_source_commit: str = "",
     ready_wait_seconds: int = 150,
     provider_token: str = "",
     idempotency_cache_size: int = 16,
     expected_model_sha256: dict[str, str] | None = None,
     engine_factory: Callable[[], HomrEngine] | None = None,
 ) -> FastAPI:
+    provider_source_commit = provider_source_commit.strip()
     engine = (engine_factory or _default_engine_factory(
         use_gpu=use_gpu,
         homr_commit=homr_commit,
@@ -212,6 +214,7 @@ def create_provider_app(
             "schemaVersion": SCHEMA_VERSION,
             "serviceRevision": service_revision,
             "homrRevision": homr_commit,
+            "providerSourceCommit": provider_source_commit,
         }
 
     @app.get("/readyz")
@@ -253,8 +256,9 @@ def create_provider_app(
             "source": source_url(),
             "providerSource": (
                 "https://github.com/OurTextScores/OurTextScores/tree/"
-                f"{os.environ.get('OTS_SOURCE_COMMIT', 'main')}/services"
+                f"{provider_source_commit or os.environ.get('OTS_SOURCE_COMMIT', 'main')}/services"
             ),
+            "providerSourceCommit": provider_source_commit,
             "providerLicense": LICENSE,
             "homrLicense": "AGPL-3.0",
         }
@@ -389,6 +393,7 @@ def create_provider_app(
                 "name": "homr",
                 "homrCommit": homr_commit,
                 "serviceRevision": service_revision,
+                "providerSourceCommit": provider_source_commit,
                 "segmentationModel": provenance.segmentation_model,
                 "segmentationModelSha256": provenance.segmentation_model_sha256,
                 "transformerModel": provenance.transformer_model,
@@ -421,6 +426,7 @@ def create_provider_app(
             # Flat aliases retained so a backend deployed before this contract
             # change keeps working through a rolling restart.
             "serviceRevision": service_revision,
+            "providerSourceCommit": provider_source_commit,
             "homrRevision": homr_commit,
             "modelRevision": homr_commit,
             "executionProvider": provenance.execution_provider,

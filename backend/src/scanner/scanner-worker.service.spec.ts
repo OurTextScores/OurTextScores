@@ -760,6 +760,8 @@ describe('ScannerWorkerService', () => {
       // Continuing would produce output we cannot vouch for.
       for (const code of [
         'provider_service_revision_mismatch',
+        'provider_source_revision_missing',
+        'provider_source_revision_mismatch',
         'provider_model_revision_mismatch',
         'provider_model_artifact_mismatch',
         'provider_container_image_mismatch',

@@ -50,6 +50,8 @@ export interface ScannerSourceInput {
  * commit alone is not enough — the weights are versioned separately from it.
  */
 export interface ScannerEngineProvenance {
+  /** Immutable OurTextScores adapter/provider source revision. */
+  providerSourceCommit?: string;
   /** Generic immutable model artifact identity, used by engines other than HOMR too. */
   modelArtifact?: string;
   modelArtifactSha256?: string;

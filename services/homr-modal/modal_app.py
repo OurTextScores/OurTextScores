@@ -15,7 +15,7 @@ from pathlib import Path
 import modal
 
 HOMR_COMMIT = "1ddc6fcc26c4baa746eaffbba7f5e01429063465"
-SERVICE_REVISION = "ots-homr-modal-v1"
+SERVICE_REVISION = "ots-homr-modal-v2"
 MAX_PAGE_BYTES = 25 * 1024 * 1024
 
 # Timeout ladder (design section 9.3). The provider must give up before the
@@ -85,24 +85,31 @@ def _source_commit() -> str:
     """The OTS commit being deployed, for the AGPL section 13 source link.
 
     Pointing at `main` would name whatever main happens to be later, not the
-    revision actually serving. Falls back to `main` outside a git checkout.
+    revision actually serving. Refuse deployment without an immutable commit:
+    this identity is checked by OTS before it accepts a scan result.
     """
     import subprocess
 
     override = os.environ.get("OTS_SOURCE_COMMIT", "").strip()
     if override:
-        return override
-    try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(Path(__file__).resolve().parent),
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        ).stdout.strip()
-    except Exception:
-        return "main"
+        commit = override
+    else:
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(Path(__file__).resolve().parent),
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10,
+            ).stdout.strip()
+        except Exception as error:
+            raise RuntimeError(
+                "Set OTS_SOURCE_COMMIT to the immutable OurTextScores source commit"
+            ) from error
+    if len(commit) not in (40, 64) or any(c not in "0123456789abcdef" for c in commit):
+        raise RuntimeError("OTS source commit is not an immutable git object id")
+    return commit
 
 
 SOURCE_COMMIT = _source_commit()
@@ -212,6 +219,7 @@ def homr_api():
         use_gpu=True,
         homr_commit=HOMR_COMMIT,
         service_revision=SERVICE_REVISION,
+        provider_source_commit=SOURCE_COMMIT,
         max_page_bytes=MAX_PAGE_BYTES,
         hard_timeout_seconds=HARD_TIMEOUT_SECONDS,
         ready_wait_seconds=READY_WAIT_SECONDS,

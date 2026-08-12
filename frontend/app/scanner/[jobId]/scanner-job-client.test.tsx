@@ -184,6 +184,158 @@ describe("ScannerJobClient", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the active engine instead of presenting Transcoda time as rendering", async () => {
+    const activeJob: ScannerJob = {
+      ...partialJob,
+      status: "running",
+      pageCount: 1,
+      includedPageCount: 1,
+      enginePlan: {
+        version: "scanner-engine-plan-v1",
+        engineIds: ["homr", "transcoda"],
+        primaryEngineId: "homr",
+        fallbackEngineIds: ["transcoda"],
+        capabilitySnapshots: {
+          homr: {
+            displayName: "HOMR",
+            outputArtifactKinds: ["musicxml", "pdf"],
+            supportsSpotReview: true,
+            supportsMeasureGeometry: true,
+            unsupportedSemanticClasses: [],
+          },
+          transcoda: {
+            displayName: "Transcoda",
+            outputArtifactKinds: ["musicxml", "kern"],
+            supportsSpotReview: false,
+            supportsMeasureGeometry: false,
+            unsupportedSemanticClasses: ["lyrics", "dynamics"],
+          },
+        },
+      },
+      pages: [
+        {
+          ...partialJob.pages[0],
+          status: "succeeded",
+          hasPdf: false,
+          effectiveEngineId: "homr",
+          engines: {
+            homr: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: false,
+              hasKern: false,
+            },
+            transcoda: {
+              status: "running",
+              attempts: 0,
+              hasMusicXml: false,
+              hasPdf: false,
+              hasKern: false,
+            },
+          },
+        },
+      ],
+      hasPdf: false,
+      hasZip: false,
+      completedAt: undefined,
+    };
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => activeJob,
+    });
+
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByText("Transcoda is recognizing page 1 of 1…"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", {
+        name: "Recognition and preview progress",
+      }),
+    ).toHaveAttribute("aria-valuenow", "1");
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuemax",
+      "3",
+    );
+    expect(
+      screen.getByText(/HOMR MusicXML is already available/),
+    ).toHaveTextContent("Transcoda is still recognizing this page");
+    expect(
+      screen.getAllByRole("link", { name: "Download MusicXML" }),
+    ).not.toHaveLength(0);
+  });
+
+  it("names the preview stage only after every recognition engine is terminal", async () => {
+    const renderingJob: ScannerJob = {
+      ...partialJob,
+      status: "rendering",
+      pageCount: 1,
+      includedPageCount: 1,
+      enginePlan: {
+        version: "scanner-engine-plan-v1",
+        engineIds: ["homr", "transcoda"],
+        primaryEngineId: "homr",
+        fallbackEngineIds: ["transcoda"],
+        capabilitySnapshots: {
+          homr: {
+            displayName: "HOMR",
+            outputArtifactKinds: ["musicxml", "pdf"],
+            supportsSpotReview: true,
+            supportsMeasureGeometry: true,
+            unsupportedSemanticClasses: [],
+          },
+          transcoda: {
+            displayName: "Transcoda",
+            outputArtifactKinds: ["musicxml", "kern"],
+            supportsSpotReview: false,
+            supportsMeasureGeometry: false,
+            unsupportedSemanticClasses: [],
+          },
+        },
+      },
+      pages: [
+        {
+          ...partialJob.pages[0],
+          hasPdf: false,
+          engines: {
+            homr: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: false,
+              hasKern: false,
+            },
+            transcoda: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: false,
+              hasKern: true,
+            },
+          },
+        },
+      ],
+      hasPdf: false,
+      completedAt: undefined,
+    };
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => renderingJob,
+    });
+
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByText("Rendering preview for page 1…"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "2",
+    );
+  });
+
   it("uses persisted engine policy for fallback and completeness warnings", async () => {
     const rescued: ScannerJob = {
       ...partialJob,

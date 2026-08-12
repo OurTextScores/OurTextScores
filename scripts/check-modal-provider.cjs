@@ -36,8 +36,11 @@ const expectedCommit = (
   "1ddc6fcc26c4baa746eaffbba7f5e01429063465"
 ).trim();
 const expectedRevision = (
-  process.env.SCANNER_EXPECTED_PROVIDER_REVISION || "ots-homr-modal-v1"
+  process.env.SCANNER_EXPECTED_PROVIDER_REVISION || "ots-homr-modal-v2"
 ).trim();
+const expectedProviderSourceCommit = (
+  process.env.SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT || ""
+).trim().toLowerCase();
 const expectedExecutionProvider = (
   process.env.SCANNER_EXPECTED_EXECUTION_PROVIDER || "CUDAExecutionProvider"
 ).trim();
@@ -47,6 +50,13 @@ if (!url || !tokenId || !tokenSecret) {
   console.error(
     "Missing configuration. Set SCANNER_PROVIDER_URL, SCANNER_MODAL_TOKEN_ID,\n" +
       "and SCANNER_MODAL_TOKEN_SECRET in .env or the environment.",
+  );
+  process.exit(2);
+}
+if (!/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(expectedProviderSourceCommit)) {
+  console.error(
+    "Missing immutable provider source identity. Set\n" +
+      "SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT to the exact OTS commit deployed to Modal.",
   );
   process.exit(2);
 }
@@ -163,6 +173,7 @@ async function main() {
 
   check("HOMR commit", body.homrRevision, expectedCommit);
   check("service revision", body.serviceRevision, expectedRevision);
+  check("provider source commit", body.providerSourceCommit, expectedProviderSourceCommit);
   check("execution provider", body.executionProvider, expectedExecutionProvider);
 
   console.log("\nLicence disclosure (AGPL section 13)");

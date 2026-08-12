@@ -86,6 +86,10 @@ Record the budget page URL; you will need it again in step 10.
 ## 3. Deploy the provider
 
 ```bash
+cd /path/to/OurTextScores
+test -z "$(git status --porcelain)"  # deploy only committed, reproducible source
+export OTS_SOURCE_COMMIT="$(git rev-parse HEAD)"
+export SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT="$OTS_SOURCE_COMMIT"
 cd services/homr-modal
 modal setup                 # one-time auth
 modal deploy modal_app.py
@@ -96,6 +100,10 @@ The first build is slow: it pulls the pinned CUDA base, clones HOMR at
 `poetry.lock`, and bakes the model weights in with `homr --init --gpu force`.
 
 Modal prints the deployed URL. Record it — it becomes `SCANNER_PROVIDER_URL`.
+Also keep `SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT`: the provider reports that
+exact OTS commit on capabilities and on every scan, and the worker rejects any
+other source revision. This prevents a stale Modal image from passing merely
+because its upstream HOMR model commit and static service label still match.
 
 **What the deploy pins** (design §9.5): the CUDA base by manifest-list digest,
 HOMR by commit with a `git rev-parse` assertion, and every dependency by hash —
@@ -148,6 +156,7 @@ Put the endpoint and token in your **local** `.env` first:
 SCANNER_PROVIDER_URL=https://<your-deployment>.modal.run
 SCANNER_MODAL_TOKEN_ID=<token id>
 SCANNER_MODAL_TOKEN_SECRET=<token secret>
+SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT=<the OTS_SOURCE_COMMIT used above>
 ```
 
 Then run the pre-flight check, which sends exactly the headers the scanner
@@ -158,10 +167,11 @@ npm run scanner:modal:check
 ```
 
 It verifies proxy auth, waits for readiness, compares the provider's reported
-HOMR commit / service revision / execution provider against what OTS will
-require (these are fail-closed at runtime, so a mismatch would disable the
-provider mid-scan), checks the AGPL disclosure fields, and prints the model
-hashes as ready-to-paste export lines. Exit code is non-zero if anything failed.
+HOMR commit / service revision / OTS provider source commit / execution provider
+against what OTS will require (these are fail-closed at runtime, so a mismatch
+would disable the provider mid-scan), checks the AGPL disclosure fields, and
+prints the model hashes as ready-to-paste export lines. Exit code is non-zero if
+anything failed.
 
 The hashes for the pinned HOMR commit are already committed as
 `DEFAULT_MODEL_SHA256` in `services/homr-modal/modal_app.py`, so a normal deploy
@@ -279,7 +289,8 @@ SCANNER_MODAL_TOKEN_SECRET=<token secret>
 # Fail-closed provenance checks. If any of these disagree with what the
 # provider reports, the worker disables the provider rather than continuing.
 SCANNER_EXPECTED_HOMR_COMMIT=1ddc6fcc26c4baa746eaffbba7f5e01429063465
-SCANNER_EXPECTED_PROVIDER_REVISION=ots-homr-modal-v1
+SCANNER_EXPECTED_PROVIDER_REVISION=ots-homr-modal-v2
+SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT=<the immutable OTS commit deployed to Modal>
 SCANNER_EXPECTED_EXECUTION_PROVIDER=CUDAExecutionProvider
 
 # Set this before any real traffic. Without it the hashed owner segment in

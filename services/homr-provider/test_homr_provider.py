@@ -92,6 +92,7 @@ def build(engine: FakeEngine, **overrides: object) -> TestClient:
         use_gpu=False,
         homr_commit="c0ffee",
         service_revision="ots-homr-test-v1",
+        provider_source_commit="d" * 40,
         max_page_bytes=1024,
         hard_timeout_seconds=30,
         provider_token="test-token",
@@ -133,6 +134,13 @@ class ProviderContractTest(unittest.TestCase):
         body = post(self.client, page=png_bytes()).json()
         self.assertIn("review", body)
         self.assertIsInstance(body["review"].get("staves"), list)
+
+    def test_carries_immutable_provider_source_identity(self) -> None:
+        body = post(self.client, page=png_bytes(b"source-identity")).json()
+        self.assertEqual(body["engine"]["providerSourceCommit"], "d" * 40)
+        self.assertEqual(body["providerSourceCommit"], "d" * 40)
+        capabilities = self.client.get("/v1/capabilities").json()
+        self.assertEqual(capabilities["providerSourceCommit"], "d" * 40)
 
     def test_carries_verified_part_and_system_identity_for_regeneration(self) -> None:
         self.engine.review = {

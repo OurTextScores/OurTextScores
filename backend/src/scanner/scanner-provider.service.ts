@@ -76,7 +76,8 @@ export class ScannerProviderService implements ScannerPageProvider {
   }
 
   async scanPage(input: ScannerProviderScanInput): Promise<ScanPageResult> {
-    if (this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal') === 'fake') {
+    const providerKind = this.config.get<string>('SCANNER_PROVIDER_KIND', 'modal').trim();
+    if (providerKind === 'fake') {
       return this.fakeResult(input.idempotencyKey, input.filename);
     }
 
@@ -105,6 +106,9 @@ export class ScannerProviderService implements ScannerPageProvider {
       engine.homrCommit || result?.modelRevision || result?.homrRevision || ''
     );
     const executionProvider = String(engine.executionProvider || result?.executionProvider || '');
+    const providerSourceCommit = String(
+      engine.providerSourceCommit || result?.providerSourceCommit || ''
+    ).trim();
     const expectedInputSha256 = createHash('sha256').update(input.image).digest('hex');
     const receivedInputSha256 = String(result?.inputSha256 || '');
     if (receivedInputSha256 !== expectedInputSha256) {
@@ -115,12 +119,33 @@ export class ScannerProviderService implements ScannerPageProvider {
       );
     }
     const expectedProviderRevision = this.config
-      .get<string>('SCANNER_EXPECTED_PROVIDER_REVISION', 'ots-homr-modal-v1')
+      .get<string>('SCANNER_EXPECTED_PROVIDER_REVISION', 'ots-homr-modal-v2')
       .trim();
     if (expectedProviderRevision && providerRevision !== expectedProviderRevision) {
       throw new ScannerProviderError(
         'Scanner provider service verification failed',
         'provider_service_revision_mismatch',
+        false
+      );
+    }
+    const expectedProviderSourceCommit = this.config
+      .get<string>('SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT', '')
+      .trim()
+      .toLowerCase();
+    if (providerKind === 'modal' && !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(providerSourceCommit)) {
+      throw new ScannerProviderError(
+        'Scanner provider source verification failed',
+        'provider_source_revision_missing',
+        false
+      );
+    }
+    if (
+      expectedProviderSourceCommit &&
+      providerSourceCommit.toLowerCase() !== expectedProviderSourceCommit
+    ) {
+      throw new ScannerProviderError(
+        'Scanner provider source verification failed',
+        'provider_source_revision_mismatch',
         false
       );
     }
@@ -189,6 +214,7 @@ export class ScannerProviderService implements ScannerPageProvider {
         ? Number(result.timing.inferenceMs)
         : undefined,
       provenance: {
+        providerSourceCommit: this.text(providerSourceCommit?.toLowerCase()),
         segmentationModel: this.text(engine.segmentationModel),
         segmentationModelSha256: this.text(engine.segmentationModelSha256),
         transformerModel: this.text(engine.transformerModel),

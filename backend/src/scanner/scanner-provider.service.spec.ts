@@ -145,7 +145,8 @@ describe('ScannerProviderService', () => {
   it('accepts only matching input, service, model, and execution provenance', async () => {
     values.SCANNER_PROVIDER_KIND = 'modal';
     values.SCANNER_PROVIDER_URL = 'https://scanner.example';
-    values.SCANNER_EXPECTED_PROVIDER_REVISION = 'ots-homr-modal-v1';
+    values.SCANNER_EXPECTED_PROVIDER_REVISION = 'ots-homr-modal-v2';
+    values.SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT = '4'.repeat(40);
     values.SCANNER_EXPECTED_EXECUTION_PROVIDER = 'CUDAExecutionProvider';
     const image = Buffer.from('image');
     const musicXml = Buffer.from(
@@ -154,7 +155,8 @@ describe('ScannerProviderService', () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
-          serviceRevision: 'ots-homr-modal-v1',
+          serviceRevision: 'ots-homr-modal-v2',
+          providerSourceCommit: '4'.repeat(40),
           modelRevision: 'homr-revision',
           executionProvider: 'CUDAExecutionProvider',
           inputSha256: createHash('sha256').update(image).digest('hex'),
@@ -194,7 +196,7 @@ describe('ScannerProviderService', () => {
       })
     ).resolves.toEqual(
       expect.objectContaining({
-        providerRevision: 'ots-homr-modal-v1',
+        providerRevision: 'ots-homr-modal-v2',
         modelRevision: 'homr-revision',
         musicXml,
         review: {
@@ -209,6 +211,7 @@ describe('ScannerProviderService', () => {
     values.SCANNER_PROVIDER_KIND = 'fake';
     delete values.SCANNER_PROVIDER_URL;
     delete values.SCANNER_EXPECTED_PROVIDER_REVISION;
+    delete values.SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT;
     delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
   });
 
@@ -541,7 +544,8 @@ describe('ScannerProviderService', () => {
       engine: {
         name: 'homr',
         homrCommit: 'homr-revision',
-        serviceRevision: 'ots-homr-modal-v1',
+        serviceRevision: 'ots-homr-modal-v2',
+        providerSourceCommit: '4'.repeat(40),
         segmentationModel: 'segnet_308-abc',
         segmentationModelSha256: '1'.repeat(64),
         transformerModel: 'encoder_426-def.onnx',
@@ -561,7 +565,8 @@ describe('ScannerProviderService', () => {
     beforeEach(() => {
       values.SCANNER_PROVIDER_KIND = 'modal';
       values.SCANNER_PROVIDER_URL = 'https://scanner.example';
-      values.SCANNER_EXPECTED_PROVIDER_REVISION = 'ots-homr-modal-v1';
+      values.SCANNER_EXPECTED_PROVIDER_REVISION = 'ots-homr-modal-v2';
+      values.SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT = '4'.repeat(40);
       values.SCANNER_EXPECTED_EXECUTION_PROVIDER = 'CUDAExecutionProvider';
     });
 
@@ -570,6 +575,7 @@ describe('ScannerProviderService', () => {
       values.SCANNER_PROVIDER_KIND = 'fake';
       delete values.SCANNER_PROVIDER_URL;
       delete values.SCANNER_EXPECTED_PROVIDER_REVISION;
+      delete values.SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT;
       delete values.SCANNER_EXPECTED_EXECUTION_PROVIDER;
     });
 
@@ -589,10 +595,11 @@ describe('ScannerProviderService', () => {
     it('records the segmentation and transformer identities from the v1 envelope', async () => {
       respond(envelope());
       await expect(scan()).resolves.toMatchObject({
-        providerRevision: 'ots-homr-modal-v1',
+        providerRevision: 'ots-homr-modal-v2',
         modelRevision: 'homr-revision',
         requestId: 'req-1',
         provenance: {
+          providerSourceCommit: '4'.repeat(40),
           segmentationModel: 'segnet_308-abc',
           segmentationModelSha256: '1'.repeat(64),
           transformerModel: 'encoder_426-def.onnx',
@@ -600,6 +607,28 @@ describe('ScannerProviderService', () => {
           decoderModelSha256: '3'.repeat(64),
           executionProvider: 'CUDAExecutionProvider'
         }
+      });
+    });
+
+    it('fails closed when Modal omits its immutable provider source revision', async () => {
+      const body = envelope();
+      delete (body.engine as Record<string, unknown>).providerSourceCommit;
+      respond(body);
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_source_revision_missing',
+        retryable: false
+      });
+    });
+
+    it('fails closed when Modal runs an unexpected provider source revision', async () => {
+      respond(
+        envelope({
+          engine: { ...envelope().engine, providerSourceCommit: '5'.repeat(40) }
+        })
+      );
+      await expect(scan()).rejects.toMatchObject({
+        code: 'provider_source_revision_mismatch',
+        retryable: false
       });
     });
 

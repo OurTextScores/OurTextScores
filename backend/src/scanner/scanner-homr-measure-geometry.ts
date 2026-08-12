@@ -19,6 +19,8 @@ export const SCANNER_HOMR_MEASURE_GEOMETRY_PRODUCER_VERSION = 'scanner-homr-meas
 export type ScannerHomrGeometryRefusalCode =
   | 'part-match-unavailable'
   | 'artifact-identity-mismatch'
+  | 'review-geometry-unavailable'
+  | 'invalid-review-data'
   | 'unsupported-part-layout'
   | 'invalid-staff-geometry'
   | 'measure-count-mismatch'
@@ -246,10 +248,30 @@ export function buildScannerHomrMeasureGeometry(input: {
       ]
     };
   }
+  if (input.staves.length === 0) {
+    return {
+      status: 'refused',
+      refusalReasons: [
+        {
+          code: 'review-geometry-unavailable',
+          detail:
+            'HOMR returned no staff or symbol geometry for this page. Re-scan it with the current HOMR provider.'
+        }
+      ]
+    };
+  }
+  if (input.parts.length === 0 || input.staves.length % input.parts.length !== 0) {
+    return {
+      status: 'refused',
+      refusalReasons: [
+        {
+          code: 'unsupported-part-layout',
+          detail: `HOMR returned ${input.staves.length} staves for ${input.parts.length} MusicXML parts, so a complete voice/system grid cannot be proven`
+        }
+      ]
+    };
+  }
   if (
-    input.parts.length === 0 ||
-    input.staves.length === 0 ||
-    input.staves.length % input.parts.length !== 0 ||
     input.staves.some(
       (staff, index) =>
         staff.index !== index ||
@@ -266,8 +288,8 @@ export function buildScannerHomrMeasureGeometry(input: {
       status: 'refused',
       refusalReasons: [
         {
-          code: 'unsupported-part-layout',
-          detail: 'Captured HOMR staves do not form a complete voice-major system grid'
+          code: 'invalid-review-data',
+          detail: 'HOMR staff geometry contains reordered staves or malformed symbol tokens'
         }
       ]
     };

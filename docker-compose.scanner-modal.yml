@@ -33,7 +33,8 @@ services:
       SCANNER_PROVIDER_KIND: modal
       SCANNER_PROVIDER_URL: ${SCANNER_PROVIDER_URL:?set SCANNER_PROVIDER_URL to the deployed Modal URL}
       SCANNER_EXPECTED_HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465
-      SCANNER_EXPECTED_PROVIDER_REVISION: ots-homr-modal-v1
+      SCANNER_EXPECTED_PROVIDER_REVISION: ots-homr-modal-v2
+      SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT: ${SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT:?set to the immutable OTS commit deployed to HOMR Modal}
       SCANNER_EXPECTED_EXECUTION_PROVIDER: CUDAExecutionProvider
 
   scanner_worker:
@@ -52,7 +53,8 @@ services:
       # 150s ready wait + 400s hard timeout < 600s here < 660s Modal timeout.
       SCANNER_PROVIDER_TIMEOUT_MS: ${SCANNER_PROVIDER_TIMEOUT_MS:-600000}
       SCANNER_EXPECTED_HOMR_COMMIT: 1ddc6fcc26c4baa746eaffbba7f5e01429063465
-      SCANNER_EXPECTED_PROVIDER_REVISION: ots-homr-modal-v1
+      SCANNER_EXPECTED_PROVIDER_REVISION: ots-homr-modal-v2
+      SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT: ${SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT:?set to the immutable OTS commit deployed to HOMR Modal}
       # Fail closed: if the provider ever reports CPU, the worker disables it
       # rather than quietly serving slow, differently-produced results.
       SCANNER_EXPECTED_EXECUTION_PROVIDER: CUDAExecutionProvider

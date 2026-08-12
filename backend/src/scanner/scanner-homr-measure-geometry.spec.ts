@@ -328,11 +328,45 @@ describe('HOMR measure geometry producer', () => {
     expect(
       build({
         parts: parts([2, 2]),
-        staves: [staff(0, [token('note_4')]), staff(2, [token('note_4')]), staff(3, [])]
+        staves: [
+          staff(0, [token('note_4')]),
+          staff(2, [token('note_4')]),
+          staff(1, []),
+          staff(3, [])
+        ]
       })
     ).toMatchObject({
       status: 'refused',
-      refusalReasons: [{ code: 'unsupported-part-layout' }]
+      refusalReasons: [{ code: 'invalid-review-data' }]
+    });
+  });
+
+  it('explains when the provider returned no review geometry', () => {
+    expect(build({ parts: parts([1]), staves: [] })).toMatchObject({
+      status: 'refused',
+      refusalReasons: [
+        {
+          code: 'review-geometry-unavailable',
+          detail: expect.stringContaining('Re-scan it with the current HOMR provider')
+        }
+      ]
+    });
+  });
+
+  it('reports incomplete part grids with concrete counts', () => {
+    expect(
+      build({
+        parts: parts([1, 1]),
+        staves: [staff(0, [token('note_4')])]
+      })
+    ).toMatchObject({
+      status: 'refused',
+      refusalReasons: [
+        {
+          code: 'unsupported-part-layout',
+          detail: expect.stringContaining('1 staves for 2 MusicXML parts')
+        }
+      ]
     });
   });
 });
