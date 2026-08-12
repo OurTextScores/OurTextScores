@@ -1058,7 +1058,11 @@ export class ScannerService implements OnModuleInit {
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
     const comparison = await this.pageComparisonForJob(job, page, baseEngineId, candidateEngineId);
-    if (comparison.status !== 'ready' || comparison.geometry?.status !== 'ready') {
+    // A page can be only partially grounded: conservative alignment may prove
+    // image evidence for some blocks while correctly refusing ambiguous spans.
+    // Phase C is read-only, so serve an individually-ready block without
+    // pretending the whole page is safe for reconciliation.
+    if (!comparison.geometry?.geometrySignature || !Array.isArray(comparison.geometry.blocks)) {
       throw new ConflictException('This comparison block has no verified image evidence');
     }
     if (comparison.geometry.geometrySignature !== geometrySignature) {

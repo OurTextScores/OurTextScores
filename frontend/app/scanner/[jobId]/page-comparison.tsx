@@ -448,7 +448,7 @@ export default function PageComparison({
               {error}
             </p>
           )}
-          {comparison?.status === "refused" && (
+          {comparison?.status === "refused" && readyBlocks.length === 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               <p className="font-medium">
                 These readings cannot be compared safely.
@@ -461,7 +461,8 @@ export default function PageComparison({
             </div>
           )}
           {comparison?.status === "ready" &&
-            comparison.geometry?.status === "refused" && (
+            comparison.geometry?.status === "refused" &&
+            readyBlocks.length === 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                 <p className="font-medium">
                   The differences have no verified image evidence.
@@ -477,8 +478,23 @@ export default function PageComparison({
                 </ul>
               </div>
             )}
-          {comparison?.status === "ready" &&
-            comparison.geometry?.status === "ready" && (
+          {comparison &&
+            comparison.geometry &&
+            readyBlocks.length > 0 &&
+            comparison.geometry.refusalReasons.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                <p className="font-medium">
+                  Some differences have no verified image evidence.
+                </p>
+                <p className="mt-1">
+                  Showing {readyBlocks.length} of {comparison.geometry.blocks.length}{" "}
+                  differing blocks whose locations can be proven. The remaining
+                  blocks are withheld.
+                </p>
+              </div>
+            )}
+          {comparison &&
+            (comparison.geometry?.status === "ready" || readyBlocks.length > 0) && (
               <>
                 {readyBlocks.length === 0 ? (
                   <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">

@@ -280,4 +280,51 @@ describe("PageComparison", () => {
     expect(screen.queryByAltText(/Source evidence/)).not.toBeInTheDocument();
     expect(loadScore).not.toHaveBeenCalled();
   });
+
+  it("shows only grounded blocks when page geometry is partial", async () => {
+    const partial = readyComparison();
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...partial,
+        status: "refused",
+        refusalReasons: [{ detail: "One comparison span is unresolved" }],
+        geometry: {
+          ...partial.geometry,
+          status: "refused",
+          refusalReasons: [{ detail: "One measure has no verified mapping" }],
+          blocks: [
+            ...partial.geometry.blocks,
+            {
+              status: "refused",
+              block: {
+                ...partial.geometry.blocks[0].block,
+                blockIndex: 1,
+                contentSignature: `scanner-block-content-v2:${"e".repeat(64)}`,
+              },
+              refusalReasons: [{ detail: "One measure has no verified mapping" }],
+            },
+          ],
+        },
+      }),
+    });
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+
+    expect(
+      await screen.findByText("Some differences have no verified image evidence."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Showing 1 of 2 differing blocks/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 differing block")).toBeInTheDocument();
+    expect(
+      screen.getByAltText("Source evidence for comparison block 1"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("These readings cannot be compared safely."),
+    ).not.toBeInTheDocument();
+  });
 });

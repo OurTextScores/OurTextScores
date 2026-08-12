@@ -852,6 +852,43 @@ describe('ScannerService', () => {
       ['scanner', 'transcoda.musicxml'],
       ['scanner', 'recognition.png']
     ]);
+    const partialComparison = jest
+      .spyOn(service as any, 'pageComparisonForJob')
+      .mockResolvedValue({
+        ...result,
+        status: 'refused',
+        refusalReasons: [{ stage: 'geometry', code: 'missing-measure-reference' }],
+        geometry: {
+          ...result.geometry,
+          status: 'refused',
+          refusalReasons: [{ code: 'missing-measure-reference' }],
+          blocks: [
+            result.geometry.blocks[0],
+            {
+              status: 'refused',
+              block: { ...groundedBlock, blockIndex: groundedBlock.blockIndex + 1 },
+              refusalReasons: [{ code: 'missing-measure-reference' }]
+            }
+          ]
+        }
+      });
+    const partialCrop = await service.pageComparisonBlockCrop(
+      'user-1',
+      'job-1',
+      1,
+      groundedBlock.blockIndex,
+      'homr',
+      'transcoda',
+      result.statusVersion,
+      groundedBlock.contentSignature,
+      result.geometry.geometrySignature
+    );
+    await expect(sharp(partialCrop.body).metadata()).resolves.toMatchObject({
+      format: 'png',
+      width: 100,
+      height: 50
+    });
+    partialComparison.mockRestore();
     const montage = await (service as any).renderComparisonBlockCrop(recognitionImage, raster, [
       { systemIndex: 0, staffIndices: [0], region: [0, 0, 100, 20] },
       { systemIndex: 1, staffIndices: [1], region: [0, 30, 100, 50] }
