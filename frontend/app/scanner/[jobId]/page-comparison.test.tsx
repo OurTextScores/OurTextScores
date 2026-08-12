@@ -4,17 +4,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import PageComparison from "./page-comparison";
 import { ScannerJob } from "../scanner-types";
 
-const loadScore = jest.fn().mockResolvedValue(undefined);
-const renderScore = jest.fn().mockResolvedValue(undefined);
-const mockOsmdConstructor = jest.fn().mockImplementation(() => ({
-  load: loadScore,
-  render: renderScore,
-  Zoom: 1,
-}));
-
-jest.mock("opensheetmusicdisplay", () => ({
-  OpenSheetMusicDisplay: mockOsmdConstructor,
-}));
 
 const page: ScannerJob["pages"][number] = {
   pageNumber: 1,
@@ -156,16 +145,6 @@ function readyComparison(candidateEngineId = "transcoda") {
 describe("PageComparison", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // afterEach resets implementations, so restore them here rather than
-    // letting every test after the first run against a constructor that
-    // returns an object with no load().
-    loadScore.mockResolvedValue(undefined);
-    renderScore.mockResolvedValue(undefined);
-    mockOsmdConstructor.mockImplementation(() => ({
-      load: loadScore,
-      render: renderScore,
-      Zoom: 1,
-    }));
     globalThis.fetch = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/comparison?")) {
@@ -226,12 +205,17 @@ describe("PageComparison", () => {
     ).toBeInTheDocument();
   });
 
-  it("never engraves a reading with a second renderer", async () => {
+  it("never engraves a reading itself", async () => {
     // The decision turns on beaming, stem direction, rest placement and
     // accidental spelling — exactly what a second renderer reproduces
-    // differently. Judging Transcoda's beaming through OSMD's beaming judged
-    // the wrong artifact, so this page draws no score at all: the merge editor
-    // below draws all three through MuseScore.
+    // differently. Judging Transcoda's beaming through OpenSheetMusicDisplay's
+    // beaming judged the wrong artifact, so this page draws no score at all:
+    // the merge editor below draws all three through MuseScore.
+    //
+    // There is no OSMD mock to assert against any more, because the dependency
+    // is gone from the product entirely — a stronger guarantee than a spy.
+    // What is asserted here is the observable consequence: no whole MusicXML
+    // artifact is fetched just to draw one bar.
     render(<PageComparison jobId="job-1" job={job} page={page} />);
     fireEvent.click(
       screen.getByRole("button", { name: "Compare engine readings" }),
@@ -243,8 +227,6 @@ describe("PageComparison", () => {
         screen.getByRole("heading", { name: "Whole-page diff review" }),
       ).toBeInTheDocument(),
     );
-    expect(mockOsmdConstructor).not.toHaveBeenCalled();
-    // And it no longer fetches a whole MusicXML artifact just to draw a bar.
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/comparison/readings/"),
       expect.anything(),
@@ -329,7 +311,6 @@ describe("PageComparison", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByAltText(/Source evidence/)).not.toBeInTheDocument();
-    expect(loadScore).not.toHaveBeenCalled();
   });
 
   it("still reviews the whole page when geometry is refused", async () => {
@@ -372,8 +353,6 @@ describe("PageComparison", () => {
     ).toBeInTheDocument();
     // No crops, because nothing proved where those measures are on the scan.
     expect(screen.queryByAltText(/Source evidence/)).not.toBeInTheDocument();
-    // The whole page is not drawn here at all; the editor embed owns it.
-    expect(loadScore).not.toHaveBeenCalled();
   });
 
   it("hands the whole page to the score editor's compare embed", async () => {

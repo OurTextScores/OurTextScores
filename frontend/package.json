@@ -24,7 +24,6 @@
     "next": "14.2.33",
     "next-auth": "4.24.7",
     "nodemailer": "6.9.16",
-    "opensheetmusicdisplay": "1.8.8",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "webmscore": "^1.2.1",
