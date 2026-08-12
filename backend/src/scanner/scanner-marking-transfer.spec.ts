@@ -36,14 +36,20 @@ const dynamic = (mark: string, offset?: number) => `
     ${offset === undefined ? '' : `<offset>${offset}</offset>`}
   </direction>`;
 
-const transfer = (base: Buffer, candidate: Buffer, indexes = [0]) =>
+const transfer = (
+  base: Buffer,
+  candidate: Buffer,
+  indexes = [0],
+  kind: 'dynamics' | 'lyrics' = 'dynamics'
+) =>
   transferScannerMarkings({
     baseXml: base,
     candidateXml: candidate,
     basePartIndex: 0,
     candidatePartIndex: 0,
     baseMeasureIndexes: indexes,
-    candidateMeasureIndexes: indexes
+    candidateMeasureIndexes: indexes,
+    kind
   });
 
 describe('scanner marking transfer', () => {
@@ -59,15 +65,19 @@ describe('scanner marking transfer', () => {
           note(4)
       )
     );
-    const result = transfer(withoutMarkings, withMarkings);
+    const dynamicsOnly = transfer(withoutMarkings, withMarkings, [0], 'dynamics');
+    expect(dynamicsOnly.refusals).toEqual([]);
+    expect(dynamicsOnly.transferred).toEqual({ directions: 2, lyrics: 0 });
+    expect(dynamicsOnly.musicXml!.toString('utf8')).not.toContain('<text>men</text>');
 
+    const result = transfer(withoutMarkings, withMarkings, [0], 'lyrics');
     expect(result.refusals).toEqual([]);
     expect(result.musicXml).not.toBeNull();
-    expect(result.transferred).toEqual({ directions: 2, lyrics: 2 });
+    expect(result.transferred).toEqual({ directions: 0, lyrics: 2 });
     const xml = result.musicXml!.toString('utf8');
-    expect(xml).toContain('<p/>');
-    expect(xml).toContain('<f/>');
     expect(xml).toContain('<text>men</text>');
+    // Taking lyrics left the dynamics alone.
+    expect(xml).not.toContain('<p/>');
     expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
   });
 
@@ -128,13 +138,14 @@ describe('scanner marking transfer', () => {
     // neither reading, and nobody asked for that.
     const base = part(bar(dynamic('ff') + note(4, { lyric: 'old' }) + note(4) + note(4) + note(4)));
     const candidate = part(bar(dynamic('p') + note(4, { lyric: 'new' }) + note(4) + note(4) + note(4)));
-    const result = transfer(base, candidate);
+    const result = transfer(base, candidate, [0], 'dynamics');
 
     const xml = result.musicXml!.toString('utf8');
     expect(xml).toContain('<p/>');
     expect(xml).not.toContain('<ff/>');
-    expect(xml).toContain('<text>new</text>');
-    expect(xml).not.toContain('<text>old</text>');
+    // Taking dynamics replaced the dynamics and left the lyric where it was.
+    expect(xml).toContain('<text>old</text>');
+    expect(xml).not.toContain('<text>new</text>');
   });
 
   it('says when there is nothing to take', () => {
@@ -170,7 +181,8 @@ describe('scanner marking transfer', () => {
       basePartIndex: 0,
       candidatePartIndex: 0,
       baseMeasureIndexes: [0],
-      candidateMeasureIndexes: []
+      candidateMeasureIndexes: [],
+      kind: 'dynamics'
     });
 
     expect(result.refusals[0].code).toBe('span-mismatch');

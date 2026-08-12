@@ -420,6 +420,7 @@ export class ScannerController {
       baseEngine?: string;
       candidateEngine?: string;
       revision?: number;
+      kind?: string;
     }
   ) {
     return this.scanner.takeMarkingsIntoMergedScore(user.userId, jobId, pageNumber, {
@@ -428,7 +429,8 @@ export class ScannerController {
       engineId: String(body?.engineId ?? ''),
       baseEngineId: String(body?.baseEngine ?? ''),
       candidateEngineId: String(body?.candidateEngine ?? ''),
-      revision: Number(body?.revision)
+      revision: Number(body?.revision),
+      kind: body?.kind === 'lyrics' ? 'lyrics' : 'dynamics'
     });
   }
 

@@ -75,6 +75,15 @@ export interface ScannerComparisonBlock {
    * between them cannot supply it either; the op walk can, and does.
    */
   baseAnchorIndex: number;
+  /**
+   * What each side actually has to give, per marking kind.
+   *
+   * A difference class says the two readings *disagree* about dynamics; it does
+   * not say which one has them. Offering to take dynamics from a bar with none
+   * is worse than offering nothing, so the controls key off this.
+   */
+  baseMarkings: { dynamics: boolean; lyrics: boolean };
+  candidateMarkings: { dynamics: boolean; lyrics: boolean };
   baseDescriptorHashes: string[];
   candidateDescriptorHashes: string[];
   differenceClasses: ScannerComparisonDifferenceClass[];
@@ -122,6 +131,12 @@ const newPending = (contextBeforeHash?: string, anchorIndex = -1): PendingBlock 
   differenceClasses: new Set(),
   hasCoarseMismatch: false,
   contextBeforeHash
+});
+
+/** Anything in the span counts: a control offers to take the whole block. */
+const markingsOf = (descriptors: ScannerMeasureDescriptor[]) => ({
+  dynamics: descriptors.some((descriptor) => descriptor.markings?.dynamics),
+  lyrics: descriptors.some((descriptor) => descriptor.markings?.lyrics)
 });
 
 const isPending = (pending: PendingBlock): boolean =>
@@ -263,6 +278,8 @@ export function buildScannerComparisonBlocks(input: {
       // without is anchored by the last base measure seen before it.
       baseAnchorIndex:
         pending.baseIndices.length > 0 ? Math.min(...pending.baseIndices) - 1 : pending.anchorIndex,
+      baseMarkings: markingsOf(baseDescriptors),
+      candidateMarkings: markingsOf(candidateDescriptors),
       differenceClasses,
       completenessWarnings: [
         ...warningsFor(base, pending.differenceClasses),

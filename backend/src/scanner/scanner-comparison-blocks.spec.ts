@@ -38,6 +38,7 @@ function descriptor(
     coarseKey,
     richHash,
     componentHashes: components,
+    markings: { dynamics: false, lyrics: false },
     eventCount: 1
   };
 }

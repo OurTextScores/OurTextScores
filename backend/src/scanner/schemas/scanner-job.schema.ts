@@ -101,7 +101,7 @@ export interface ScannerMergedDecision {
    * here" from a decision that moved a dynamic — the notes it sits over came
    * from somewhere else, and may have come from the engine that lost.
    */
-  markingsOnly?: boolean;
+  markingsOnly?: 'dynamics' | 'lyrics';
   decidedAt: Date;
 }
 

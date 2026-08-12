@@ -988,6 +988,10 @@ export class ScannerService implements OnModuleInit {
             (ref: any) => ref.measureIndex
           ),
           differenceClasses: block.differenceClasses || [],
+          // What each side has to give, so a control that would take nothing is
+          // never offered.
+          leftMarkings: block.baseMarkings,
+          rightMarkings: block.candidateMarkings,
           // §7: no decision may be offered for a bar whose comparison is not
           // grounded, and that is enforced structurally rather than by
           // discouragement — a decision route requires this signature, so an
@@ -1696,8 +1700,12 @@ export class ScannerService implements OnModuleInit {
       baseEngineId: string;
       candidateEngineId: string;
       revision: number;
+      kind: 'dynamics' | 'lyrics';
     }
   ): Promise<any> {
+    if (input.kind !== 'dynamics' && input.kind !== 'lyrics') {
+      throw new BadRequestException('A marking decision must say whether it takes dynamics or lyrics');
+    }
     const decided = await this.resolveDecisionContext(userId, jobId, pageNumber, input);
     const { job, page, block, mergedSourceEngineId, map, currentRevision } = decided;
 
@@ -1721,11 +1729,12 @@ export class ScannerService implements OnModuleInit {
       basePartIndex: 0,
       candidatePartIndex: 0,
       baseMeasureIndexes: mergedMeasureIndexes,
-      candidateMeasureIndexes: indexesFor(input.engineId)
+      candidateMeasureIndexes: indexesFor(input.engineId),
+      kind: input.kind
     });
     if (!outcome.musicXml) {
       throw new ConflictException({
-        message: 'Those markings cannot be taken onto this passage',
+        message: `Those ${input.kind} cannot be taken onto this passage`,
         refusals: outcome.refusals,
         violations: outcome.violations
       });
@@ -1738,7 +1747,7 @@ export class ScannerService implements OnModuleInit {
       measureIndexes: mergedMeasureIndexes,
       // Recorded distinctly from a bar take: phase E must not read "HOMR was
       // right here" from a decision that only moved a dynamic.
-      markingsOnly: true,
+      markingsOnly: input.kind,
       decidedAt: new Date()
     };
     const mergedScore: ScannerMergedScore = {

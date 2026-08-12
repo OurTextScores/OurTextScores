@@ -44,6 +44,7 @@ function descriptor(measureIndex: number): ScannerMeasureDescriptor {
     measureNumber: String(measureIndex + 1),
     coarseKey: `coarse-${measureIndex}`,
     richHash: `rich-${measureIndex}`,
+    markings: { dynamics: false, lyrics: false },
     componentHashes: {
       notation: `notation-${measureIndex}`,
       voice: `voice-${measureIndex}`,
@@ -176,6 +177,8 @@ describe('HOMR measure geometry producer', () => {
           version: SCANNER_COMPARISON_BLOCK_VERSION,
           blockIndex: 0,
           baseAnchorIndex: -1,
+          baseMarkings: { dynamics: false, lyrics: false },
+          candidateMarkings: { dynamics: false, lyrics: false },
           pair: { baseEngineId: 'homr', candidateEngineId: 'transcoda' },
           stablePartKey: match.stablePartKey,
           baseMeasureRefs: [

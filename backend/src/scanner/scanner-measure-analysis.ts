@@ -53,6 +53,16 @@ export interface ScannerMeasureDescriptor {
   coarseKey: string;
   richHash: string;
   componentHashes: ScannerMeasureComponentHashes;
+  /**
+   * Whether this measure actually carries dynamics or lyrics.
+   *
+   * A hash cannot answer it — the hash of no dynamics is still a hash — and a
+   * difference class cannot either: two readings differ in `dynamics` whether
+   * the marking is in one, the other, or both. A control offering to take
+   * dynamics from a bar that has none is worse than no control, so this is what
+   * decides whether it appears.
+   */
+  markings: { dynamics: boolean; lyrics: boolean };
   eventCount: number;
   /** Hashed, notation-only event sketches used to locate non-identical measures. */
   alignment?: {
@@ -457,6 +467,7 @@ function describeMeasure(
       coarseKey: signature(SCANNER_COARSE_MEASURE_KEY_VERSION, sortedCoarse),
       richHash: signature(SCANNER_MEASURE_DESCRIPTOR_VERSION, components),
       componentHashes,
+      markings: { dynamics: dynamics.length > 0, lyrics: lyrics.length > 0 },
       eventCount: notes.length,
       alignment
     },

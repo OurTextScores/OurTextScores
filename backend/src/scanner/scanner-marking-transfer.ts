@@ -20,6 +20,16 @@ export const SCANNER_MARKING_TRANSFER_VERSION = 'scanner-marking-transfer-v1';
  */
 export type ScannerMarkingRefusalCode = 'notes-differ' | 'span-mismatch' | 'nothing-to-transfer';
 
+/**
+ * Which markings to move.
+ *
+ * Separate rather than one "markings" bundle because they are separate
+ * judgements: a reviewer may trust one engine's dynamics and the other's
+ * lyrics, and an operation that moved both would make that impossible to
+ * express. They are also what Transcoda declares unsupported, individually.
+ */
+export type ScannerMarkingKind = 'dynamics' | 'lyrics';
+
 export interface ScannerMarkingRefusal {
   code: ScannerMarkingRefusalCode;
   detail: string;
@@ -132,8 +142,10 @@ export function transferScannerMarkings(input: {
   candidatePartIndex: number;
   baseMeasureIndexes: readonly number[];
   candidateMeasureIndexes: readonly number[];
+  kind: ScannerMarkingKind;
 }): ScannerMarkingTransferOutcome {
   const empty = { directions: 0, lyrics: 0 };
+  const movingDynamics = input.kind === 'dynamics';
   if (
     input.baseMeasureIndexes.length === 0 ||
     input.baseMeasureIndexes.length !== input.candidateMeasureIndexes.length
@@ -220,10 +232,10 @@ export function transferScannerMarkings(input: {
 
     const baseNotes = notesOf(baseChildren);
     const candidateNotes = notesOf(candidateChildren);
-    const incomingDirections = directionsOf(candidateChildren);
-    const incomingLyrics = candidateNotes.map((note) =>
-      directEntries(contents(note, 'note'), 'lyric')
-    );
+    const incomingDirections = movingDynamics ? directionsOf(candidateChildren) : [];
+    const incomingLyrics = movingDynamics
+      ? candidateNotes.map(() => [] as OrderedEntry[])
+      : candidateNotes.map((note) => directEntries(contents(note, 'note'), 'lyric'));
     if (
       incomingDirections.length === 0 &&
       incomingLyrics.every((lyrics) => lyrics.length === 0)
@@ -234,11 +246,16 @@ export function transferScannerMarkings(input: {
     // Applied only once every bar has been checked, so a refusal anywhere
     // leaves the document untouched rather than half-transferred.
     pending.push(() => {
-      // The base's own markings go: this replaces them rather than merging two
-      // engines' guesses about the same phrase into one bar.
-      const stripped = baseChildren.filter((child) => tagOf(child) !== 'direction');
-      for (const note of baseNotes) {
-        note.note = (note.note as OrderedEntry[]).filter((entry) => tagOf(entry) !== 'lyric');
+      // The base's own markings *of this kind* go: this replaces them rather
+      // than merging two engines' guesses about the same phrase into one bar.
+      // Only of this kind, so taking dynamics never disturbs lyrics.
+      const stripped = movingDynamics
+        ? baseChildren.filter((child) => tagOf(child) !== 'direction')
+        : [...baseChildren];
+      if (!movingDynamics) {
+        for (const note of baseNotes) {
+          note.note = (note.note as OrderedEntry[]).filter((entry) => tagOf(entry) !== 'lyric');
+        }
       }
 
       const rebuilt: OrderedEntry[] = [];
@@ -279,7 +296,7 @@ export function transferScannerMarkings(input: {
       refusals: [
         {
           code: 'nothing-to-transfer',
-          detail: 'That reading has no dynamics or lyrics here, so there is nothing to take.'
+          detail: `That reading has no ${input.kind} here, so there is nothing to take.`
         }
       ],
       transferred: empty,
