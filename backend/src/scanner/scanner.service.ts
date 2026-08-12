@@ -928,6 +928,12 @@ export class ScannerService implements OnModuleInit {
       };
     };
     return compareScannerPage({
+      reportInternalError: (context, error) =>
+        this.logger.error(
+          `Scanner comparison ${context} for job ${job.jobId} page ${page.pageNumber}: ${
+            error instanceof Error ? error.stack || error.message : String(error)
+          }`
+        ),
       sourceImage: {
         checksumSha256: page.recognitionRaster.checksumSha256,
         width: page.recognitionRaster.width,

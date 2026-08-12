@@ -158,11 +158,61 @@ describe('scanner page comparison pipeline', () => {
         {
           stage: 'geometry',
           code: 'geometry-producer-failed',
-          engineId: 'homr',
-          detail: 'producer revision is unavailable'
+          engineId: 'homr'
         }
       ]
     });
+  });
+
+  it('reports an unexpected failure without returning its internals', async () => {
+    // The refusal detail is serialized to the client, so a dependency's own
+    // message must reach the log instead of the response.
+    const reportInternalError = jest.fn();
+    const value = { ...input(), reportInternalError };
+    value.base.measureGeometryProducer = () => {
+      throw new Error('sharp: /var/lib/scanner/raster.png is not a PNG');
+    };
+    const result = await compareScannerPage(value);
+
+    const details = JSON.stringify(result);
+    expect(details).not.toContain('sharp');
+    expect(details).not.toContain('/var/lib/scanner');
+    expect(result).toMatchObject({
+      status: 'refused',
+      refusalReasons: [
+        {
+          stage: 'geometry',
+          code: 'geometry-producer-failed',
+          detail: 'The comparison could not be completed for this page'
+        }
+      ]
+    });
+    expect(reportInternalError).toHaveBeenCalledWith(
+      'geometry:geometry-producer-failed',
+      expect.any(Error)
+    );
+  });
+
+  it('reports an unexpected analysis failure without returning its internals', async () => {
+    const reportInternalError = jest.fn();
+    const value = { ...input(), reportInternalError };
+    value.candidate.artifactChecksumSha256 = 'f'.repeat(64);
+    const result = await compareScannerPage(value);
+
+    expect(result).toMatchObject({
+      status: 'refused',
+      refusalReasons: [
+        {
+          stage: 'analysis',
+          code: 'comparison-analysis-failed',
+          detail: 'The comparison could not be completed for this page'
+        }
+      ]
+    });
+    expect(reportInternalError).toHaveBeenCalledWith(
+      'analysis:comparison-analysis-failed',
+      expect.any(Error)
+    );
   });
 
   it('lets a future async producer load its native evidence and exact raster', async () => {

@@ -144,11 +144,28 @@ function geometryInput(
   };
 }
 
+/**
+ * Refusal details are returned to the client, so an unexpected throw must not
+ * carry a dependency's internal message out with it. The stage-coded reason
+ * stays fixed and the underlying error goes to the caller's log instead.
+ */
+function unexpectedFailureDetail(
+  error: unknown,
+  stage: ScannerPageComparisonRefusalStage,
+  code: string,
+  report?: (context: string, error: unknown) => void
+): string {
+  report?.(`${stage}:${code}`, error);
+  return 'The comparison could not be completed for this page';
+}
+
 /** Run the complete bounded, read-only comparison pipeline for one ordered pair. */
 export async function compareScannerPage(input: {
   sourceImage: ScannerRasterIdentity;
   base: ScannerPageComparisonSideInput;
   candidate: ScannerPageComparisonSideInput;
+  /** Records an unexpected internal failure without exposing it to the client. */
+  reportInternalError?: (context: string, error: unknown) => void;
 }): Promise<ScannerPageComparisonResult> {
   const { base, candidate, sourceImage } = input;
   const pair: ScannerComparisonPair = {
@@ -213,7 +230,12 @@ export async function compareScannerPage(input: {
       {
         stage: 'analysis',
         code: 'comparison-analysis-failed',
-        detail: error instanceof Error ? error.message : 'Scanner comparison analysis failed'
+        detail: unexpectedFailureDetail(
+          error,
+          'analysis',
+          'comparison-analysis-failed',
+          input.reportInternalError
+        )
       }
     ]);
   }
@@ -261,7 +283,12 @@ export async function compareScannerPage(input: {
       producerAttempts.push({
         stage: 'geometry',
         code: 'geometry-producer-failed',
-        detail: error instanceof Error ? error.message : 'Measure geometry producer failed',
+        detail: unexpectedFailureDetail(
+          error,
+          'geometry',
+          'geometry-producer-failed',
+          input.reportInternalError
+        ),
         engineId: side.engineId
       });
       continue;
