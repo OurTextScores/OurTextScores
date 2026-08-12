@@ -145,20 +145,6 @@ function readableMeasureRange(refs: ComparisonMeasureRef[]): string {
   return `measures ${unique[0]}–${unique[unique.length - 1]}`;
 }
 
-function numericMeasureRange(
-  refs: ComparisonMeasureRef[],
-): { from: number; through: number } | undefined {
-  if (refs.length === 0) return undefined;
-  const values = refs.map((ref) =>
-    /^\d+$/.test(ref.measureNumber || "")
-      ? Number(ref.measureNumber)
-      : Number.NaN,
-  );
-  if (values.some((value) => !Number.isSafeInteger(value) || value < 1))
-    return undefined;
-  return { from: Math.min(...values), through: Math.max(...values) };
-}
-
 function sideCaveats(side: ComparisonSide): string[] {
   const caveats: string[] = [];
   if (side.completeness && side.completeness !== "complete") {
@@ -170,115 +156,6 @@ function sideCaveats(side: ComparisonSide): string[] {
     );
   }
   return caveats;
-}
-
-function MusicXmlReading({
-  artifactUrl,
-  engineName,
-  measureRefs,
-  musicXmlCache,
-}: {
-  artifactUrl: string;
-  engineName: string;
-  measureRefs: ComparisonMeasureRef[];
-  musicXmlCache: Map<string, string>;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [message, setMessage] = useState("");
-  const range = useMemo(() => numericMeasureRange(measureRefs), [measureRefs]);
-
-  useEffect(() => {
-    if (measureRefs.length === 0) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    setState("loading");
-    setMessage("");
-
-    const loadMusicXml = async () => {
-      const cached = musicXmlCache.get(artifactUrl);
-      if (cached !== undefined) return cached;
-      const response = await fetch(artifactUrl, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(
-          await responseError(response, `Unable to load ${engineName}`),
-        );
-      }
-      const musicXml = await response.text();
-      musicXmlCache.set(artifactUrl, musicXml);
-      return musicXml;
-    };
-
-    void Promise.all([import("opensheetmusicdisplay"), loadMusicXml()])
-      .then(async ([{ OpenSheetMusicDisplay }, musicXml]) => {
-        if (cancelled) return;
-        const options: Record<string, unknown> = {
-          backend: "svg",
-          autoResize: true,
-          drawTitle: false,
-          pageFormat: "Endless",
-        };
-        if (range) {
-          options.drawFromMeasureNumber = range.from;
-          options.drawUpToMeasureNumber = range.through;
-        }
-        const osmd = new OpenSheetMusicDisplay(container, options);
-        await osmd.load(musicXml);
-        osmd.Zoom = 0.8;
-        await osmd.render();
-        if (!cancelled) setState("ready");
-      })
-      .catch((cause) => {
-        if (cancelled || controller.signal.aborted) return;
-        setState("error");
-        setMessage(cause instanceof Error ? cause.message : String(cause));
-      });
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-      container.innerHTML = "";
-    };
-  }, [artifactUrl, engineName, measureRefs, musicXmlCache, range]);
-
-  if (measureRefs.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-slate-300 p-5 text-sm text-slate-500 dark:border-slate-700">
-        This engine has no corresponding measure in this block.
-      </p>
-    );
-  }
-
-  return (
-    <div>
-      {!range && (
-        <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
-          These measure labels are not a simple numeric range, so the full-page
-          reading is shown.
-        </p>
-      )}
-      {state === "loading" && (
-        <p className="mb-2 text-xs text-slate-500" aria-live="polite">
-          Loading {engineName} reading…
-        </p>
-      )}
-      {state === "error" && (
-        <p className="mb-2 text-xs text-red-700 dark:text-red-300" role="alert">
-          {message}
-        </p>
-      )}
-      <div
-        ref={containerRef}
-        className="max-h-[28rem] overflow-auto rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700"
-        style={{ minHeight: 140 }}
-      />
-    </div>
-  );
 }
 
 export default function PageComparison({
@@ -319,7 +196,6 @@ export default function PageComparison({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const musicXmlCache = useRef(new Map<string, string>());
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   useEffect(() => {
@@ -329,7 +205,6 @@ export default function PageComparison({
     setComparison(null);
     setSelectedBlockIndex(null);
     setError(null);
-    musicXmlCache.current.clear();
   }, [defaultBase, defaultCandidate, page.pageNumber]);
 
   useEffect(() => {
@@ -349,7 +224,6 @@ export default function PageComparison({
     setError(null);
     setComparison(null);
     setSelectedBlockIndex(null);
-    musicXmlCache.current.clear();
     fetch(`${base}/pages/${page.pageNumber}/comparison?${params.toString()}`, {
       cache: "no-store",
       signal: controller.signal,
@@ -677,34 +551,28 @@ export default function PageComparison({
                         )}
 
                         {/*
-                          Side by side, so neither reading pushes the other
-                          below the fold and the two can be read against each
-                          other. Each pane loads and fails independently.
+                          The engraved readings used to be rendered here with
+                          OpenSheetMusicDisplay. They are not any more: the
+                          decision a reviewer makes turns on beaming, stem
+                          direction, rest placement and accidental spelling —
+                          exactly what a second renderer reproduces differently
+                          — so judging Transcoda's beaming through OSMD's
+                          beaming judged the wrong artifact. The merge editor
+                          below draws all three scores through MuseScore, the
+                          same engine everything else in this product uses.
+
+                          What stays here is the part the editor cannot show:
+                          the crop of the scan itself, with proven geometry.
                         */}
-                        <div className="grid gap-4 lg:grid-cols-2">
-                          {[comparison.base, comparison.candidate].map(
-                            (side, index) => {
-                              const refs =
-                                index === 0
-                                  ? selectedBlock.baseMeasureRefs
-                                  : selectedBlock.candidateMeasureRefs;
-                              return (
-                                <div key={side.engineId} className="min-w-0">
-                                  <h4 className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                    {side.displayName} reading —{" "}
-                                    {readableMeasureRange(refs)}
-                                  </h4>
-                                  <MusicXmlReading
-                                    artifactUrl={readingUrl(side)}
-                                    engineName={side.displayName}
-                                    measureRefs={refs}
-                                    musicXmlCache={musicXmlCache.current}
-                                  />
-                                </div>
-                              );
-                            },
+                        <p className="text-xs text-slate-500">
+                          {comparison.base.displayName}:{" "}
+                          {readableMeasureRange(selectedBlock.baseMeasureRefs)} ·{" "}
+                          {comparison.candidate.displayName}:{" "}
+                          {readableMeasureRange(
+                            selectedBlock.candidateMeasureRefs,
                           )}
-                        </div>
+                          . The engraved readings are in the merge editor below.
+                        </p>
                       </div>
                     )}
                   </div>

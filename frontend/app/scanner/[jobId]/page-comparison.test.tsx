@@ -189,7 +189,7 @@ describe("PageComparison", () => {
 
   afterEach(() => jest.resetAllMocks());
 
-  it("loads a signed evidence crop and both engine readings on demand", async () => {
+  it("loads a signed evidence crop on demand, and renders no score itself", async () => {
     render(<PageComparison jobId="job-1" job={job} page={page} />);
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -201,12 +201,6 @@ describe("PageComparison", () => {
     expect(screen.getByText("notes or rhythm, lyrics")).toBeInTheDocument();
     expect(
       screen.getByText("Transcoda does not recognize lyrics."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "HOMR reading — measure 4" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Transcoda reading — measure 4" }),
     ).toBeInTheDocument();
     expect(
       screen.getByAltText("Source evidence for comparison block 1"),
@@ -222,25 +216,38 @@ describe("PageComparison", () => {
         },
       ).toString()}`,
     );
-    await waitFor(() => expect(loadScore).toHaveBeenCalledTimes(2));
-    expect(mockOsmdConstructor).toHaveBeenCalledWith(
-      expect.any(HTMLDivElement),
-      expect.objectContaining({
-        drawFromMeasureNumber: 4,
-        drawUpToMeasureNumber: 4,
-      }),
-    );
+    // Which measures the block covers is still stated; the engraving is not
+    // drawn here.
+    expect(
+      screen.getByText(/HOMR: measure 4 · Transcoda: measure 4/),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Whole-page diff review" }),
     ).toBeInTheDocument();
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      `/api/proxy/scanner/jobs/job-1/pages/1/comparison/readings/homr?${new URLSearchParams(
-        {
-          statusVersion: "9",
-          artifactChecksumSha256: baseArtifactChecksum,
-        },
-      ).toString()}`,
-      expect.objectContaining({ cache: "no-store" }),
+  });
+
+  it("never engraves a reading with a second renderer", async () => {
+    // The decision turns on beaming, stem direction, rest placement and
+    // accidental spelling — exactly what a second renderer reproduces
+    // differently. Judging Transcoda's beaming through OSMD's beaming judged
+    // the wrong artifact, so this page draws no score at all: the merge editor
+    // below draws all three through MuseScore.
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+    expect(await screen.findByText("1 differing block")).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Whole-page diff review" }),
+      ).toBeInTheDocument(),
+    );
+    expect(mockOsmdConstructor).not.toHaveBeenCalled();
+    // And it no longer fetches a whole MusicXML artifact just to draw a bar.
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/comparison/readings/"),
+      expect.anything(),
     );
   });
 
@@ -288,7 +295,7 @@ describe("PageComparison", () => {
 
     expect(
       await screen.findByRole("heading", {
-        name: "Kraken OMR reading — measure 4",
+        name: "Whole-page diff review",
       }),
     ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith(
