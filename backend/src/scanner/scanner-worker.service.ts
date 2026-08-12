@@ -162,6 +162,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         });
       }
       if (job?.status === 'preparing') await this.prepare(job);
+      else if (job?.reassembleRequestedAt) await this.reassemble(job);
       else if (job) await this.process(job);
     } catch (error) {
       this.logger.error(`Scanner worker tick failed: ${this.message(error)}`);
@@ -184,7 +185,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               status: { $in: ['preparing', 'queued'] },
               $or: [{ leaseExpiresAt: { $exists: false } }, { leaseExpiresAt: { $lt: now } }]
             },
-            { status: { $in: PROCESSING_STATUSES }, leaseExpiresAt: { $lt: now } }
+            { status: { $in: PROCESSING_STATUSES }, leaseExpiresAt: { $lt: now } },
+            // A finished job whose derivatives were invalidated by review. It
+            // keeps its terminal status: the pages really did succeed, and only
+            // what was derived from them needs rebuilding.
+            //
+            // `leaseExpiresAt: null` rather than `$exists: false`: a finished
+            // job carries the field with a null value, which `$exists: false`
+            // does not match and which `$lt: <date>` cannot match either, since
+            // Mongo brackets comparisons by type. `{field: null}` matches both
+            // missing and null, which is the state a claimable job is actually
+            // in.
+            {
+              status: { $in: ['succeeded', 'partial'] },
+              reassembleRequestedAt: { $ne: null },
+              $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lt: now } }]
+            }
           ]
         },
         {
@@ -196,6 +212,118 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           $inc: { statusVersion: 1 }
         },
         { new: true, sort: { createdAt: 1 } }
+      )
+      .exec();
+  }
+
+  /**
+   * Rebuild a finished job's derived artifacts from its current effective pages.
+   *
+   * Assembly runs when scanning finishes; review runs afterwards. A correction
+   * therefore leaves the combined score, rendered page PDFs and preview
+   * describing pages that no longer exist. Reads already withhold those rather
+   * than serve them stale, and MusicXML bundles are rebuilt on demand — but
+   * anything rendered needs MuseScore, so only this process can replace it.
+   *
+   * Idempotent by construction: every builder checks its stored input signature
+   * against the current effective pages first, so a rebuild with nothing to do
+   * re-stores nothing. Running it twice costs a pass over the signatures.
+   */
+  private async reassemble(job: ScannerJobDocument): Promise<void> {
+    const startedAt = Date.now();
+    const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-scanner-reassemble-'));
+    const userHash = this.telemetry.userHash(job.userId);
+    try {
+      const enginePlan = this.engineRegistry().planForJob(job);
+      let pages = job.pages.map((page) => ({ ...page }) as ScannerPageResult);
+
+      // Page previews first: the combined and preview PDFs are built from them.
+      let renderMs = 0;
+      for (let index = 0; index < pages.length; index += 1) {
+        if (pages[index].status !== 'succeeded') continue;
+        const rendered = await this.renderEffectivePage(job, pages[index], userHash);
+        const perEngine = await this.renderEnginePreviews(job, rendered.page, userHash);
+        pages[index] = perEngine.page;
+        renderMs += rendered.renderMs + perEngine.renderMs;
+      }
+
+      const successful = pages.filter(
+        (page) => page.status === 'succeeded' && effectivePageMusicXml(page, enginePlan)
+      );
+      if (successful.length === 0) {
+        await this.clearReassembly(job);
+        return;
+      }
+      // Against the pages this job was asked to scan, not every page of the
+      // source: a job with pages deselected is complete when its included pages
+      // are, and comparing to `pageCount` would demote it to partial forever.
+      const includedCount = pages.filter((page) => page.included !== false).length;
+
+      const musicXmlBundle = await this.createBundle(job, successful);
+      const combined = await this.combinePages(job, successful, job.pageCount);
+      const previewPdf = await this.createPreviewPdf(job, successful, workspace);
+      const status: 'succeeded' | 'partial' =
+        successful.length === includedCount ? 'succeeded' : 'partial';
+      const resultsZip = await this.createResultsZip(job, pages, {
+        status,
+        providerRevision: job.providerRevision,
+        modelRevision: job.modelRevision,
+        engineProvenance: job.engineProvenance,
+        combined
+      });
+
+      await this.finish(job, status, pages, {
+        musicXmlBundle,
+        combinedMusicXml: combined.musicXml,
+        combinedPdf: combined.pdf,
+        combinedStatus: combined.status,
+        combinedReason: combined.reason,
+        previewPdf,
+        resultsZip,
+        providerRevision: job.providerRevision,
+        modelRevision: job.modelRevision,
+        engineProvenance: job.engineProvenance
+      });
+      await this.clearReassembly(job);
+      this.telemetry.emit('job_reassembled', {
+        jobId: job.jobId,
+        userHash,
+        workerId: this.workerId,
+        status,
+        generation: job.generation,
+        pageCount: job.pageCount,
+        renderMs,
+        totalMs: Date.now() - startedAt
+      });
+    } catch (error) {
+      // The job keeps its results; only the rebuild failed. Clear the request so
+      // one bad rebuild cannot loop, and let the reviewer ask again.
+      this.logger.error(`Scanner reassembly failed for ${job.jobId}: ${this.message(error)}`);
+      await this.clearReassembly(job);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Retire the request this run claimed.
+   *
+   * Not scoped to the lease: `finish` releases it, so a lease-scoped clear
+   * silently matched nothing and the job was reclaimed on every tick — an
+   * infinite rebuild loop, observed in the browser before this was fixed.
+   *
+   * Scoped instead to the request timestamp, so a correction arriving *during*
+   * the rebuild survives and is served by the next pass rather than being
+   * cleared as though it had been handled.
+   */
+  private async clearReassembly(job: ScannerJobDocument): Promise<void> {
+    await this.jobs
+      .findOneAndUpdate(
+        {
+          jobId: job.jobId,
+          reassembleRequestedAt: { $lte: job.reassembleRequestedAt ?? new Date() }
+        },
+        { $unset: { reassembleRequestedAt: 1 } }
       )
       .exec();
   }

@@ -1865,6 +1865,74 @@ describe('corrections', () => {
     expect(provider.regenerate.mock.calls[0][0][0][0][1]).toBe('.');
   });
 
+  it('asks for a rebuild so a correction does not strand the download', async () => {
+    // Assembly runs when scanning finishes and review happens afterwards, so a
+    // correction invalidates the page PDF and everything built from it. Reads
+    // withhold those rather than serve them stale, which without this would
+    // leave the reviewer's correction quietly removing their own download.
+    const tokens = [
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ];
+    const page = pageWith(tokens);
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const writes: any[] = [];
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: (_filter: any, update: any) => {
+        writes.push(update);
+        return { exec: async () => ({ matchedCount: 1 }) };
+      }
+    };
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      {
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }),
+        deleteObject: async () => undefined
+      } as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4', 'homr', reviewSignature(page));
+    expect(writes[0].$set.reassembleRequestedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not ask for a rebuild while the job is still running', async () => {
+    const tokens = [
+      ['clef_G2', '.', '_', '_', '_', 'upper'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ];
+    const page = pageWith(tokens);
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'running', pages: [page] };
+    const writes: any[] = [];
+    const jobsModel: any = {
+      findOne: () => ({ exec: async () => job }),
+      updateOne: (_filter: any, update: any) => {
+        writes.push(update);
+        return { exec: async () => ({ matchedCount: 1 }) };
+      }
+    };
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      {
+        putDerivativeObject: async () => ({ bucket: 'd', objectKey: 'o', checksumSha256: 'y' }),
+        deleteObject: async () => undefined
+      } as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    await service.applyCorrection('user-1', 'job-1', 1, 0, 'D4', 'homr', reviewSignature(page));
+    expect(writes[0].$set.reassembleRequestedAt).toBeUndefined();
+  });
+
   it('reassembles physical systems into the original MusicXML part', async () => {
     const firstSystem = [
       ['clef_G2', '.', '_', '_', '_', 'upper'],

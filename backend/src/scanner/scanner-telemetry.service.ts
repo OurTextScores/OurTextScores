@@ -93,6 +93,7 @@ export type ScannerTelemetryEvent =
   | 'job_prepared'
   | 'job_started'
   | 'job_finished'
+  | 'job_reassembled'
   | 'job_cancelled'
   | 'job_retry_queued'
   | 'page_started'

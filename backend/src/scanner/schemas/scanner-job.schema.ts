@@ -277,6 +277,19 @@ export class ScannerJob {
   @Prop({ type: Date })
   terminalNotifiedAt?: Date;
 
+  /**
+   * A request to rebuild this job's derived artifacts from its current effective
+   * pages.
+   *
+   * Assembly runs when scanning finishes, but review happens afterwards, so a
+   * correction leaves the combined score and rendered previews describing pages
+   * that no longer exist. Those are withheld rather than served stale, which is
+   * safe but leaves the user with nothing. Rendered artifacts need MuseScore, so
+   * only the worker can rebuild them; this flag is how the API asks.
+   */
+  @Prop({ type: Date, index: true })
+  reassembleRequestedAt?: Date;
+
   @Prop({ type: Date })
   sourceDeletedAt?: Date;
 

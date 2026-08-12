@@ -481,6 +481,34 @@ export class ScannerService implements OnModuleInit {
     return this.queueRetry(existing, this.retryablePageNumbers(existing));
   }
 
+  /**
+   * Ask the worker to rebuild this job's derived artifacts.
+   *
+   * Reviewing a page invalidates everything assembled from it. Reads withhold
+   * the stale ones and rebuild MusicXML bundles on demand, but rendered
+   * artifacts need MuseScore, which only the worker has. Requesting twice is
+   * harmless — the flag is idempotent, and so is the rebuild it triggers.
+   */
+  async requestReassembly(userId: string, jobId: string): Promise<any> {
+    this.assertAvailable(userId);
+    const existing = await this.ownedJob(userId, jobId);
+    if (!['succeeded', 'partial'].includes(existing.status)) {
+      throw new ConflictException('Only a finished scan can be reassembled');
+    }
+    if (existing.resultsDeletedAt || (existing.resultExpiresAt?.getTime() ?? 0) <= Date.now()) {
+      throw new ConflictException('The results for this scan have expired');
+    }
+    const updated = await this.jobs
+      .findOneAndUpdate(
+        { jobId, userId, status: { $in: ['succeeded', 'partial'] } },
+        { $set: { reassembleRequestedAt: new Date() }, $inc: { statusVersion: 1 } },
+        { new: true }
+      )
+      .exec();
+    if (!updated) throw new ConflictException('Scanner job is no longer reassemblable');
+    return this.present(updated);
+  }
+
   async retryPage(userId: string, jobId: string, pageNumber: number): Promise<any> {
     this.assertAvailable(userId);
     if (this.providerCapacityExhausted()) {
@@ -1374,7 +1402,18 @@ export class ScannerService implements OnModuleInit {
       .updateOne(
         { _id: job._id, statusVersion: job.statusVersion || 1 },
         {
-          $set: { pages: updatedPages, ...(hadCombined ? { combinedStale: true } : {}) },
+          $set: {
+            pages: updatedPages,
+            ...(hadCombined ? { combinedStale: true } : {}),
+            // The reviewed page invalidates this page's PDF and everything
+            // assembled from it. Reads already refuse to serve those stale, so
+            // without this the reviewer's correction simply removes their
+            // download. Ask the worker to rebuild rather than leaving them to
+            // notice and ask.
+            ...(['succeeded', 'partial'].includes(job.status)
+              ? { reassembleRequestedAt: new Date() }
+              : {})
+          },
           $inc: { statusVersion: 1 }
         }
       )

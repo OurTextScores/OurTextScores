@@ -162,6 +162,11 @@ export class ScannerController {
     return this.scanner.cancelJob(user.userId, jobId);
   }
 
+  @Post(':jobId/reassemble')
+  reassemble(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
+    return this.scanner.requestReassembly(user.userId, jobId);
+  }
+
   @Post(':jobId/retry')
   retry(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.retryJob(user.userId, jobId);

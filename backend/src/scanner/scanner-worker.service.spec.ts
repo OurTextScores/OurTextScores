@@ -268,6 +268,124 @@ describe('ScannerWorkerService', () => {
     expect(result.engines.transcoda.status).toBe('succeeded');
   });
 
+  it('claims a finished job whose lease fields are null rather than absent', async () => {
+    // A finished job carries leaseExpiresAt as null. `$exists: false` does not
+    // match that, and `$lt: <date>` cannot either because Mongo brackets
+    // comparisons by type — so an `$exists`-based branch never fires and the
+    // rebuild request sits forever. Found by watching a real correction do
+    // nothing.
+    let claimFilter: any;
+    const scannerWorker = service() as any;
+    scannerWorker.jobs = {
+      findOneAndUpdate: (filter: any) => {
+        claimFilter = filter;
+        return { exec: async () => null };
+      }
+    };
+    values.SCANNER_ENABLED = 'true';
+
+    await scannerWorker.claim();
+
+    const branch = claimFilter.$or.find((entry: any) => entry.reassembleRequestedAt);
+    expect(branch).toBeDefined();
+    // Matches a null lease, which is the state a finished job is in.
+    expect(branch.$or).toContainEqual({ leaseExpiresAt: null });
+    expect(JSON.stringify(branch)).not.toContain('$exists');
+  });
+
+  it('clears the rebuild request even when the rebuild fails', async () => {
+    // A finished job keeps its results; only the derivative rebuild failed.
+    // Leaving the request set would claim the job again on the next tick and
+    // fail the same way forever.
+    const cleared: any[] = [];
+    const scannerWorker = service() as any;
+    scannerWorker.jobs = {
+      findOneAndUpdate: (filter: any, update: any) => {
+        cleared.push(update);
+        return { exec: async () => ({}) };
+      }
+    };
+    scannerWorker.engineRegistry = () => {
+      throw new Error('registry unavailable');
+    };
+
+    await scannerWorker.reassemble({
+      jobId: 'job-1',
+      userId: 'user-1',
+      pageCount: 1,
+      pages: [{ pageNumber: 1, status: 'succeeded' }]
+    });
+
+    expect(cleared[0].$unset).toMatchObject({ reassembleRequestedAt: 1 });
+  });
+
+  it('retires the claimed request without discarding one that arrived mid-rebuild', async () => {
+    // The clear must not be lease-scoped: finish releases the lease first, so a
+    // lease-scoped filter matches nothing and the job is reclaimed every tick.
+    // It must also not clear unconditionally, or a correction made while the
+    // rebuild was running would be silently dropped.
+    const filters: any[] = [];
+    const scannerWorker = service() as any;
+    scannerWorker.jobs = {
+      findOneAndUpdate: (filter: any) => {
+        filters.push(filter);
+        return { exec: async () => ({}) };
+      }
+    };
+    const requestedAt = new Date('2026-08-12T06:29:44.000Z');
+
+    await scannerWorker.clearReassembly({ jobId: 'job-1', reassembleRequestedAt: requestedAt });
+
+    expect(filters[0].leaseOwner).toBeUndefined();
+    expect(filters[0].reassembleRequestedAt).toEqual({ $lte: requestedAt });
+  });
+
+  it('rebuilds nothing when the derivatives already match their inputs', async () => {
+    // Idempotent by construction: every builder compares its stored input
+    // signature against the current effective pages before storing anything.
+    const scannerWorker = service() as any;
+    scannerWorker.jobs = { findOneAndUpdate: () => ({ exec: async () => ({}) }) };
+    scannerWorker.renderEffectivePage = jest.fn(async (_job: any, page: any) => ({
+      page,
+      renderMs: 0
+    }));
+    scannerWorker.renderEnginePreviews = jest.fn(async (_job: any, page: any) => ({
+      page,
+      renderMs: 0
+    }));
+    scannerWorker.createBundle = jest.fn(async () => undefined);
+    scannerWorker.combinePages = jest.fn(async () => ({ status: 'skipped' }));
+    scannerWorker.createPreviewPdf = jest.fn(async () => undefined);
+    scannerWorker.createResultsZip = jest.fn(async () => undefined);
+    const finish = jest.fn(async () => undefined);
+    scannerWorker.finish = finish;
+
+    await scannerWorker.reassemble({
+      jobId: 'job-1',
+      userId: 'user-1',
+      pageCount: 1,
+      enginePlan: scannerEnginePlan(['homr']),
+      pages: [
+        {
+          pageNumber: 1,
+          ordinal: 1,
+          status: 'succeeded',
+          musicXml: { bucket: 'scanner', objectKey: 'p1.musicxml', checksumSha256: 'a' }
+        }
+      ]
+    });
+
+    // It still runs the builders — they are what check the signatures — and it
+    // terminalises the job with the same status rather than inventing one.
+    expect(scannerWorker.renderEffectivePage).toHaveBeenCalledTimes(1);
+    expect(finish).toHaveBeenCalledWith(
+      expect.anything(),
+      'succeeded',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
   it('fails a planned run explicitly when its registry definition is unavailable', () => {
     const scannerWorker = service() as any;
     const result = scannerWorker.withInitialPlannedEngineRuns(
