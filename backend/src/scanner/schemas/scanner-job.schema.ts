@@ -75,6 +75,28 @@ export interface ScannerEngineProvenance {
  * everything else. What is recorded here is the provenance that entitles it to
  * that position: which engine it started from, and which readings it answers.
  */
+/**
+ * One bar-level decision the reviewer made, and what it cost.
+ *
+ * Kept on the merged score rather than in a parallel collection because it is
+ * provenance for *this* document: it says which engine a passage came from,
+ * bound to the exact readings it was chosen between. Phase E reads these as
+ * training signal, which is why `repairs` is recorded — a bar whose slur the
+ * system dropped is not quite a clean engine win, and the corpus should know.
+ */
+export interface ScannerMergedDecision {
+  blockIndex: number;
+  /** Binds the decision to both artifact revisions; see `scannerBlockContentSignature`. */
+  contentSignature: string;
+  /** The engine the passage was taken from. */
+  engineId: string;
+  /** Measures of the merged document that this replaced. */
+  measureIndexes: number[];
+  /** Anything the splice changed beyond copying, reported at the time. */
+  repairs?: Array<{ code: string; detail: string }>;
+  decidedAt: Date;
+}
+
 export interface ScannerMergedScore {
   /** The engine whose reading the merge started from, wholesale. */
   sourceEngineId: string;
@@ -90,6 +112,8 @@ export interface ScannerMergedScore {
   edited?: boolean;
   /** Saves of this merged score; increments on every accepted write. */
   revision: number;
+  /** Bar-level takes, in the order they were made. */
+  decisions?: ScannerMergedDecision[];
   updatedAt: Date;
 }
 

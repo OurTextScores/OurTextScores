@@ -2708,6 +2708,146 @@ describe('ScannerService merged score', () => {
       /unavailable after engine reconciliation/
     );
   });
+
+  it('refuses a decision for a block whose place on the scan is unproven', async () => {
+    // §7 makes this structural: the signature a decision requires is withheld
+    // from an ungrounded block, so a caller cannot present one. This is the
+    // belt to that braces — the route checks groundedness itself too.
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseMeasureRefs: [{ measureIndex: 3 }],
+            candidateMeasureRefs: [{ measureIndex: 3 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'refused', block: { blockIndex: 0 } }] }
+    });
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-0',
+        engineId: 'transcoda',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 0
+      })
+    ).rejects.toThrow(/no verified place on the scan/);
+  });
+
+  it('refuses a decision made against readings that have since changed', async () => {
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [{ blockIndex: 0, contentSignature: 'sig-now', baseMeasureRefs: [], candidateMeasureRefs: [] }]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-from-a-stale-tab',
+        engineId: 'transcoda',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 0
+      })
+    ).rejects.toThrow(/readings changed/);
+  });
+
+  it('refuses a second tab deciding against an older merged score', async () => {
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-0',
+        engineId: 'transcoda',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 7
+      })
+    ).rejects.toThrow(/merged score changed/);
+  });
+
+  it('refuses taking from an engine the merged score already follows', async () => {
+    // Not an error so much as a no-op with a misleading name: the passage
+    // already reads that way, and recording a decision would claim otherwise.
+    const page = pageWithReadings({
+      mergedMusicXml: {
+        bucket: 'd',
+        objectKey: 'o-merged',
+        sizeBytes: 1,
+        contentType: 'application/xml',
+        checksumSha256: 'merged'
+      },
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: 'basis',
+        revision: 1,
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-0',
+        engineId: 'homr',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 1
+      })
+    ).rejects.toThrow(/already reads this passage/);
+  });
+
+  it('refuses an engine that is not one of the two being compared', async () => {
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-0',
+        engineId: 'audiveris',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 0
+      })
+    ).rejects.toThrow(/not one of the two/);
+  });
+
 });
 
 describe('scanner comparison relative URLs', () => {

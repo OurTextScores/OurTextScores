@@ -369,6 +369,38 @@ export class ScannerController {
     });
   }
 
+  /**
+   * Take one comparison block from one engine into the merged score.
+   *
+   * The block's `contentSignature` is required and is only issued for blocks
+   * whose place on the scan was proven, so an ungrounded decision cannot be
+   * expressed rather than merely being discouraged (design §7).
+   */
+  @Post(':jobId/pages/:pageNumber/merged/decisions')
+  takeBlock(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body()
+    body: {
+      blockIndex?: number;
+      contentSignature?: string;
+      engineId?: string;
+      baseEngine?: string;
+      candidateEngine?: string;
+      revision?: number;
+    }
+  ) {
+    return this.scanner.takeBlockIntoMergedScore(user.userId, jobId, pageNumber, {
+      blockIndex: Number(body?.blockIndex),
+      contentSignature: String(body?.contentSignature ?? ''),
+      engineId: String(body?.engineId ?? ''),
+      baseEngineId: String(body?.baseEngine ?? ''),
+      candidateEngineId: String(body?.candidateEngine ?? ''),
+      revision: Number(body?.revision)
+    });
+  }
+
   @Delete(':jobId/pages/:pageNumber/merged')
   discardMergedScore(
     @CurrentUser() user: RequestUser,
