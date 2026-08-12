@@ -371,4 +371,41 @@ describe('SourceCard', () => {
 
         openSpy.mockRestore();
     });
+
+    it('does not load a score until the reader asks for a preview', async () => {
+        // A work can carry a dozen sources. Mounting a score engine for each
+        // one on expand is what made an inline preview unaffordable before.
+        renderWithProviders(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (!header) throw new Error('Header not found');
+        fireEvent.click(header);
+
+        expect(screen.getByText('Preview score')).toBeInTheDocument();
+        expect(screen.queryByTestId('score-preview-frame')).not.toBeInTheDocument();
+
+        const details = screen.getByText('Preview score').closest('details');
+        if (!details) throw new Error('Preview details not found');
+        // jsdom does not implement <details> toggling, so open it and dispatch
+        // the event the component listens for.
+        (details as HTMLDetailsElement).open = true;
+        fireEvent(details, new Event('toggle', { bubbles: false }));
+
+        const frame = await screen.findByTestId('score-preview-frame');
+        const src = new URL(frame.getAttribute('src') || '', 'http://localhost');
+        expect(src.pathname).toBe('/score-editor/index.html');
+        // Chrome-free, so the preview is a score rather than an editor.
+        expect(src.searchParams.get('embed')).toBe('1');
+        expect(src.searchParams.get('score')).toContain(
+            '/works/work-123/sources/source-1/canonical.xml',
+        );
+    });
 });

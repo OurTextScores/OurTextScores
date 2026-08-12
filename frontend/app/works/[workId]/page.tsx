@@ -17,7 +17,6 @@ import EditMetadataForm from "./edit-metadata-form";
 import EditSourceForm from "./edit-source-form";
 import UploadRevisionForm from "./upload-revision-form";
 import UploadNewSourceForm from "./upload-new-source-form";
-import MxlViewer from "./mxl-viewer";
 import PdfViewer from "./pdf-viewer";
 import BranchesPanel from "./branches-panel";
 import CopyDownload from "../../components/copy-download";
