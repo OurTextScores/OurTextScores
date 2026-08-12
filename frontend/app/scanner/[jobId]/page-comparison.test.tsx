@@ -156,6 +156,16 @@ function readyComparison(candidateEngineId = "transcoda") {
 describe("PageComparison", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // afterEach resets implementations, so restore them here rather than
+    // letting every test after the first run against a constructor that
+    // returns an object with no load().
+    loadScore.mockResolvedValue(undefined);
+    renderScore.mockResolvedValue(undefined);
+    mockOsmdConstructor.mockImplementation(() => ({
+      load: loadScore,
+      render: renderScore,
+      Zoom: 1,
+    }));
     globalThis.fetch = jest.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/comparison?")) {
@@ -220,6 +230,9 @@ describe("PageComparison", () => {
         drawUpToMeasureNumber: 4,
       }),
     );
+    expect(
+      screen.getByRole("heading", { name: "Whole-page diff review" }),
+    ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `/api/proxy/scanner/jobs/job-1/pages/1/comparison/readings/homr?${new URLSearchParams(
         {
@@ -228,6 +241,37 @@ describe("PageComparison", () => {
         },
       ).toString()}`,
       expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("states a stale crop refusal instead of a broken image", async () => {
+    // The crop is signature-bound, so the server refuses it once the job moves
+    // on. An <img> cannot read that refusal, so it must be surfaced here.
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+
+    const crop = await screen.findByAltText(
+      "Source evidence for comparison block 1",
+    );
+    fireEvent.error(crop);
+
+    expect(
+      await screen.findByText(/This scan crop is no longer current/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByAltText("Source evidence for comparison block 1"),
+    ).not.toBeInTheDocument();
+
+    const fetchCount = (globalThis.fetch as jest.Mock).mock.calls.length;
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload the comparison" }),
+    );
+    await waitFor(() =>
+      expect(
+        (globalThis.fetch as jest.Mock).mock.calls.length,
+      ).toBeGreaterThan(fetchCount),
     );
   });
 
@@ -279,6 +323,84 @@ describe("PageComparison", () => {
     ).toBeInTheDocument();
     expect(screen.queryByAltText(/Source evidence/)).not.toBeInTheDocument();
     expect(loadScore).not.toHaveBeenCalled();
+  });
+
+  it("still reviews the whole page when geometry is refused", async () => {
+    // Crops need proven geometry; the whole-page view needs only measure
+    // indices, so a page without geometry can still be reviewed side by side.
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...readyComparison(),
+        analysis: {
+          status: "succeeded",
+          blocks: [
+            {
+              blockIndex: 0,
+              stablePartKey: "part-1",
+              baseMeasureRefs: [{ measureIndex: 3, measureNumber: "4" }],
+              candidateMeasureRefs: [{ measureIndex: 3, measureNumber: "4" }],
+              differenceClasses: ["notation"],
+              completenessWarnings: [],
+              contentSignature,
+            },
+          ],
+        },
+        geometry: {
+          status: "refused",
+          blocks: [],
+          refusalReasons: [
+            { detail: "No verified measure-to-image geometry is available" },
+          ],
+        },
+      }),
+    });
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Whole-page diff review" }),
+    ).toBeInTheDocument();
+    // No crops, because nothing proved where those measures are on the scan.
+    expect(screen.queryByAltText(/Source evidence/)).not.toBeInTheDocument();
+    // The whole page is not drawn here at all; the editor embed owns it.
+    expect(loadScore).not.toHaveBeenCalled();
+  });
+
+  it("hands the whole page to the score editor's compare embed", async () => {
+    // Measure highlighting geometry has one home in this product: MuseScore's
+    // layout inside the editor. The scanner links to it rather than rendering
+    // the page a second way with its own geometry.
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+
+    const frame = (await screen.findByTitle(
+      "Whole-page comparison of HOMR and Transcoda",
+    )) as HTMLIFrameElement;
+    const url = new URL(frame.src, "http://localhost");
+    expect(url.pathname).toBe("/score-editor/index.html");
+    expect(url.searchParams.get("leftLabel")).toBe("HOMR");
+    expect(url.searchParams.get("rightLabel")).toBe("Transcoda");
+    // Both sides are the signed, status-bound reading routes, so the embed
+    // cannot silently read a different revision than the analysis did.
+    for (const [param, engineId, checksum] of [
+      ["compareLeft", "homr", baseArtifactChecksum],
+      ["compareRight", "transcoda", candidateArtifactChecksum],
+    ] as const) {
+      const reading = new URL(
+        String(url.searchParams.get(param)),
+        "http://localhost",
+      );
+      expect(reading.pathname).toBe(
+        `/api/proxy/scanner/jobs/job-1/pages/1/comparison/readings/${engineId}`,
+      );
+      expect(reading.searchParams.get("statusVersion")).toBe("9");
+      expect(reading.searchParams.get("artifactChecksumSha256")).toBe(checksum);
+    }
   });
 
   it("shows only grounded blocks when page geometry is partial", async () => {

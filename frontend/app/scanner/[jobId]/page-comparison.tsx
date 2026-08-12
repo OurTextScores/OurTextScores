@@ -49,6 +49,10 @@ interface PageComparisonResult {
   base: ComparisonSide;
   candidate: ComparisonSide;
   refusalReasons: ComparisonRefusal[];
+  analysis?: {
+    status: "succeeded" | "refused";
+    blocks?: ComparisonBlock[];
+  };
   geometry?: {
     status: "ready" | "refused";
     geometrySignature?: string;
@@ -76,6 +80,59 @@ async function responseError(
 ): Promise<string> {
   const value = await response.json().catch(() => ({}));
   return String(value?.message || value?.error || fallback);
+}
+
+/**
+ * The crop URL is bound to the job's status version and to the block content and
+ * geometry signatures, so the server refuses it the moment any of them moves on.
+ * A bare <img> cannot read that refusal — it would render as a broken icon — so
+ * the failure is caught here and stated, like every other refusal in this view.
+ */
+function SourceEvidence({
+  cropUrl,
+  blockIndex,
+  onStale,
+}: {
+  cropUrl: string;
+  blockIndex: number;
+  onStale: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [cropUrl]);
+
+  if (failed) {
+    return (
+      <div
+        className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        role="alert"
+      >
+        <p>
+          This scan crop is no longer current — the page changed after the
+          comparison was loaded.
+        </p>
+        <button
+          type="button"
+          onClick={onStale}
+          className="mt-2 rounded-md border border-amber-300 px-2 py-1 font-medium hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/40"
+        >
+          Reload the comparison
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={cropUrl}
+      alt={`Source evidence for comparison block ${blockIndex + 1}`}
+      onError={() => setFailed(true)}
+      className="max-h-96 w-full rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700"
+    />
+  );
 }
 
 function readableMeasureRange(refs: ComparisonMeasureRef[]): string {
@@ -261,6 +318,7 @@ export default function PageComparison({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const musicXmlCache = useRef(new Map<string, string>());
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
@@ -291,6 +349,7 @@ export default function PageComparison({
     setError(null);
     setComparison(null);
     setSelectedBlockIndex(null);
+    musicXmlCache.current.clear();
     fetch(`${base}/pages/${page.pageNumber}/comparison?${params.toString()}`, {
       cache: "no-store",
       signal: controller.signal,
@@ -318,7 +377,7 @@ export default function PageComparison({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [base, baseEngine, candidateEngine, open, page.pageNumber]);
+  }, [base, baseEngine, candidateEngine, open, page.pageNumber, reloadToken]);
 
   if (eligibleEngineIds.length < 2) return null;
 
@@ -332,6 +391,21 @@ export default function PageComparison({
   const selectedBlock = readyBlocks.find(
     (entry) => entry.block.blockIndex === selectedBlockIndex,
   )?.block;
+  // The whole-page view needs no crops, so it survives a geometry refusal.
+  // Prefer the structural analysis and fall back to whatever the geometry join
+  // carried through.
+  const allBlocks =
+    comparison?.analysis?.blocks ||
+    comparison?.geometry?.blocks.map((entry) => entry.block) ||
+    [];
+  /**
+   * The whole page goes to the score editor's compare mode — the same embed
+   * change review uses. Measure highlighting there comes from MuseScore's own
+   * layout (`measurePositions()` plus the engine's staff bands), which is the
+   * one source of that geometry in the product; rendering the page a second way
+   * here would put the scanner's compare in a different engine from every other
+   * comparator, with different line breaks for the same score.
+   */
   const geometrySignature = comparison?.geometry?.geometrySignature;
 
   const readingUrl = (side: ComparisonSide) =>
@@ -341,6 +415,15 @@ export default function PageComparison({
         artifactChecksumSha256: side.artifactChecksumSha256,
       },
     ).toString()}`;
+
+  const embeddedCompareUrl = comparison
+    ? `/score-editor/index.html?${new URLSearchParams({
+        compareLeft: readingUrl(comparison.base),
+        compareRight: readingUrl(comparison.candidate),
+        leftLabel: comparison.base.displayName,
+        rightLabel: comparison.candidate.displayName,
+      }).toString()}`
+    : undefined;
 
   const cropUrl =
     comparison && selectedBlock && geometrySignature
@@ -559,11 +642,10 @@ export default function PageComparison({
                           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
                             Source evidence
                           </p>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={cropUrl}
-                            alt={`Source evidence for comparison block ${selectedBlock.blockIndex + 1}`}
-                            className="max-h-96 w-full rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700"
+                          <SourceEvidence
+                            cropUrl={cropUrl}
+                            blockIndex={selectedBlock.blockIndex}
+                            onStale={() => setReloadToken((token) => token + 1)}
                           />
                         </div>
 
@@ -582,35 +664,34 @@ export default function PageComparison({
                           </ul>
                         )}
 
-                        <div className="space-y-4">
-                          <div>
-                            <h4 className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {comparison.base.displayName} reading —{" "}
-                              {readableMeasureRange(
-                                selectedBlock.baseMeasureRefs,
-                              )}
-                            </h4>
-                            <MusicXmlReading
-                              artifactUrl={readingUrl(comparison.base)}
-                              engineName={comparison.base.displayName}
-                              measureRefs={selectedBlock.baseMeasureRefs}
-                              musicXmlCache={musicXmlCache.current}
-                            />
-                          </div>
-                          <div>
-                            <h4 className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              {comparison.candidate.displayName} reading —{" "}
-                              {readableMeasureRange(
-                                selectedBlock.candidateMeasureRefs,
-                              )}
-                            </h4>
-                            <MusicXmlReading
-                              artifactUrl={readingUrl(comparison.candidate)}
-                              engineName={comparison.candidate.displayName}
-                              measureRefs={selectedBlock.candidateMeasureRefs}
-                              musicXmlCache={musicXmlCache.current}
-                            />
-                          </div>
+                        {/*
+                          Side by side, so neither reading pushes the other
+                          below the fold and the two can be read against each
+                          other. Each pane loads and fails independently.
+                        */}
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          {[comparison.base, comparison.candidate].map(
+                            (side, index) => {
+                              const refs =
+                                index === 0
+                                  ? selectedBlock.baseMeasureRefs
+                                  : selectedBlock.candidateMeasureRefs;
+                              return (
+                                <div key={side.engineId} className="min-w-0">
+                                  <h4 className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                    {side.displayName} reading —{" "}
+                                    {readableMeasureRange(refs)}
+                                  </h4>
+                                  <MusicXmlReading
+                                    artifactUrl={readingUrl(side)}
+                                    engineName={side.displayName}
+                                    measureRefs={refs}
+                                    musicXmlCache={musicXmlCache.current}
+                                  />
+                                </div>
+                              );
+                            },
+                          )}
                         </div>
                       </div>
                     )}
@@ -618,6 +699,56 @@ export default function PageComparison({
                 )}
               </>
             )}
+
+          {/*
+            The whole page, below the block work, in the score editor's compare
+            mode — the same embed change review uses. It needs no crops, so it
+            still renders when geometry refuses and the block evidence is
+            withheld.
+          */}
+          {comparison && embeddedCompareUrl && allBlocks.length > 0 && (
+            <div className="border-t border-slate-200 pt-5 dark:border-slate-800">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Whole-page diff review
+                </h4>
+                <p className="text-xs text-slate-500">
+                  {comparison.base.displayName} versus{" "}
+                  {comparison.candidate.displayName}, bar by bar
+                </p>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                The editor aligns and highlights the whole page itself. Its
+                highlighting is the editor&apos;s own comparison, not the{" "}
+                {allBlocks.length} semantic{" "}
+                {allBlocks.length === 1 ? "block" : "blocks"} listed above, so
+                the two can disagree.
+              </p>
+              {/*
+                Two whole scores side by side need far more width than the
+                page's centered column allows, so the frame is pulled out of it
+                and centered on the viewport instead. The width subtracts a
+                little from 100vw so a vertical scrollbar cannot push a
+                horizontal one onto the page.
+              */}
+              <div className="relative left-1/2 mt-3 w-[min(100vw-2rem,120rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
+                <iframe
+                  key={embeddedCompareUrl}
+                  src={embeddedCompareUrl}
+                  title={`Whole-page comparison of ${comparison.base.displayName} and ${comparison.candidate.displayName}`}
+                  className="h-[min(85vh,60rem)] min-h-[38rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                />
+                <a
+                  href={embeddedCompareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block text-xs text-cyan-700 hover:underline dark:text-cyan-300"
+                >
+                  Open the comparison in its own tab ↗
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
