@@ -288,7 +288,13 @@ export default function ScannerClient() {
             }
             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {submitting ? "Uploading…" : "Scan"}
+            {/*
+              Not "Scan": this uploads the file and takes the reader to the
+              page-selection step, and nothing is sent to a recognition engine
+              until they press Start there. A button that says "Scan" promises
+              the wrong thing about where the money starts being spent.
+            */}
+            {submitting ? "Uploading…" : "Select pages"}
           </button>
         </div>
         {submitting && (

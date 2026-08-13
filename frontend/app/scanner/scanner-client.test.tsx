@@ -136,7 +136,7 @@ describe("ScannerClient", () => {
         .map((item) => item.textContent),
     ).toEqual(["page-2.png", "page-10.png"]);
 
-    const submit = screen.getByRole("button", { name: "Scan" });
+    const submit = screen.getByRole("button", { name: "Select pages" });
     fireEvent.submit(submit.closest("form")!);
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
     const submitted = FakeXhr.last!.body!.getAll("file") as File[];
@@ -158,7 +158,7 @@ describe("ScannerClient", () => {
       target: { files: [huge] },
     });
 
-    fireEvent.submit(screen.getByRole("button", { name: "Scan" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Select pages" }).closest("form")!);
     expect(await screen.findByText(/the limit is/i)).toBeInTheDocument();
     expect(FakeXhr.last).toBeNull();
   });
@@ -169,7 +169,7 @@ describe("ScannerClient", () => {
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: { files: [new File(["a"], "page-1.png", { type: "image/png" })] },
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Scan" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Select pages" }).closest("form")!);
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
 
     // A platform 413 carries an HTML body, so the JSON path cannot help.
@@ -187,7 +187,7 @@ describe("ScannerClient", () => {
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: { files: [new File(["x".repeat(2048)], "page.png", { type: "image/png" })] },
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Scan" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Select pages" }).closest("form")!);
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
 
     // Bytes sent, not a spinner: fetch cannot report this, which is why the

@@ -193,6 +193,35 @@ describe("ScannerJobClient", () => {
     expect(screen.queryByRole("button", { name: /Go to page/ })).toBeNull();
   });
 
+  it("promises page selection while the pages are still being made", async () => {
+    // A job is `preparing` before it has ever been reviewed. Falling through to
+    // the scan-progress grid put page chips on screen and read as "your pages
+    // went straight to the engines" — the one promise this flow makes and does
+    // not break, and enough to make a reader cancel the upload.
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...partialJob,
+        status: "preparing",
+        pages: [],
+      }),
+    });
+
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Getting the pages ready" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/before anything is sent to a recognition engine/),
+    ).toBeInTheDocument();
+    // And not the grid that says the scan has begun.
+    expect(screen.queryByLabelText("Scan pages")).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Review pages before scanning" }),
+    ).toBeNull();
+  });
+
   it("queues only the selected failed page", async () => {
     render(<ScannerJobClient jobId="job-1" />);
     const pageTwo = await screen.findByRole("button", {

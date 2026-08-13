@@ -315,6 +315,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
 
   const active = activeScannerStatuses.includes(job.status);
   const reviewing = job.status === "ready";
+  // Before the review step, not after it: `preparing` is only ever set while a
+  // freshly uploaded source is being turned into page images.
+  const preparing = job.status === "preparing";
   const completedPages = job.pages.filter(
     (page) => page.status === "succeeded",
   ).length;
@@ -559,7 +562,42 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         )}
       </section>
 
-      {reviewing ? (
+      {/*
+        Preparation is not scanning, and it used to look exactly like it.
+
+        A job is `preparing` before it has ever been reviewed — the page images
+        are still being rasterised, so there is nothing to choose between yet.
+        Falling through to the scan-progress grid put eight page chips on screen
+        and read as "your pages went straight to the engines", which is the one
+        promise this flow makes and does not break. Say what is happening and
+        what comes next instead.
+      */}
+      {preparing ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Getting the pages ready
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm text-slate-500" aria-live="polite">
+            Turning {job.originalFilename} into {job.pageCount}{" "}
+            {job.pageCount === 1 ? "page image" : "page images"}. You will be
+            able to reorder, rotate and exclude pages before anything is sent to
+            a recognition engine.
+          </p>
+          <div
+            className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            aria-hidden="true"
+          >
+            {Array.from({ length: Math.min(job.pageCount || 1, 8) }).map(
+              (_unused, index) => (
+                <div
+                  key={index}
+                  className="h-40 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800"
+                />
+              ),
+            )}
+          </div>
+        </section>
+      ) : reviewing ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
