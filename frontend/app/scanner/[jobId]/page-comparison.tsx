@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScannerJob } from "../scanner-types";
 
@@ -176,10 +177,13 @@ export default function PageComparison({
   jobId,
   job,
   page,
+  open = false,
 }: {
   jobId: string;
   job: ScannerJob;
   page: ScannerPage;
+  /** True on the comparison's own page, where there is nothing to expand. */
+  open?: boolean;
 }) {
   const eligibleEngineIds = useMemo(
     () =>
@@ -198,7 +202,7 @@ export default function PageComparison({
     : eligibleEngineIds[0] || "";
   const defaultCandidate =
     eligibleEngineIds.find((engineId) => engineId !== defaultBase) || "";
-  const [open, setOpen] = useState(false);
+
   const [baseEngine, setBaseEngine] = useState(defaultBase);
   const [candidateEngine, setCandidateEngine] = useState(defaultCandidate);
   const [comparison, setComparison] = useState<PageComparisonResult | null>(
@@ -213,7 +217,6 @@ export default function PageComparison({
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   useEffect(() => {
-    setOpen(false);
     setBaseEngine(defaultBase);
     setCandidateEngine(defaultCandidate);
     setComparison(null);
@@ -358,24 +361,33 @@ export default function PageComparison({
 
   return (
     <section className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 dark:border-cyan-900 dark:bg-cyan-950/20">
+      {/*
+        The card is a doorway when it is not the page.
+
+        Comparing wants the whole window — three scores stacked over a scan —
+        and expanding it inside a card left it competing with the page's own
+        downloads and previews for the width, below a fold that grew as the
+        readings loaded. A page of its own also gives it a URL, so a reviewer
+        can come back to a difference, or send it to someone.
+      */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Compare recognition engines
           </h3>
           <p className="mt-1 max-w-3xl text-xs text-slate-600 dark:text-slate-400">
-            Read-only: inspect where two engine readings differ against the
-            retained scan. No reconciliation choices are saved yet.
+            Inspect where two engine readings differ against the retained scan,
+            and reconcile them into one score.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          className="rounded-lg border border-cyan-300 bg-white px-3 py-2 text-sm text-cyan-800 hover:bg-cyan-50 dark:border-cyan-800 dark:bg-slate-900 dark:text-cyan-200"
-          aria-expanded={open}
-        >
-          {open ? "Close" : "Compare engine readings"}
-        </button>
+        {!open && (
+          <Link
+            href={`/scanner/${encodeURIComponent(jobId)}/pages/${page.pageNumber}/compare`}
+            className="rounded-lg border border-cyan-300 bg-white px-3 py-2 text-sm text-cyan-800 hover:bg-cyan-50 dark:border-cyan-800 dark:bg-slate-900 dark:text-cyan-200"
+          >
+            Compare engine readings →
+          </Link>
+        )}
       </div>
 
       {open && (

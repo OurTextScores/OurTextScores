@@ -1383,6 +1383,20 @@ export class ScannerService implements OnModuleInit {
       updatedAt: page.mergedScore?.updatedAt,
       checksumSha256: page.mergedMusicXml?.checksumSha256,
       sizeBytes: page.mergedMusicXml?.sizeBytes,
+      /**
+       * Which blocks have been decided, and from where.
+       *
+       * A control offering to take a bar the merged score already reads that
+       * way does nothing, and a control that does nothing is worse than no
+       * control — the reviewer cannot tell it from one that is merely
+       * unavailable. Only the consumer can decide what to offer, and only this
+       * says what the merged score currently reads.
+       */
+      decisions: (page.mergedScore?.decisions || []).map((decision) => ({
+        blockIndex: decision.blockIndex,
+        engineId: decision.engineId,
+        markingsOnly: decision.markingsOnly
+      })),
       /** Quote this when saving; a mismatch means the readings moved. */
       basisSignature,
       recordedBasisSignature: page.mergedScore?.basisSignature,

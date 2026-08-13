@@ -168,18 +168,28 @@ describe("PageComparison", () => {
 
   afterEach(() => jest.resetAllMocks());
 
+  it("is a doorway to its own page when it is not the page", async () => {
+    // Comparing wants the whole window — three scores stacked over a scan — and
+    // expanding it inside a card left it competing with the job page's own
+    // downloads and previews, below a fold that grew as the readings loaded.
+    // The link also gives a comparison a URL to come back to.
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+
+    const link = screen.getByRole("link", { name: /Compare engine readings/ });
+    expect(link).toHaveAttribute("href", "/scanner/job-1/pages/1/compare");
+    // Nothing is fetched until the reader goes there.
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("hands the difference to the merge editor and renders no score itself", async () => {
     // The list of differences and the cropped scrap of scan beside it are gone.
     // They were a third and fourth place to look at one difference, and the
     // crop was the same system the editor already draws — cut out and shown
     // again, smaller. What stays here is what the editor cannot say: which
     // engines are being compared, and what each of them does not recognize.
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    // As the comparison's own page renders it: there is nothing to expand, so
+    // the readings are fetched as soon as it is on screen.
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
 
     expect(
       await screen.findByTitle(/Reconciling difference 1 of page 1/),
@@ -206,10 +216,8 @@ describe("PageComparison", () => {
     // is gone from the product entirely — a stronger guarantee than a spy.
     // What is asserted here is the observable consequence: no whole MusicXML
     // artifact is fetched just to draw one bar.
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     await waitFor(() =>
       expect(screen.getByTitle(/Reconciling difference/)).toBeInTheDocument(),
@@ -221,10 +229,8 @@ describe("PageComparison", () => {
   });
 
   it("supports a third provider without provider-specific UI branches", async () => {
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
     await screen.findByTitle(/Reconciling difference 1 of page 1/);
 
     fireEvent.change(screen.getByLabelText("Candidate reading"), {
@@ -252,10 +258,8 @@ describe("PageComparison", () => {
         geometry: { status: "refused", blocks: [], refusalReasons: [] },
       }),
     });
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     expect(
       await screen.findByText("The differences have no verified image evidence."),
@@ -283,10 +287,8 @@ describe("PageComparison", () => {
         },
       }),
     });
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     expect(
       await screen.findByText(/Transcoda was regrouped to line up\./),
@@ -310,10 +312,8 @@ describe("PageComparison", () => {
         },
       }),
     });
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     expect(
       await screen.findByText(
@@ -353,10 +353,8 @@ describe("PageComparison", () => {
         },
       }),
     });
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     // Nothing could be placed on the scan, so there is no difference to click —
     // but withholding the editor would leave no way to see the page at all.
@@ -372,10 +370,8 @@ describe("PageComparison", () => {
     // Measure highlighting geometry has one home in this product: MuseScore's
     // layout inside the editor. The scanner links to it rather than rendering
     // the page a second way with its own geometry.
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     const frame = (await screen.findByTitle(
       /Reconciling difference 1 of page 1/,
@@ -437,10 +433,8 @@ describe("PageComparison", () => {
         },
       }),
     });
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    // As the comparison's own page renders it.
 
     // The count is still stated here, because it is about the page rather than
     // about any one difference: the editor cannot know what it was not sent.
