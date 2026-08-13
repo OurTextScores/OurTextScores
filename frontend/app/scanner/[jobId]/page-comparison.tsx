@@ -89,53 +89,6 @@ async function responseError(
  * A bare <img> cannot read that refusal — it would render as a broken icon — so
  * the failure is caught here and stated, like every other refusal in this view.
  */
-function SourceEvidence({
-  cropUrl,
-  blockIndex,
-  onStale,
-}: {
-  cropUrl: string;
-  blockIndex: number;
-  onStale: () => void;
-}) {
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setFailed(false);
-  }, [cropUrl]);
-
-  if (failed) {
-    return (
-      <div
-        className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-        role="alert"
-      >
-        <p>
-          This scan crop is no longer current — the page changed after the
-          comparison was loaded.
-        </p>
-        <button
-          type="button"
-          onClick={onStale}
-          className="mt-2 rounded-md border border-amber-300 px-2 py-1 font-medium hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/40"
-        >
-          Reload the comparison
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={cropUrl}
-      alt={`Source evidence for comparison block ${blockIndex + 1}`}
-      onError={() => setFailed(true)}
-      className="max-h-96 w-full rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700"
-    />
-  );
-}
-
 /** Breathing room kept between a full-width row and the window edge. */
 const FULL_BLEED_GUTTER = 16;
 
@@ -204,16 +157,6 @@ function FullBleed({
       {children}
     </div>
   );
-}
-
-function readableMeasureRange(refs: ComparisonMeasureRef[]): string {
-  if (refs.length === 0) return "no corresponding measure";
-  const labels = refs.map(
-    (ref) => ref.measureNumber || String(ref.measureIndex + 1),
-  );
-  const unique = [...new Set(labels)];
-  if (unique.length === 1) return `measure ${unique[0]}`;
-  return `measures ${unique[0]}–${unique[unique.length - 1]}`;
 }
 
 function sideCaveats(side: ComparisonSide): string[] {
@@ -399,6 +342,7 @@ export default function PageComparison({
       }).toString()}`
     : undefined;
 
+
   const cropUrl =
     comparison && selectedBlock && geometrySignature
       ? `${base}/pages/${page.pageNumber}/comparison/blocks/${selectedBlock.blockIndex}/crop?${new URLSearchParams(
@@ -576,114 +520,17 @@ export default function PageComparison({
                     The semantic measure comparison found no differences on this
                     page.
                   </p>
-                ) : (
-                  <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                        {readyBlocks.length} differing{" "}
-                        {readyBlocks.length === 1 ? "block" : "blocks"}
-                      </p>
-                      <ol className="mt-2 max-h-[34rem] space-y-2 overflow-auto pr-1">
-                        {readyBlocks.map(({ block }, index) => (
-                          <li key={block.contentSignature}>
-                            <button
-                              type="button"
-                              aria-pressed={
-                                selectedBlockIndex === block.blockIndex
-                              }
-                              onClick={() =>
-                                setSelectedBlockIndex(block.blockIndex)
-                              }
-                              className={`w-full rounded-lg border px-3 py-2 text-left text-xs ${
-                                selectedBlockIndex === block.blockIndex
-                                  ? "border-cyan-500 bg-white ring-2 ring-cyan-200 dark:bg-slate-900 dark:ring-cyan-900"
-                                  : "border-slate-200 bg-white/70 hover:border-cyan-300 dark:border-slate-800 dark:bg-slate-900/70"
-                              }`}
-                            >
-                              <span className="font-semibold">
-                                Difference {index + 1}
-                              </span>
-                              <span className="mt-1 block text-slate-600 dark:text-slate-400">
-                                {comparison.base.displayName}:{" "}
-                                {readableMeasureRange(block.baseMeasureRefs)}
-                              </span>
-                              <span className="block text-slate-600 dark:text-slate-400">
-                                {comparison.candidate.displayName}:{" "}
-                                {readableMeasureRange(
-                                  block.candidateMeasureRefs,
-                                )}
-                              </span>
-                              <span className="mt-1 block text-slate-500">
-                                {block.differenceClasses
-                                  .map(
-                                    (difference) =>
-                                      DIFFERENCE_LABELS[difference] ||
-                                      difference,
-                                  )
-                                  .join(", ")}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
+                ) : null}
 
-                    {selectedBlock && cropUrl && (
-                      <div className="space-y-4">
-                        <div>
-                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                            Source evidence
-                          </p>
-                          <SourceEvidence
-                            cropUrl={cropUrl}
-                            blockIndex={selectedBlock.blockIndex}
-                            onStale={() => setReloadToken((token) => token + 1)}
-                          />
-                        </div>
-
-                        {selectedBlock.completenessWarnings.length > 0 && (
-                          <ul className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                            {selectedBlock.completenessWarnings.map(
-                              (warning, index) => (
-                                <li
-                                  key={`${warning.engineId}-${warning.detail}-${index}`}
-                                >
-                                  {engineName(warning.engineId)}:{" "}
-                                  {warning.detail}
-                                </li>
-                              ),
-                            )}
-                          </ul>
-                        )}
-
-                        {/*
-                          The engraved readings used to be rendered here with
-                          OpenSheetMusicDisplay. They are not any more: the
-                          decision a reviewer makes turns on beaming, stem
-                          direction, rest placement and accidental spelling —
-                          exactly what a second renderer reproduces differently
-                          — so judging Transcoda's beaming through OSMD's
-                          beaming judged the wrong artifact. The merge editor
-                          below draws all three scores through MuseScore, the
-                          same engine everything else in this product uses.
-
-                          What stays here is the part the editor cannot show:
-                          the crop of the scan itself, with proven geometry.
-                        */}
-                        <p className="text-xs text-slate-500">
-                          {comparison.base.displayName}:{" "}
-                          {readableMeasureRange(selectedBlock.baseMeasureRefs)} ·{" "}
-                          {comparison.candidate.displayName}:{" "}
-                          {readableMeasureRange(
-                            selectedBlock.candidateMeasureRefs,
-                          )}
-                        </p>
-
-                      </div>
-                    )}
-                  </div>
-                )}
-
+                {/*
+                  The list of differences and the cropped scrap of scan beside
+                  it are gone. They were a third and fourth place to look at one
+                  difference — and the crop was the same system the merge editor
+                  already draws, cut out and shown again, smaller. The editor
+                  names the difference, boxes it on the scan it came from, and
+                  moves to the next one; there is nothing left for a card
+                  outside it to add.
+                */}
                 {/*
                   The merge editor for the selected difference, and only for it.
                   It sat below as a separate whole-page card, which put the

@@ -1006,6 +1006,63 @@ export class ScannerService implements OnModuleInit {
         .map((entry: any) => entry.block.blockIndex)
     );
 
+    /**
+     * Where a block sits inside the system crop that contains it.
+     *
+     * The scan crop a reader looks at is the whole system; the difference is
+     * some bars of it. Sent as fractions of that crop rather than scan pixels
+     * so the consumer can draw the box over an image it has scaled to fit,
+     * without knowing the scan's dimensions or how it was resized.
+     */
+    const systemRegions = new Map<number, number[]>(
+      (comparison.systems || []).map((system: any) => [system.systemIndex, system.region])
+    );
+    const cropBoxesFor = (blockIndex: number) => {
+      const entry = (comparison.geometry?.blocks || []).find(
+        (candidate: any) => candidate.status === 'ready' && candidate.block.blockIndex === blockIndex
+      );
+      return (entry?.block?.cropRegions || []).flatMap((crop: any) => {
+        const system = systemRegions.get(crop.systemIndex);
+        if (!system || !Array.isArray(crop.region)) return [];
+        const width = system[2] - system[0];
+        const height = system[3] - system[1];
+        if (!(width > 0) || !(height > 0)) return [];
+        return [
+          {
+            systemIndex: crop.systemIndex,
+            left: (crop.region[0] - system[0]) / width,
+            top: (crop.region[1] - system[1]) / height,
+            width: (crop.region[2] - crop.region[0]) / width,
+            height: (crop.region[3] - crop.region[1]) / height
+          }
+        ];
+      });
+    };
+
+    /**
+     * How a reader would say which bars a block covers.
+     *
+     * Built here because measure *numbers* live on the refs, which the regions
+     * payload does not carry — and because MusicXML labels need not be numeric
+     * or contiguous, so "11-12" is a claim about the document rather than
+     * arithmetic the consumer can do on indexes.
+     */
+    const measureLabel = (refs: any[]): string => {
+      const numbers = refs.map((ref) => ref.measureNumber).filter(Boolean);
+      if (numbers.length === 0) return '';
+      if (numbers.length === 1) return `bar ${numbers[0]}`;
+      const first = Number(numbers[0]);
+      const last = Number(numbers[numbers.length - 1]);
+      const contiguous =
+        Number.isFinite(first) &&
+        Number.isFinite(last) &&
+        last - first === numbers.length - 1 &&
+        numbers.every((value: string, index: number) => Number(value) === first + index);
+      return contiguous
+        ? `bars ${numbers[0]}-${numbers[numbers.length - 1]}`
+        : `bars ${numbers.join(', ')}`;
+    };
+
     const warnings = new Map<string, any>();
     for (const block of comparison.analysis.blocks || []) {
       for (const warning of block.completenessWarnings || []) {
@@ -1027,6 +1084,13 @@ export class ScannerService implements OnModuleInit {
             (ref: any) => ref.measureIndex
           ),
           differenceClasses: block.differenceClasses || [],
+          // How a reader would name this block, and where to draw it on the
+          // scan. Both are things only this side knows: the measure labels live
+          // on refs the payload does not carry, and the box is meaningless
+          // without the system region it is relative to.
+          leftMeasureLabel: measureLabel(block.baseMeasureRefs || []),
+          rightMeasureLabel: measureLabel(block.candidateMeasureRefs || []),
+          cropBoxes: cropBoxesFor(block.blockIndex),
           // Which events inside each bar are unmatched, so a reader is pointed
           // at the note rather than at the bar containing it. Named by side to
           // match the rest of this payload, which speaks left/right rather than

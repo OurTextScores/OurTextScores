@@ -168,7 +168,12 @@ describe("PageComparison", () => {
 
   afterEach(() => jest.resetAllMocks());
 
-  it("loads a signed evidence crop on demand, and renders no score itself", async () => {
+  it("hands the difference to the merge editor and renders no score itself", async () => {
+    // The list of differences and the cropped scrap of scan beside it are gone.
+    // They were a third and fourth place to look at one difference, and the
+    // crop was the same system the editor already draws — cut out and shown
+    // again, smaller. What stays here is what the editor cannot say: which
+    // engines are being compared, and what each of them does not recognize.
     render(<PageComparison jobId="job-1" job={job} page={page} />);
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -176,38 +181,18 @@ describe("PageComparison", () => {
       screen.getByRole("button", { name: "Compare engine readings" }),
     );
 
-    expect(await screen.findByText("1 differing block")).toBeInTheDocument();
-    expect(screen.getByText("notes or rhythm, lyrics")).toBeInTheDocument();
+    expect(
+      await screen.findByTitle(/Reconciling difference 1 of page 1/),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Transcoda does not recognize lyrics."),
     ).toBeInTheDocument();
-    expect(
-      screen.getByAltText("Source evidence for comparison block 1"),
-    ).toHaveAttribute(
-      "src",
-      `/api/proxy/scanner/jobs/job-1/pages/1/comparison/blocks/0/crop?${new URLSearchParams(
-        {
-          baseEngine: "homr",
-          candidateEngine: "transcoda",
-          statusVersion: "9",
-          contentSignature,
-          geometrySignature,
-        },
-      ).toString()}`,
-    );
-    // Which measures the block covers is still stated; the engraving is not
-    // drawn here.
-    expect(
-      screen.getByText(/HOMR: measure 4 · Transcoda: measure 4/),
-    ).toBeInTheDocument();
-    // The merge editor now lives inside the difference the reviewer clicked,
-    // not in a separate card below every agreeing line.
-    expect(
-      screen.getByTitle(/Reconciling difference 1 of page 1/),
-    ).toBeInTheDocument();
+    // Nothing outside the editor names or draws the difference any more.
+    expect(screen.queryByText("1 differing block")).toBeNull();
+    expect(screen.queryByAltText(/Source evidence/)).toBeNull();
     expect(
       screen.queryByRole("heading", { name: "Whole-page diff review" }),
-    ).not.toBeInTheDocument();
+    ).toBeNull();
   });
 
   it("never engraves a reading itself", async () => {
@@ -215,7 +200,7 @@ describe("PageComparison", () => {
     // accidental spelling — exactly what a second renderer reproduces
     // differently. Judging Transcoda's beaming through OpenSheetMusicDisplay's
     // beaming judged the wrong artifact, so this page draws no score at all:
-    // the merge editor below draws all three through MuseScore.
+    // the merge editor draws all three through MuseScore.
     //
     // There is no OSMD mock to assert against any more, because the dependency
     // is gone from the product entirely — a stronger guarantee than a spy.
@@ -225,7 +210,6 @@ describe("PageComparison", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Compare engine readings" }),
     );
-    expect(await screen.findByText("1 differing block")).toBeInTheDocument();
 
     await waitFor(() =>
       expect(screen.getByTitle(/Reconciling difference/)).toBeInTheDocument(),
@@ -236,51 +220,17 @@ describe("PageComparison", () => {
     );
   });
 
-  it("states a stale crop refusal instead of a broken image", async () => {
-    // The crop is signature-bound, so the server refuses it once the job moves
-    // on. An <img> cannot read that refusal, so it must be surfaced here.
-    render(<PageComparison jobId="job-1" job={job} page={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Compare engine readings" }),
-    );
-
-    const crop = await screen.findByAltText(
-      "Source evidence for comparison block 1",
-    );
-    fireEvent.error(crop);
-
-    expect(
-      await screen.findByText(/This scan crop is no longer current/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByAltText("Source evidence for comparison block 1"),
-    ).not.toBeInTheDocument();
-
-    const fetchCount = (globalThis.fetch as jest.Mock).mock.calls.length;
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reload the comparison" }),
-    );
-    await waitFor(() =>
-      expect(
-        (globalThis.fetch as jest.Mock).mock.calls.length,
-      ).toBeGreaterThan(fetchCount),
-    );
-  });
-
   it("supports a third provider without provider-specific UI branches", async () => {
     render(<PageComparison jobId="job-1" job={job} page={page} />);
     fireEvent.click(
       screen.getByRole("button", { name: "Compare engine readings" }),
     );
-    await screen.findByText("1 differing block");
+    await screen.findByTitle(/Reconciling difference 1 of page 1/);
 
     fireEvent.change(screen.getByLabelText("Candidate reading"), {
       target: { value: "kraken" },
     });
 
-    expect(
-      await screen.findByTitle(/Reconciling difference 1 of page 1/),
-    ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining("candidateEngine=kraken"),
       expect.objectContaining({ cache: "no-store" }),
@@ -476,23 +426,13 @@ describe("PageComparison", () => {
       ok: true,
       json: async () => ({
         ...partial,
-        status: "refused",
-        refusalReasons: [{ detail: "One comparison span is unresolved" }],
         geometry: {
           ...partial.geometry,
           status: "refused",
-          refusalReasons: [{ detail: "One measure has no verified mapping" }],
+          refusalReasons: [{ detail: "No verified crop maps block 2" }],
           blocks: [
             ...partial.geometry.blocks,
-            {
-              status: "refused",
-              block: {
-                ...partial.geometry.blocks[0].block,
-                blockIndex: 1,
-                contentSignature: `scanner-block-content-v2:${"e".repeat(64)}`,
-              },
-              refusalReasons: [{ detail: "One measure has no verified mapping" }],
-            },
+            { status: "refused", block: { ...partial.geometry.blocks[0].block, blockIndex: 1 } },
           ],
         },
       }),
@@ -502,18 +442,13 @@ describe("PageComparison", () => {
       screen.getByRole("button", { name: "Compare engine readings" }),
     );
 
+    // The count is still stated here, because it is about the page rather than
+    // about any one difference: the editor cannot know what it was not sent.
     expect(
-      await screen.findByText("Some differences have no verified image evidence."),
+      await screen.findByText(/Showing 1 of 2 differing blocks/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Showing 1 of 2 differing blocks/),
+      screen.getByTitle(/Reconciling difference 1 of page 1/),
     ).toBeInTheDocument();
-    expect(screen.getByText("1 differing block")).toBeInTheDocument();
-    expect(
-      screen.getByAltText("Source evidence for comparison block 1"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("These readings cannot be compared safely."),
-    ).not.toBeInTheDocument();
   });
 });
