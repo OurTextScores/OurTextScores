@@ -12,7 +12,14 @@ import {
 } from './scanner-musicxml-tree';
 
 export const SCANNER_COARSE_MEASURE_KEY_VERSION = 'scanner-measure-coarse-v1';
-export const SCANNER_MEASURE_DESCRIPTOR_VERSION = 'scanner-measure-descriptor-v1';
+/**
+ * Bumped to v2 when attribute declarations stopped being compared as a
+ * sequence of spellings and started being compared as a set of readings. Old
+ * hashes describe a different question, so they must not appear to answer this
+ * one — a stored decision keyed on a v1 signature is correctly treated as
+ * stale rather than silently carried over.
+ */
+export const SCANNER_MEASURE_DESCRIPTOR_VERSION = 'scanner-measure-descriptor-v2';
 export const SCANNER_MEASURE_ALIGNMENT_VERSION = 'scanner-measure-alignment-v2';
 export const MAX_SCANNER_MEASURES_PER_PART = 1024;
 export const MAX_SCANNER_FUZZY_EVENTS_PER_MEASURE = 512;
@@ -257,18 +264,58 @@ function noteLyrics(children: OrderedEntry[]): unknown[] {
   }));
 }
 
-function attributeChanges(entry: OrderedEntry, state: Map<string, string>): unknown[] {
+interface AttributeChange {
+  /** Where in the bar it takes effect, so a mid-bar change stays ordered. */
+  onset: string;
+  /** What it declares and for which staff — `clef:1`, `key:1`, `time:1`. */
+  identity: string;
+  value: unknown[];
+}
+
+/**
+ * What one `<attributes>` element changes, as a set rather than a sequence.
+ *
+ * Two engines can declare the same clef, key and time and still not agree
+ * character for character, and every one of those disagreements used to read
+ * as a difference in the music. On the Bach page, bar 1:
+ *
+ *     HOMR       <attributes><divisions>4</divisions><time>4/4</time></attributes>
+ *                <attributes><clef number="1">F4</clef><key>1</key><time>4/4</time></attributes>
+ *     Transcoda  <attributes><divisions>10080</divisions><key>1</key><time>4/4</time><clef>F4</clef></attributes>
+ *
+ * Same clef, same key, same time. Three spellings differ and none of them is
+ * music: the declarations arrive in a different order, HOMR splits them across
+ * two elements where Transcoda uses one, and HOMR numbers the clef where
+ * Transcoda leaves the number implicit.
+ *
+ * So the staff number becomes part of the identity rather than part of what is
+ * said — `<clef number="1">` and `<clef>` are the same clef on staff one — and
+ * the caller sorts by `(onset, identity)`, which makes order within a moment
+ * irrelevant while keeping a mid-bar change after the notes it follows.
+ * `divisions` was already excluded: it is a unit, not a reading.
+ */
+function attributeChanges(
+  entry: OrderedEntry,
+  state: Map<string, string>,
+  onset: string
+): AttributeChange[] {
   const children = contents(entry, 'attributes');
-  const changes: unknown[] = [];
+  const changes: AttributeChange[] = [];
   for (const child of children) {
     const tag = Object.keys(child).find((key) => key !== ':@');
     if (!tag || tag === 'divisions') continue;
-    const canonical = canonicalOrdered([child]);
-    const identity = `${tag}:${String(attrs(child)['@_number'] || '1')}`;
+    const declared = attrs(child);
+    const identity = `${tag}:${String(declared['@_number'] || '1')}`;
+    const remaining = Object.fromEntries(
+      Object.entries(declared).filter(([name]) => name !== '@_number')
+    );
+    const withoutNumber: OrderedEntry = { [tag]: child[tag] };
+    if (Object.keys(remaining).length > 0) withoutNumber[':@'] = remaining;
+    const canonical = canonicalOrdered([withoutNumber]);
     const serialized = JSON.stringify(canonical);
     if (state.get(identity) === serialized) continue;
     state.set(identity, serialized);
-    changes.push(...canonical);
+    changes.push({ onset, identity, value: canonical });
   }
   return changes;
 }
@@ -296,7 +343,7 @@ function describeMeasure(
   let previousNoteOnset = zero;
   const notes: SemanticNote[] = [];
   const coarseEvents: CoarseEvent[] = [];
-  const attributes: unknown[] = [];
+  const attributes: AttributeChange[] = [];
   const dynamics: unknown[] = [];
   const directions: unknown[] = [];
 
@@ -304,7 +351,7 @@ function describeMeasure(
     if (Object.prototype.hasOwnProperty.call(child, 'attributes')) {
       const declared = directText(contents(child, 'attributes'), 'divisions');
       if (declared) divisions = parsePositiveInteger(declared, 'divisions');
-      attributes.push(...attributeChanges(child, attributeState));
+      attributes.push(...attributeChanges(child, attributeState, formatFraction(cursor)));
       continue;
     }
     if (Object.prototype.hasOwnProperty.call(child, 'backup')) {
@@ -440,11 +487,18 @@ function describeMeasure(
       note.notations.map((value) => ({ eventIndex, value }))
     )
   );
+  // Declarations at the same moment are simultaneous, whichever order they were
+  // written in and however many `<attributes>` elements they were split across.
+  const orderedAttributes = [...attributes].sort((left, right) =>
+    left.onset === right.onset
+      ? left.identity.localeCompare(right.identity)
+      : compareFractionStrings(left.onset, right.onset)
+  );
   const components = {
     notation,
     voices,
     staves,
-    attributes,
+    attributes: orderedAttributes,
     lyrics,
     dynamics,
     directions,
@@ -454,7 +508,7 @@ function describeMeasure(
     notation: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:notation`, notation),
     voice: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:voice`, voices),
     staff: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:staff`, staves),
-    attributes: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:attributes`, attributes),
+    attributes: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:attributes`, orderedAttributes),
     lyrics: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:lyrics`, lyrics),
     dynamics: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:dynamics`, dynamics),
     directions: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:directions`, directions),

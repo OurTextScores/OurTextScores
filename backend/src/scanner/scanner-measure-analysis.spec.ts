@@ -221,6 +221,65 @@ describe('scanner measure analysis', () => {
     expect(classifyScannerMeasureDifference(carried[1], changed[1])).toEqual(['attributes']);
   });
 
+  it('reads the same clef, key and time however they are spelled', () => {
+    // Measured on the Bach page, bar 1. HOMR splits its declarations across two
+    // `<attributes>` elements and numbers the clef; Transcoda uses one element,
+    // a different order, and leaves the number implicit. Same clef, same key,
+    // same time — and every one of those spellings used to read as a difference
+    // in the music, which is what put "clef, key, time or divisions" on a bar
+    // the two engines agreed about.
+    const homr = firstDescriptor(
+      score(
+        '<measure number="1">' +
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
+          '<attributes><clef number="1"><sign>F</sign><line>4</line></clef>' +
+          '<key><fifths>1</fifths></key>' +
+          '<time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
+          note({ step: 'C', duration: 16 }) +
+          '</measure>',
+      ),
+    );
+    const transcoda = firstDescriptor(
+      score(
+        '<measure number="1">' +
+          '<attributes><divisions>10080</divisions>' +
+          '<key><fifths>1</fifths></key>' +
+          '<time><beats>4</beats><beat-type>4</beat-type></time>' +
+          '<clef><sign>F</sign><line>4</line></clef></attributes>' +
+          note({ step: 'C', duration: 40320 }) +
+          '</measure>',
+      ),
+    );
+
+    expect(homr.componentHashes.attributes).toBe(transcoda.componentHashes.attributes);
+  });
+
+  it('still separates a real attribute change from where it happens', () => {
+    // The set is per moment, not per bar: a clef change after two beats is not
+    // the same reading as the same clef declared at the start.
+    const atStart = firstDescriptor(
+      score(
+        '<measure number="1">' +
+          '<attributes><divisions>4</divisions><clef><sign>C</sign><line>3</line></clef></attributes>' +
+          note({ step: 'C', duration: 8 }) +
+          note({ step: 'D', duration: 8 }) +
+          '</measure>',
+      ),
+    );
+    const midBar = firstDescriptor(
+      score(
+        '<measure number="1">' +
+          '<attributes><divisions>4</divisions></attributes>' +
+          note({ step: 'C', duration: 8 }) +
+          '<attributes><clef><sign>C</sign><line>3</line></clef></attributes>' +
+          note({ step: 'D', duration: 8 }) +
+          '</measure>',
+      ),
+    );
+
+    expect(atStart.componentHashes.attributes).not.toBe(midBar.componentHashes.attributes);
+  });
+
   it('retains direction onset while discarding direction layout', () => {
     const base = firstDescriptor(
       score(
