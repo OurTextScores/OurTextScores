@@ -2634,6 +2634,8 @@ export class ScannerService implements OnModuleInit {
       originalFilename: job.originalFilename,
       pageCount: job.pageCount,
       includedPageCount: job.pages.filter((page) => page.included !== false).length,
+      /** Only meaningful while `preparing`; absent once the pages exist. */
+      preparedPageCount: job.status === 'preparing' ? job.preparedPageCount || 0 : undefined,
       options: job.options,
       enginePlan,
       pages: [...job.pages]
@@ -2745,7 +2747,7 @@ export class ScannerService implements OnModuleInit {
       hasMusicXml: Boolean(run.artifacts.musicXml),
       hasPdf: Boolean(run.artifacts.pdf),
       hasKern: Boolean(run.artifacts.kern),
-      artifactKinds: Object.entries(run.artifacts).flatMap(([kind, locator]) =>
+      artifactKinds: Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
         locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
       )
     };

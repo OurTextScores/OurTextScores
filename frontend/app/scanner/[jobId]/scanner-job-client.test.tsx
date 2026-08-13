@@ -203,6 +203,8 @@ describe("ScannerJobClient", () => {
       json: async () => ({
         ...partialJob,
         status: "preparing",
+        pageCount: 8,
+        preparedPageCount: 3,
         pages: [],
       }),
     });
@@ -215,6 +217,13 @@ describe("ScannerJobClient", () => {
     expect(
       screen.getByText(/before anything is sent to a recognition engine/),
     ).toBeInTheDocument();
+    // Preparation writes its pages in one transaction at the end, so without a
+    // number that moves, "working" and "stuck" look identical for two minutes.
+    expect(screen.getByText("3 of 8 ready")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Pages prepared" })).toHaveAttribute(
+      "aria-valuenow",
+      "3",
+    );
     // And not the grid that says the scan has begun.
     expect(screen.queryByLabelText("Scan pages")).toBeNull();
     expect(

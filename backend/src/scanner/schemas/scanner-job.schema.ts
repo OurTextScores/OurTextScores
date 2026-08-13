@@ -268,6 +268,17 @@ export class ScannerJob {
   @Prop({ type: Date })
   preparedAt?: Date;
 
+  /**
+   * Page images finished so far, while a source is still being rasterised.
+   *
+   * Preparation writes its pages in one transaction at the end, so until it
+   * lands the job looks identical whether it is on page one of twenty or page
+   * nineteen. This is the only signal a reader has that it is moving, and at
+   * roughly five seconds a page that matters. Cleared when preparation ends.
+   */
+  @Prop({ type: Number })
+  preparedPageCount?: number;
+
   /** Set when the job enters the provider queue; starts the queue-wait clock. */
   @Prop({ type: Date })
   queuedAt?: Date;

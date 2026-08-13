@@ -70,6 +70,15 @@ describe('dual-engine content identity', () => {
     );
     expect(scannerEngineArtifactLocators(migrated)).toHaveLength(2);
 
+    // A run that was planned and never started has no `artifacts` at all. This
+    // used to throw, which made a job cancelled during preparation impossible
+    // to delete.
+    expect(
+      scannerEngineArtifactLocators({
+        engines: { homr: { status: 'pending' } }
+      } as any)
+    ).toEqual([]);
+
     const legacyReviewed = { objectKey: 'page-reviewed.musicxml' } as any;
     expect(
       scannerHomrRun({

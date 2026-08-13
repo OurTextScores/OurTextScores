@@ -355,7 +355,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           )
         }))
       );
-      const pageFiles = await this.preparePages(job, inputs, workspace);
+      const reportPrepared = (prepared: number) => {
+        // `$max`, not `$set`: rasterisation and asset storage both count from
+        // one over the same pages, and a bar that runs to the end and restarts
+        // is worse than no bar. Scoped to the lease so a reclaimed job is not
+        // written to, and deliberately not bumping `statusVersion` — nothing is
+        // being decided, and a version that moves under a client is for state
+        // that is.
+        void this.jobs
+          .updateOne(
+            { jobId: job.jobId, status: 'preparing', leaseOwner: this.workerId },
+            { $max: { preparedPageCount: Math.min(prepared, job.pageCount) } }
+          )
+          .exec()
+          .catch(() => undefined);
+      };
+      const pageFiles = await this.preparePages(job, inputs, workspace, reportPrepared);
       const priorResults = new Map(job.pages.map((page) => [page.pageNumber, page]));
       const pages: ScannerPageResult[] = [];
       for (const pageFile of pageFiles) {
@@ -372,6 +387,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         const assets = await this.ensurePageAssets(job, pageFile.pageNumber, image, prior);
         if (assets.sourceImage) storedLocators.push(assets.sourceImage);
         if (assets.thumbnail) storedLocators.push(assets.thumbnail);
+        reportPrepared(pages.length + 1);
         pages.push(
           this.withInitialPlannedEngineRuns(
             job,
@@ -401,7 +417,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               'timings.prepareMs': Date.now() - prepareStartedAt
             },
             $inc: { statusVersion: 1 },
-            $unset: { leaseOwner: 1, leaseExpiresAt: 1 }
+            $unset: { leaseOwner: 1, leaseExpiresAt: 1, preparedPageCount: 1 }
           },
           { new: true }
         )
@@ -437,6 +453,15 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       }
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
+      // A count left behind on a cancelled or failed job would be read as
+      // progress the next time it entered preparation. Skipped when the job is
+      // already `preparing` again, which means another worker owns that number.
+      await this.jobs
+        .updateOne(
+          { jobId: job.jobId, status: { $ne: 'preparing' } },
+          { $unset: { preparedPageCount: 1 } }
+        )
+        .exec();
     }
   }
 
@@ -1436,10 +1461,20 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       .exec();
   }
 
+  /**
+   * Rasterise a retained source into page images.
+   *
+   * `onProgress` exists because this is where a job spends nearly all of its
+   * preparation — roughly five seconds a page — and the caller cannot see
+   * inside it. For a PDF that is one `pdftoppm` process over the whole
+   * document, so progress is read from the files it writes as it goes rather
+   * than from anything the process reports.
+   */
   private async preparePages(
     job: ScannerJobDocument,
     inputs: Array<{ source: ScannerSourceInput; buffer: Buffer }>,
-    workspace: string
+    workspace: string,
+    onProgress?: (prepared: number) => void
   ): Promise<Array<{ pageNumber: number; path: string; contentType: 'image/png' }>> {
     const isPdf = inputs[0]?.source.storage.contentType === 'application/pdf';
     if (!isPdf) {
@@ -1452,6 +1487,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           .png()
           .toFile(path);
         pages.push({ pageNumber: index + 1, path, contentType: 'image/png' });
+        onProgress?.(pages.length);
       }
       if (pages.length !== job.pageCount) {
         throw new ScannerProviderError(
@@ -1472,11 +1508,36 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const pdfPath = join(workspace, 'source.pdf');
     const outputPrefix = join(workspace, 'page');
     await fs.writeFile(pdfPath, inputs[0].buffer);
-    await execFileAsync(
+    const rasterizing = execFileAsync(
       'pdftoppm',
       ['-png', '-scale-to-x', '1920', '-scale-to-y', '-1', pdfPath, outputPrefix],
       { timeout: 120_000, maxBuffer: 5 * 1024 * 1024 }
     );
+    // A page counted here has been opened, not necessarily finished, so the
+    // count can lead the truth by one. That is the right way round for a
+    // progress indicator, and the caller only ever reports it as "ready".
+    let counting = false;
+    const progressTimer = onProgress
+      ? setInterval(() => {
+          if (counting) return;
+          counting = true;
+          void fs
+            .readdir(workspace)
+            .then((names) => {
+              const prepared = names.filter((name) => /^page-\d+\.png$/.test(name)).length;
+              if (prepared > 0) onProgress(prepared);
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              counting = false;
+            });
+        }, 750)
+      : undefined;
+    try {
+      await rasterizing;
+    } finally {
+      if (progressTimer) clearInterval(progressTimer);
+    }
     const entries = await fs.readdir(workspace);
     const pages = entries
       .filter((name) => /^page-\d+\.png$/.test(name))
@@ -1828,7 +1889,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         const run = page.engines?.[engineId];
         const definition = this.engineRegistry().get(engineId);
         if (!run || !definition) continue;
-        for (const [kind, locator] of Object.entries(run.artifacts)) {
+        for (const [kind, locator] of Object.entries(run.artifacts || {})) {
           if (!locator) continue;
           const extension = definition.artifacts[kind === 'musicXml' ? 'musicxml' : kind]?.extension;
           if (!extension) continue;

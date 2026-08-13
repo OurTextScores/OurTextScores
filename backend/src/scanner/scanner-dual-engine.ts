@@ -412,10 +412,18 @@ export function scannerMergedScoreStale(page: {
 }
 
 /** All artifacts owned by engine runs, including model-native intermediates. */
+/**
+ * Every stored object an engine run owns.
+ *
+ * `artifacts` is absent, not empty, on a run that was planned and never
+ * started — a page belonging to a job cancelled during preparation. Deleting
+ * such a job used to throw `Cannot convert undefined or null to object` and
+ * leave it undeletable.
+ */
 export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerStorageLocator[] {
   return Object.values(page.engines || {}).flatMap((run) =>
     run
-      ? ([...Object.values(run.artifacts), run.reviewedMusicXml].filter(
+      ? ([...Object.values(run.artifacts || {}), run.reviewedMusicXml].filter(
           Boolean
         ) as ScannerStorageLocator[])
       : []
@@ -447,7 +455,7 @@ export function scannerEngineManifest(page: ScannerPageResult): Record<string, u
                 completeness: run.completeness,
                 reviewedMusicXmlChecksumSha256: run.reviewedMusicXml?.checksumSha256,
                 artifactChecksumsSha256: Object.fromEntries(
-                  Object.entries(run.artifacts).flatMap(([kind, locator]) =>
+                  Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
                     locator ? [[kind, locator.checksumSha256]] : []
                   )
                 ),

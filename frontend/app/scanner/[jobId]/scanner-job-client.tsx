@@ -318,6 +318,12 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   // Before the review step, not after it: `preparing` is only ever set while a
   // freshly uploaded source is being turned into page images.
   const preparing = job.status === "preparing";
+  // Never past the total: a retained job from before the counter existed
+  // reports nothing, and the bar should read empty rather than full.
+  const preparedPages = Math.min(
+    Math.max(job.preparedPageCount || 0, 0),
+    job.pageCount || 0,
+  );
   const completedPages = job.pages.filter(
     (page) => page.status === "succeeded",
   ).length;
@@ -577,12 +583,37 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             Getting the pages ready
           </h2>
-          <p className="mt-1 max-w-3xl text-sm text-slate-500" aria-live="polite">
+          <p className="mt-1 max-w-3xl text-sm text-slate-500">
             Turning {job.originalFilename} into {job.pageCount}{" "}
             {job.pageCount === 1 ? "page image" : "page images"}. You will be
             able to reorder, rotate and exclude pages before anything is sent to
             a recognition engine.
           </p>
+          {/*
+            The count, not just a spinner. At roughly five seconds a page a
+            twenty-page source sits here for two minutes, and "it is working" and
+            "it is stuck" look the same without a number that moves.
+          */}
+          <div className="mt-4 flex items-center gap-3">
+            <div
+              className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={job.pageCount || 1}
+              aria-valuenow={preparedPages}
+              aria-label="Pages prepared"
+            >
+              <div
+                className="h-full rounded-full bg-blue-600 transition-[width] duration-500"
+                style={{
+                  width: `${Math.round((preparedPages / Math.max(job.pageCount || 1, 1)) * 100)}%`,
+                }}
+              />
+            </div>
+            <p className="text-sm tabular-nums text-slate-500" aria-live="polite">
+              {preparedPages} of {job.pageCount} ready
+            </p>
+          </div>
           <div
             className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
             aria-hidden="true"
@@ -591,7 +622,11 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               (_unused, index) => (
                 <div
                   key={index}
-                  className="h-40 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800"
+                  className={`h-40 rounded-lg ${
+                    index < preparedPages
+                      ? "bg-slate-200 dark:bg-slate-700"
+                      : "animate-pulse bg-slate-100 dark:bg-slate-800"
+                  }`}
                 />
               ),
             )}

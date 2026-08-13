@@ -38,6 +38,8 @@ export interface ScannerJob {
   originalFilename: string;
   pageCount: number;
   includedPageCount: number;
+  /** Page images finished so far; only sent while the job is `preparing`. */
+  preparedPageCount?: number;
   enginePlan?: {
     version: "scanner-engine-plan-v1";
     engineIds: string[];
