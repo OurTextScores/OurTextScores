@@ -13,8 +13,18 @@ export const MAX_SCANNER_COMPARISON_PARTS = 256;
 
 export interface ScannerPartDocumentInput {
   engineId: string;
+  /** The stored artifact this reading came from; what every record names. */
   artifactChecksumSha256: string;
   musicXml: Buffer;
+  /**
+   * Checksum of `musicXml` when it is not the artifact byte for byte.
+   *
+   * Set only by a recorded, deterministic rewrite of the artifact — currently
+   * part-layout reconciliation. The integrity check still runs, against this
+   * instead, so bytes are never accepted unverified; what changes is which of
+   * the two hashes is the document's identity and which is its content.
+   */
+  contentChecksumSha256?: string;
 }
 
 export interface ScannerPartMatchResult {
@@ -85,8 +95,12 @@ function readParts(input: ScannerPartDocumentInput): ParsedPart[] {
   if (!isScannerEngineId(input.engineId) || !/^[a-f0-9]{64}$/i.test(input.artifactChecksumSha256)) {
     throw new Error('Invalid scanner part-matching document identity');
   }
+  const expected = (input.contentChecksumSha256 || input.artifactChecksumSha256).toLowerCase();
+  if (!/^[a-f0-9]{64}$/i.test(expected)) {
+    throw new Error('Invalid scanner part-matching document identity');
+  }
   const actualChecksum = createHash('sha256').update(input.musicXml).digest('hex');
-  if (actualChecksum !== input.artifactChecksumSha256.toLowerCase()) {
+  if (actualChecksum !== expected) {
     throw new Error('Scanner part-matching artifact checksum does not match its MusicXML');
   }
   const { root, rootName } = parseValidMusicXml(input.musicXml);

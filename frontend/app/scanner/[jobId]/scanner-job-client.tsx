@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageComparison from "./page-comparison";
 import PageReview from "./page-review";
 import {
@@ -105,6 +105,14 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [draftPages, setDraftPages] = useState<ScannerJob["pages"]>([]);
   const [pageSetupDirty, setPageSetupDirty] = useState(false);
+  // Which reading sits in each pane. Defaulting to scan-versus-first-engine
+  // keeps the old view as the starting point; the reader can put the two
+  // engines side by side, which the fixed layout could never show.
+  const [previewLeft, setPreviewLeft] = useState("scan");
+  const [previewRight, setPreviewRight] = useState("");
+  // Advancing a page from the bottom of a long document otherwise leaves the
+  // reader looking at the footer of a page they have already dealt with.
+  const pageSectionRef = useRef<HTMLElement | null>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   const refresh = useCallback(async () => {
@@ -320,6 +328,18 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   const jobFinished = ["succeeded", "partial", "failed", "cancelled"].includes(
     job.status,
   );
+  // The next page a reader would work on, in the order they are shown.
+  const orderedIncluded = job.pages
+    .filter((page) => page.included !== false)
+    .sort((left, right) => left.ordinal - right.ordinal);
+  const selectedOrdinal =
+    orderedIncluded.findIndex((page) => page.pageNumber === selected?.pageNumber) + 1;
+  const nextIncludedPage = orderedIncluded.find(
+    (page) => page.ordinal > (selected?.ordinal ?? 0),
+  )?.pageNumber;
+  // Once the work has been combined the reader has been through it, so going
+  // back to an earlier page should not hide the button that rebuilds it.
+  const pagesRemain = nextIncludedPage !== undefined && !job.hasCombinedMusicXml;
   const decidedPages = job.pages.filter((page) => page.hasMergedScore).length;
   const primaryEngineName =
     job.enginePlan?.capabilitySnapshots[primaryEngineId]?.displayName || primaryEngineId;
@@ -346,10 +366,42 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
     ? job.enginePlan?.capabilitySnapshots[effectiveEngineId]
         ?.unsupportedSemanticClasses || []
     : [];
-  // Every engine that produced a reading gets its own preview beside the scan.
+  // Every engine that produced a reading can be put in either pane.
   const previewEngineIds = engineIds.filter(
     (engineId) => selected?.engines?.[engineId]?.status === "succeeded",
   );
+  // Either engine's rendering of this page, or the scan itself.
+  const previewChoices = [
+    { key: "scan", kind: "scan" as const, label: "Scan", pdfUrl: undefined },
+    ...(previewEngineIds.length > 0
+      ? previewEngineIds.map((engineId) => ({
+          key: engineId,
+          kind: "engine" as const,
+          label: engineLabel(job, engineId),
+          pdfUrl: selected?.engines?.[engineId]?.hasPdf
+            ? artifactUrl("pdf", selected.pageNumber, engineId)
+            : undefined,
+        }))
+      : [
+          {
+            key: "effective",
+            kind: "engine" as const,
+            label: effectiveLabel,
+            pdfUrl: selected?.hasPdf
+              ? artifactUrl("pdf", selected.pageNumber)
+              : undefined,
+          },
+        ]),
+  ];
+  // A pane's choice is a preference, not a guarantee: pages differ in which
+  // engines succeeded, so a key that isn't on offer here falls back rather than
+  // rendering an empty pane.
+  const previewFallbackRight =
+    previewChoices.find((choice) => choice.kind === "engine")?.key || "scan";
+  const resolvePreview = (key: string, fallback: string) =>
+    previewChoices.some((choice) => choice.key === key) ? key : fallback;
+  const leftPreviewKey = resolvePreview(previewLeft, "scan");
+  const rightPreviewKey = resolvePreview(previewRight, previewFallbackRight);
   const supportsSpotReview = engineIds.some((engineId) => {
     const run = selected?.engines?.[engineId];
     const capability = job.enginePlan?.capabilitySnapshots[engineId];
@@ -684,7 +736,10 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
       )}
 
       {selected && !reviewing && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <section
+          ref={pageSectionRef}
+          className="scroll-mt-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -830,78 +885,93 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             <PageComparison jobId={jobId} job={job} page={selected} />
           )}
           {/*
-            One preview per engine that produced a reading, each beside the scan
-            it read, so a reviewer can check either engine against the source
-            without holding the other in their head. Falls back to a single
-            effective preview for jobs that ran one engine.
+            One pane of the page beside another, with each side chosen by the
+            reader. It used to be a fixed stack — "Scan versus HOMR" then "Scan
+            versus Transcoda" — which fixed the scan on the left and made the
+            one comparison it could not show the interesting one: what the two
+            engines did differently.
           */}
-          {(previewEngineIds.length > 0
-            ? previewEngineIds.map((engineId) => ({
-                key: engineId,
-                label: engineLabel(job, engineId),
-                pdfUrl: selected.engines?.[engineId]?.hasPdf
-                  ? artifactUrl("pdf", selected.pageNumber, engineId)
-                  : undefined,
-              }))
-            : [
-                {
-                  key: "effective",
-                  label: effectiveLabel,
-                  pdfUrl: selected.hasPdf
-                    ? artifactUrl("pdf", selected.pageNumber)
-                    : undefined,
-                },
-              ]
-          ).map((preview) => (
-            <div key={preview.key} className="mt-5">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Scan versus {preview.label}
-              </p>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950">
-                  {selected.hasThumbnail ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={artifactUrl("thumbnail", selected.pageNumber)}
-                      alt={`Source preview for page ${selected.pageNumber}`}
-                      className="max-h-[70vh] w-full object-contain"
-                      style={{
-                        transform: `rotate(${selected.rotationDegrees}deg)`,
-                      }}
-                    />
-                  ) : (
-                    <p className="p-5 text-sm text-slate-500">
-                      Source preview is unavailable or has expired.
-                    </p>
-                  )}
-                </div>
-                <div className="min-h-[420px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
-                  {preview.pdfUrl ? (
-                    <object
-                      data={preview.pdfUrl}
-                      type="application/pdf"
-                      className="h-[70vh] min-h-[420px] w-full"
-                    >
-                      <p className="p-4 text-sm">
-                        PDF preview is unavailable in this browser.{" "}
-                        <a
-                          className="text-blue-600 underline"
-                          href={preview.pdfUrl}
-                        >
-                          Download it instead.
-                        </a>
-                      </p>
-                    </object>
-                  ) : (
-                    <p className="flex min-h-[420px] items-center justify-center p-5 text-sm text-slate-500">
-                      No rendered PDF is available for {preview.label} on this
-                      page.
-                    </p>
-                  )}
-                </div>
-              </div>
+          <div className="mt-5">
+            <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-medium uppercase tracking-wide text-slate-500">
+                Compare
+              </span>
+              {(
+                [
+                  ["left", leftPreviewKey, setPreviewLeft],
+                  ["right", rightPreviewKey, setPreviewRight],
+                ] as const
+              ).map(([side, value, setValue], index) => (
+                <span key={side} className="flex items-center gap-2">
+                  {index === 1 && <span className="text-slate-400">versus</span>}
+                  <label className="sr-only" htmlFor={`preview-${side}`}>
+                    {index === 0 ? "Left pane" : "Right pane"}
+                  </label>
+                  <select
+                    id={`preview-${side}`}
+                    value={value}
+                    onChange={(event) => setValue(event.target.value)}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900"
+                  >
+                    {previewChoices.map((choice) => (
+                      <option key={choice.key} value={choice.key}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              ))}
             </div>
-          ))}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {[leftPreviewKey, rightPreviewKey].map((choiceKey, index) => {
+                const choice =
+                  previewChoices.find((entry) => entry.key === choiceKey) ||
+                  previewChoices[0];
+                return (
+                  <div
+                    key={`${choiceKey}-${index}`}
+                    className="min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
+                  >
+                    {choice.kind === "scan" ? (
+                      selected.hasThumbnail ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={artifactUrl("thumbnail", selected.pageNumber)}
+                          alt={`Source preview for page ${selected.pageNumber}`}
+                          className="max-h-[70vh] w-full object-contain"
+                          style={{
+                            transform: `rotate(${selected.rotationDegrees}deg)`,
+                          }}
+                        />
+                      ) : (
+                        <p className="p-5 text-sm text-slate-500">
+                          Source preview is unavailable or has expired.
+                        </p>
+                      )
+                    ) : choice.pdfUrl ? (
+                      <object
+                        data={choice.pdfUrl}
+                        type="application/pdf"
+                        className="h-[70vh] min-h-[420px] w-full"
+                      >
+                        <p className="p-4 text-sm">
+                          PDF preview is unavailable in this browser.{" "}
+                          <a className="text-blue-600 underline" href={choice.pdfUrl}>
+                            Download it instead.
+                          </a>
+                        </p>
+                      </object>
+                    ) : (
+                      <p className="flex min-h-[420px] items-center justify-center p-5 text-sm text-slate-500">
+                        No rendered PDF is available for {choice.label} on this page.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
         </section>
       )}
 
@@ -914,9 +984,11 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
       {job.status === "succeeded" && includedPageCount > 0 && (
         <section className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-5 dark:border-cyan-900 dark:bg-cyan-950/20">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-            {includedPageCount > 1
-              ? "Combine pages and review"
-              : "Review the finished score"}
+            {includedPageCount === 1
+              ? "Review the finished score"
+              : pagesRemain
+                ? "Work through the pages"
+                : "Combine pages and review"}
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             {decidedPages === includedPageCount
@@ -924,25 +996,48 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               : decidedPages > 0
                 ? `${decidedPages} of ${includedPageCount} pages reconciled. The rest use the ${primaryEngineName} reading.`
                 : `No page has been reconciled yet, so this uses the ${primaryEngineName} reading throughout. Compare the engines on a page above to change that.`}
-            {includedPageCount > 1
-              ? " Combining rebuilds the whole work from what you decided."
-              : ""}
+            {includedPageCount === 1
+              ? ""
+              : pagesRemain
+                ? " Combining becomes available on the last page."
+                : " Combining rebuilds the whole work from what you decided."}
           </p>
+          {/*
+            Combining is only the right next step once there are no pages left
+            to review. Offering it from page one invited a reader to build the
+            work out of pages they had not looked at, and gave them nothing to
+            press when what they actually wanted was the next page.
+          */}
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            {includedPageCount > 1 && (
-              <button
-                type="button"
-                onClick={() => void runAction("reassemble", `${base}/reassemble`)}
-                disabled={Boolean(busyAction)}
-                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
-              >
-                {busyAction === "reassemble"
-                  ? "Combining…"
-                  : job.hasCombinedMusicXml
-                    ? "Rebuild the combined score"
-                    : "Combine pages"}
-              </button>
-            )}
+            {includedPageCount > 1 &&
+              (pagesRemain ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPage(nextIncludedPage);
+                    pageSectionRef.current?.scrollIntoView?.({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }}
+                  className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700"
+                >
+                  Go to page {selectedOrdinal + 1} of {includedPageCount} →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void runAction("reassemble", `${base}/reassemble`)}
+                  disabled={Boolean(busyAction)}
+                  className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
+                >
+                  {busyAction === "reassemble"
+                    ? "Combining…"
+                    : job.hasCombinedMusicXml
+                      ? "Rebuild the combined score"
+                      : "Combine pages"}
+                </button>
+              ))}
             {(job.hasCombinedMusicXml || includedPageCount === 1) &&
               job.hasMusicXml && (
                 <a

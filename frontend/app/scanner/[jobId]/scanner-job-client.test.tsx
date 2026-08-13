@@ -89,9 +89,10 @@ describe("ScannerJobClient", () => {
     );
   });
 
-  it("previews every engine that read the page, each beside the scan", async () => {
-    // One preview per engine: comparing an engine against the source should not
-    // require holding the other engine's rendering in your head.
+  it("lets the reader put any two readings side by side", async () => {
+    // It used to be a fixed stack of "Scan versus HOMR" then "Scan versus
+    // Transcoda", which could show either engine against the source but never
+    // the two engines against each other.
     const dualEngineJob: ScannerJob = {
       ...partialJob,
       status: "succeeded",
@@ -104,6 +105,8 @@ describe("ScannerJobClient", () => {
           transcoda: { displayName: "Transcoda", unsupportedSemanticClasses: [] },
         },
       },
+      pageCount: 1,
+      includedPageCount: 1,
       pages: [
         {
           ...partialJob.pages[0],
@@ -130,18 +133,64 @@ describe("ScannerJobClient", () => {
     });
 
     const { container } = render(<ScannerJobClient jobId="job-1" />);
-    expect(await screen.findByText("Scan versus HOMR")).toBeInTheDocument();
-    expect(screen.getByText("Scan versus Transcoda")).toBeInTheDocument();
+    const left = (await screen.findByLabelText("Left pane")) as HTMLSelectElement;
+    const right = screen.getByLabelText("Right pane") as HTMLSelectElement;
 
-    const previews = [...container.querySelectorAll("object")].map((node) =>
-      node.getAttribute("data"),
-    );
-    expect(previews).toEqual([
+    // Every reading is offered in either pane.
+    expect([...left.options].map((option) => option.textContent)).toEqual([
+      "Scan",
+      "HOMR",
+      "Transcoda",
+    ]);
+    // The old fixed view is the starting point, so nothing is lost by default.
+    expect(left.value).toBe("scan");
+    expect(right.value).toBe("homr");
+    expect(screen.getByAltText("Source preview for page 1")).toBeInTheDocument();
+
+    fireEvent.change(left, { target: { value: "homr" } });
+    fireEvent.change(right, { target: { value: "transcoda" } });
+
+    expect(
+      [...container.querySelectorAll("object")].map((node) =>
+        node.getAttribute("data"),
+      ),
+    ).toEqual([
       "/api/proxy/scanner/jobs/job-1/artifacts/pdf?page=1&engine=homr",
       "/api/proxy/scanner/jobs/job-1/artifacts/pdf?page=1&engine=transcoda",
     ]);
-    // The scan itself is shown against each engine, not just once.
-    expect(screen.getAllByAltText("Source preview for page 1")).toHaveLength(2);
+    // The engines are now against each other, so the scan is not in either pane.
+    expect(screen.queryByAltText("Source preview for page 1")).toBeNull();
+  });
+
+  it("advances a page at a time and only offers combining on the last", async () => {
+    // Combining from page one would build the work out of pages nobody had
+    // looked at, and left a reader who wanted the next page nothing to press.
+    const twoGoodPages: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pages: [
+        partialJob.pages[0],
+        { ...partialJob.pages[1], status: "succeeded", hasMusicXml: true, canRetry: false },
+      ],
+    } as ScannerJob;
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => twoGoodPages,
+    });
+
+    render(<ScannerJobClient jobId="job-1" />);
+
+    const next = await screen.findByRole("button", {
+      name: /Go to page 2 of 2/,
+    });
+    expect(screen.queryByRole("button", { name: "Combine pages" })).toBeNull();
+
+    fireEvent.click(next);
+
+    expect(
+      await screen.findByRole("button", { name: "Combine pages" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Go to page/ })).toBeNull();
   });
 
   it("queues only the selected failed page", async () => {

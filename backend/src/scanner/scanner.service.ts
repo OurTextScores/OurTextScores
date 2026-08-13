@@ -33,6 +33,7 @@ import {
 } from './schemas/scanner-job.schema';
 import { assertValidMusicXml } from './scanner-musicxml';
 import { spliceScannerMeasures } from './scanner-splice';
+import { reconcileScannerPartLayout } from './scanner-part-layout';
 import { transferScannerMarkings } from './scanner-marking-transfer';
 import { readScannerSpliceFacts } from './scanner-splice-safety';
 import {
@@ -1198,7 +1199,16 @@ export class ScannerService implements OnModuleInit {
     pageNumber: number,
     engineId: string,
     statusVersion: number,
-    artifactChecksumSha256: string
+    artifactChecksumSha256: string,
+    /**
+     * The other side of the pair this reading is being shown against.
+     *
+     * Needed because a reading is not always served as the engine wrote it: a
+     * candidate whose parts were folded onto the base's staves must be served
+     * folded, or the pane the reviewer sees would number its bars differently
+     * from the blocks drawn over it.
+     */
+    baseEngineId?: string
   ): Promise<{ body: Buffer; contentType: string }> {
     this.assertAvailable(userId);
     if (!isScannerEngineId(engineId)) {
@@ -1250,7 +1260,17 @@ export class ScannerService implements OnModuleInit {
     if (createHash('sha256').update(body).digest('hex') !== artifact.checksumSha256.toLowerCase()) {
       throw new ConflictException('Scanner comparison reading changed; refresh and try again');
     }
-    return { body, contentType: artifact.contentType };
+    if (!baseEngineId || baseEngineId === engineId) {
+      return { body, contentType: artifact.contentType };
+    }
+    if (!isScannerEngineId(baseEngineId) || !plan.engineIds.includes(baseEngineId)) {
+      throw new BadRequestException(`Scanner engine ${baseEngineId} is not part of this job`);
+    }
+    const layout = reconcileScannerPartLayout({
+      baseXml: await this.engineMusicXml(page, baseEngineId),
+      candidateXml: body
+    });
+    return { body: layout.musicXml, contentType: artifact.contentType };
   }
 
   /**
@@ -1576,7 +1596,7 @@ export class ScannerService implements OnModuleInit {
       );
     }
 
-    const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId);
+    const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input);
     const mergedMeasureIndexes = resolveMergedIndexes(map, baseMeasureIndexes);
     if (!mergedMeasureIndexes) {
       throw new ConflictException(
@@ -1592,7 +1612,7 @@ export class ScannerService implements OnModuleInit {
       );
     }
 
-    const candidateXml = await this.engineMusicXml(page, input.engineId);
+    const candidateXml = await this.comparisonReadingMusicXml(page, input.engineId, input);
     const outcome = spliceScannerMeasures({
       baseXml,
       candidateXml,
@@ -1741,7 +1761,7 @@ export class ScannerService implements OnModuleInit {
       page.mergedScore?.measureMap ||
       identityMeasureMap(
         readScannerSpliceFacts(
-          await this.mergedOrEngineMusicXml(page, mergedSourceEngineId)
+          await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input)
         )[0]?.measures.length ?? 0
       );
 
@@ -1790,8 +1810,8 @@ export class ScannerService implements OnModuleInit {
       );
     }
 
-    const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId);
-    const candidateXml = await this.engineMusicXml(page, input.engineId);
+    const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input);
+    const candidateXml = await this.comparisonReadingMusicXml(page, input.engineId, input);
     const outcome = transferScannerMarkings({
       baseXml,
       candidateXml,
@@ -1924,7 +1944,8 @@ export class ScannerService implements OnModuleInit {
   /** The merged score when there is one, otherwise the engine it would start from. */
   private async mergedOrEngineMusicXml(
     page: ScannerPageResult,
-    engineId: string
+    engineId: string,
+    pair?: { baseEngineId: string; candidateEngineId: string }
   ): Promise<Buffer> {
     if (page.mergedMusicXml && !scannerMergedScoreStale(page)) {
       return this.storage.getObjectBuffer(
@@ -1932,7 +1953,36 @@ export class ScannerService implements OnModuleInit {
         page.mergedMusicXml.objectKey
       );
     }
-    return this.engineMusicXml(page, engineId);
+    return pair
+      ? this.comparisonReadingMusicXml(page, engineId, pair)
+      : this.engineMusicXml(page, engineId);
+  }
+
+  /**
+   * One engine's reading as the comparison saw it, not as it was stored.
+   *
+   * When the two engines wrote the same keyboard page with different numbers
+   * of parts, the comparison folded the candidate onto the base's staves before
+   * aligning anything — so every measure index a block quotes counts measures
+   * in that folded document. Splicing from the stored file instead would take
+   * the right index out of the wrong document, which is worse than refusing.
+   *
+   * Deterministic and derived, so this recomputes rather than storing a second
+   * artifact: the same two readings always fold the same way.
+   */
+  private async comparisonReadingMusicXml(
+    page: ScannerPageResult,
+    engineId: string,
+    pair: { baseEngineId: string; candidateEngineId: string }
+  ): Promise<Buffer> {
+    const musicXml = await this.engineMusicXml(page, engineId);
+    if (engineId !== pair.candidateEngineId || pair.baseEngineId === pair.candidateEngineId) {
+      return musicXml;
+    }
+    return reconcileScannerPartLayout({
+      baseXml: await this.engineMusicXml(page, pair.baseEngineId),
+      candidateXml: musicXml
+    }).musicXml;
   }
 
   /** One engine's reading of a page: reviewed when it exists, raw otherwise. */

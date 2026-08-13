@@ -48,6 +48,7 @@ interface PageComparisonResult {
   status: "ready" | "refused";
   base: ComparisonSide;
   candidate: ComparisonSide;
+  layoutReconciliation?: { engineId: string; note: string };
   refusalReasons: ComparisonRefusal[];
   analysis?: {
     status: "succeeded" | "refused";
@@ -257,6 +258,13 @@ export default function PageComparison({
 
   const engineName = (engineId: string) =>
     job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId;
+  // Two different failures used to read the same. "Cannot be compared safely"
+  // is true only when the readings could not be lined up at all; once the
+  // analysis has succeeded they *were* compared, and what is missing is the
+  // scan evidence for where the differences are — a different problem with a
+  // different answer, and one this page hid behind the wrong sentence.
+  const readingsAligned =
+    comparison?.status === "ready" || comparison?.analysis?.status === "succeeded";
   const readyBlocks =
     comparison?.geometry?.blocks.filter(
       (entry): entry is ComparisonBlockResult & { status: "ready" } =>
@@ -282,11 +290,15 @@ export default function PageComparison({
    */
   const geometrySignature = comparison?.geometry?.geometrySignature;
 
+  // `baseEngine` is not redundant with the pair in the path: a reading whose
+  // parts were folded onto the other reading's staves has to be served folded,
+  // or this pane would number its bars differently from the blocks drawn on it.
   const readingUrl = (side: ComparisonSide) =>
     `${base}/pages/${page.pageNumber}/comparison/readings/${encodeURIComponent(side.engineId)}?${new URLSearchParams(
       {
         statusVersion: String(comparison?.statusVersion || ""),
         artifactChecksumSha256: side.artifactChecksumSha256,
+        baseEngine: comparison?.base.engineId || "",
       },
     ).toString()}`;
 
@@ -423,19 +435,34 @@ export default function PageComparison({
               {error}
             </p>
           )}
-          {comparison?.status === "refused" && readyBlocks.length === 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              <p className="font-medium">
-                These readings cannot be compared safely.
-              </p>
-              <ul className="mt-1 list-disc pl-5">
-                {comparison.refusalReasons.map((reason, index) => (
-                  <li key={`${reason.detail}-${index}`}>{reason.detail}</li>
-                ))}
-              </ul>
-            </div>
+          {comparison?.layoutReconciliation && (
+            // The candidate pane is then not literally the file the engine
+            // produced, and a reviewer comparing it against the download would
+            // otherwise be left to work that out for themselves.
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+              <span className="font-medium">
+                {engineName(comparison.layoutReconciliation.engineId)} was regrouped
+                to line up.
+              </span>{" "}
+              {comparison.layoutReconciliation.note}
+            </p>
           )}
-          {comparison?.status === "ready" &&
+          {comparison?.status === "refused" &&
+            readyBlocks.length === 0 &&
+            !readingsAligned && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                <p className="font-medium">
+                  These readings cannot be compared safely.
+                </p>
+                <ul className="mt-1 list-disc pl-5">
+                  {comparison.refusalReasons.map((reason, index) => (
+                    <li key={`${reason.detail}-${index}`}>{reason.detail}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          {comparison &&
+            readingsAligned &&
             comparison.geometry?.status === "refused" &&
             readyBlocks.length === 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
@@ -447,7 +474,10 @@ export default function PageComparison({
                   an uncertain part of the scan.
                 </p>
                 <ul className="mt-1 list-disc pl-5">
-                  {comparison.geometry.refusalReasons.map((reason, index) => (
+                  {(comparison.geometry.refusalReasons.length > 0
+                    ? comparison.geometry.refusalReasons
+                    : comparison.refusalReasons
+                  ).map((reason, index) => (
                     <li key={`${reason.detail}-${index}`}>{reason.detail}</li>
                   ))}
                 </ul>

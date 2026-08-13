@@ -287,6 +287,65 @@ describe("PageComparison", () => {
     );
   });
 
+  it("says a page could not be lined up only when it could not be", async () => {
+    // Two different failures used to read "These readings cannot be compared
+    // safely": one where the parts never matched, and one where they matched
+    // and the scan could not prove where the differences were. Only the first
+    // is what that sentence means.
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...readyComparison(),
+        status: "refused",
+        analysis: { status: "succeeded", blocks: [] },
+        refusalReasons: [{ detail: "Staff 1 boundaries do not prove 4 measure crops" }],
+        geometry: { status: "refused", blocks: [], refusalReasons: [] },
+      }),
+    });
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+
+    expect(
+      await screen.findByText("The differences have no verified image evidence."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("These readings cannot be compared safely."),
+    ).toBeNull();
+    // The producer's own reason still reaches the reader.
+    expect(
+      screen.getByText("Staff 1 boundaries do not prove 4 measure crops"),
+    ).toBeInTheDocument();
+  });
+
+  it("says when one reading was regrouped to line up with the other", async () => {
+    // A keyboard page written as one braced part by one engine and as two
+    // parts by the other is the same music; the candidate pane is then not
+    // literally the file that engine produced, and the reader is told so.
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        ...readyComparison(),
+        layoutReconciliation: {
+          engineId: "transcoda",
+          note: "2 single-staff parts were read as 1 part on 2 staves.",
+        },
+      }),
+    });
+    render(<PageComparison jobId="job-1" job={job} page={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Compare engine readings" }),
+    );
+
+    expect(
+      await screen.findByText(/Transcoda was regrouped to line up\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/2 single-staff parts were read as 1 part on 2 staves\./),
+    ).toBeInTheDocument();
+  });
+
   it("withholds the detail view when the server refuses geometry", async () => {
     (globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
@@ -404,6 +463,10 @@ describe("PageComparison", () => {
       );
       expect(reading.searchParams.get("statusVersion")).toBe("9");
       expect(reading.searchParams.get("artifactChecksumSha256")).toBe(checksum);
+      // Both readings are asked for as the comparison lined them up: a
+      // candidate whose parts were regrouped onto the base's staves has to
+      // arrive regrouped, or its bars are not the bars the blocks name.
+      expect(reading.searchParams.get("baseEngine")).toBe("homr");
     }
   });
 

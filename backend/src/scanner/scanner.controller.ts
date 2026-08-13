@@ -255,6 +255,7 @@ export class ScannerController {
     @Param('engineId') engineId: string,
     @Query('statusVersion', ParseIntPipe) statusVersion: number,
     @Query('artifactChecksumSha256') artifactChecksumSha256: string | undefined,
+    @Query('baseEngine') baseEngine: string | undefined,
     @Res({ passthrough: true }) response: Response
   ) {
     const reading = await this.scanner.pageComparisonReading(
@@ -263,7 +264,8 @@ export class ScannerController {
       pageNumber,
       engineId,
       statusVersion,
-      String(artifactChecksumSha256 ?? '')
+      String(artifactChecksumSha256 ?? ''),
+      baseEngine ? String(baseEngine) : undefined
     );
     response.setHeader('Content-Type', reading.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

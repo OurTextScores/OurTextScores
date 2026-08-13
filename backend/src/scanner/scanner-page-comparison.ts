@@ -16,6 +16,10 @@ import {
   type ScannerDescribedPart
 } from './scanner-measure-analysis';
 import { matchScannerMusicXmlParts } from './scanner-part-matching';
+import {
+  reconcileScannerPartLayout,
+  type ScannerPartLayoutRefusal
+} from './scanner-part-layout';
 import type {
   ScannerComparisonPair,
   ScannerEngineId,
@@ -71,6 +75,19 @@ export interface ScannerPageComparisonResult {
   geometry?: ScannerComparisonGeometryJoinResult;
   /** The scan's own systems, for a view that goes line by line (§2.1). */
   systems?: ScannerComparisonSystem[];
+  /**
+   * What had to be reshaped before the two readings could be lined up at all.
+   *
+   * Present when one engine wrote a keyboard part as one braced pair of staves
+   * and the other wrote it as two parts. The reader is told, because the
+   * candidate they are looking at is then not literally the file the engine
+   * produced — the same notes, regrouped.
+   */
+  layoutReconciliation?: {
+    engineId: ScannerEngineId;
+    note: string;
+    contentChecksumSha256: string;
+  };
   refusalReasons: ScannerPageComparisonRefusal[];
 }
 
@@ -115,6 +132,7 @@ function refused(
     analysis?: ScannerComparisonAnalysis;
     geometry?: ScannerComparisonGeometryJoinResult;
     systems?: ScannerComparisonSystem[];
+    layoutReconciliation?: ScannerPageComparisonResult['layoutReconciliation'];
   } = {}
 ): ScannerPageComparisonResult {
   return {
@@ -255,6 +273,33 @@ export async function compareScannerPage(input: {
   let baseParts: ScannerDescribedPart[];
   let candidateParts: ScannerDescribedPart[];
   let analysis: ScannerComparisonAnalysis;
+  // Two readings of the same keyboard page can differ about how many parts it
+  // has without differing about the music. Nothing downstream can align a
+  // two-staff part with a one-staff part, so the shapes are settled here,
+  // before anything looks at the notes.
+  let layout: ReturnType<typeof reconcileScannerPartLayout>;
+  let layoutRefusals: ScannerPartLayoutRefusal[] = [];
+  try {
+    layout = reconcileScannerPartLayout({
+      baseXml: base.musicXml,
+      candidateXml: candidate.musicXml
+    });
+    layoutRefusals = layout.refusals;
+  } catch (error) {
+    return refused(pair, base, candidate, [
+      {
+        stage: 'analysis',
+        code: 'part-layout-reconciliation-failed',
+        detail: unexpectedFailureDetail(
+          error,
+          'analysis',
+          'part-layout-reconciliation-failed',
+          input.reportInternalError
+        )
+      }
+    ]);
+  }
+  const candidateXml = layout.musicXml;
   try {
     partMatchResult = matchScannerMusicXmlParts(
       {
@@ -265,11 +310,12 @@ export async function compareScannerPage(input: {
       {
         engineId: candidate.engineId,
         artifactChecksumSha256: candidate.artifactChecksumSha256,
-        musicXml: candidate.musicXml
+        musicXml: candidateXml,
+        contentChecksumSha256: layout.applied ? layout.contentChecksumSha256 : undefined
       }
     );
     baseParts = describeScannerMusicXmlMeasures(base.musicXml);
-    candidateParts = describeScannerMusicXmlMeasures(candidate.musicXml);
+    candidateParts = describeScannerMusicXmlMeasures(candidateXml);
     analysis = buildScannerComparisonAnalysis({
       partMatchResult,
       base: {
@@ -307,11 +353,19 @@ export async function compareScannerPage(input: {
       pair,
       base,
       candidate,
-      analysis.refusalReasons.map((detail) => ({
-        stage: 'analysis',
-        code: 'structural-comparison-refused',
-        detail
-      })),
+      [
+        ...layoutRefusals.map((refusal) => ({
+          stage: 'analysis' as const,
+          code: `part-layout-${refusal.code}`,
+          detail: refusal.detail,
+          engineId: candidate.engineId
+        })),
+        ...analysis.refusalReasons.map((detail) => ({
+          stage: 'analysis' as const,
+          code: 'structural-comparison-refused',
+          detail
+        }))
+      ],
       { sourceImage, analysis }
     );
   }
@@ -327,10 +381,26 @@ export async function compareScannerPage(input: {
       sourceImage,
       analysis,
       geometry,
+      ...(layout.applied
+        ? {
+            layoutReconciliation: {
+              engineId: candidate.engineId,
+              note: layout.note!,
+              contentChecksumSha256: layout.contentChecksumSha256
+            }
+          }
+        : {}),
       refusalReasons: []
     };
   }
 
+  const layoutReconciliation = layout.applied
+    ? {
+        engineId: candidate.engineId,
+        note: layout.note!,
+        contentChecksumSha256: layout.contentChecksumSha256
+      }
+    : undefined;
   const producerAttempts: ScannerPageComparisonRefusal[] = [];
   let lastGeometry: ScannerComparisonGeometryJoinResult | undefined;
   // Kept even when the join refuses: a row-per-system view needs the scan's
@@ -338,6 +408,18 @@ export async function compareScannerPage(input: {
   let lastSystems: ScannerComparisonSystem[] | undefined;
   for (const side of [base, candidate]) {
     if (!side.measureGeometryProducer) continue;
+    // A producer works from the stored artifact, whose parts are the ones this
+    // comparison just regrouped. Its measure references would name a document
+    // nothing else here is using, so the reshaped side contributes no geometry.
+    if (layout.applied && side.engineId === candidate.engineId) {
+      producerAttempts.push({
+        stage: 'geometry',
+        code: 'part-layout-reconciled',
+        detail: 'This reading was regrouped onto the other reading’s staves, so its own page geometry no longer describes it',
+        engineId: side.engineId
+      });
+      continue;
+    }
     const parts = side.engineId === base.engineId ? baseParts : candidateParts;
     let produced: ScannerMeasureGeometryProducerResult;
     try {
@@ -407,6 +489,7 @@ export async function compareScannerPage(input: {
         sourceImage,
         analysis,
         geometry,
+        ...(layoutReconciliation ? { layoutReconciliation } : {}),
         refusalReasons: []
       };
     }
@@ -434,6 +517,6 @@ export async function compareScannerPage(input: {
             detail: 'Neither selected engine has a registered measure-geometry producer'
           }
         ],
-    { sourceImage, analysis, geometry, systems: lastSystems }
+    { sourceImage, analysis, geometry, systems: lastSystems, layoutReconciliation }
   );
 }

@@ -92,6 +92,54 @@ describe('scanner page comparison pipeline', () => {
     });
   });
 
+  it('compares a keyboard page the two engines wrote with different part counts', async () => {
+    // The Joplin case. HOMR writes a piano as one part on two braced staves and
+    // Transcoda writes it as two parts of one staff each; both are right, and
+    // part matching pairs a part with a part, so this refused outright with
+    // "Part 1 has no compatible candidate part". The candidate is folded onto
+    // the base's staves before anything looks at the notes.
+    const value = input();
+    const note = (step: string, octave: number, voice: number, staff: number) =>
+      `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch>` +
+      `<duration>1</duration><voice>${voice}</voice><staff>${staff}</staff></note>`;
+    value.base.musicXml = Buffer.from(
+      '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name>' +
+        '</score-part></part-list><part id="P1"><measure number="1">' +
+        '<attributes><divisions>1</divisions><staves>2</staves></attributes>' +
+        note('C', 5, 1, 1) +
+        '<backup><duration>1</duration></backup>' +
+        note('C', 3, 5, 2) +
+        '</measure></part></score-partwise>'
+    );
+    value.base.artifactChecksumSha256 = sha(value.base.musicXml);
+    const single = (id: string, step: string, octave: number) =>
+      `<part id="${id}"><measure number="1"><attributes><divisions>1</divisions></attributes>` +
+      `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch>` +
+      '<duration>1</duration></note></measure></part>';
+    value.candidate.musicXml = Buffer.from(
+      '<score-partwise><part-list><score-part id="Ta"><part-name/></score-part>' +
+        '<score-part id="Tb"><part-name/></score-part></part-list>' +
+        single('Ta', 'C', 5) +
+        single('Tb', 'C', 3) +
+        '</score-partwise>'
+    );
+    value.candidate.artifactChecksumSha256 = sha(value.candidate.musicXml);
+
+    const result = await compareScannerPage(value);
+
+    expect(result.analysis?.status).toBe('succeeded');
+    expect(result.layoutReconciliation).toMatchObject({
+      engineId: 'transcoda',
+      note: expect.stringContaining('2 staves')
+    });
+    // The stored artifact is still what the reading is identified by; the
+    // folded bytes are named separately so a decision stays traceable to a file.
+    expect(result.candidate.artifactChecksumSha256).toBe(sha(value.candidate.musicXml));
+    expect(result.layoutReconciliation!.contentChecksumSha256).not.toBe(
+      sha(value.candidate.musicXml)
+    );
+  });
+
   it('preserves structural analysis while refusing an ungrounded comparison', async () => {
     const value = input();
     delete (value.base as any).measureGeometryProducer;
