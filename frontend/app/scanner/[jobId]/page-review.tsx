@@ -11,6 +11,9 @@ interface Band {
   start: number;
   end: number;
   basis: "note" | "measure" | "position";
+  /** The staff's own slice of the context crop, which also holds its neighbours. */
+  contextTop?: number;
+  contextHeight?: number;
 }
 
 interface Spot {
@@ -384,7 +387,15 @@ export default function PageReview({
         </div>
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+          {/*
+            The container hugs the image rather than filling the row. The band
+            below is positioned in percentages, and those are of *this* box — so
+            with a full-width container and `object-contain` the picture would
+            letterbox inside it and the highlight would drift off the symbol the
+            moment the crop's aspect ratio changed, which is exactly what
+            switching to the surrounding staves does.
+          */}
+          <div className="relative mx-auto w-fit overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/crop/${spot.id}?${new URLSearchParams(
@@ -395,7 +406,7 @@ export default function PageReview({
                 },
               ).toString()}`}
               alt={`Page ${pageNumber}, the passage the scanner was unsure about`}
-              className="max-h-80 w-full object-contain"
+              className="block max-h-80 w-auto max-w-full"
             />
             {/* Without this the question is unanswerable: a staff crop can hold
                 thirty notes, and "which duration is this?" needs to say which.
@@ -404,10 +415,22 @@ export default function PageReview({
             {spot.band && (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 border-x-2 border-cyan-500 bg-cyan-400/20"
+                className="pointer-events-none absolute border-2 border-cyan-500 bg-cyan-400/20"
                 style={{
                   left: `${spot.band.start * 100}%`,
                   width: `${Math.max(2, (spot.band.end - spot.band.start) * 100)}%`,
+                  // At `staff` the crop is the staff, so the band fills it. At
+                  // `context` the crop also holds the staves above and below,
+                  // and a full-height band would point at all three to ask
+                  // about a symbol on one.
+                  top:
+                    level === "context" && spot.band.contextTop !== undefined
+                      ? `${spot.band.contextTop * 100}%`
+                      : 0,
+                  height:
+                    level === "context" && spot.band.contextHeight !== undefined
+                      ? `${spot.band.contextHeight * 100}%`
+                      : "100%",
                 }}
               />
             )}

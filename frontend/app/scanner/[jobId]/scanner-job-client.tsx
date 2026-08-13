@@ -312,6 +312,12 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   ).length;
   const engineIds = plannedEngineIds(job, selected);
   const primaryEngineId = job.enginePlan?.primaryEngineId || engineIds[0];
+  // What the job-level downloads are actually built from: each page's effective
+  // MusicXML, which is the reconciled score wherever one exists.
+  const includedPageCount = job.pages.filter((page) => page.included !== false).length;
+  const decidedPages = job.pages.filter((page) => page.hasMergedScore).length;
+  const primaryEngineName =
+    job.enginePlan?.capabilitySnapshots[primaryEngineId]?.displayName || primaryEngineId;
   const effectiveEngineId = selectedRawEngineId(job, selected);
   const primaryRun = primaryEngineId
     ? selected?.engines?.[primaryEngineId]
@@ -931,17 +937,46 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                 Open combined score in Score Editor
               </a>
             )}
-            {job.hasPdf && (
+            {(job.hasCombinedPdf || job.hasPdf) && (
+              /*
+                One route, two things: the API's `pdf` kind serves the combined
+                score when there is one and the page preview otherwise. The
+                button used to say "combined" for both, so a job with no
+                combined score still offered one.
+              */
               <a
                 href={artifactUrl("pdf")}
                 target="_blank"
                 rel="noreferrer"
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-700"
               >
-                Open combined PDF
+                {job.hasCombinedPdf ? "Open combined PDF" : "Open page preview PDF"}
               </a>
             )}
           </div>
+          {/*
+            Say what these contain. Every one is built from each page's
+            *effective* MusicXML — the merged score once reconciliation
+            decisions exist, the spot-reviewed reading otherwise, and the
+            primary engine's raw output failing both — so "which engine?" has
+            an answer, and it should not have to be inferred.
+          */}
+          <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+            {decidedPages > 0 ? (
+              <>
+                Built from your reconciled score on{" "}
+                {decidedPages === 1 ? "1 page" : `${decidedPages} pages`}
+                {decidedPages < includedPageCount
+                  ? `, and the ${primaryEngineName} reading elsewhere.`
+                  : "."}
+              </>
+            ) : (
+              <>
+                Built from the {primaryEngineName} reading. Reconcile a page
+                below and these are rebuilt from what you decided.
+              </>
+            )}
+          </p>
           {job.hasCombinedMusicXml ? (
             <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               Page assembly is in beta. Measure numbering is made continuous and

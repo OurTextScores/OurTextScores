@@ -52,7 +52,12 @@ import {
   SCANNER_UPLOAD_DIRECTORY,
   scannerUserHash
 } from './scanner.constants';
-import { comparisonCropRects, CropLevel, cropForLevel } from './scanner-crop';
+import {
+  comparisonCropRects,
+  CropLevel,
+  cropForLevel,
+  staffBandWithinContext
+} from './scanner-crop';
 import { locateSymbol } from './scanner-locate';
 
 /** Field order within a captured token; mirrors the provider's capture. */
@@ -847,6 +852,21 @@ export class ScannerService implements OnModuleInit {
       // enough, which is what `remainingFloor` is for.
       spots: spots.map((spot, index) => {
         const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
+        const band = locateSymbol(staff?.tokens, spot.symbolIndex, staff?.symbols);
+        // The context crop holds the staves above and below, so the band needs
+        // to know which slice of it is the staff being asked about — otherwise
+        // it highlights all three.
+        const raster = page.recognitionRaster;
+        const vertical =
+          band && raster
+            ? staffBandWithinContext(
+                staff?.region,
+                { width: raster.width, height: raster.height },
+                staves
+                  .filter((entry: any) => entry.index !== spot.staffIndex)
+                  .map((entry: any) => entry.region)
+              )
+            : null;
         return {
           id: index,
           head: spot.head,
@@ -857,7 +877,9 @@ export class ScannerService implements OnModuleInit {
           symbolIndex: spot.symbolIndex,
           // Where to point on the staff crop. Without this the reviewer is
           // asked "which duration is this?" over a line of thirty notes.
-          band: locateSymbol(staff?.tokens, spot.symbolIndex, staff?.symbols)
+          band: band && vertical
+            ? { ...band, contextTop: vertical.top, contextHeight: vertical.height }
+            : band
         };
       }),
       remainingFloor: remainingFloor(spots, 0),
@@ -2591,6 +2613,9 @@ export class ScannerService implements OnModuleInit {
             hasThumbnail: Boolean(page.thumbnail),
             hasMusicXml: Boolean(effectiveMusicXml),
             effectiveEngineId: effectiveMusicXml?.engineId,
+            /** A reviewer has reconciled this page; it is what assembly uses. */
+            hasMergedScore: Boolean(page.mergedMusicXml && !scannerMergedScoreStale(page)),
+            mergedDecisionCount: (page.mergedScore?.decisions || []).length,
             hasPdf: this.materializedArtifactIsCurrent(
               page.pdf,
               SCANNER_ARTIFACT_BUILDERS.pagePdf,

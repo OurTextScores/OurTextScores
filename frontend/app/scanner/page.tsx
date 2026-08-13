@@ -44,6 +44,15 @@ export default async function ScannerPage() {
             className="text-blue-600 hover:underline dark:text-blue-400"
           >
             HOMR
+          </a>{" "}
+          and{" "}
+          <a
+            href="https://huggingface.co/btrkeks/transcoda-59M-zeroshot-v1"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Transcoda
           </a>
           .
         </p>

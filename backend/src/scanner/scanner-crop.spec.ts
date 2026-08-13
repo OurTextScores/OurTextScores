@@ -1,4 +1,4 @@
-import { comparisonCropRects, cropForLevel, padAndClamp } from './scanner-crop';
+import { comparisonCropRects, cropForLevel, padAndClamp, staffBandWithinContext } from './scanner-crop';
 
 const IMAGE = { width: 1000, height: 800 };
 
@@ -109,5 +109,35 @@ describe('comparisonCropRects', () => {
         0
       )
     ).toEqual([{ left: 0, top: 0, width: 100, height: 50 }]);
+  });
+});
+
+describe('staffBandWithinContext', () => {
+  const image = { width: 1000, height: 1000 };
+
+  it('gives the staff its own slice of a crop that holds its neighbours', () => {
+    // The complaint this fixes: at context zoom the highlight covered all three
+    // staves, pointing at a system to ask about a symbol on one line of it.
+    const staff = [100, 400, 900, 460];
+    const above = [100, 200, 900, 260];
+    const below = [100, 600, 900, 660];
+    const band = staffBandWithinContext(staff, image, [above, below]);
+
+    expect(band).not.toBeNull();
+    // The staff sits in the middle of the crop, not filling it.
+    expect(band!.top).toBeGreaterThan(0.2);
+    expect(band!.top + band!.height).toBeLessThan(0.8);
+  });
+
+  it('fills the crop when there are no neighbours to make room for', () => {
+    const band = staffBandWithinContext([100, 400, 900, 460], image, []);
+
+    expect(band!.top).toBeCloseTo(0, 5);
+    expect(band!.height).toBeCloseTo(1, 5);
+  });
+
+  it('says nothing when the staff has no region', () => {
+    expect(staffBandWithinContext(null, image, [])).toBeNull();
+    expect(staffBandWithinContext([1, 2, 3], image, [])).toBeNull();
   });
 });

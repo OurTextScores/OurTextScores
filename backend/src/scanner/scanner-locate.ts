@@ -51,6 +51,17 @@ export interface SpotBand {
   end: number;
   /** How the band was derived, so the UI can be honest about precision. */
   basis: 'note' | 'measure' | 'position';
+  /**
+   * The staff's own vertical extent within the *context* crop, 0-1.
+   *
+   * The horizontal fraction is the same at both zoom levels, because the
+   * context crop grows only vertically. The vertical fraction is not: at
+   * `staff` the crop *is* the staff, and at `context` it also holds the staves
+   * above and below. Without this the highlight covers all of them, which
+   * points at three staves to ask about a symbol on one.
+   */
+  contextTop?: number;
+  contextHeight?: number;
 }
 
 function clamp01(value: number): number {

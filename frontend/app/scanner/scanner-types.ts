@@ -69,6 +69,9 @@ export interface ScannerJob {
     hasMusicXml: boolean;
     /** Raw engine selected by plan order; absent for reviewed/reconciled derivatives. */
     effectiveEngineId?: string;
+    /** A reviewer has reconciled this page; it is what assembly uses. */
+    hasMergedScore?: boolean;
+    mergedDecisionCount?: number;
     hasPdf: boolean;
     canRetry: boolean;
     engines?: Record<string, ScannerEngineRun | undefined>;

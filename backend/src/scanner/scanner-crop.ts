@@ -87,6 +87,29 @@ export function cropForLevel(
   return { left: base.left, top, width: base.width, height: Math.max(1, bottom - top) };
 }
 
+/**
+ * Where the staff itself sits inside the context crop, as fractions 0-1.
+ *
+ * The context crop deliberately holds the staves above and below, so a
+ * highlight drawn over its full height points at three staves to ask about a
+ * symbol on one. This is what lets the band cover only the staff it is about
+ * while the reader still sees the system around it.
+ */
+export function staffBandWithinContext(
+  staffRegion: number[] | null | undefined,
+  image: { width: number; height: number },
+  neighbourRegions: Array<number[] | null | undefined> = []
+): { top: number; height: number } | null {
+  if (!staffRegion || staffRegion.length !== 4) return null;
+  const staff = padAndClamp(staffRegion, 12, image);
+  const context = cropForLevel('context', staffRegion, image, neighbourRegions);
+  if (context.height <= 0) return null;
+  const top = (staff.top - context.top) / context.height;
+  const height = staff.height / context.height;
+  const clamped = Math.min(1, Math.max(0, top));
+  return { top: clamped, height: Math.min(1 - clamped, Math.max(0.02, height)) };
+}
+
 /** Merge consecutive measure boxes into one padded crop per physical system. */
 export function comparisonCropRects(
   regions: ComparisonCropRegion[],

@@ -260,7 +260,12 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       const includedCount = pages.filter((page) => page.included !== false).length;
 
       const musicXmlBundle = await this.createBundle(job, successful);
-      const combined = await this.combinePages(job, successful, job.pageCount);
+      // Against the included pages, for the same reason the status above is: a
+      // job with pages deselected is complete when its included pages are, and
+      // measuring assembly against `pageCount` meant such a job could never
+      // combine at all — it reported "every page must succeed" about pages
+      // nobody asked it to scan.
+      const combined = await this.combinePages(job, successful, includedCount);
       const previewPdf = await this.createPreviewPdf(job, successful, workspace);
       const status: 'succeeded' | 'partial' =
         successful.length === includedCount ? 'succeeded' : 'partial';
