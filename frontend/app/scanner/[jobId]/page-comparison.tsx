@@ -348,7 +348,7 @@ export default function PageComparison({
           className="rounded-lg border border-cyan-300 bg-white px-3 py-2 text-sm text-cyan-800 hover:bg-cyan-50 dark:border-cyan-800 dark:bg-slate-900 dark:text-cyan-200"
           aria-expanded={open}
         >
-          {open ? "Close comparison" : "Compare engine readings"}
+          {open ? "Close" : "Compare engine readings"}
         </button>
       </div>
 
