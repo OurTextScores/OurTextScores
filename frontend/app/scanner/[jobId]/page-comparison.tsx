@@ -308,6 +308,12 @@ export default function PageComparison({
         ).toString()}`,
         // One row per system of the scan, each engine's reading beneath it.
         compareMode: "rows",
+        // Only the lines this difference falls on. The gutter is the index, so
+        // the rows do not have to be one too — and a reviewer who clicked a
+        // difference is not asking about the agreeing lines below it.
+        ...(selectedBlockIndex === null
+          ? {}
+          : { compareBlock: String(selectedBlockIndex) }),
       }).toString()}`
     : undefined;
 
@@ -571,8 +577,39 @@ export default function PageComparison({
                           {readableMeasureRange(
                             selectedBlock.candidateMeasureRefs,
                           )}
-                          . The engraved readings are in the merge editor below.
                         </p>
+
+                        {/*
+                          The merge editor for this difference, and only for it.
+                          It sat below as a separate whole-page card, which put
+                          the evidence for a difference and the place you act on
+                          it in two different parts of the page, with every
+                          agreeing line in between.
+
+                          It is pulled out of the centered column because three
+                          scores stacked need the width — measured on a 2560px
+                          display, an earlier 120rem cap left 320px of dead
+                          margin either side. The 2rem back stops a vertical
+                          scrollbar pushing a horizontal one onto the page.
+                        */}
+                        {embeddedCompareUrl && (
+                          <div className="relative left-1/2 w-[calc(100vw-2rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
+                            <iframe
+                              key={embeddedCompareUrl}
+                              src={embeddedCompareUrl}
+                              title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
+                              className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                            />
+                            <a
+                              href={embeddedCompareUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-2 inline-block text-xs text-cyan-700 hover:underline dark:text-cyan-300"
+                            >
+                              Open this difference in its own tab ↗
+                            </a>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -580,57 +617,38 @@ export default function PageComparison({
               </>
             )}
 
+
           {/*
-            The whole page, below the block work, in the score editor's compare
-            mode — the same embed change review uses. It needs no crops, so it
-            still renders when geometry refuses and the block evidence is
-            withheld.
+            Nothing could be placed on the scan, so there is no difference to
+            click — but the scan's systems are known regardless, and withholding
+            the merge editor here would leave the reviewer with no way to see
+            the page at all. Decisions stay impossible: their signatures are
+            withheld for exactly these blocks (§7).
           */}
-          {comparison && embeddedCompareUrl && allBlocks.length > 0 && (
-            <div className="border-t border-slate-200 pt-5 dark:border-slate-800">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
+          {comparison &&
+            embeddedCompareUrl &&
+            allBlocks.length > 0 &&
+            readyBlocks.length === 0 && (
+              <div className="border-t border-slate-200 pt-5 dark:border-slate-800">
                 <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Whole-page diff review
+                  Review the page
                 </h4>
-                <p className="text-xs text-slate-500">
-                  {comparison.base.displayName} versus{" "}
-                  {comparison.candidate.displayName}, bar by bar
+                <p className="mt-1 text-xs text-slate-500">
+                  None of the {allBlocks.length}{" "}
+                  {allBlocks.length === 1 ? "difference" : "differences"} could
+                  be located on the scan, so none can be decided. The readings
+                  are still shown line by line.
                 </p>
+                <div className="relative left-1/2 mt-3 w-[calc(100vw-2rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
+                  <iframe
+                    key={embeddedCompareUrl}
+                    src={embeddedCompareUrl}
+                    title={`Reviewing page ${page.pageNumber}`}
+                    className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                  />
+                </div>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                The editor aligns and highlights the whole page itself. Its
-                highlighting is the editor&apos;s own comparison, not the{" "}
-                {allBlocks.length} semantic{" "}
-                {allBlocks.length === 1 ? "block" : "blocks"} listed above, so
-                the two can disagree.
-              </p>
-              {/*
-                Two whole scores side by side need far more width than the
-                page's centered column allows, so the frame is pulled out of it
-                and centered on the viewport instead. It takes the full width
-                deliberately — measured on a 2560px display, an earlier 120rem
-                cap left 320px of dead margin on each side. The 2rem it gives
-                back stops a vertical scrollbar pushing a horizontal one onto
-                the page.
-              */}
-              <div className="relative left-1/2 mt-3 w-[calc(100vw-2rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
-                <iframe
-                  key={embeddedCompareUrl}
-                  src={embeddedCompareUrl}
-                  title={`Whole-page comparison of ${comparison.base.displayName} and ${comparison.candidate.displayName}`}
-                  className="h-[min(85vh,60rem)] min-h-[38rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
-                />
-                <a
-                  href={embeddedCompareUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-block text-xs text-cyan-700 hover:underline dark:text-cyan-300"
-                >
-                  Open the comparison in its own tab ↗
-                </a>
-              </div>
-            </div>
-          )}
+            )}
         </div>
       )}
     </section>

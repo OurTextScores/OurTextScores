@@ -621,4 +621,64 @@ describe("ScannerJobClient", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("offers the step between reviewing pages and having a score", async () => {
+    // Reconciling a page settles what that page says. Nothing turned a stack of
+    // pages into the work, so the flow simply stopped after the last page with
+    // no sign that anything remained.
+    const job: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      hasMusicXml: true,
+      hasCombinedMusicXml: true,
+      pages: [
+        { ...partialJob.pages[0], hasMergedScore: true },
+        { ...partialJob.pages[0], pageNumber: 2, ordinal: 2 },
+      ],
+    };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => job }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Combine pages and review" }),
+    ).toBeInTheDocument();
+    // Says how much of the work is the reviewer's and how much is the engine's.
+    expect(
+      screen.getByText(/1 of 2 pages reconciled/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "Open the finished score in the Score Editor",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not ask a single-page scan to combine anything", async () => {
+    const job: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pageCount: 1,
+      includedPageCount: 1,
+      hasMusicXml: true,
+      pages: [{ ...partialJob.pages[0], hasMergedScore: true }],
+    };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => job }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Review the finished score" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Combine pages/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "Open the finished score in the Score Editor",
+      }),
+    ).toBeInTheDocument();
+  });
 });

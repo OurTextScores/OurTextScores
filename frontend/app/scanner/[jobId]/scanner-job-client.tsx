@@ -900,6 +900,66 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         </section>
       )}
 
+      {/*
+        The step between reviewing pages and having a score. Reconciling a page
+        settles what *that page* says; nothing until here turns a stack of pages
+        into the work, and without it the flow simply stopped after the last
+        page with no indication that anything remained.
+      */}
+      {job.status === "succeeded" && includedPageCount > 0 && (
+        <section className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-5 dark:border-cyan-900 dark:bg-cyan-950/20">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {includedPageCount > 1
+              ? "Combine pages and review"
+              : "Review the finished score"}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            {decidedPages === includedPageCount
+              ? `Every page is reconciled.`
+              : decidedPages > 0
+                ? `${decidedPages} of ${includedPageCount} pages reconciled. The rest use the ${primaryEngineName} reading.`
+                : `No page has been reconciled yet, so this uses the ${primaryEngineName} reading throughout. Compare the engines on a page above to change that.`}
+            {includedPageCount > 1
+              ? " Combining rebuilds the whole work from what you decided."
+              : ""}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {includedPageCount > 1 && (
+              <button
+                type="button"
+                onClick={() => void runAction("reassemble", `${base}/reassemble`)}
+                disabled={Boolean(busyAction)}
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
+              >
+                {busyAction === "reassemble"
+                  ? "Combining…"
+                  : job.hasCombinedMusicXml
+                    ? "Rebuild the combined score"
+                    : "Combine pages"}
+              </button>
+            )}
+            {(job.hasCombinedMusicXml || includedPageCount === 1) &&
+              job.hasMusicXml && (
+                <a
+                  href={editorUrl()}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                >
+                  Open the finished score in the Score Editor
+                </a>
+              )}
+          </div>
+          {includedPageCount > 1 && !job.hasCombinedMusicXml && (
+            <p className="mt-3 text-xs text-slate-500">
+              {job.mergeStatus === "incompatible" || job.mergeStatus === "failed"
+                ? `The pages were not combined${job.mergeReason ? `: ${job.mergeReason}` : ""}. Each page file below is complete and unaffected.`
+                : "The pages have not been combined yet."}
+            </p>
+          )}
+        </section>
+      )}
+
       {(job.hasMusicXml || job.hasZip) && (
         <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -973,9 +1033,11 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             ) : (
               <>
                 Built from the {primaryEngineName} reading. Reconcile a page
-                below and these are rebuilt from what you decided.
+                above and these are rebuilt from what you decided.
               </>
-            )}
+            )}{" "}
+            The archive carries both: each engine&apos;s own reading of every
+            page, and the page as it now stands.
           </p>
           {job.hasCombinedMusicXml ? (
             <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
@@ -983,13 +1045,6 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               page breaks are preserved, but ties, slurs, and lyrics that cross
               a page boundary are not reconstructed. The per-page files remain
               authoritative.
-            </p>
-          ) : job.mergeStatus === "incompatible" ||
-            job.mergeStatus === "failed" ? (
-            <p className="mt-4 text-xs text-slate-500">
-              The pages were not combined
-              {job.mergeReason ? `: ${job.mergeReason}` : ""}. Every page file
-              below is complete and unaffected.
             </p>
           ) : null}
           <p className="mt-4 text-xs text-slate-500">

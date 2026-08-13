@@ -200,9 +200,14 @@ describe("PageComparison", () => {
     expect(
       screen.getByText(/HOMR: measure 4 · Transcoda: measure 4/),
     ).toBeInTheDocument();
+    // The merge editor now lives inside the difference the reviewer clicked,
+    // not in a separate card below every agreeing line.
     expect(
-      screen.getByRole("heading", { name: "Whole-page diff review" }),
+      screen.getByTitle(/Reconciling difference 1 of page 1/),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Whole-page diff review" }),
+    ).not.toBeInTheDocument();
   });
 
   it("never engraves a reading itself", async () => {
@@ -223,9 +228,7 @@ describe("PageComparison", () => {
     expect(await screen.findByText("1 differing block")).toBeInTheDocument();
 
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Whole-page diff review" }),
-      ).toBeInTheDocument(),
+      expect(screen.getByTitle(/Reconciling difference/)).toBeInTheDocument(),
     );
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/comparison/readings/"),
@@ -276,9 +279,7 @@ describe("PageComparison", () => {
     });
 
     expect(
-      await screen.findByRole("heading", {
-        name: "Whole-page diff review",
-      }),
+      await screen.findByTitle(/Reconciling difference 1 of page 1/),
     ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining("candidateEngine=kraken"),
@@ -348,9 +349,12 @@ describe("PageComparison", () => {
       screen.getByRole("button", { name: "Compare engine readings" }),
     );
 
+    // Nothing could be placed on the scan, so there is no difference to click —
+    // but withholding the editor would leave no way to see the page at all.
     expect(
-      await screen.findByRole("heading", { name: "Whole-page diff review" }),
+      await screen.findByRole("heading", { name: "Review the page" }),
     ).toBeInTheDocument();
+    expect(screen.getByTitle(/Reviewing page 1/)).toBeInTheDocument();
     // No crops, because nothing proved where those measures are on the scan.
     expect(screen.queryByAltText(/Source evidence/)).not.toBeInTheDocument();
   });
@@ -365,10 +369,13 @@ describe("PageComparison", () => {
     );
 
     const frame = (await screen.findByTitle(
-      "Whole-page comparison of HOMR and Transcoda",
+      /Reconciling difference 1 of page 1/,
     )) as HTMLIFrameElement;
     const url = new URL(frame.src, "http://localhost");
     expect(url.pathname).toBe("/score-editor/index.html");
+    // Scoped to the difference the reviewer is looking at, so the agreeing
+    // lines below it are not also drawn.
+    expect(url.searchParams.get("compareBlock")).toBe("0");
     expect(url.searchParams.get("leftLabel")).toBe("HOMR");
     expect(url.searchParams.get("rightLabel")).toBe("Transcoda");
     // The editor is handed our differences; its own measure signature cannot
