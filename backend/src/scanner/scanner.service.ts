@@ -1027,6 +1027,19 @@ export class ScannerService implements OnModuleInit {
             (ref: any) => ref.measureIndex
           ),
           differenceClasses: block.differenceClasses || [],
+          // Which events inside each bar are unmatched, so a reader is pointed
+          // at the note rather than at the bar containing it. Named by side to
+          // match the rest of this payload, which speaks left/right rather than
+          // base/candidate.
+          symbolDifferences: (block.symbolDifferences || []).map((difference: any) => ({
+            measurePosition: difference.measurePosition,
+            leftMeasureIndex: difference.baseMeasureIndex,
+            rightMeasureIndex: difference.candidateMeasureIndex,
+            leftEventIndexes: difference.baseEventIndexes,
+            rightEventIndexes: difference.candidateEventIndexes,
+            leftEventCount: difference.baseEventCount,
+            rightEventCount: difference.candidateEventCount
+          })),
           // What each side has to give, so a control that would take nothing is
           // never offered.
           leftMarkings: block.baseMarkings,

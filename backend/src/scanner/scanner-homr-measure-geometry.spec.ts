@@ -176,6 +176,7 @@ describe('HOMR measure geometry producer', () => {
         {
           version: SCANNER_COMPARISON_BLOCK_VERSION,
           blockIndex: 0,
+          symbolDifferences: [],
           baseAnchorIndex: -1,
           baseMarkings: { dynamics: false, lyrics: false },
           candidateMarkings: { dynamics: false, lyrics: false },

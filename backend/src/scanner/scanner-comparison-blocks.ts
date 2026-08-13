@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { alignSequenceLcs } from '../common/sequence-alignment';
 import {
   scannerBlockContentSignature,
   type ScannerComparisonPair,
@@ -58,6 +59,41 @@ export interface ScannerComparisonDocumentSideInput {
   unsupportedSemanticClasses?: string[];
 }
 
+/**
+ * Which events inside a bar the two readings disagree about.
+ *
+ * A block names bars, and a bar is a coarse thing to point at: "these readings
+ * differ in notes or rhythm somewhere in bar 12" leaves the reader to find the
+ * note. The measure descriptors already carry a per-event sketch — the same one
+ * used to locate a measure that is only nearly identical — so aligning those
+ * two sketches says exactly which events are unmatched on each side.
+ *
+ * Indexes count events in the bar, ordered by onset then pitch, and are the
+ * same ordering on both sides. Absent when the two readings have different
+ * numbers of bars here: there is no bar to compare an added or removed one
+ * against, and guessing a pairing would point at the wrong notes.
+ */
+export interface ScannerBlockSymbolDifference {
+  /** Position within this block's measures, not within the part. */
+  measurePosition: number;
+  baseMeasureIndex: number;
+  candidateMeasureIndex: number;
+  /** Events present in the base reading that the candidate does not match. */
+  baseEventIndexes: number[];
+  candidateEventIndexes: number[];
+  /**
+   * How many events each bar has in total.
+   *
+   * The consumer draws these highlights over a rendering it did not produce
+   * this analysis from, and has to find the k-th event in a bar by its own
+   * means. Counting the same total is the cheapest check that its idea of an
+   * event matches this one; when it does not, it can fall back to marking the
+   * bar rather than confidently pointing at the wrong note.
+   */
+  baseEventCount: number;
+  candidateEventCount: number;
+}
+
 export interface ScannerComparisonBlock {
   version: typeof SCANNER_COMPARISON_BLOCK_VERSION;
   blockIndex: number;
@@ -65,6 +101,8 @@ export interface ScannerComparisonBlock {
   stablePartKey: string;
   baseMeasureRefs: ScannerComparisonMeasureIdentity[];
   candidateMeasureRefs: ScannerComparisonMeasureIdentity[];
+  /** Per-bar event disagreements; empty when they cannot be paired. */
+  symbolDifferences: ScannerBlockSymbolDifference[];
   /**
    * The base measure this block sits after; `-1` means the start of the part.
    *
@@ -272,6 +310,7 @@ export function buildScannerComparisonBlocks(input: {
       candidateMeasureRefs: candidateDescriptors.map((descriptor) =>
         measureRef(candidate, partMatch.stablePartKey, descriptor)
       ),
+      symbolDifferences: symbolDifferences(baseDescriptors, candidateDescriptors),
       baseDescriptorHashes,
       candidateDescriptorHashes,
       // A block with base measures is anchored by its own first one; one
@@ -382,6 +421,55 @@ function partsByDocumentId(
  * A partial set of plausible matches is evidence for a refusal, not permission
  * to compare only the convenient parts.
  */
+
+/** The most events in one bar this will align; beyond it the bar is left coarse. */
+const MAX_SCANNER_SYMBOL_EVENTS_PER_MEASURE = 256;
+
+/**
+ * Align two bars event by event and report what did not match.
+ *
+ * Bars are paired by position, which is only meaningful when both readings
+ * have the same number of them — an added or removed bar has no counterpart,
+ * and pairing across one would slide every later bar against the wrong
+ * neighbour and mark the whole passage as differing.
+ */
+function symbolDifferences(
+  base: readonly ScannerMeasureDescriptor[],
+  candidate: readonly ScannerMeasureDescriptor[]
+): ScannerBlockSymbolDifference[] {
+  if (base.length === 0 || base.length !== candidate.length) return [];
+  const differences: ScannerBlockSymbolDifference[] = [];
+  base.forEach((baseMeasure, position) => {
+    const candidateMeasure = candidate[position];
+    const left = baseMeasure.alignment?.events;
+    const right = candidateMeasure.alignment?.events;
+    if (!left || !right) return;
+    if (
+      left.length > MAX_SCANNER_SYMBOL_EVENTS_PER_MEASURE ||
+      right.length > MAX_SCANNER_SYMBOL_EVENTS_PER_MEASURE
+    ) {
+      return;
+    }
+    const baseEventIndexes: number[] = [];
+    const candidateEventIndexes: number[] = [];
+    for (const op of alignSequenceLcs(left, right)) {
+      if (op.type === 'removed') baseEventIndexes.push(op.baseIndex);
+      else if (op.type === 'added') candidateEventIndexes.push(op.candidateIndex);
+    }
+    if (baseEventIndexes.length === 0 && candidateEventIndexes.length === 0) return;
+    differences.push({
+      measurePosition: position,
+      baseMeasureIndex: baseMeasure.measureIndex,
+      candidateMeasureIndex: candidateMeasure.measureIndex,
+      baseEventIndexes,
+      candidateEventIndexes,
+      baseEventCount: left.length,
+      candidateEventCount: right.length
+    });
+  });
+  return differences;
+}
+
 export function buildScannerComparisonAnalysis(input: {
   partMatchResult: ScannerPartMatchResult;
   base: ScannerComparisonDocumentSideInput;

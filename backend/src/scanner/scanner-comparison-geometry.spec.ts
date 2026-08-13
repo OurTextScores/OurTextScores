@@ -45,6 +45,7 @@ function block(blockIndex = 0): ScannerComparisonBlock {
   return {
     version: SCANNER_COMPARISON_BLOCK_VERSION,
     blockIndex,
+    symbolDifferences: [],
     baseAnchorIndex: blockIndex - 1,
     baseMarkings: { dynamics: false, lyrics: false },
     candidateMarkings: { dynamics: false, lyrics: false },

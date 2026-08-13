@@ -111,6 +111,55 @@ function sides(
 }
 
 describe('scanner comparison blocks', () => {
+  it('names the events inside a bar that did not match', () => {
+    // A block names bars, and a bar is a coarse thing to point at: "these
+    // readings differ in notes or rhythm somewhere in bar 12" leaves the reader
+    // to find the note. The per-event sketch the descriptors already carry says
+    // exactly which events are unmatched on each side.
+    const match = matchedPart();
+    const base = [fuzzyDescriptor(0, 'bar', ['c', 'd', 'e', 'f'])];
+    const candidate = [fuzzyDescriptor(0, 'bar-other', ['c', 'd', 'g', 'f'])];
+
+    const blocks = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(base, candidate, match)
+    });
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].symbolDifferences).toEqual([
+      {
+        measurePosition: 0,
+        baseMeasureIndex: 0,
+        candidateMeasureIndex: 0,
+        baseEventIndexes: [2],
+        candidateEventIndexes: [2],
+        baseEventCount: 4,
+        candidateEventCount: 4
+      }
+    ]);
+  });
+
+  it('points at no event when there is no bar to compare against', () => {
+    // An added or removed bar has no counterpart. Pairing across one would
+    // slide every later bar against the wrong neighbour and mark a whole
+    // passage as differing, which is worse than staying at bar granularity.
+    const match = matchedPart();
+    const base = [fuzzyDescriptor(0, 'bar', ['c', 'd'])];
+    const candidate = [
+      fuzzyDescriptor(0, 'bar', ['c', 'd']),
+      fuzzyDescriptor(1, 'extra', ['e', 'f'])
+    ];
+
+    const blocks = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(base, candidate, match)
+    });
+
+    for (const block of blocks) {
+      expect(block.symbolDifferences).toEqual([]);
+    }
+  });
+
   it('emits no block when coarse and rich descriptors agree', () => {
     const match = matchedPart();
     const measures = [equalDescriptor(0, 'a'), equalDescriptor(1, 'b')];
