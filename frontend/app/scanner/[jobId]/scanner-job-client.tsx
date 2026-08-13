@@ -315,6 +315,11 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
   // What the job-level downloads are actually built from: each page's effective
   // MusicXML, which is the reconciled score wherever one exists.
   const includedPageCount = job.pages.filter((page) => page.included !== false).length;
+  // Terminal, in the sense that no page is still going to change. Anything
+  // offered before this describes a scan that is not finished.
+  const jobFinished = ["succeeded", "partial", "failed", "cancelled"].includes(
+    job.status,
+  );
   const decidedPages = job.pages.filter((page) => page.hasMergedScore).length;
   const primaryEngineName =
     job.enginePlan?.capabilitySnapshots[primaryEngineId]?.displayName || primaryEngineId;
@@ -966,13 +971,23 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             Job downloads
           </h2>
           <div className="mt-3 flex flex-wrap gap-3">
-            {job.hasZip && (
+            {/*
+              Not while pages are still being recognised. The archive is built
+              on demand from whatever exists, and `hasZip` turns true the moment
+              the *first* page has a reading — so mid-scan this offered a
+              partial archive under the words "all results". The single-page
+              downloads beside it are a different claim and stay: a finished
+              page's reading really is available.
+            */}
+            {job.hasZip && jobFinished && (
               <a
                 href={artifactUrl("zip")}
                 download
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
               >
-                Download all results (.zip)
+                {job.status === "succeeded"
+                  ? "Download all results (.zip)"
+                  : "Download results so far (.zip)"}
               </a>
             )}
             {(job.pageCount === 1 || job.hasCombinedMusicXml) &&

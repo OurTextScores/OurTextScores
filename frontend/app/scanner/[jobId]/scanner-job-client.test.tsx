@@ -75,7 +75,8 @@ describe("ScannerJobClient", () => {
       screen.getByRole("button", { name: /Page 2.*Failed/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Download all results (.zip)" }),
+      // A partial job has some results, not all of them.
+      screen.getByRole("link", { name: "Download results so far (.zip)" }),
     ).toHaveAttribute("href", "/api/proxy/scanner/jobs/job-1/artifacts/zip");
     expect(
       screen.getByAltText("Source preview for page 1"),
@@ -605,6 +606,7 @@ describe("ScannerJobClient", () => {
     render(<ScannerJobClient jobId="job-1" />);
 
     expect(
+      // This job succeeded; assembly declining is a separate matter.
       await screen.findByRole("link", { name: "Download all results (.zip)" }),
     ).toBeInTheDocument();
     expect(
@@ -680,5 +682,43 @@ describe("ScannerJobClient", () => {
         name: "Open the finished score in the Score Editor",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("does not offer the whole job while pages are still being read", async () => {
+    // The archive is built on demand from whatever exists, and the flag turns
+    // true the moment the *first* page has a reading — so mid-scan this offered
+    // a partial archive under the words "all results".
+    const job: ScannerJob = {
+      ...partialJob,
+      status: "running",
+      hasMusicXml: true,
+      hasZip: true,
+      pages: [
+        { ...partialJob.pages[0] },
+        { ...partialJob.pages[0], pageNumber: 2, ordinal: 2, status: "running" },
+      ],
+    };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => job }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "two-pages.pdf" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Download results so far/)).not.toBeInTheDocument();
+  });
+
+  it("says the archive is partial when the scan did not fully succeed", async () => {
+    const job: ScannerJob = { ...partialJob, hasZip: true, hasMusicXml: true };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => job }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    // `partial` is terminal, so the download is offered — but not as "all".
+    expect(await screen.findByText(/Download results so far/)).toBeInTheDocument();
+    expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
   });
 });
