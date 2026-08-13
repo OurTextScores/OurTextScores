@@ -181,6 +181,40 @@ describe("PageComparison", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  it("grows the frame to the editor's own height rather than scrolling it", async () => {
+    // The rows view does not scroll itself: a scrollable box inside a
+    // fixed-height frame gives a reader two scrollbars and the shorter of two
+    // viewports. The page's own scrollbar is the point.
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    const frame = await screen.findByTitle(/Reconciling difference 1 of page 1/);
+    expect(frame).not.toHaveStyle({ height: "2400px" });
+
+    fireEvent(
+      window,
+      new MessageEvent("message", {
+        data: { type: "ots-compare-height", height: 2400 },
+        origin: window.location.origin,
+      }),
+    );
+
+    await waitFor(() => expect(frame).toHaveStyle({ height: "2400px" }));
+  });
+
+  it("ignores a height from anywhere but this site", async () => {
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    const frame = await screen.findByTitle(/Reconciling difference 1 of page 1/);
+
+    fireEvent(
+      window,
+      new MessageEvent("message", {
+        data: { type: "ots-compare-height", height: 9000 },
+        origin: "https://somewhere.example",
+      }),
+    );
+
+    expect(frame).not.toHaveStyle({ height: "9000px" });
+  });
+
   it("hands the difference to the merge editor and renders no score itself", async () => {
     // The list of differences and the cropped scrap of scan beside it are gone.
     // They were a third and fourth place to look at one difference, and the

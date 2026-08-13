@@ -109,6 +109,32 @@ const FULL_BLEED_GUTTER = 16;
  * needing a guess subtracted from it. Nothing here depends on an ancestor
  * being where it was when this was written.
  */
+/**
+ * The height the embedded editor asked for, or null until it says.
+ *
+ * The rows view does not scroll itself, so the frame has to be as tall as its
+ * content — otherwise a reader gets two scrollbars and the shorter of two
+ * viewports. A minimum keeps the frame from collapsing while the readings load,
+ * and a maximum is deliberately absent: the page's own scrollbar is the point.
+ */
+function useEmbeddedCompareHeight(): number | null {
+  const [height, setHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      // Same-origin only: the embed is served from this site, and a height from
+      // anywhere else is not this editor talking.
+      if (event.origin !== window.location.origin) return;
+      const value = (event.data as { type?: string; height?: number } | null) || null;
+      if (value?.type !== 'ots-compare-height') return;
+      if (typeof value.height !== 'number' || !Number.isFinite(value.height)) return;
+      setHeight(Math.max(480, Math.ceil(value.height)));
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+  return height;
+}
+
 function FullBleed({
   className,
   children,
@@ -214,6 +240,7 @@ export default function PageComparison({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const embeddedHeight = useEmbeddedCompareHeight();
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   useEffect(() => {
@@ -561,16 +588,9 @@ export default function PageComparison({
                       key={embeddedCompareUrl}
                       src={embeddedCompareUrl}
                       title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
-                      className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                      style={embeddedHeight ? { height: embeddedHeight } : undefined}
+                      className="min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
                     />
-                    <a
-                      href={embeddedCompareUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-block text-xs text-cyan-700 hover:underline dark:text-cyan-300"
-                    >
-                      Open this difference in its own tab ↗
-                    </a>
                   </FullBleed>
                 )}
               </>
@@ -603,7 +623,8 @@ export default function PageComparison({
                     key={embeddedCompareUrl}
                     src={embeddedCompareUrl}
                     title={`Reviewing page ${page.pageNumber}`}
-                    className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                    style={embeddedHeight ? { height: embeddedHeight } : undefined}
+                    className="min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
                   />
                 </FullBleed>
               </div>
