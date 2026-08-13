@@ -1750,7 +1750,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const enginePlan = this.engineRegistry().planForJob(job);
     const onlyPage = effectivePageMusicXml(pages[0], enginePlan);
     const inputs = this.artifactInputs(pages, enginePlan);
-    if (job.pageCount === 1 && onlyPage) {
+    // The pages that produced a reading, not the pages the upload had: a job
+    // whose other pages were excluded or failed still has exactly one score.
+    if (pages.length === 1 && onlyPage) {
       return withScannerArtifactInputSignature(
         onlyPage,
         SCANNER_ARTIFACT_BUILDERS.musicXmlBundle,

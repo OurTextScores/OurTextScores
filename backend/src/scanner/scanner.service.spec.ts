@@ -1655,6 +1655,50 @@ describe('reviewed artifacts', () => {
     expect(storage.getObjectStream).toHaveBeenCalledWith('derivatives', 'reviewed.musicxml');
   });
 
+  it('serves one contributing page as a score, however many the upload had', async () => {
+    // A three-page upload with two pages excluded still has exactly one score.
+    // Counting `pageCount` here rather than the pages that contribute handed
+    // the editor a one-entry zip named `.musicxml`, which webmscore opened as
+    // `File "" is corrupted` — from the button that says "open the finished
+    // score".
+    const only = locator('page-1.musicxml', 'page-1', 'application/xml');
+    const job: any = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'succeeded',
+      pageCount: 3,
+      pages: [
+        {
+          pageNumber: 1,
+          ordinal: 1,
+          included: true,
+          status: 'succeeded',
+          attempts: 1,
+          musicXml: only
+        },
+        { pageNumber: 2, ordinal: 2, included: false, status: 'skipped', attempts: 0 },
+        { pageNumber: 3, ordinal: 3, included: false, status: 'skipped', attempts: 0 }
+      ]
+    };
+    const storage = {
+      getObjectStream: jest.fn(async () => Readable.from([Buffer.from('<score-partwise/>')]))
+    } as any;
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    const artifact = await service.getArtifact('user-1', 'job-1', 'musicxml');
+    expect(artifact.filename).toBe('scan.musicxml');
+    expect(artifact.contentType).not.toBe('application/zip');
+    expect((await readStream(artifact.stream)).toString()).toBe('<score-partwise/>');
+  });
+
   it('rejects signed derivatives whose page-input signature no longer matches', async () => {
     const raw = locator('current.musicxml', 'current-page', 'application/xml');
     const signedAgainstOldPage = (objectKey: string, contentType: string, builder: string) =>

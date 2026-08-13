@@ -708,18 +708,27 @@ export class ScannerService implements OnModuleInit {
       // bundle for the job-level MusicXML artifact.
       locator = job.combinedMusicXml;
       filename = 'scan-combined.musicxml';
-    } else if (
-      !this.materializedArtifactIsCurrent(
-        job.musicXmlBundle,
-        SCANNER_ARTIFACT_BUILDERS.musicXmlBundle,
-        job.pages,
-        legacyJobInvalidated
-      )
-    ) {
+    } else {
+      // One reading is a score, not an archive of one — and this is checked
+      // before any stored bundle, because a job whose other pages were later
+      // excluded still has a zip on disk from when it had several. Counting
+      // `pageCount` rather than the pages that actually contribute is what
+      // handed the editor a one-entry zip named `.musicxml`, which opened as
+      // `File "" is corrupted` from the button offering the finished score.
       const currentPages = this.currentMusicXmlPages(job);
-      if (job.pageCount === 1 && currentPages.length === 1) {
+      if (currentPages.length === 1) {
         locator = currentPages[0].musicXml;
         filename = 'scan.musicxml';
+      } else if (
+        this.materializedArtifactIsCurrent(
+          job.musicXmlBundle,
+          SCANNER_ARTIFACT_BUILDERS.musicXmlBundle,
+          job.pages,
+          legacyJobInvalidated
+        )
+      ) {
+        locator = job.musicXmlBundle;
+        filename = 'scan-musicxml-pages.zip';
       } else {
         const body = await this.currentMusicXmlBundle(job, currentPages);
         return {
@@ -728,9 +737,6 @@ export class ScannerService implements OnModuleInit {
           filename: 'scan-musicxml-pages.zip'
         };
       }
-    } else {
-      locator = job.musicXmlBundle;
-      filename = job.pageCount === 1 ? 'scan.musicxml' : 'scan-musicxml-pages.zip';
     }
     if (!locator) throw new NotFoundException('Artifact is not available');
     return {

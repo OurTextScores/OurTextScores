@@ -136,6 +136,76 @@ function SourceEvidence({
   );
 }
 
+/** Breathing room kept between a full-width row and the window edge. */
+const FULL_BLEED_GUTTER = 16;
+
+/**
+ * A row that spans the window, wherever it happens to sit in the page.
+ *
+ * The usual CSS trick — `left: 50%` with `translateX(-50%)` and a `100vw`
+ * width — quietly assumes the element's containing block is centred in the
+ * window. This one was not: it sat in the right-hand cell of an
+ * `18rem minmax(0,1fr)` grid, whose centre is 152px right of the window's, so
+ * the editor started 168px in and ran 136px off the right-hand side, taking
+ * the whole page's horizontal scrollbar with it.
+ *
+ * So it measures instead of assuming. The parent's own left edge is what says
+ * how far back to pull, and `documentElement.clientWidth` is the width that is
+ * actually available — unlike `100vw`, it excludes the scrollbar rather than
+ * needing a guess subtracted from it. Nothing here depends on an ancestor
+ * being where it was when this was written.
+ */
+function FullBleed({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [bleed, setBleed] = useState<{ marginLeft: number; width: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const node = ref.current;
+    const parent = node?.parentElement;
+    if (!node || !parent) return;
+    const measure = () => {
+      // The parent's position, not this element's: a negative margin here moves
+      // this box and not its parent, so the parent stays a stable reference.
+      const left = parent.getBoundingClientRect().left;
+      const available = document.documentElement.clientWidth;
+      setBleed({
+        marginLeft: FULL_BLEED_GUTTER - left,
+        width: Math.max(0, available - FULL_BLEED_GUTTER * 2),
+      });
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(parent);
+    observer?.observe(document.documentElement);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      // Until it has been measured it is an ordinary block, which is the right
+      // thing to be wrong about: too narrow never breaks the page's layout.
+      style={bleed ? { marginLeft: bleed.marginLeft, width: bleed.width } : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
 function readableMeasureRange(refs: ComparisonMeasureRef[]): string {
   if (refs.length === 0) return "no corresponding measure";
   const labels = refs.map(
@@ -609,40 +679,40 @@ export default function PageComparison({
                           )}
                         </p>
 
-                        {/*
-                          The merge editor for this difference, and only for it.
-                          It sat below as a separate whole-page card, which put
-                          the evidence for a difference and the place you act on
-                          it in two different parts of the page, with every
-                          agreeing line in between.
-
-                          It is pulled out of the centered column because three
-                          scores stacked need the width — measured on a 2560px
-                          display, an earlier 120rem cap left 320px of dead
-                          margin either side. The 2rem back stops a vertical
-                          scrollbar pushing a horizontal one onto the page.
-                        */}
-                        {embeddedCompareUrl && (
-                          <div className="relative left-1/2 w-[calc(100vw-2rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
-                            <iframe
-                              key={embeddedCompareUrl}
-                              src={embeddedCompareUrl}
-                              title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
-                              className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
-                            />
-                            <a
-                              href={embeddedCompareUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-2 inline-block text-xs text-cyan-700 hover:underline dark:text-cyan-300"
-                            >
-                              Open this difference in its own tab ↗
-                            </a>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
+                )}
+
+                {/*
+                  The merge editor for the selected difference, and only for it.
+                  It sat below as a separate whole-page card, which put the
+                  evidence for a difference and the place you act on it in two
+                  different parts of the page, with every agreeing line between.
+
+                  It is a sibling of the block grid rather than a cell in it.
+                  Three scores stacked need the full width — measured on a
+                  2560px display, an earlier 120rem cap left 320px of dead
+                  margin either side — and a full-width box inside the grid's
+                  right-hand column would lie across the difference list.
+                */}
+                {selectedBlock && embeddedCompareUrl && (
+                  <FullBleed className="mt-4 bg-slate-100 p-3 dark:bg-slate-950/60">
+                    <iframe
+                      key={embeddedCompareUrl}
+                      src={embeddedCompareUrl}
+                      title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
+                      className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                    />
+                    <a
+                      href={embeddedCompareUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-block text-xs text-cyan-700 hover:underline dark:text-cyan-300"
+                    >
+                      Open this difference in its own tab ↗
+                    </a>
+                  </FullBleed>
                 )}
               </>
             )}
@@ -669,14 +739,14 @@ export default function PageComparison({
                   be located on the scan, so none can be decided. The readings
                   are still shown line by line.
                 </p>
-                <div className="relative left-1/2 mt-3 w-[calc(100vw-2rem)] -translate-x-1/2 bg-slate-100 p-3 dark:bg-slate-950/60">
+                <FullBleed className="mt-3 bg-slate-100 p-3 dark:bg-slate-950/60">
                   <iframe
                     key={embeddedCompareUrl}
                     src={embeddedCompareUrl}
                     title={`Reviewing page ${page.pageNumber}`}
                     className="h-[min(75vh,52rem)] min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
                   />
-                </div>
+                </FullBleed>
               </div>
             )}
         </div>
