@@ -2893,6 +2893,56 @@ describe('ScannerService merged score', () => {
     ).rejects.toThrow(/already reads this passage/);
   });
 
+  it('answers a take with the URL of the revision it produced', async () => {
+    // The MusicXML URL is pinned to a revision. Without it in the response the
+    // client kept the URL of the revision it had just superseded, reloaded, and
+    // drew the bar it had replaced — so every take looked like it did nothing
+    // while the server had recorded all of them.
+    const page = pageWithReadings({
+      sourceImage: {
+        bucket: 'src',
+        objectKey: 'page.png',
+        sizeBytes: 1,
+        contentType: 'image/png',
+        checksumSha256: 'page-sha'
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseAnchorIndex: -1,
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+    jest
+      .spyOn(service as any, 'mergedOrEngineMusicXml')
+      .mockResolvedValue(Buffer.from(SPLICEABLE));
+    jest.spyOn(service as any, 'engineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
+
+    const state = await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+      blockIndex: 0,
+      contentSignature: 'sig-0',
+      engineId: 'transcoda',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 0
+    });
+
+    expect(state.revision).toBe(1);
+    expect(state.musicXmlUrl).toBe('../merged/musicxml?revision=1');
+    expect(state.url).toBe('../merged');
+  });
+
   it('takes a passage back to the engine the merged score started from', async () => {
     // The reviewer took this bar from the candidate reading and wants it back.
     // The merged score still *started* from HOMR, so a guard that compared the

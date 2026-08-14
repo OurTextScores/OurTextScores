@@ -514,8 +514,8 @@ export function assessScannerSplice(input: {
       refusals.push({
         code: 'duration-differs',
         detail:
-          'The two readings of this passage are different lengths, so replacing one with the other ' +
-          'would shift everything after it in the part.'
+          'The two readings of this passage are different lengths, so the bar now holds more or ' +
+          'less than its time signature calls for.'
       });
     }
   }

@@ -90,18 +90,19 @@ describe('scanner splice', () => {
     expect(outcome.musicXml).not.toBeNull();
   });
 
-  it('takes a passage of a different length when asked, and says it did', () => {
-    // The refusal is about arithmetic, not about the music: a reviewer looking
-    // at the scan can see that one engine read the notes and the other did not,
-    // and the length difference is a symptom of the bad reading. So it becomes
-    // theirs to make — and what would have stopped it is recorded rather than
-    // discarded.
+  it('takes a passage of a different length, and leaves the bar marked', () => {
+    // The length difference is a symptom of the bad reading, not a reason to
+    // keep it: a reviewer looking at the scan can see that one engine read the
+    // notes and the other did not. Shifting everything after it in the part
+    // would be worse than the over-full bar, because it moves music nobody
+    // asked to move. The bar arrives marked, and the merged pane offers to set
+    // it back to its time signature.
     const base = part(bar(note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }));
     const longer = part(
       bar(note(4) + note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' })
     );
 
-    const refused = spliceScannerMeasures({
+    const taken = spliceScannerMeasures({
       baseXml: base,
       candidateXml: longer,
       basePartIndex: 0,
@@ -109,26 +110,21 @@ describe('scanner splice', () => {
       baseMeasureIndexes: [0],
       candidateMeasureIndexes: [0]
     });
-    expect(refused.musicXml).toBeNull();
-    expect(refused.refusals.map((refusal) => refusal.code)).toEqual(['duration-differs']);
 
-    const taken = spliceScannerMeasures({
-      baseXml: base,
-      candidateXml: longer,
-      basePartIndex: 0,
-      candidatePartIndex: 0,
-      baseMeasureIndexes: [0],
-      candidateMeasureIndexes: [0],
-      acceptDurationChange: true
-    });
     expect(taken.musicXml).not.toBeNull();
     expect(taken.refusals).toEqual([]);
+    // What it did is still recorded — the reviewer is told the bar is now a
+    // different length, and where to fix it.
     expect(taken.repairs.map((repair) => repair.code)).toContain('taken-anyway');
     expect(taken.repairs.map((repair) => repair.detail).join(' ')).toContain('different lengths');
+    expect(taken.repairs.map((repair) => repair.detail).join(' ')).toContain('marked');
+    // The fifth note is really there: the notes were taken, not approximated.
+    expect(taken.musicXml!.toString('utf8').match(/<note>/g)).toHaveLength(5);
   });
 
-  it('still refuses a length change nobody asked for elsewhere in the part', () => {
-    // Accepting one is consent for that passage, not a licence to break others.
+  it('confines the length change to the passage it was asked about', () => {
+    // The replaced bar is allowed to be the wrong length; the rest of the part
+    // is not. A splice that broke a bar it was not asked to touch still refuses.
     const base = part(bar(note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }));
     const longer = part(
       bar(note(4) + note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' })
@@ -139,8 +135,7 @@ describe('scanner splice', () => {
       basePartIndex: 0,
       candidatePartIndex: 0,
       baseMeasureIndexes: [0],
-      candidateMeasureIndexes: [0],
-      acceptDurationChange: true
+      candidateMeasureIndexes: [0]
     });
     // The one bar it was asked about is allowed to be the wrong length.
     expect(validateScannerMusicXmlSemantics(taken.musicXml!).violations).toHaveLength(1);
@@ -244,14 +239,23 @@ describe('scanner splice', () => {
   });
 
   it('produces nothing when the passage cannot be moved', () => {
+    // Not a length difference, which is now a bar to correct rather than a
+    // refusal. This is a passage whose time units cannot be written in the
+    // other reading's without rounding some note to a length it never had.
     const base = part(bar(fullBar(4), { attributes: attributes(4) }));
+    // Same musical length, but written in thirds of a quarter: the smallest
+    // unit here cannot be expressed in the base reading's quarters.
     const candidate = part(
-      bar(fullBar(4, 'G') + note(4, { step: 'G' }), { attributes: attributes(4) })
+      bar(Array.from({ length: 12 }, () => note(1, { step: 'G' })).join(''), {
+        attributes: attributes(3)
+      })
     );
     const result = splice(base, candidate, [0]);
 
     expect(result.musicXml).toBeNull();
-    expect(result.refusals.map((refusal) => refusal.code)).toContain('duration-differs');
+    expect(result.refusals.map((refusal) => refusal.code)).toContain(
+      'divisions-incommensurable'
+    );
   });
 
   it('keeps the base numbering, because every reference counts from it', () => {

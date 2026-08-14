@@ -936,16 +936,8 @@ export class ScannerService implements OnModuleInit {
     // construct scanner URLs of its own. Same reasoning as `cropUrl` below.
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
-    // `../` because these resolve against *this document's* URL, which ends
-    // `…/pages/N/comparison/regions`. A bare `merged` would land on
-    // `…/comparison/merged`, which is not a route — unlike `cropUrl` below,
-    // whose target really does live under `comparison/`.
     const merged = page
-      ? {
-          ...this.mergedScoreState(job, page),
-          url: '../merged',
-          musicXmlUrl: `../merged/musicxml?revision=${page.mergedScore?.revision ?? 0}`
-        }
+      ? { ...this.mergedScoreState(job, page), ...this.mergedScoreLinks(page) }
       : undefined;
 
     const base = {
@@ -1373,6 +1365,28 @@ export class ScannerService implements OnModuleInit {
     return this.mergedScoreState(job, page);
   }
 
+  /**
+   * The merged score as the compare embed addresses it.
+   *
+   * `../` because the embed resolves every scanner URL against the compare
+   * regions document it was handed, which ends `…/pages/N/comparison/regions`;
+   * it reaches this process only through the frontend's proxy and cannot
+   * construct scanner URLs of its own.
+   *
+   * The MusicXML URL is pinned to a revision, so a response that reports a new
+   * revision has to carry the URL for it. Leaving it out of a decision's
+   * response left the client holding the URL of the revision it had just
+   * superseded: it reloaded, got the document from before the take, and drew
+   * the bar the reviewer had just replaced. Every take looked like it did
+   * nothing, while the server had recorded all of them.
+   */
+  private mergedScoreLinks(page: ScannerPageResult): { url: string; musicXmlUrl: string } {
+    return {
+      url: '../merged',
+      musicXmlUrl: `../merged/musicxml?revision=${page.mergedScore?.revision ?? 0}`
+    };
+  }
+
   private mergedScoreState(job: ScannerJobDocument, page: ScannerPageResult): any {
     const basisSignature = scannerMergedScoreBasis(page);
     return {
@@ -1648,10 +1662,13 @@ export class ScannerService implements OnModuleInit {
       mergedAcceptedStale: input.acceptedStale
     });
 
-    return this.mergedScoreState(
-      { ...job, statusVersion: (job.statusVersion || 1) + 1 } as ScannerJobDocument,
-      updatedPage
-    );
+    return {
+      ...this.mergedScoreState(
+        { ...job, statusVersion: (job.statusVersion || 1) + 1 } as ScannerJobDocument,
+        updatedPage
+      ),
+      ...this.mergedScoreLinks(updatedPage)
+    };
   }
 
   /**
@@ -1678,11 +1695,6 @@ export class ScannerService implements OnModuleInit {
       baseEngineId: string;
       candidateEngineId: string;
       revision: number;
-      /**
-       * Take the notes even though the readings disagree about the bar's
-       * length. The reviewer's call, made after being told why it refused.
-       */
-      acceptDurationChange?: boolean;
     }
   ): Promise<any> {
     const {
@@ -1752,8 +1764,7 @@ export class ScannerService implements OnModuleInit {
       candidatePartIndex: 0,
       baseMeasureIndexes: mergedMeasureIndexes,
       candidateMeasureIndexes,
-      baseAnchorIndex: mergedAnchorIndex,
-      acceptDurationChange: input.acceptDurationChange
+      baseAnchorIndex: mergedAnchorIndex
     });
     if (!outcome.musicXml) {
       // Refusals are information, not an error to swallow: the reviewer is

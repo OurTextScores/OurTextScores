@@ -285,24 +285,6 @@ export function spliceScannerMeasures(input: {
   candidateMeasureIndexes: readonly number[];
   /** Where an insertion goes; see `ScannerComparisonBlock.baseAnchorIndex`. */
   baseAnchorIndex?: number;
-  /**
-   * Take the notes even though the two readings of this passage are different
-   * lengths.
-   *
-   * The refusal exists because a replacement of a different length changes what
-   * the bar contains against its own time signature, and doing that silently
-   * would corrupt a score to no one's request. But it is a judgement about
-   * arithmetic, not about the music: a reviewer looking at the scan can see
-   * that one engine read the notes correctly and the other did not, and the
-   * length difference is a symptom of the bad reading rather than a reason to
-   * keep it.
-   *
-   * So it becomes theirs to make. Nothing is loosened — the same difference is
-   * reported as a repair, and the bar-length violations it causes are reported
-   * with it — but the operation is allowed to happen when it is asked for
-   * explicitly.
-   */
-  acceptDurationChange?: boolean;
 }): ScannerSpliceOutcome {
   const base = readScannerSpliceFacts(input.baseXml);
   const candidate = readScannerSpliceFacts(input.candidateXml);
@@ -315,10 +297,23 @@ export function spliceScannerMeasures(input: {
     candidateMeasureIndexes: input.candidateMeasureIndexes,
     baseAnchorIndex: input.baseAnchorIndex
   });
-  // The one refusal a reviewer is allowed to overrule, and only by asking.
-  const overruled = input.acceptDurationChange
-    ? assessment.refusals.filter((refusal) => refusal.code === 'duration-differs')
-    : [];
+  /*
+   * A length difference is a bar to correct, not a reason to refuse.
+   *
+   * This used to refuse because the alternative was worse: the passage would
+   * land holding more than its time signature allows and nothing could be done
+   * about it afterwards. There is now a control for exactly that — the merged
+   * pane marks every bar whose contents do not match its time signature and
+   * offers to set it back — so the honest behaviour is to take the notes the
+   * reviewer asked for and leave the bar marked.
+   *
+   * The alternative, shifting everything after it in the part, is worse than an
+   * over-full bar: it moves music the reviewer did not ask to move, and the
+   * only sign is that the rest of the page is subtly wrong.
+   */
+  const overruled = assessment.refusals.filter(
+    (refusal) => refusal.code === 'duration-differs'
+  );
   const blocking = assessment.refusals.filter((refusal) => !overruled.includes(refusal));
   if (blocking.length > 0) {
     return {
@@ -433,7 +428,7 @@ export function spliceScannerMeasures(input: {
     ...assessment.repairs,
     ...overruled.map((refusal) => ({
       code: 'taken-anyway' as const,
-      detail: `Taken anyway, on request. ${refusal.detail}`,
+      detail: `${refusal.detail} The bar is marked; correct it from the merged pane.`,
       measureIndex: input.baseMeasureIndexes[0]
     }))
   ];
@@ -462,21 +457,19 @@ export function spliceScannerMeasures(input: {
     )
   };
   /*
-   * A bar that no longer matches its time signature is the *point* of an
-   * accepted length change, so it cannot also be what blocks it — but only in
-   * the bars that were replaced. A violation anywhere else means the splice
-   * broke something it was not asked to touch, and that still refuses.
+   * A bar that no longer matches its time signature is the *result* of a length
+   * change, so it cannot also be what blocks it — but only in the bars that
+   * were replaced. A violation anywhere else means the splice broke something
+   * it was not asked to touch, and that still refuses.
    */
   // The bars the replacement landed on. For a straight replacement that is
   // where they already were.
   const replaced = new Set(input.baseMeasureIndexes);
-  const asked = input.acceptDurationChange
-    ? report.violations.filter(
-        (violation) =>
-          replaced.has(violation.measureIndex) &&
-          (violation.code === 'voice-overruns-bar' || violation.code === 'voice-underruns-bar')
-      )
-    : [];
+  const asked = report.violations.filter(
+    (violation) =>
+      replaced.has(violation.measureIndex) &&
+      (violation.code === 'voice-overruns-bar' || violation.code === 'voice-underruns-bar')
+  );
   const violations = report.violations.filter((violation) => !asked.includes(violation));
   if (violations.length > 0) {
     return { musicXml: null, refusals: [], repairs, violations };
@@ -488,7 +481,7 @@ export function spliceScannerMeasures(input: {
       ...repairs,
       ...asked.map((violation) => ({
         code: 'taken-anyway' as const,
-        detail: `Taken anyway, on request. ${violation.detail}`,
+        detail: `${violation.detail} The bar is marked; correct it from the merged pane.`,
         measureIndex: violation.measureIndex
       }))
     ],
