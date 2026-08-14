@@ -408,6 +408,7 @@ export class ScannerController {
       baseEngine?: string;
       candidateEngine?: string;
       revision?: number;
+      acceptDurationChange?: boolean;
     }
   ) {
     return this.scanner.takeBlockIntoMergedScore(user.userId, jobId, pageNumber, {
@@ -416,7 +417,8 @@ export class ScannerController {
       engineId: String(body?.engineId ?? ''),
       baseEngineId: String(body?.baseEngine ?? ''),
       candidateEngineId: String(body?.candidateEngine ?? ''),
-      revision: Number(body?.revision)
+      revision: Number(body?.revision),
+      acceptDurationChange: body?.acceptDurationChange === true
     });
   }
 

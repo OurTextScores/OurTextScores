@@ -60,7 +60,13 @@ export interface ScannerSpliceRefusal {
  * though an engine had produced it.
  */
 export interface ScannerSpliceRepair {
-  code: 'drop-dangling-slur';
+  /**
+   * `taken-anyway` is a refusal the reviewer overruled — the operation happened
+   * because they asked for it, and what would have stopped it is recorded here
+   * rather than discarded. Everything else is something the splice did on its
+   * own to make the passage fit.
+   */
+  code: 'drop-dangling-slur' | 'taken-anyway';
   detail: string;
   measureIndex?: number;
 }

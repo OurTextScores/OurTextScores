@@ -1666,6 +1666,11 @@ export class ScannerService implements OnModuleInit {
       baseEngineId: string;
       candidateEngineId: string;
       revision: number;
+      /**
+       * Take the notes even though the readings disagree about the bar's
+       * length. The reviewer's call, made after being told why it refused.
+       */
+      acceptDurationChange?: boolean;
     }
   ): Promise<any> {
     const {
@@ -1726,7 +1731,8 @@ export class ScannerService implements OnModuleInit {
       candidatePartIndex: 0,
       baseMeasureIndexes: mergedMeasureIndexes,
       candidateMeasureIndexes,
-      baseAnchorIndex: mergedAnchorIndex
+      baseAnchorIndex: mergedAnchorIndex,
+      acceptDurationChange: input.acceptDurationChange
     });
     if (!outcome.musicXml) {
       // Refusals are information, not an error to swallow: the reviewer is

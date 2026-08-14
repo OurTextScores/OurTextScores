@@ -59,6 +59,94 @@ const splice = (
   });
 
 describe('scanner splice', () => {
+  it('blames a splice for what it broke, not for what it found broken', () => {
+    // A recognition engine's reading is often already malformed somewhere, and
+    // the merged score starts as a copy of one. Validating only the result
+    // refused every take on such a page: on Klengel, bars 1, 19 and 23 do not
+    // match the time signature in either reading, and no decision about bar 5
+    // could be made because of it.
+    const malformed = part(
+      bar(note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }) +
+        bar(note(4) + note(4) + note(4) + note(4), { number: '2' })
+    );
+    const replacement = part(
+      bar(note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }) +
+        bar(note(2) + note(2) + note(4) + note(4) + note(4), { number: '2' })
+    );
+
+    // Bar 1 is short in both, and that is not this splice's doing.
+    expect(validateScannerMusicXmlSemantics(malformed).valid).toBe(false);
+    const outcome = spliceScannerMeasures({
+      baseXml: malformed,
+      candidateXml: replacement,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [1],
+      candidateMeasureIndexes: [1]
+    });
+
+    expect(outcome.refusals).toEqual([]);
+    expect(outcome.violations).toEqual([]);
+    expect(outcome.musicXml).not.toBeNull();
+  });
+
+  it('takes a passage of a different length when asked, and says it did', () => {
+    // The refusal is about arithmetic, not about the music: a reviewer looking
+    // at the scan can see that one engine read the notes and the other did not,
+    // and the length difference is a symptom of the bad reading. So it becomes
+    // theirs to make — and what would have stopped it is recorded rather than
+    // discarded.
+    const base = part(bar(note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }));
+    const longer = part(
+      bar(note(4) + note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' })
+    );
+
+    const refused = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: longer,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [0],
+      candidateMeasureIndexes: [0]
+    });
+    expect(refused.musicXml).toBeNull();
+    expect(refused.refusals.map((refusal) => refusal.code)).toEqual(['duration-differs']);
+
+    const taken = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: longer,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [0],
+      candidateMeasureIndexes: [0],
+      acceptDurationChange: true
+    });
+    expect(taken.musicXml).not.toBeNull();
+    expect(taken.refusals).toEqual([]);
+    expect(taken.repairs.map((repair) => repair.code)).toContain('taken-anyway');
+    expect(taken.repairs.map((repair) => repair.detail).join(' ')).toContain('different lengths');
+  });
+
+  it('still refuses a length change nobody asked for elsewhere in the part', () => {
+    // Accepting one is consent for that passage, not a licence to break others.
+    const base = part(bar(note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }));
+    const longer = part(
+      bar(note(4) + note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' })
+    );
+    const taken = spliceScannerMeasures({
+      baseXml: base,
+      candidateXml: longer,
+      basePartIndex: 0,
+      candidatePartIndex: 0,
+      baseMeasureIndexes: [0],
+      candidateMeasureIndexes: [0],
+      acceptDurationChange: true
+    });
+    // The one bar it was asked about is allowed to be the wrong length.
+    expect(validateScannerMusicXmlSemantics(taken.musicXml!).violations).toHaveLength(1);
+    expect(taken.violations).toEqual([]);
+  });
+
   it('replaces a bar and leaves the rest of the part alone', () => {
     const base = part(
       bar(fullBar(4), { attributes: attributes(4) }) + bar(fullBar(4), { number: '2' })
