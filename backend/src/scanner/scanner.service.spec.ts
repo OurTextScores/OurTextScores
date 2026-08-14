@@ -2943,6 +2943,34 @@ describe('ScannerService merged score', () => {
     ).rejects.toThrow(/an earlier decision removed it/);
   });
 
+  it('says why a passage could not be taken, not just that it could not', () => {
+    // The structured refusals travel too, but the error filter keeps `message`
+    // and drops the rest — so a reviewer saw "this passage cannot be taken" and
+    // no reason at all. The reason is the whole value of a refusal: "the two
+    // readings of this bar are different lengths" says something about the
+    // page; "cannot" says the button is broken.
+    const service = new ScannerService(
+      {} as any,
+      corrections,
+      {} as any,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    expect(
+      (service as any).refusalMessage('This passage cannot be taken', [
+        { code: 'duration-differs', detail: 'The two readings are different lengths.' }
+      ])
+    ).toBe('This passage cannot be taken: The two readings are different lengths.');
+
+    // Nothing to add when there is nothing to say.
+    expect((service as any).refusalMessage('This passage cannot be taken', [])).toBe(
+      'This passage cannot be taken'
+    );
+  });
+
   it('records a take as a preference between two readings', async () => {
     // The signal a comparison produces and spot review cannot: not "the model
     // was unsure and here is the answer" but "two independent readings

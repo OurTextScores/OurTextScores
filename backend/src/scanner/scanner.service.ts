@@ -1732,7 +1732,11 @@ export class ScannerService implements OnModuleInit {
       // Refusals are information, not an error to swallow: the reviewer is
       // told exactly what about this passage cannot be moved.
       throw new ConflictException({
-        message: 'This passage cannot be taken from that reading',
+        message: this.refusalMessage(
+          'This passage cannot be taken from that reading',
+          outcome.refusals,
+          outcome.violations
+        ),
         refusals: outcome.refusals,
         violations: outcome.violations
       });
@@ -1802,6 +1806,28 @@ export class ScannerService implements OnModuleInit {
    * a second tab overwriting the first, and §7's groundedness rule is enforced
    * here as well as by withholding the signature in the first place.
    */
+  /**
+   * One sentence saying why a passage could not move.
+   *
+   * The structured refusals travel too, but nothing downstream has been
+   * reading them: the error filter keeps `message` and drops the rest, so a
+   * reviewer saw "this passage cannot be taken" and no reason at all. The
+   * reason is the whole value of a refusal — "the two readings of this bar are
+   * different lengths" tells them something about the page; "cannot" tells them
+   * the button is broken.
+   */
+  private refusalMessage(
+    lead: string,
+    refusals: Array<{ code: string; detail: string }>,
+    violations: Array<{ detail: string }> = []
+  ): string {
+    const reasons = [
+      ...refusals.map((refusal) => refusal.detail),
+      ...violations.map((violation) => violation.detail)
+    ].filter(Boolean);
+    return reasons.length === 0 ? lead : `${lead}: ${reasons[0]}`;
+  }
+
   private async resolveDecisionContext(
     userId: string,
     jobId: string,
@@ -1929,7 +1955,11 @@ export class ScannerService implements OnModuleInit {
     });
     if (!outcome.musicXml) {
       throw new ConflictException({
-        message: `Those ${input.kind} cannot be taken onto this passage`,
+        message: this.refusalMessage(
+          `Those ${input.kind} cannot be taken onto this passage`,
+          outcome.refusals,
+          outcome.violations
+        ),
         refusals: outcome.refusals,
         violations: outcome.violations
       });
