@@ -313,9 +313,20 @@ export default function PageComparison({
       (entry): entry is ComparisonBlockResult & { status: "ready" } =>
         entry.status === "ready",
     ) || [];
-  const selectedBlock = readyBlocks.find(
-    (entry) => entry.block.blockIndex === selectedBlockIndex,
-  )?.block;
+  /*
+    Opens on the first difference that has a place on the scan.
+
+    It used to be chosen by clicking the list beside the editor, and when that
+    list was folded into the editor nothing chose it any more — so the editor
+    opened on every system of the page at once, which is a page-long document
+    to scroll through to reach the one thing the reader came for. The editor's
+    own arrows move from here.
+  */
+  const selectedBlock =
+    (selectedBlockIndex === null
+      ? readyBlocks[0]
+      : readyBlocks.find((entry) => entry.block.blockIndex === selectedBlockIndex)
+    )?.block;
   // The whole-page view needs no crops, so it survives a geometry refusal.
   // Prefer the structural analysis and fall back to whatever the geometry join
   // carried through.
@@ -366,9 +377,9 @@ export default function PageComparison({
         // Only the lines this difference falls on. The gutter is the index, so
         // the rows do not have to be one too — and a reviewer who clicked a
         // difference is not asking about the agreeing lines below it.
-        ...(selectedBlockIndex === null
+        ...(selectedBlock === undefined
           ? {}
-          : { compareBlock: String(selectedBlockIndex) }),
+          : { compareBlock: String(selectedBlock.blockIndex) }),
       }).toString()}`
     : undefined;
 
@@ -589,7 +600,7 @@ export default function PageComparison({
                       src={embeddedCompareUrl}
                       title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
                       style={embeddedHeight ? { height: embeddedHeight } : undefined}
-                      className="min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                      className="block min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
                     />
                   </FullBleed>
                 )}
@@ -624,7 +635,7 @@ export default function PageComparison({
                     src={embeddedCompareUrl}
                     title={`Reviewing page ${page.pageNumber}`}
                     style={embeddedHeight ? { height: embeddedHeight } : undefined}
-                    className="min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                    className="block min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
                   />
                 </FullBleed>
               </div>

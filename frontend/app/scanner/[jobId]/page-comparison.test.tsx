@@ -215,6 +215,18 @@ describe("PageComparison", () => {
     expect(frame).not.toHaveStyle({ height: "9000px" });
   });
 
+  it("opens on the first difference that has a place on the scan", async () => {
+    // The list beside the editor used to choose it. When that folded into the
+    // editor nothing chose it any more, and the editor opened on every system
+    // of the page at once — a page-long document to scroll to reach the one
+    // thing the reader came for.
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+
+    const frame = await screen.findByTitle(/Reconciling difference 1 of page 1/);
+    const url = new URL(frame.getAttribute("src")!, "http://localhost");
+    expect(url.searchParams.get("compareBlock")).toBe("0");
+  });
+
   it("hands the difference to the merge editor and renders no score itself", async () => {
     // The list of differences and the cropped scrap of scan beside it are gone.
     // They were a third and fourth place to look at one difference, and the
