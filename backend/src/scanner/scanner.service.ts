@@ -1397,6 +1397,15 @@ export class ScannerService implements OnModuleInit {
         engineId: decision.engineId,
         markingsOnly: decision.markingsOnly
       })),
+      /**
+       * Where each merged bar came from, so a consumer can follow one.
+       *
+       * A take that inserts or removes bars renumbers everything after it. Any
+       * position a consumer computed from the engine reading — which bar starts
+       * a line, most of all — points somewhere else afterwards, and a line that
+       * silently reflows is the reader's own reference frame moving under them.
+       */
+      measureMap: page.mergedScore?.measureMap,
       /** Quote this when saving; a mismatch means the readings moved. */
       basisSignature,
       recordedBasisSignature: page.mergedScore?.basisSignature,
