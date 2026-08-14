@@ -38,10 +38,12 @@ import { transferScannerMarkings } from './scanner-marking-transfer';
 import { readScannerSpliceFacts } from './scanner-splice-safety';
 import {
   identityMeasureMap,
+  mergedBlockReadsFrom,
   resolveMergedAnchor,
   resolveMergedIndexes,
   withInsertedMeasures,
-  withRemovedMeasures
+  withRemovedMeasures,
+  withReplacedMeasures
 } from './scanner-merged-measure-map';
 
 
@@ -1518,6 +1520,16 @@ export class ScannerService implements OnModuleInit {
       edited: Boolean(input.edited) || Boolean(page.mergedScore?.edited),
       revision: currentRevision + 1,
       decisions: page.mergedScore?.decisions,
+      /*
+       * Carried, not recomputed.
+       *
+       * A save writes the reviewer's document back; it does not renumber it.
+       * Dropping the map here silently reset the merged score to "the two
+       * numberings coincide", which is false the moment a take has changed the
+       * page's length — and the next take then resolved its passage against a
+       * numbering that had not been true for several revisions.
+       */
+      measureMap: page.mergedScore?.measureMap,
       updatedAt: new Date()
     };
     const state = await this.persistMergedScore({
@@ -1688,13 +1700,22 @@ export class ScannerService implements OnModuleInit {
         : block.candidateMeasureRefs || []
       ).map((ref: any) => ref.measureIndex);
 
-    const baseMeasureIndexes = indexesFor(mergedSourceEngineId);
-    const candidateMeasureIndexes = indexesFor(input.engineId);
-    if (input.engineId === mergedSourceEngineId) {
+    const readsFrom = mergedBlockReadsFrom(
+      input.blockIndex,
+      mergedSourceEngineId,
+      page.mergedScore?.decisions
+    );
+    if (input.engineId === readsFrom) {
       throw new ConflictException(
         'The merged score already reads this passage the way that engine does'
       );
     }
+    // Which bars to replace, and with what. Both are named in the *source*
+    // engine's numbering because that is the numbering the map translates, and
+    // taking a passage back to the engine the score started from is an ordinary
+    // take in the other direction rather than a special case.
+    const baseMeasureIndexes = indexesFor(mergedSourceEngineId);
+    const candidateMeasureIndexes = indexesFor(input.engineId);
     // A block only one engine read is an insertion or a deletion rather than a
     // replacement, and the anchor is the only thing that says where. It counts
     // base measures, so it is meaningful only when the merged score follows the
@@ -1755,7 +1776,13 @@ export class ScannerService implements OnModuleInit {
         ? withRemovedMeasures(map, mergedMeasureIndexes)
         : mergedMeasureIndexes.length === 0
           ? withInsertedMeasures(map, mergedAnchorIndex ?? -1, candidateMeasureIndexes.length)
-          : map;
+          : candidateMeasureIndexes.length === mergedMeasureIndexes.length
+            ? map
+            : withReplacedMeasures(
+                map,
+                mergedMeasureIndexes,
+                candidateMeasureIndexes.length
+              );
 
     const decision: ScannerMergedDecision = {
       blockIndex: input.blockIndex,

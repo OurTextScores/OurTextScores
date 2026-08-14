@@ -2893,6 +2893,112 @@ describe('ScannerService merged score', () => {
     ).rejects.toThrow(/already reads this passage/);
   });
 
+  it('takes a passage back to the engine the merged score started from', async () => {
+    // The reviewer took this bar from the candidate reading and wants it back.
+    // The merged score still *started* from HOMR, so a guard that compared the
+    // take against the document's origin refused this forever: the control was
+    // offered, the bar on screen plainly read from the other engine, and
+    // pressing it only ever produced "already reads this passage".
+    const page = pageWithReadings({
+      mergedMusicXml: {
+        bucket: 'b',
+        objectKey: 'o-merged',
+        sizeBytes: 1,
+        contentType: 'application/xml',
+        checksumSha256: 'merged'
+      },
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: 'basis',
+        revision: 1,
+        decisions: [{ blockIndex: 0, engineId: 'transcoda', measureIndexes: [0] }],
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseAnchorIndex: -1,
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+    jest
+      .spyOn(service as any, 'mergedOrEngineMusicXml')
+      .mockResolvedValue(Buffer.from(SPLICEABLE));
+    jest.spyOn(service as any, 'engineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
+
+    const state = await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+      blockIndex: 0,
+      contentSignature: 'sig-0',
+      engineId: 'homr',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 1
+    });
+
+    // Recorded like any other take, so the block now reads from HOMR again and
+    // the pair of controls swaps over.
+    expect(state.decisions.at(-1)).toMatchObject({ blockIndex: 0, engineId: 'homr' });
+  });
+
+  it('still refuses a take on a passage that already reads from that engine', async () => {
+    // The undecided case, which must keep refusing: offering a control whose
+    // only outcome is this message is worse than offering none.
+    const page = pageWithReadings({
+      mergedMusicXml: {
+        bucket: 'b',
+        objectKey: 'o-merged',
+        sizeBytes: 1,
+        contentType: 'application/xml',
+        checksumSha256: 'merged'
+      },
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: 'basis',
+        revision: 1,
+        decisions: [{ blockIndex: 0, engineId: 'transcoda', measureIndexes: [0] }],
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-0',
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+
+    await expect(
+      service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+        blockIndex: 0,
+        contentSignature: 'sig-0',
+        engineId: 'transcoda',
+        baseEngineId: 'homr',
+        candidateEngineId: 'transcoda',
+        revision: 1
+      })
+    ).rejects.toThrow(/already reads this passage/);
+  });
+
   it('refuses a take on a bar an earlier decision removed', async () => {
     // The map says that engine measure is no longer anywhere in the merged
     // score. Acting on a neighbour instead is the failure it exists to prevent.

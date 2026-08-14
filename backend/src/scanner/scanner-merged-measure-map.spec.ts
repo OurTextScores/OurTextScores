@@ -3,7 +3,9 @@ import {
   resolveMergedAnchor,
   resolveMergedIndexes,
   withInsertedMeasures,
-  withRemovedMeasures
+  withRemovedMeasures,
+  withReplacedMeasures,
+  mergedBlockReadsFrom
 } from './scanner-merged-measure-map';
 
 /**
@@ -74,5 +76,63 @@ describe('merged measure map', () => {
     expect(resolveMergedAnchor(map, 1)).toBe(0);
     // The anchor bar itself is gone, so there is nowhere to put this.
     expect(resolveMergedAnchor(map, 0)).toBeNull();
+  });
+  it('moves the map when a passage is replaced by one of a different length', () => {
+    // One bar of the source reading swapped for the other engine's two. The
+    // bars after it have not changed, but they have all moved along one, and a
+    // map that still claimed otherwise would send the next take a bar early.
+    const map = withReplacedMeasures(identityMeasureMap(5), [2], 2);
+
+    expect(map).toEqual([0, 1, null, null, 3, 4]);
+    expect(resolveMergedIndexes(map, [3])).toEqual([4]);
+    // The replaced bar is no longer addressable in the engine's numbering,
+    // which is what stops a later take from acting on a neighbour.
+    expect(resolveMergedIndexes(map, [2])).toBeNull();
+  });
+
+  it('leaves the map alone when the replacement is the same length', () => {
+    const map = withReplacedMeasures(identityMeasureMap(4), [1], 1);
+
+    // The passage still occupies one bar in the same place, so every engine
+    // index after it still resolves where it did — which is what lets a
+    // same-length take be taken back.
+    expect(resolveMergedIndexes(map, [2])).toEqual([2]);
+    expect(resolveMergedIndexes(map, [3])).toEqual([3]);
+  });
+});
+
+describe('mergedBlockReadsFrom', () => {
+  it('reads from the engine the score started from until a decision moves it', () => {
+    expect(mergedBlockReadsFrom(1, 'homr', [])).toBe('homr');
+    expect(mergedBlockReadsFrom(1, 'homr', undefined)).toBe('homr');
+  });
+
+  it('follows the last decision on that block', () => {
+    const decisions = [
+      { blockIndex: 1, engineId: 'transcoda' },
+      { blockIndex: 2, engineId: 'transcoda' }
+    ];
+
+    expect(mergedBlockReadsFrom(1, 'homr', decisions)).toBe('transcoda');
+    // Taking it back is an ordinary decision, and the block reads from the
+    // origin engine again — which is the case that used to be unreachable.
+    expect(
+      mergedBlockReadsFrom(1, 'homr', [...decisions, { blockIndex: 1, engineId: 'homr' }])
+    ).toBe('homr');
+  });
+
+  it('ignores a markings take, which moves no notes', () => {
+    const decisions = [
+      { blockIndex: 1, engineId: 'transcoda' },
+      { blockIndex: 1, engineId: 'homr', markingsOnly: 'dynamics' as const }
+    ];
+
+    expect(mergedBlockReadsFrom(1, 'homr', decisions)).toBe('transcoda');
+  });
+
+  it('does not let another block\'s decision speak for this one', () => {
+    expect(
+      mergedBlockReadsFrom(1, 'homr', [{ blockIndex: 2, engineId: 'transcoda' }])
+    ).toBe('homr');
   });
 });
