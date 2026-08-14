@@ -21,6 +21,25 @@ export default function ComparePageClient({
   const [job, setJob] = useState<ScannerJob | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * Plain scrolling on this page, not the site's smooth kind.
+   *
+   * `scroll-smooth` on `html` animates every wheel notch, which is pleasant on
+   * an ordinary page and awful here: this one is several thousand pixels tall
+   * and most of it is a single iframe the browser composites as one enormous
+   * layer, so each animated step fights the last and the page feels like it is
+   * refusing to move. Restored on the way out — every other page still wants
+   * the smooth behaviour.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.scrollBehavior;
+    root.style.scrollBehavior = 'auto';
+    return () => {
+      root.style.scrollBehavior = previous;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`, {
