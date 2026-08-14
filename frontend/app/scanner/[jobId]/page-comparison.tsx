@@ -600,7 +600,11 @@ export default function PageComparison({
                       src={embeddedCompareUrl}
                       title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
                       style={embeddedHeight ? { height: embeddedHeight } : undefined}
-                      className="block min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                      // No border: the frame is sized to the height its document reports, and a
+                      // border makes the element that much taller than the viewport
+                      // inside it — two pixels the document then has to scroll, which
+                      // is enough to swallow a wheel that was meant for the page.
+                      className="block min-h-[30rem] w-full rounded-lg bg-white"
                     />
                   </FullBleed>
                 )}
@@ -635,7 +639,8 @@ export default function PageComparison({
                     src={embeddedCompareUrl}
                     title={`Reviewing page ${page.pageNumber}`}
                     style={embeddedHeight ? { height: embeddedHeight } : undefined}
-                    className="block min-h-[30rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                    // No border; see the frame above.
+                    className="block min-h-[30rem] w-full rounded-lg bg-white"
                   />
                 </FullBleed>
               </div>
