@@ -22,6 +22,7 @@ import {
   withScannerArtifactInputSignature
 } from './scanner-dual-engine';
 import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
+import * as scannerBeamNormalization from './scanner-beam-normalization';
 
 /** Durable training records; kept out of the job so they outlive it. */
 const corrections = { create: jest.fn(async (doc: any) => doc) } as any;
@@ -812,13 +813,7 @@ describe('ScannerService', () => {
     // The renderer needs which measures differ and nothing about how to draw
     // them. Each side carries its own part index, because a part matched across
     // engines need not sit at the same ordinal in both documents.
-    const regions = await service.pageComparisonRegions(
-      'user-1',
-      'job-1',
-      1,
-      'homr',
-      'transcoda'
-    );
+    const regions = await service.pageComparisonRegions('user-1', 'job-1', 1, 'homr', 'transcoda');
     expect(regions).toMatchObject({
       version: 'scanner-compare-regions-v1',
       statusVersion: 7,
@@ -830,12 +825,29 @@ describe('ScannerService', () => {
       right: { engineId: 'transcoda' }
     });
     expect(regions.regions.length).toBe(result.analysis.blocks.length);
+    expect(regions.systems[0].staffRows[0]).toMatchObject({
+      stablePartKey: result.analysis.partMatches[0].stablePartKey,
+      leftPartIndex: 0,
+      rightPartIndex: 0,
+      leftMeasureIndexes: [0],
+      rightMeasureIndexes: [0]
+    });
     for (const region of regions.regions) {
       expect(Array.isArray(region.leftMeasureIndexes)).toBe(true);
       expect(Array.isArray(region.rightMeasureIndexes)).toBe(true);
+      expect(Array.isArray(region.componentDifferences)).toBe(true);
       expect(typeof region.contentSignature).toBe('string');
       expect(typeof region.grounded).toBe('boolean');
     }
+    expect(regions.regions[0].componentDifferences).toEqual([
+      expect.objectContaining({
+        component: 'voice',
+        leftMeasureLabel: 'bar 1',
+        rightMeasureLabel: 'bar 1',
+        leftOnly: ['C4 at quarter 0 in voice 1'],
+        rightOnly: ['C4 at quarter 0 in voice 2']
+      })
+    ]);
     const reading = await service.pageComparisonReading(
       'user-1',
       'job-1',
@@ -881,26 +893,24 @@ describe('ScannerService', () => {
       ['scanner', 'transcoda.musicxml'],
       ['scanner', 'recognition.png']
     ]);
-    const partialComparison = jest
-      .spyOn(service as any, 'pageComparisonForJob')
-      .mockResolvedValue({
-        ...result,
+    const partialComparison = jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      ...result,
+      status: 'refused',
+      refusalReasons: [{ stage: 'geometry', code: 'missing-measure-reference' }],
+      geometry: {
+        ...result.geometry,
         status: 'refused',
-        refusalReasons: [{ stage: 'geometry', code: 'missing-measure-reference' }],
-        geometry: {
-          ...result.geometry,
-          status: 'refused',
-          refusalReasons: [{ code: 'missing-measure-reference' }],
-          blocks: [
-            result.geometry.blocks[0],
-            {
-              status: 'refused',
-              block: { ...groundedBlock, blockIndex: groundedBlock.blockIndex + 1 },
-              refusalReasons: [{ code: 'missing-measure-reference' }]
-            }
-          ]
-        }
-      });
+        refusalReasons: [{ code: 'missing-measure-reference' }],
+        blocks: [
+          result.geometry.blocks[0],
+          {
+            status: 'refused',
+            block: { ...groundedBlock, blockIndex: groundedBlock.blockIndex + 1 },
+            refusalReasons: [{ code: 'missing-measure-reference' }]
+          }
+        ]
+      }
+    });
     const partialCrop = await service.pageComparisonBlockCrop(
       'user-1',
       'job-1',
@@ -2600,6 +2610,100 @@ describe('ScannerService merged score', () => {
     expect(storage.putDerivativeObject).toHaveBeenCalled();
   });
 
+  it('persists the chosen starting reading before any review work', async () => {
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const writes: any[] = [];
+    const { service, storage } = buildService(job, { writes });
+    jest
+      .spyOn(service as any, 'comparisonReadingMusicXml')
+      .mockResolvedValue(Buffer.from(SPLICEABLE));
+
+    const result = await service.chooseMergedScoreSource('user-1', 'job-1', 1, {
+      engineId: 'transcoda',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 0
+    });
+
+    expect(result).toMatchObject({ present: true, revision: 1, sourceEngineId: 'transcoda' });
+    expect(storage.putDerivativeObject).toHaveBeenCalledWith(
+      expect.any(String),
+      Buffer.from(SPLICEABLE),
+      expect.any(Number),
+      'application/vnd.recordare.musicxml+xml'
+    );
+    expect(writes[0].$set.pages[0].mergedScore).toMatchObject({
+      sourceEngineId: 'transcoda',
+      edited: false,
+      revision: 1,
+      decisions: [],
+      measureMap: [0]
+    });
+  });
+
+  it('does not let a save relabel the source after review work exists', async () => {
+    const basis = currentBasis(pageWithReadings());
+    const page = pageWithReadings({
+      mergedMusicXml: locator('merged'),
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: basis,
+        revision: 1,
+        updatedAt: new Date()
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service, storage } = buildService(job);
+
+    await expect(
+      service.saveMergedScore('user-1', 'job-1', 1, {
+        musicXml: MUSICXML,
+        sourceEngineId: 'transcoda',
+        basisSignature: basis,
+        revision: 1
+      })
+    ).rejects.toThrow(/starting reading cannot be changed/);
+    expect(storage.putDerivativeObject).not.toHaveBeenCalled();
+  });
+
+  it('persists and records the exact part and bar changed by hand', async () => {
+    const page = pageWithReadings({
+      sourceImage: {
+        bucket: 'src',
+        objectKey: 'page.png',
+        sizeBytes: 1,
+        contentType: 'image/png',
+        checksumSha256: 'page-sha'
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const writes: any[] = [];
+    const created: any[] = [];
+    const { service } = buildService(job, { writes, mergeDecisions: created });
+
+    const state = await service.saveMergedScore('user-1', 'job-1', 1, {
+      musicXml: MUSICXML,
+      sourceEngineId: 'homr',
+      basisSignature: currentBasis(page),
+      revision: 0,
+      edited: true,
+      editedMeasures: [{ stablePartKey: 'part-cello', measureIndex: 0 }]
+    });
+
+    expect(state.editedMeasures).toEqual([{ stablePartKey: 'part-cello', measureIndex: 0 }]);
+    expect(writes[0].$set.pages[0].mergedScore.editedMeasures).toEqual([
+      { stablePartKey: 'part-cello', measureIndex: 0 }
+    ]);
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      outcome: 'edited',
+      stablePartKey: 'part-cello',
+      measureIndex: 0
+    });
+    expect(created[0].engineId).toBeUndefined();
+  });
+
   it('refuses a save made against readings that have since moved', async () => {
     const page = pageWithReadings();
     const staleSignature = currentBasis({ engines: { homr: run('homr', 'homr-before') } });
@@ -2710,7 +2814,13 @@ describe('ScannerService merged score', () => {
     // The stored object is re-verified on read, so the fixture's checksum has
     // to be the real one.
     page.mergedMusicXml.checksumSha256 = createHash('sha256').update(MUSICXML).digest('hex');
-    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', statusVersion: 9, pages: [page] };
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      status: 'succeeded',
+      statusVersion: 9,
+      pages: [page]
+    };
     const { service } = buildService(job);
 
     const state = await service.pageMergedScore('user-1', 'job-1', 1);
@@ -2721,11 +2831,16 @@ describe('ScannerService merged score', () => {
     });
   });
 
-  it('discards a merged score only on the reviewer\'s explicit act', async () => {
+  it("discards a merged score only on the reviewer's explicit act", async () => {
     const basis = currentBasis(pageWithReadings());
     const page = pageWithReadings({
       mergedMusicXml: locator('merged'),
-      mergedScore: { sourceEngineId: 'homr', basisSignature: basis, revision: 2, updatedAt: new Date() }
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: basis,
+        revision: 2,
+        updatedAt: new Date()
+      }
     });
     const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
     const writes: any[] = [];
@@ -2750,7 +2865,12 @@ describe('ScannerService merged score', () => {
     const basis = currentBasis(pageWithReadings());
     const page = pageWithReadings({
       mergedMusicXml: locator('merged'),
-      mergedScore: { sourceEngineId: 'homr', basisSignature: basis, revision: 1, updatedAt: new Date() }
+      mergedScore: {
+        sourceEngineId: 'homr',
+        basisSignature: basis,
+        revision: 1,
+        updatedAt: new Date()
+      }
     });
     const job: any = {
       _id: 'j',
@@ -2812,7 +2932,14 @@ describe('ScannerService merged score', () => {
     jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
       analysis: {
         status: 'succeeded',
-        blocks: [{ blockIndex: 0, contentSignature: 'sig-now', baseMeasureRefs: [], candidateMeasureRefs: [] }]
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-now',
+            baseMeasureRefs: [],
+            candidateMeasureRefs: []
+          }
+        ]
       },
       geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
     });
@@ -2924,9 +3051,7 @@ describe('ScannerService merged score', () => {
       },
       geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
     });
-    jest
-      .spyOn(service as any, 'mergedOrEngineMusicXml')
-      .mockResolvedValue(Buffer.from(SPLICEABLE));
+    jest.spyOn(service as any, 'mergedOrEngineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
     jest.spyOn(service as any, 'engineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
 
     const state = await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
@@ -2941,6 +3066,123 @@ describe('ScannerService merged score', () => {
     expect(state.revision).toBe(1);
     expect(state.musicXmlUrl).toBe('../merged/musicxml?revision=1');
     expect(state.url).toBe('../merged');
+  });
+
+  it('materializes automatic beams before taking them into an explicitly-beamed score', async () => {
+    const beamless = Buffer.from(
+      SPLICEABLE.replace('</voice></note>', '</voice><type>eighth</type></note>')
+    );
+    const explicit = Buffer.from(
+      SPLICEABLE.replace(
+        '</voice></note>',
+        '</voice><type>eighth</type><beam number="1">begin</beam></note>'
+      )
+    );
+    const page = pageWithReadings();
+    const writes: any[] = [];
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service, storage } = buildService(job, { writes });
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          {
+            blockIndex: 0,
+            contentSignature: 'sig-beams',
+            baseAnchorIndex: -1,
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+    jest.spyOn(service as any, 'mergedOrEngineMusicXml').mockResolvedValue(explicit);
+    jest.spyOn(service as any, 'comparisonReadingMusicXml').mockResolvedValue(beamless);
+    const normalize = jest
+      .spyOn(scannerBeamNormalization, 'materializeScannerAutoBeams')
+      .mockResolvedValue({ musicXml: explicit, materialized: true });
+
+    await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+      blockIndex: 0,
+      contentSignature: 'sig-beams',
+      engineId: 'transcoda',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 0
+    });
+
+    expect(normalize).toHaveBeenCalledWith(beamless, { executable: undefined });
+    expect(storage.putDerivativeObject.mock.calls[0][1].toString('utf8')).toContain('<beam');
+    expect(writes[0].$set.pages[0].mergedScore.decisions[0].repairs).toEqual([
+      expect.objectContaining({ code: 'materialize-auto-beams' })
+    ]);
+    normalize.mockRestore();
+  });
+
+  it('applies a decision to the matched part instead of always changing part one', async () => {
+    const score = (first: string, second: string) =>
+      Buffer.from(
+        '<?xml version="1.0"?><score-partwise version="4.0"><part-list>' +
+          '<score-part id="P1"><part-name>Violin</part-name></score-part>' +
+          '<score-part id="P2"><part-name>Cello</part-name></score-part></part-list>' +
+          `<part id="P1"><measure number="1"><attributes><divisions>4</divisions>` +
+          '<time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
+          `<note><pitch><step>${first}</step><octave>4</octave></pitch><duration>16</duration>` +
+          '<voice>1</voice></note></measure></part>' +
+          `<part id="P2"><measure number="1"><attributes><divisions>4</divisions>` +
+          '<time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
+          `<note><pitch><step>${second}</step><octave>3</octave></pitch><duration>16</duration>` +
+          '<voice>1</voice></note></measure></part></score-partwise>'
+      );
+    const base = score('C', 'D');
+    const candidate = score('E', 'G');
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service, storage } = buildService(job);
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        partMatches: [
+          {
+            outcome: 'matched',
+            stablePartKey: 'pair-part-2',
+            base: { ordinal: 1 },
+            candidate: { ordinal: 1 }
+          }
+        ],
+        blocks: [
+          {
+            blockIndex: 0,
+            stablePartKey: 'pair-part-2',
+            contentSignature: 'sig-part-2',
+            baseAnchorIndex: -1,
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }],
+            differenceClasses: ['notation']
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+    jest.spyOn(service as any, 'mergedOrEngineMusicXml').mockResolvedValue(base);
+    jest.spyOn(service as any, 'comparisonReadingMusicXml').mockResolvedValue(candidate);
+
+    await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
+      blockIndex: 0,
+      contentSignature: 'sig-part-2',
+      engineId: 'transcoda',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 0
+    });
+
+    const stored = storage.putDerivativeObject.mock.calls[0][1].toString('utf8');
+    expect(stored).toContain('<part id="P1">');
+    expect(stored).toContain('<step>C</step>');
+    expect(stored).not.toContain('<step>E</step>');
+    expect(stored).toContain('<step>G</step>');
+    expect(stored).not.toContain('<step>D</step>');
   });
 
   it('takes a passage back to the engine the merged score started from', async () => {
@@ -2982,9 +3224,7 @@ describe('ScannerService merged score', () => {
       },
       geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
     });
-    jest
-      .spyOn(service as any, 'mergedOrEngineMusicXml')
-      .mockResolvedValue(Buffer.from(SPLICEABLE));
+    jest.spyOn(service as any, 'mergedOrEngineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
     jest.spyOn(service as any, 'engineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
 
     const state = await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
@@ -3159,9 +3399,7 @@ describe('ScannerService merged score', () => {
       },
       geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
     });
-    jest
-      .spyOn(service as any, 'mergedOrEngineMusicXml')
-      .mockResolvedValue(Buffer.from(SPLICEABLE));
+    jest.spyOn(service as any, 'mergedOrEngineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
     jest.spyOn(service as any, 'engineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
 
     await service.takeBlockIntoMergedScore('user-1', 'job-1', 1, {
@@ -3184,6 +3422,67 @@ describe('ScannerService merged score', () => {
       // about *what*.
       differenceClasses: ['notation']
     });
+  });
+
+  it('persists a grounded flag without crediting either engine', async () => {
+    const created: any[] = [];
+    const writes: any[] = [];
+    const page = pageWithReadings({
+      sourceImage: {
+        bucket: 'src',
+        objectKey: 'page.png',
+        sizeBytes: 1,
+        contentType: 'image/png',
+        checksumSha256: 'page-sha'
+      }
+    });
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', pages: [page] };
+    const { service } = buildService(job, { writes, mergeDecisions: created });
+    jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
+      analysis: {
+        status: 'succeeded',
+        partMatches: [
+          {
+            outcome: 'matched',
+            stablePartKey: 'part-cello',
+            base: { ordinal: 0 },
+            candidate: { ordinal: 0 }
+          }
+        ],
+        blocks: [
+          {
+            blockIndex: 0,
+            stablePartKey: 'part-cello',
+            contentSignature: 'sig-0',
+            differenceClasses: ['notation'],
+            baseMeasureRefs: [{ measureIndex: 0 }],
+            candidateMeasureRefs: [{ measureIndex: 0 }]
+          }
+        ]
+      },
+      geometry: { blocks: [{ status: 'ready', block: { blockIndex: 0 } }] }
+    });
+    jest.spyOn(service as any, 'mergedOrEngineMusicXml').mockResolvedValue(Buffer.from(SPLICEABLE));
+
+    const state = await service.flagMergedScoreBlock('user-1', 'job-1', 1, {
+      blockIndex: 0,
+      contentSignature: 'sig-0',
+      baseEngineId: 'homr',
+      candidateEngineId: 'transcoda',
+      revision: 0,
+      flagged: true
+    });
+
+    expect(state.decisions).toContainEqual(
+      expect.objectContaining({ blockIndex: 0, stablePartKey: 'part-cello', flagged: true })
+    );
+    expect(writes[0].$set.pages[0].mergedScore.decisions[0]).toMatchObject({
+      stablePartKey: 'part-cello',
+      measureIndexes: [0],
+      flagged: true
+    });
+    expect(created[0]).toMatchObject({ outcome: 'flagged', stablePartKey: 'part-cello' });
+    expect(created[0].engineId).toBeUndefined();
   });
 
   it('never credits an engine for a bar a human had to fix', async () => {
@@ -3249,32 +3548,31 @@ describe('ScannerService merged score', () => {
       })
     ).rejects.toThrow(/not one of the two/);
   });
-
 });
 
 describe('scanner comparison relative URLs', () => {
-    // Every URL in the regions document resolves against the document's own
-    // URL, because the browser reaches this process through the host's proxy
-    // and neither the embed nor this service knows the prefix. The regions
-    // document sits at `…/pages/N/comparison/regions`, which makes the correct
-    // prefix depend on whether the target lives under `comparison/`.
-    const regionsUrl =
-      'https://host/api/proxy/scanner/jobs/job-1/pages/1/comparison/regions?baseEngine=homr';
-    const resolve = (relative: string) => new URL(relative, regionsUrl).pathname;
+  // Every URL in the regions document resolves against the document's own
+  // URL, because the browser reaches this process through the host's proxy
+  // and neither the embed nor this service knows the prefix. The regions
+  // document sits at `…/pages/N/comparison/regions`, which makes the correct
+  // prefix depend on whether the target lives under `comparison/`.
+  const regionsUrl =
+    'https://host/api/proxy/scanner/jobs/job-1/pages/1/comparison/regions?baseEngine=homr';
+  const resolve = (relative: string) => new URL(relative, regionsUrl).pathname;
 
-    it('resolves a system crop, which lives under comparison', () => {
-      expect(resolve('systems/3/crop?statusVersion=7')).toBe(
-        '/api/proxy/scanner/jobs/job-1/pages/1/comparison/systems/3/crop'
-      );
-    });
+  it('resolves a system crop, which lives under comparison', () => {
+    expect(resolve('systems/3/crop?statusVersion=7')).toBe(
+      '/api/proxy/scanner/jobs/job-1/pages/1/comparison/systems/3/crop'
+    );
+  });
 
-    it('resolves the merged score, which does not', () => {
-      expect(resolve('../merged')).toBe('/api/proxy/scanner/jobs/job-1/pages/1/merged');
-      expect(resolve('../merged/musicxml?revision=1')).toBe(
-        '/api/proxy/scanner/jobs/job-1/pages/1/merged/musicxml'
-      );
-      // The shape that shipped broken: it lands on a route that does not exist,
-      // and the only symptom is a 404 inside the embed.
-      expect(resolve('merged')).not.toBe('/api/proxy/scanner/jobs/job-1/pages/1/merged');
-    });
+  it('resolves the merged score, which does not', () => {
+    expect(resolve('../merged')).toBe('/api/proxy/scanner/jobs/job-1/pages/1/merged');
+    expect(resolve('../merged/musicxml?revision=1')).toBe(
+      '/api/proxy/scanner/jobs/job-1/pages/1/merged/musicxml'
+    );
+    // The shape that shipped broken: it lands on a route that does not exist,
+    // and the only symptom is a 404 inside the embed.
+    expect(resolve('merged')).not.toBe('/api/proxy/scanner/jobs/job-1/pages/1/merged');
+  });
 });

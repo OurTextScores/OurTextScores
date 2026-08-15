@@ -7,7 +7,8 @@ import { validateScannerMusicXmlSemantics } from './scanner-musicxml-semantics';
  * the better reading, everything HOMR heard *about* those notes is only in HOMR.
  */
 
-const part = (measures: string) => Buffer.from(`<?xml version="1.0"?>
+const part = (measures: string) =>
+  Buffer.from(`<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>
   <part id="P1">${measures}</part>
@@ -34,6 +35,11 @@ const dynamic = (mark: string, offset?: number) => `
   <direction placement="below">
     <direction-type><dynamics><${mark}/></dynamics></direction-type>
     ${offset === undefined ? '' : `<offset>${offset}</offset>`}
+  </direction>`;
+
+const words = (value: string) => `
+  <direction placement="above">
+    <direction-type><words>${value}</words></direction-type>
   </direction>`;
 
 const transfer = (
@@ -137,7 +143,9 @@ describe('scanner marking transfer', () => {
     // Two engines' guesses about the same phrase merged into one bar would be
     // neither reading, and nobody asked for that.
     const base = part(bar(dynamic('ff') + note(4, { lyric: 'old' }) + note(4) + note(4) + note(4)));
-    const candidate = part(bar(dynamic('p') + note(4, { lyric: 'new' }) + note(4) + note(4) + note(4)));
+    const candidate = part(
+      bar(dynamic('p') + note(4, { lyric: 'new' }) + note(4) + note(4) + note(4))
+    );
     const result = transfer(base, candidate, [0], 'dynamics');
 
     const xml = result.musicXml!.toString('utf8');
@@ -146,6 +154,23 @@ describe('scanner marking transfer', () => {
     // Taking dynamics replaced the dynamics and left the lyric where it was.
     expect(xml).toContain('<text>old</text>');
     expect(xml).not.toContain('<text>new</text>');
+  });
+
+  it('takes dynamics without replacing unrelated directions', () => {
+    const base = part(
+      bar(words('Keep this tempo') + dynamic('ff') + note(4) + note(4) + note(4) + note(4))
+    );
+    const candidate = part(
+      bar(words('Do not import this text') + dynamic('p') + note(4) + note(4) + note(4) + note(4))
+    );
+
+    const result = transfer(base, candidate, [0], 'dynamics');
+
+    const xml = result.musicXml!.toString('utf8');
+    expect(xml).toContain('Keep this tempo');
+    expect(xml).not.toContain('Do not import this text');
+    expect(xml).toContain('<p/>');
+    expect(xml).not.toContain('<ff/>');
   });
 
   it('says when there is nothing to take', () => {

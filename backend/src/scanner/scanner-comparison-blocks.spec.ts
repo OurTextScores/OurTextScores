@@ -111,6 +111,45 @@ function sides(
 }
 
 describe('scanner comparison blocks', () => {
+  it('carries concrete normalized facts for a precise review description', () => {
+    const scoreWith = (thirdPitch: string) =>
+      Buffer.from(
+        `<score-partwise><part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list><part id="P1"><measure number="1"><attributes><divisions>1</divisions></attributes>${[
+          'C',
+          'D',
+          thirdPitch,
+          'F'
+        ]
+          .map(
+            (step) =>
+              `<note><pitch><step>${step}</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><staff>1</staff></note>`
+          )
+          .join('')}</measure></part></score-partwise>`
+      );
+    const baseXml = scoreWith('E');
+    const candidateXml = scoreWith('G');
+    const base = describeScannerMusicXmlMeasures(baseXml)[0].measures;
+    const candidate = describeScannerMusicXmlMeasures(candidateXml)[0].measures;
+    const match = matchedPart(sha(baseXml), sha(candidateXml));
+
+    const block = buildScannerComparisonBlocks({
+      partMatch: match,
+      ...sides(base, candidate, match)
+    })[0];
+
+    expect(block.componentDifferences).toEqual([
+      expect.objectContaining({
+        component: 'notation',
+        baseMeasureIndex: 0,
+        candidateMeasureIndex: 0,
+        baseOnly: ['E4 at quarter 2, duration 1 quarter'],
+        candidateOnly: ['G4 at quarter 2, duration 1 quarter'],
+        baseOmitted: 0,
+        candidateOmitted: 0
+      })
+    ]);
+  });
+
   it('names the events inside a bar that did not match', () => {
     // A block names bars, and a bar is a coarse thing to point at: "these
     // readings differ in notes or rhythm somewhere in bar 12" leaves the reader

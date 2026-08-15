@@ -175,7 +175,7 @@ describe("PageComparison", () => {
     // The link also gives a comparison a URL to come back to.
     render(<PageComparison jobId="job-1" job={job} page={page} />);
 
-    const link = screen.getByRole("link", { name: /Compare engine readings/ });
+    const link = screen.getByRole("link", { name: "Resolve engine conflicts" });
     expect(link).toHaveAttribute("href", "/scanner/job-1/pages/1/compare");
     // Nothing is fetched until the reader goes there.
     expect(globalThis.fetch).not.toHaveBeenCalled();

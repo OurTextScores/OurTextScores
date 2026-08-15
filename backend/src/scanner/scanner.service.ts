@@ -26,6 +26,7 @@ import {
   ScannerJob,
   ScannerJobDocument,
   ScannerMergedDecision,
+  ScannerMergedEditedMeasure,
   ScannerMergedScore,
   ScannerPageResult,
   ScannerSourceInput,
@@ -33,10 +34,15 @@ import {
 } from './schemas/scanner-job.schema';
 import { assertValidMusicXml } from './scanner-musicxml';
 import { spliceScannerMeasures } from './scanner-splice';
+import {
+  materializeScannerAutoBeams,
+  scannerMusicXmlNeedsBeamMaterialization
+} from './scanner-beam-normalization';
 import { reconcileScannerPartLayout } from './scanner-part-layout';
 import { transferScannerMarkings } from './scanner-marking-transfer';
 import { readScannerSpliceFacts } from './scanner-splice-safety';
 import {
+  editedMeasuresAfterSplice,
   identityMeasureMap,
   mergedBlockReadsFrom,
   resolveMergedAnchor,
@@ -45,8 +51,6 @@ import {
   withRemovedMeasures,
   withReplacedMeasures
 } from './scanner-merged-measure-map';
-
-
 import {
   effectivePageMusicXml,
   effectivePageMusicXmlSelection,
@@ -886,9 +890,10 @@ export class ScannerService implements OnModuleInit {
           symbolIndex: spot.symbolIndex,
           // Where to point on the staff crop. Without this the reviewer is
           // asked "which duration is this?" over a line of thirty notes.
-          band: band && vertical
-            ? { ...band, contextTop: vertical.top, contextHeight: vertical.height }
-            : band
+          band:
+            band && vertical
+              ? { ...band, contextTop: vertical.top, contextHeight: vertical.height }
+              : band
         };
       }),
       remainingFloor: remainingFloor(spots, 0),
@@ -940,6 +945,17 @@ export class ScannerService implements OnModuleInit {
       ? { ...this.mergedScoreState(job, page), ...this.mergedScoreLinks(page) }
       : undefined;
 
+    // Part ordinals can differ between engines — part 0 in one may match part 2
+    // in the other — so every staff row and difference names both.
+    const ordinals = new Map<string, { left?: number; right?: number }>();
+    for (const match of comparison.analysis?.partMatches || []) {
+      if (match.outcome !== 'matched') continue;
+      ordinals.set(match.stablePartKey, {
+        left: match.base?.ordinal,
+        right: match.candidate?.ordinal
+      });
+    }
+
     const base = {
       version: SCANNER_COMPARE_REGIONS_VERSION,
       statusVersion: comparison.statusVersion,
@@ -962,6 +978,15 @@ export class ScannerService implements OnModuleInit {
         region: system.region,
         leftMeasureIndexes: system.baseMeasureIndexes,
         rightMeasureIndexes: system.candidateMeasureIndexes,
+        staffRows: (system.staffRows || []).map((row) => ({
+          stablePartKey: row.stablePartKey,
+          staffIndices: row.staffIndices,
+          region: row.region,
+          leftPartIndex: ordinals.get(row.stablePartKey)?.left,
+          rightPartIndex: ordinals.get(row.stablePartKey)?.right,
+          leftMeasureIndexes: row.baseMeasureIndexes,
+          rightMeasureIndexes: row.candidateMeasureIndexes
+        })),
         // Relative to this document's own URL, so it resolves correctly
         // whatever prefix the caller reached us through — the browser arrives
         // via the frontend's proxy, which this process cannot know. Built here
@@ -982,18 +1007,6 @@ export class ScannerService implements OnModuleInit {
     };
     if (comparison.analysis?.status !== 'succeeded') return base;
 
-    // Part ordinals can differ between engines — part 0 in one may match part 2
-    // in the other — so each side carries its own index. Change review's single
-    // partIndex works only because both its sides are revisions of one score.
-    const ordinals = new Map<string, { left?: number; right?: number }>();
-    for (const match of comparison.analysis.partMatches || []) {
-      if (match.outcome !== 'matched') continue;
-      ordinals.set(match.stablePartKey, {
-        left: match.base?.ordinal,
-        right: match.candidate?.ordinal
-      });
-    }
-
     const groundedBlockIndexes = new Set(
       (comparison.geometry?.blocks || [])
         .filter((entry: any) => entry.status === 'ready')
@@ -1013,7 +1026,8 @@ export class ScannerService implements OnModuleInit {
     );
     const cropBoxesFor = (blockIndex: number) => {
       const entry = (comparison.geometry?.blocks || []).find(
-        (candidate: any) => candidate.status === 'ready' && candidate.block.blockIndex === blockIndex
+        (candidate: any) =>
+          candidate.status === 'ready' && candidate.block.blockIndex === blockIndex
       );
       return (entry?.block?.cropRegions || []).flatMap((crop: any) => {
         const system = systemRegions.get(crop.systemIndex);
@@ -1097,6 +1111,29 @@ export class ScannerService implements OnModuleInit {
             rightEventIndexes: difference.candidateEventIndexes,
             leftEventCount: difference.baseEventCount,
             rightEventCount: difference.candidateEventCount
+          })),
+          // The hashes say which broad components differ; these bounded,
+          // normalized facts say exactly what exists only in each reading.
+          // Project base/candidate to left/right just as the event highlights do.
+          componentDifferences: (block.componentDifferences || []).map((difference: any) => ({
+            measurePosition: difference.measurePosition,
+            leftMeasureIndex: difference.baseMeasureIndex,
+            rightMeasureIndex: difference.candidateMeasureIndex,
+            leftMeasureLabel: measureLabel(
+              (block.baseMeasureRefs || []).filter(
+                (ref: any) => ref.measureIndex === difference.baseMeasureIndex
+              )
+            ),
+            rightMeasureLabel: measureLabel(
+              (block.candidateMeasureRefs || []).filter(
+                (ref: any) => ref.measureIndex === difference.candidateMeasureIndex
+              )
+            ),
+            component: difference.component,
+            leftOnly: difference.baseOnly,
+            rightOnly: difference.candidateOnly,
+            leftOmitted: difference.baseOmitted,
+            rightOmitted: difference.candidateOmitted
           })),
           // What each side has to give, so a control that would take nothing is
           // never offered.
@@ -1410,9 +1447,13 @@ export class ScannerService implements OnModuleInit {
        */
       decisions: (page.mergedScore?.decisions || []).map((decision) => ({
         blockIndex: decision.blockIndex,
+        stablePartKey: decision.stablePartKey,
         engineId: decision.engineId,
-        markingsOnly: decision.markingsOnly
+        markingsOnly: decision.markingsOnly,
+        flagged: decision.flagged,
+        measureIndexes: decision.measureIndexes
       })),
+      editedMeasures: page.mergedScore?.editedMeasures || [],
       /**
        * Where each merged bar came from, so a consumer can follow one.
        *
@@ -1422,6 +1463,7 @@ export class ScannerService implements OnModuleInit {
        * silently reflows is the reader's own reference frame moving under them.
        */
       measureMap: page.mergedScore?.measureMap,
+      measureMaps: page.mergedScore?.measureMaps,
       /** Quote this when saving; a mismatch means the readings moved. */
       basisSignature,
       recordedBasisSignature: page.mergedScore?.basisSignature,
@@ -1478,6 +1520,7 @@ export class ScannerService implements OnModuleInit {
       basisSignature: string;
       revision: number;
       edited?: boolean;
+      editedMeasures?: ScannerMergedEditedMeasure[];
       acceptStale?: boolean;
     }
   ): Promise<any> {
@@ -1505,6 +1548,14 @@ export class ScannerService implements OnModuleInit {
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
+    if (
+      page.mergedScore?.sourceEngineId &&
+      page.mergedScore.sourceEngineId !== input.sourceEngineId
+    ) {
+      throw new ConflictException(
+        'The merged score already contains review work; its starting reading cannot be changed'
+      );
+    }
     const basisSignature = scannerMergedScoreBasis(page);
     if (input.basisSignature !== basisSignature && !input.acceptStale) {
       throw new ConflictException(
@@ -1525,13 +1576,42 @@ export class ScannerService implements OnModuleInit {
       throw new BadRequestException('That merged score is not usable MusicXML');
     }
 
+    const facts = readScannerSpliceFacts(buffer);
+    const maximumMeasures = Math.max(0, ...facts.map((part) => part.measures.length));
+    const editedKey = (entry: ScannerMergedEditedMeasure) =>
+      `${entry.stablePartKey || ''}:${entry.measureIndex}`;
+    const priorEdited = page.mergedScore?.editedMeasures || [];
+    const submittedEdited = input.editedMeasures || [];
+    for (const entry of submittedEdited) {
+      if (
+        !Number.isInteger(entry.measureIndex) ||
+        entry.measureIndex < 0 ||
+        entry.measureIndex >= maximumMeasures ||
+        (entry.stablePartKey !== undefined &&
+          (entry.stablePartKey.length === 0 || entry.stablePartKey.length > 200))
+      ) {
+        throw new BadRequestException('Edited measures must identify bars in this merged score');
+      }
+    }
+    const editedMeasures = [
+      ...new Map(
+        [...priorEdited, ...submittedEdited].map((entry) => [editedKey(entry), entry])
+      ).values()
+    ].sort(
+      (left, right) =>
+        String(left.stablePartKey || '').localeCompare(String(right.stablePartKey || '')) ||
+        left.measureIndex - right.measureIndex
+    );
+
     const mergedScore: ScannerMergedScore = {
       sourceEngineId: input.sourceEngineId,
       basisSignature,
       // Once hand work has landed it stays recorded, because what it marks is
       // that neither engine can be credited for this page — and a later save
       // that happens to touch no bars does not undo that.
-      edited: Boolean(input.edited) || Boolean(page.mergedScore?.edited),
+      edited:
+        editedMeasures.length > 0 || Boolean(input.edited) || Boolean(page.mergedScore?.edited),
+      editedMeasures,
       revision: currentRevision + 1,
       decisions: page.mergedScore?.decisions,
       /*
@@ -1544,6 +1624,7 @@ export class ScannerService implements OnModuleInit {
        * numbering that had not been true for several revisions.
        */
       measureMap: page.mergedScore?.measureMap,
+      measureMaps: page.mergedScore?.measureMaps,
       updatedAt: new Date()
     };
     const state = await this.persistMergedScore({
@@ -1560,7 +1641,27 @@ export class ScannerService implements OnModuleInit {
     // to file wrongly: "both engines were wrong here, and this is what the page
     // says" beats any choice between them, but only if it is never recorded as
     // one of them having been right. Emitted once, when the edit first lands.
-    if (mergedScore.edited && !page.mergedScore?.edited) {
+    const priorEditedKeys = new Set(priorEdited.map(editedKey));
+    const newlyEdited = editedMeasures.filter((entry) => !priorEditedKeys.has(editedKey(entry)));
+    if (newlyEdited.length > 0) {
+      const plan = this.enginePlanForJob(job);
+      const [baseEngineId, candidateEngineId] = plan.engineIds;
+      for (const entry of newlyEdited) {
+        await this.recordMergeDecision({
+          page,
+          userId,
+          baseEngineId: baseEngineId || input.sourceEngineId,
+          candidateEngineId: candidateEngineId || input.sourceEngineId,
+          outcome: 'edited',
+          stablePartKey: entry.stablePartKey,
+          measureIndex: entry.measureIndex,
+          priorDecisions: (page.mergedScore?.decisions || []).length
+        });
+      }
+    } else if (mergedScore.edited && !page.mergedScore?.edited) {
+      // Compatibility for retained embeds that can only say the page changed,
+      // not which bar. New clients always submit `editedMeasures` and take the
+      // per-bar branch above.
       const plan = this.enginePlanForJob(job);
       const [baseEngineId, candidateEngineId] = plan.engineIds;
       await this.recordMergeDecision({
@@ -1569,13 +1670,88 @@ export class ScannerService implements OnModuleInit {
         baseEngineId: baseEngineId || input.sourceEngineId,
         candidateEngineId: candidateEngineId || input.sourceEngineId,
         outcome: 'edited',
-        // An edit is page-level: nothing records which bars it touched, so a
-        // consumer weighting per-bar takes on this page needs to know there
-        // were some.
         priorDecisions: (page.mergedScore?.decisions || []).length
       });
     }
     return state;
+  }
+
+  /**
+   * Persist the engine the merged document starts from before the first edit.
+   *
+   * The row editor can display either reading, but a display-only choice is not
+   * provenance. Without this route, choosing the candidate and immediately
+   * taking a bar still made the server start from the base reading. Persisting
+   * the wholesale choice first gives the editor and the decision route one
+   * source of truth.
+   */
+  async chooseMergedScoreSource(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    input: {
+      engineId: string;
+      baseEngineId: string;
+      candidateEngineId: string;
+      revision: number;
+    }
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.status !== 'succeeded') {
+      throw new ConflictException('Only a succeeded page can carry a merged score');
+    }
+    if (
+      !isScannerEngineId(input.baseEngineId) ||
+      !isScannerEngineId(input.candidateEngineId) ||
+      input.baseEngineId === input.candidateEngineId ||
+      !isScannerEngineId(input.engineId) ||
+      (input.engineId !== input.baseEngineId && input.engineId !== input.candidateEngineId)
+    ) {
+      throw new BadRequestException(
+        'The merged score must start from one of two distinct valid scanner engines'
+      );
+    }
+    const plan = this.enginePlanForJob(job);
+    if (
+      !plan.engineIds.includes(input.baseEngineId) ||
+      !plan.engineIds.includes(input.candidateEngineId)
+    ) {
+      throw new BadRequestException('Both compared engines must be part of this scanner job');
+    }
+    const currentRevision = page.mergedScore?.revision ?? 0;
+    if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
+      throw new ConflictException('The merged score changed; refresh and try again');
+    }
+    if (page.mergedMusicXml || page.mergedScore) {
+      throw new ConflictException(
+        'This merged score already contains review work; its starting reading cannot be changed'
+      );
+    }
+
+    const buffer = await this.comparisonReadingMusicXml(page, input.engineId, input);
+    assertValidMusicXml(buffer);
+    const facts = readScannerSpliceFacts(buffer);
+    const mergedScore: ScannerMergedScore = {
+      sourceEngineId: input.engineId,
+      basisSignature: scannerMergedScoreBasis(page),
+      edited: false,
+      revision: currentRevision + 1,
+      decisions: [],
+      measureMap: identityMeasureMap(facts[0]?.measures.length ?? 0),
+      updatedAt: new Date()
+    };
+    return this.persistMergedScore({
+      userId,
+      jobId,
+      pageNumber,
+      job,
+      page,
+      buffer,
+      mergedScore
+    });
   }
 
   /**
@@ -1703,6 +1879,9 @@ export class ScannerService implements OnModuleInit {
       block,
       mergedSourceEngineId,
       map,
+      stablePartKey,
+      mergedPartIndex,
+      partIndexFor,
       currentRevision
     } = await this.resolveDecisionContext(userId, jobId, pageNumber, input);
 
@@ -1740,7 +1919,7 @@ export class ScannerService implements OnModuleInit {
       );
     }
 
-    const baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input);
+    let baseXml = await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input);
     const mergedMeasureIndexes = resolveMergedIndexes(map, baseMeasureIndexes);
     if (!mergedMeasureIndexes) {
       throw new ConflictException(
@@ -1756,16 +1935,49 @@ export class ScannerService implements OnModuleInit {
       );
     }
 
-    const candidateXml = await this.comparisonReadingMusicXml(page, input.engineId, input);
+    let candidateXml = await this.comparisonReadingMusicXml(page, input.engineId, input);
+    const materializedBeamSources: string[] = [];
+    const normalizeBeams = async (musicXml: Buffer, source: string): Promise<Buffer> => {
+      try {
+        const normalized = await materializeScannerAutoBeams(musicXml, {
+          executable: this.config.get<string>('MUSESCORE_CLI') || undefined
+        });
+        if (normalized.materialized) materializedBeamSources.push(source);
+        return normalized.musicXml;
+      } catch (error) {
+        this.logger.error(
+          `Could not materialize automatic beams before scanner merge: ${error instanceof Error ? error.message : String(error)}`
+        );
+        throw new ServiceUnavailableException(
+          'This passage uses automatic beaming that must be preserved before it can be taken. MuseScore could not normalize it; the merged score was not changed.'
+        );
+      }
+    };
+    // Either direction can create the mixed-document ambiguity. Preserve the
+    // merged score before inserting explicit beams, or preserve the candidate
+    // before inserting its automatic beams into an explicit document.
+    if (scannerMusicXmlNeedsBeamMaterialization(baseXml, candidateXml)) {
+      baseXml = await normalizeBeams(baseXml, 'the merged score');
+    } else if (scannerMusicXmlNeedsBeamMaterialization(candidateXml, baseXml)) {
+      candidateXml = await normalizeBeams(candidateXml, 'the selected reading');
+    }
     const outcome = spliceScannerMeasures({
       baseXml,
       candidateXml,
-      basePartIndex: 0,
-      candidatePartIndex: 0,
+      basePartIndex: mergedPartIndex,
+      candidatePartIndex: partIndexFor(input.engineId),
       baseMeasureIndexes: mergedMeasureIndexes,
       candidateMeasureIndexes,
       baseAnchorIndex: mergedAnchorIndex
     });
+    if (materializedBeamSources.length > 0) {
+      outcome.repairs.push({
+        code: 'materialize-auto-beams',
+        detail: `MuseScore materialized automatic beams in ${materializedBeamSources.join(
+          ' and '
+        )} before the passage was transferred.`
+      });
+    }
     if (!outcome.musicXml) {
       // Refusals are information, not an error to swallow: the reviewer is
       // told exactly what about this passage cannot be moved.
@@ -1789,27 +2001,38 @@ export class ScannerService implements OnModuleInit {
           ? withInsertedMeasures(map, mergedAnchorIndex ?? -1, candidateMeasureIndexes.length)
           : candidateMeasureIndexes.length === mergedMeasureIndexes.length
             ? map
-            : withReplacedMeasures(
-                map,
-                mergedMeasureIndexes,
-                candidateMeasureIndexes.length
-              );
+            : withReplacedMeasures(map, mergedMeasureIndexes, candidateMeasureIndexes.length);
 
     const decision: ScannerMergedDecision = {
       blockIndex: input.blockIndex,
+      stablePartKey,
       contentSignature: block.contentSignature,
       engineId: input.engineId,
       measureIndexes: mergedMeasureIndexes,
       repairs: outcome.repairs.map((repair) => ({ code: repair.code, detail: repair.detail })),
+      flagged: false,
       decidedAt: new Date()
     };
     const mergedScore: ScannerMergedScore = {
       sourceEngineId: mergedSourceEngineId,
       basisSignature: scannerMergedScoreBasis(page),
       edited: Boolean(page.mergedScore?.edited),
+      editedMeasures: editedMeasuresAfterSplice(
+        page.mergedScore?.editedMeasures || [],
+        stablePartKey,
+        mergedMeasureIndexes,
+        candidateMeasureIndexes.length,
+        mergedAnchorIndex
+      ),
       revision: currentRevision + 1,
       decisions: [...(page.mergedScore?.decisions || []), decision],
-      measureMap: nextMap,
+      // Keep the old first-part projection for the row renderer, but do not let
+      // a structural decision in viola or piano shift the map used by violin.
+      measureMap: mergedPartIndex === 0 ? nextMap : page.mergedScore?.measureMap,
+      measureMaps: {
+        ...(page.mergedScore?.measureMaps || {}),
+        [stablePartKey]: nextMap
+      },
       updatedAt: new Date()
     };
     const state = await this.persistMergedScore({
@@ -1834,6 +2057,7 @@ export class ScannerService implements OnModuleInit {
             ? 'inserted-bars'
             : 'took-notes',
       blockIndex: input.blockIndex,
+      stablePartKey,
       contentSignature: block.contentSignature,
       differenceClasses: block.differenceClasses,
       repairs: decision.repairs
@@ -1933,15 +2157,55 @@ export class ScannerService implements OnModuleInit {
     // from, so that is the side its indexes are expressed in. The map keeps the
     // two reconciled once a decision has changed the merged score's length.
     const mergedSourceEngineId = page.mergedScore?.sourceEngineId || input.baseEngineId;
+    const partMatches = comparison.analysis.partMatches || [];
+    const match =
+      partMatches.find(
+        (entry) => entry.outcome === 'matched' && entry.stablePartKey === block.stablePartKey
+      ) ||
+      // Compatibility for retained single-part comparison snapshots and older
+      // callers that predate stable part keys. New comparison blocks always
+      // carry the explicit match and multi-part decisions never use this path.
+      (!block.stablePartKey && partMatches.length === 0
+        ? { base: { ordinal: 0 }, candidate: { ordinal: 0 } }
+        : undefined);
+    if (!match) {
+      throw new ConflictException('The part behind this difference is no longer matched');
+    }
+    const partIndexFor = (engineId: string): number => {
+      const endpoint =
+        engineId === input.baseEngineId
+          ? match.base
+          : engineId === input.candidateEngineId
+            ? match.candidate
+            : undefined;
+      if (!Number.isInteger(endpoint?.ordinal) || endpoint.ordinal < 0) {
+        throw new ConflictException('The part behind this difference has no usable engine ordinal');
+      }
+      return endpoint.ordinal;
+    };
+    const mergedPartIndex = partIndexFor(mergedSourceEngineId);
+    const stablePartKey = block.stablePartKey || '__legacy-part-0';
     const map =
-      page.mergedScore?.measureMap ||
+      page.mergedScore?.measureMaps?.[stablePartKey] ||
+      (mergedPartIndex === 0 ? page.mergedScore?.measureMap : undefined) ||
       identityMeasureMap(
         readScannerSpliceFacts(
           await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input)
-        )[0]?.measures.length ?? 0
+        )[mergedPartIndex]?.measures.length ?? 0
       );
 
-    return { job, page, block, comparison, mergedSourceEngineId, map, currentRevision };
+    return {
+      job,
+      page,
+      block,
+      comparison,
+      mergedSourceEngineId,
+      map,
+      stablePartKey,
+      mergedPartIndex,
+      partIndexFor,
+      currentRevision
+    };
   }
 
   /**
@@ -1969,10 +2233,22 @@ export class ScannerService implements OnModuleInit {
     }
   ): Promise<any> {
     if (input.kind !== 'dynamics' && input.kind !== 'lyrics') {
-      throw new BadRequestException('A marking decision must say whether it takes dynamics or lyrics');
+      throw new BadRequestException(
+        'A marking decision must say whether it takes dynamics or lyrics'
+      );
     }
     const decided = await this.resolveDecisionContext(userId, jobId, pageNumber, input);
-    const { job, page, block, mergedSourceEngineId, map, currentRevision } = decided;
+    const {
+      job,
+      page,
+      block,
+      mergedSourceEngineId,
+      map,
+      stablePartKey,
+      mergedPartIndex,
+      partIndexFor,
+      currentRevision
+    } = decided;
 
     const indexesFor = (engineId: string): number[] =>
       (engineId === input.baseEngineId
@@ -1991,8 +2267,8 @@ export class ScannerService implements OnModuleInit {
     const outcome = transferScannerMarkings({
       baseXml,
       candidateXml,
-      basePartIndex: 0,
-      candidatePartIndex: 0,
+      basePartIndex: mergedPartIndex,
+      candidatePartIndex: partIndexFor(input.engineId),
       baseMeasureIndexes: mergedMeasureIndexes,
       candidateMeasureIndexes: indexesFor(input.engineId),
       kind: input.kind
@@ -2011,6 +2287,7 @@ export class ScannerService implements OnModuleInit {
 
     const decision: ScannerMergedDecision = {
       blockIndex: input.blockIndex,
+      stablePartKey,
       contentSignature: block.contentSignature,
       engineId: input.engineId,
       measureIndexes: mergedMeasureIndexes,
@@ -2023,9 +2300,14 @@ export class ScannerService implements OnModuleInit {
       sourceEngineId: mergedSourceEngineId,
       basisSignature: scannerMergedScoreBasis(page),
       edited: Boolean(page.mergedScore?.edited),
+      editedMeasures: page.mergedScore?.editedMeasures,
       revision: currentRevision + 1,
       decisions: [...(page.mergedScore?.decisions || []), decision],
       measureMap: page.mergedScore?.measureMap,
+      measureMaps: {
+        ...(page.mergedScore?.measureMaps || {}),
+        [stablePartKey]: map
+      },
       updatedAt: new Date()
     };
     const state = await this.persistMergedScore({
@@ -2047,10 +2329,85 @@ export class ScannerService implements OnModuleInit {
       // somewhere else, and may have come from the engine that lost.
       outcome: input.kind === 'lyrics' ? 'took-lyrics' : 'took-dynamics',
       blockIndex: input.blockIndex,
+      stablePartKey,
       contentSignature: block.contentSignature,
       differenceClasses: block.differenceClasses
     });
     return { ...state, decision, transferred: outcome.transferred };
+  }
+
+  /** Mark or clear one grounded difference for later human review. */
+  async flagMergedScoreBlock(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    input: {
+      blockIndex: number;
+      contentSignature: string;
+      baseEngineId: string;
+      candidateEngineId: string;
+      revision: number;
+      flagged: boolean;
+    }
+  ): Promise<any> {
+    const decided = await this.resolveDecisionContext(userId, jobId, pageNumber, {
+      ...input,
+      engineId: input.baseEngineId
+    });
+    const { job, page, block, mergedSourceEngineId, map, stablePartKey, currentRevision } = decided;
+    const indexesForSource = (
+      mergedSourceEngineId === input.baseEngineId
+        ? block.baseMeasureRefs || []
+        : block.candidateMeasureRefs || []
+    ).map((ref) => ref.measureIndex);
+    const mergedMeasureIndexes = resolveMergedIndexes(map, indexesForSource);
+    if (!mergedMeasureIndexes) {
+      throw new ConflictException(
+        'That passage is no longer in the merged score — an earlier decision removed it.'
+      );
+    }
+    const decision: ScannerMergedDecision = {
+      blockIndex: input.blockIndex,
+      stablePartKey,
+      contentSignature: block.contentSignature,
+      measureIndexes: mergedMeasureIndexes,
+      flagged: input.flagged,
+      decidedAt: new Date()
+    };
+    const mergedScore: ScannerMergedScore = {
+      sourceEngineId: mergedSourceEngineId,
+      basisSignature: scannerMergedScoreBasis(page),
+      edited: Boolean(page.mergedScore?.edited),
+      editedMeasures: page.mergedScore?.editedMeasures,
+      revision: currentRevision + 1,
+      decisions: [...(page.mergedScore?.decisions || []), decision],
+      measureMap: page.mergedScore?.measureMap,
+      measureMaps: page.mergedScore?.measureMaps,
+      updatedAt: new Date()
+    };
+    const state = await this.persistMergedScore({
+      userId,
+      jobId,
+      pageNumber,
+      job,
+      page,
+      buffer: await this.mergedOrEngineMusicXml(page, mergedSourceEngineId, input),
+      mergedScore
+    });
+    if (input.flagged) {
+      await this.recordMergeDecision({
+        page,
+        userId,
+        baseEngineId: input.baseEngineId,
+        candidateEngineId: input.candidateEngineId,
+        outcome: 'flagged',
+        blockIndex: input.blockIndex,
+        stablePartKey,
+        contentSignature: block.contentSignature,
+        differenceClasses: block.differenceClasses
+      });
+    }
+    return { ...state, decision };
   }
 
   /**
@@ -2073,6 +2430,8 @@ export class ScannerService implements OnModuleInit {
     outcome: ScannerMergeOutcome;
     engineId?: string;
     blockIndex?: number;
+    stablePartKey?: string;
+    measureIndex?: number;
     contentSignature?: string;
     differenceClasses?: string[];
     repairs?: Array<{ code: string; detail: string }>;
@@ -2080,8 +2439,9 @@ export class ScannerService implements OnModuleInit {
   }): Promise<void> {
     if (!this.mergeDecisions) return;
     try {
-      const pageSha256 = input.page.recognitionRaster?.storage?.checksumSha256
-        || input.page.sourceImage?.checksumSha256;
+      const pageSha256 =
+        input.page.recognitionRaster?.storage?.checksumSha256 ||
+        input.page.sourceImage?.checksumSha256;
       if (!pageSha256) return;
       const artifactOf = (engineId: string) => {
         const run = input.page.engines?.[engineId];
@@ -2102,6 +2462,8 @@ export class ScannerService implements OnModuleInit {
         ...(input.outcome === 'edited' || !input.engineId ? {} : { engineId: input.engineId }),
         outcome: input.outcome,
         blockIndex: input.blockIndex,
+        stablePartKey: input.stablePartKey,
+        measureIndex: input.measureIndex,
         contentSignature: input.contentSignature,
         differenceClasses: input.differenceClasses || [],
         baseArtifactSha256: artifactOf(input.baseEngineId),
@@ -2228,7 +2590,9 @@ export class ScannerService implements OnModuleInit {
     await this.storage
       .deleteObject(discarded.bucket, discarded.objectKey)
       .catch((error) =>
-        this.logger.warn(`Unable to delete discarded scanner merged score: ${this.messageOf(error)}`)
+        this.logger.warn(
+          `Unable to delete discarded scanner merged score: ${this.messageOf(error)}`
+        )
       );
     this.telemetry.emit('merged_score_discarded', {
       jobId,

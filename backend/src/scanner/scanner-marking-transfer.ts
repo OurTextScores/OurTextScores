@@ -44,8 +44,7 @@ export interface ScannerMarkingTransferOutcome {
   violations: ScannerSemanticViolation[];
 }
 
-const tagOf = (entry: OrderedEntry): string =>
-  Object.keys(entry).filter((key) => key !== ':@')[0];
+const tagOf = (entry: OrderedEntry): string => Object.keys(entry).filter((key) => key !== ':@')[0];
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -83,7 +82,16 @@ function rhythmOf(measureChildren: OrderedEntry[], scale: bigint): string[] {
 const notesOf = (measureChildren: OrderedEntry[]): OrderedEntry[] =>
   measureChildren.filter((child) => tagOf(child) === 'note');
 
-/** `<direction>` elements with the note index they precede. */
+/** Whether this `<direction>` actually carries a MusicXML `<dynamics>` mark. */
+function isDynamicDirection(entry: OrderedEntry): boolean {
+  if (tagOf(entry) !== 'direction') return false;
+  return directEntries(contents(entry, 'direction'), 'direction-type').some(
+    (directionType) =>
+      directEntries(contents(directionType, 'direction-type'), 'dynamics').length > 0
+  );
+}
+
+/** Dynamic `<direction>` elements with the note index they precede. */
 function directionsOf(measureChildren: OrderedEntry[]): Array<{
   before: number;
   element: OrderedEntry;
@@ -96,7 +104,9 @@ function directionsOf(measureChildren: OrderedEntry[]): Array<{
       noteIndex += 1;
       continue;
     }
-    if (tag === 'direction') found.push({ before: noteIndex, element: child });
+    if (tag === 'direction' && isDynamicDirection(child)) {
+      found.push({ before: noteIndex, element: child });
+    }
   }
   return found;
 }
@@ -110,9 +120,7 @@ function rescaleOffsets(entries: OrderedEntry[], numerator: bigint, denominator:
     const children: OrderedEntry[] = entry[tag];
     if (!Array.isArray(children)) continue;
     if (tag === 'offset') {
-      const text = children.find((child) =>
-        Object.prototype.hasOwnProperty.call(child, '#text')
-      );
+      const text = children.find((child) => Object.prototype.hasOwnProperty.call(child, '#text'));
       if (text && /^-?\d+$/.test(String(text['#text']))) {
         const value = BigInt(String(text['#text']));
         text['#text'] = ((value * numerator) / denominator).toString();
@@ -169,7 +177,8 @@ export function transferScannerMarkings(input: {
   parseValidMusicXml(input.candidateXml);
   const baseFacts = readScannerSpliceFacts(input.baseXml);
   const candidateFacts = readScannerSpliceFacts(input.candidateXml);
-  const parse = (xml: Buffer) => musicXmlParser({ preserveOrder: true }).parse(xml.toString('utf8'));
+  const parse = (xml: Buffer) =>
+    musicXmlParser({ preserveOrder: true }).parse(xml.toString('utf8'));
   const baseTree = parse(input.baseXml);
   const rootOf = (tree: any) =>
     (Array.isArray(tree)
@@ -236,10 +245,7 @@ export function transferScannerMarkings(input: {
     const incomingLyrics = movingDynamics
       ? candidateNotes.map(() => [] as OrderedEntry[])
       : candidateNotes.map((note) => directEntries(contents(note, 'note'), 'lyric'));
-    if (
-      incomingDirections.length === 0 &&
-      incomingLyrics.every((lyrics) => lyrics.length === 0)
-    ) {
+    if (incomingDirections.length === 0 && incomingLyrics.every((lyrics) => lyrics.length === 0)) {
       return;
     }
 
@@ -250,7 +256,7 @@ export function transferScannerMarkings(input: {
       // than merging two engines' guesses about the same phrase into one bar.
       // Only of this kind, so taking dynamics never disturbs lyrics.
       const stripped = movingDynamics
-        ? baseChildren.filter((child) => tagOf(child) !== 'direction')
+        ? baseChildren.filter((child) => !isDynamicDirection(child))
         : [...baseChildren];
       if (!movingDynamics) {
         for (const note of baseNotes) {

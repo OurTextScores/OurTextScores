@@ -14,6 +14,7 @@ import {
   SCANNER_MEASURE_DESCRIPTOR_VERSION,
   type ScannerMeasureDescriptor,
   type ScannerMeasureDifferenceClass,
+  type ScannerMeasureComponentHashes,
   type ScannerDescribedPart
 } from './scanner-measure-analysis';
 import { SCANNER_PART_MATCH_VERSION, type ScannerPartMatchResult } from './scanner-part-matching';
@@ -94,6 +95,20 @@ export interface ScannerBlockSymbolDifference {
   candidateEventCount: number;
 }
 
+/** Concrete semantic deltas for a component whose hash differs. */
+export interface ScannerBlockComponentDifference {
+  /** Position within this block's paired measures. */
+  measurePosition: number;
+  baseMeasureIndex: number;
+  candidateMeasureIndex: number;
+  component: keyof ScannerMeasureComponentHashes;
+  /** Facts present only on this side, capped for a bounded response. */
+  baseOnly: string[];
+  candidateOnly: string[];
+  baseOmitted: number;
+  candidateOmitted: number;
+}
+
 export interface ScannerComparisonBlock {
   version: typeof SCANNER_COMPARISON_BLOCK_VERSION;
   blockIndex: number;
@@ -103,6 +118,8 @@ export interface ScannerComparisonBlock {
   candidateMeasureRefs: ScannerComparisonMeasureIdentity[];
   /** Per-bar event disagreements; empty when they cannot be paired. */
   symbolDifferences: ScannerBlockSymbolDifference[];
+  /** Precise semantic explanation; optional on retained analysis records. */
+  componentDifferences?: ScannerBlockComponentDifference[];
   /**
    * The base measure this block sits after; `-1` means the start of the part.
    *
@@ -311,6 +328,7 @@ export function buildScannerComparisonBlocks(input: {
         measureRef(candidate, partMatch.stablePartKey, descriptor)
       ),
       symbolDifferences: symbolDifferences(baseDescriptors, candidateDescriptors),
+      componentDifferences: componentDifferences(baseDescriptors, candidateDescriptors),
       baseDescriptorHashes,
       candidateDescriptorHashes,
       // A block with base measures is anchored by its own first one; one
@@ -424,6 +442,62 @@ function partsByDocumentId(
 
 /** The most events in one bar this will align; beyond it the bar is left coarse. */
 const MAX_SCANNER_SYMBOL_EVENTS_PER_MEASURE = 256;
+const MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE = 4;
+
+function subtractDetails(values: readonly string[], otherValues: readonly string[]): string[] {
+  const remaining = [...otherValues];
+  return values.filter((value) => {
+    const match = remaining.indexOf(value);
+    if (match < 0) return true;
+    remaining.splice(match, 1);
+    return false;
+  });
+}
+
+/**
+ * Explain changed component hashes with their normalized semantic facts.
+ *
+ * This is the scanner equivalent of the change-review gutter's leaf-element
+ * summary. The hash remains the equality authority; facts are presentation,
+ * bounded to four per side so a pathological bar cannot become an unbounded
+ * regions response.
+ */
+function componentDifferences(
+  base: readonly ScannerMeasureDescriptor[],
+  candidate: readonly ScannerMeasureDescriptor[]
+): ScannerBlockComponentDifference[] {
+  const result: ScannerBlockComponentDifference[] = [];
+  const components = Object.keys(base[0]?.componentHashes || {}) as Array<
+    keyof ScannerMeasureComponentHashes
+  >;
+  for (let position = 0; position < Math.min(base.length, candidate.length); position += 1) {
+    const left = base[position];
+    const right = candidate[position];
+    for (const component of components) {
+      if (left.componentHashes[component] === right.componentHashes[component]) continue;
+      const leftFacts = left.componentDetails?.[component];
+      const rightFacts = right.componentDetails?.[component];
+      if (!leftFacts || !rightFacts) continue;
+      const baseOnly = subtractDetails(leftFacts, rightFacts);
+      const candidateOnly = subtractDetails(rightFacts, leftFacts);
+      if (baseOnly.length === 0 && candidateOnly.length === 0) continue;
+      result.push({
+        measurePosition: position,
+        baseMeasureIndex: left.measureIndex,
+        candidateMeasureIndex: right.measureIndex,
+        component,
+        baseOnly: baseOnly.slice(0, MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE),
+        candidateOnly: candidateOnly.slice(0, MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE),
+        baseOmitted: Math.max(0, baseOnly.length - MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE),
+        candidateOmitted: Math.max(
+          0,
+          candidateOnly.length - MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE
+        )
+      });
+    }
+  }
+  return result;
+}
 
 /**
  * Align two bars event by event and report what did not match.

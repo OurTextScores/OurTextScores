@@ -811,6 +811,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
       {selected && !reviewing && (
         <section
           ref={pageSectionRef}
+          data-testid="scanner-page-card"
           className="scroll-mt-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -954,9 +955,6 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
             </div>
           )}
-          {selected.status === "succeeded" && (
-            <PageComparison jobId={jobId} job={job} page={selected} />
-          )}
           {/*
             One pane of the page beside another, with each side chosen by the
             reader. It used to be a fixed stack — "Scan versus HOMR" then "Scan
@@ -1048,6 +1046,10 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         </section>
       )}
 
+      {selected && !reviewing && selected.status === "succeeded" && (
+        <PageComparison jobId={jobId} job={job} page={selected} />
+      )}
+
       {/*
         The step between reviewing pages and having a score. Reconciling a page
         settles what *that page* says; nothing until here turns a stack of pages
@@ -1055,7 +1057,10 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         page with no indication that anything remained.
       */}
       {job.status === "succeeded" && includedPageCount > 0 && (
-        <section className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-5 dark:border-cyan-900 dark:bg-cyan-950/20">
+        <section
+          data-testid="scanner-finished-card"
+          className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-5 dark:border-cyan-900 dark:bg-cyan-950/20"
+        >
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             {includedPageCount === 1
               ? "Review the finished score"

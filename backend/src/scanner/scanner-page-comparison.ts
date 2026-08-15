@@ -16,10 +16,7 @@ import {
   type ScannerDescribedPart
 } from './scanner-measure-analysis';
 import { matchScannerMusicXmlParts } from './scanner-part-matching';
-import {
-  reconcileScannerPartLayout,
-  type ScannerPartLayoutRefusal
-} from './scanner-part-layout';
+import { reconcileScannerPartLayout, type ScannerPartLayoutRefusal } from './scanner-part-layout';
 import type {
   ScannerComparisonPair,
   ScannerEngineId,
@@ -171,6 +168,14 @@ export interface ScannerComparisonSystem {
   region: [number, number, number, number];
   baseMeasureIndexes: number[];
   candidateMeasureIndexes: number[];
+  /** The same system localized to each matched part for the by-staff reviewer. */
+  staffRows: Array<{
+    stablePartKey: string;
+    staffIndices: number[];
+    region: [number, number, number, number];
+    baseMeasureIndexes: number[];
+    candidateMeasureIndexes: number[];
+  }>;
 }
 
 /**
@@ -195,7 +200,8 @@ export function scannerComparisonSystems(
         systemIndex,
         region: [...crop.region] as [number, number, number, number],
         baseMeasureIndexes: [],
-        candidateMeasureIndexes: []
+        candidateMeasureIndexes: [],
+        staffRows: []
       };
       // A system spans every staff that shares it, so the row's crop is the
       // union rather than any one measure's box.
@@ -212,6 +218,32 @@ export function scannerComparisonSystems(
             ? entry.candidateMeasureIndexes
             : undefined;
       if (side && !side.includes(ref.measureIndex)) side.push(ref.measureIndex);
+      const staffRow = entry.staffRows.find(
+        (candidate) => candidate.stablePartKey === ref.stablePartKey
+      ) || {
+        stablePartKey: ref.stablePartKey,
+        staffIndices: [],
+        region: [...crop.region] as [number, number, number, number],
+        baseMeasureIndexes: [],
+        candidateMeasureIndexes: []
+      };
+      staffRow.region = [
+        Math.min(staffRow.region[0], crop.region[0]),
+        Math.min(staffRow.region[1], crop.region[1]),
+        Math.max(staffRow.region[2], crop.region[2]),
+        Math.max(staffRow.region[3], crop.region[3])
+      ];
+      for (const staffIndex of crop.staffIndices || []) {
+        if (!staffRow.staffIndices.includes(staffIndex)) staffRow.staffIndices.push(staffIndex);
+      }
+      const staffSide =
+        ref.engine === pair.baseEngineId
+          ? staffRow.baseMeasureIndexes
+          : ref.engine === pair.candidateEngineId
+            ? staffRow.candidateMeasureIndexes
+            : undefined;
+      if (staffSide && !staffSide.includes(ref.measureIndex)) staffSide.push(ref.measureIndex);
+      if (!entry.staffRows.includes(staffRow)) entry.staffRows.push(staffRow);
       bySystem.set(systemIndex, entry);
     }
   }
@@ -220,7 +252,15 @@ export function scannerComparisonSystems(
     .map((entry) => ({
       ...entry,
       baseMeasureIndexes: [...entry.baseMeasureIndexes].sort((a, b) => a - b),
-      candidateMeasureIndexes: [...entry.candidateMeasureIndexes].sort((a, b) => a - b)
+      candidateMeasureIndexes: [...entry.candidateMeasureIndexes].sort((a, b) => a - b),
+      staffRows: entry.staffRows
+        .map((row) => ({
+          ...row,
+          staffIndices: [...row.staffIndices].sort((a, b) => a - b),
+          baseMeasureIndexes: [...row.baseMeasureIndexes].sort((a, b) => a - b),
+          candidateMeasureIndexes: [...row.candidateMeasureIndexes].sort((a, b) => a - b)
+        }))
+        .sort((left, right) => Math.min(...left.staffIndices) - Math.min(...right.staffIndices))
     }));
 }
 
@@ -415,7 +455,8 @@ export async function compareScannerPage(input: {
       producerAttempts.push({
         stage: 'geometry',
         code: 'part-layout-reconciled',
-        detail: 'This reading was regrouped onto the other reading’s staves, so its own page geometry no longer describes it',
+        detail:
+          'This reading was regrouped onto the other reading’s staves, so its own page geometry no longer describes it',
         engineId: side.engineId
       });
       continue;

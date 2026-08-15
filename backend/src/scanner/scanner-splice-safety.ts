@@ -66,7 +66,7 @@ export interface ScannerSpliceRepair {
    * rather than discarded. Everything else is something the splice did on its
    * own to make the passage fit.
    */
-  code: 'drop-dangling-slur' | 'taken-anyway';
+  code: 'drop-dangling-slur' | 'taken-anyway' | 'materialize-auto-beams';
   detail: string;
   measureIndex?: number;
 }

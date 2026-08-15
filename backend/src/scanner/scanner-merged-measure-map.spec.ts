@@ -5,7 +5,8 @@ import {
   withInsertedMeasures,
   withRemovedMeasures,
   withReplacedMeasures,
-  mergedBlockReadsFrom
+  mergedBlockReadsFrom,
+  editedMeasuresAfterSplice
 } from './scanner-merged-measure-map';
 
 /**
@@ -101,6 +102,35 @@ describe('merged measure map', () => {
   });
 });
 
+describe('editedMeasuresAfterSplice', () => {
+  const edits = [
+    { stablePartKey: 'violin', measureIndex: 0 },
+    { stablePartKey: 'violin', measureIndex: 2 },
+    { stablePartKey: 'violin', measureIndex: 4 },
+    { stablePartKey: 'cello', measureIndex: 2 },
+    { measureIndex: 2 }
+  ];
+
+  it('clears the replaced bars and shifts later edits in the same part', () => {
+    expect(editedMeasuresAfterSplice(edits, 'violin', [2], 2, 1)).toEqual([
+      { stablePartKey: 'violin', measureIndex: 0 },
+      { stablePartKey: 'violin', measureIndex: 5 },
+      { stablePartKey: 'cello', measureIndex: 2 },
+      { measureIndex: 2 }
+    ]);
+  });
+
+  it('shifts later edits when bars are inserted without clearing the anchor', () => {
+    expect(editedMeasuresAfterSplice(edits, 'violin', [], 1, 0)).toEqual([
+      { stablePartKey: 'violin', measureIndex: 0 },
+      { stablePartKey: 'violin', measureIndex: 3 },
+      { stablePartKey: 'violin', measureIndex: 5 },
+      { stablePartKey: 'cello', measureIndex: 2 },
+      { measureIndex: 2 }
+    ]);
+  });
+});
+
 describe('mergedBlockReadsFrom', () => {
   it('reads from the engine the score started from until a decision moves it', () => {
     expect(mergedBlockReadsFrom(1, 'homr', [])).toBe('homr');
@@ -130,9 +160,9 @@ describe('mergedBlockReadsFrom', () => {
     expect(mergedBlockReadsFrom(1, 'homr', decisions)).toBe('transcoda');
   });
 
-  it('does not let another block\'s decision speak for this one', () => {
-    expect(
-      mergedBlockReadsFrom(1, 'homr', [{ blockIndex: 2, engineId: 'transcoda' }])
-    ).toBe('homr');
+  it("does not let another block's decision speak for this one", () => {
+    expect(mergedBlockReadsFrom(1, 'homr', [{ blockIndex: 2, engineId: 'transcoda' }])).toBe(
+      'homr'
+    );
   });
 });

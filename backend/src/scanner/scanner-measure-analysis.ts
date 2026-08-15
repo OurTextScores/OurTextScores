@@ -54,12 +54,26 @@ export interface ScannerMeasureComponentHashes {
   notations: string;
 }
 
+/**
+ * Human-readable semantic facts behind the hashes above.
+ *
+ * Hashes answer whether two components differ; these values answer how. They
+ * deliberately contain normalized musical facts rather than source XML, so
+ * exporter spelling and layout attributes cannot leak back into the review UI.
+ */
+export type ScannerMeasureComponentDetails = Record<
+  keyof ScannerMeasureComponentHashes,
+  string[]
+>;
+
 export interface ScannerMeasureDescriptor {
   measureIndex: number;
   measureNumber?: string;
   coarseKey: string;
   richHash: string;
   componentHashes: ScannerMeasureComponentHashes;
+  /** Optional for retained/test descriptors created before precise summaries. */
+  componentDetails?: ScannerMeasureComponentDetails;
   /**
    * Whether this measure actually carries dynamics or lyrics.
    *
@@ -200,6 +214,47 @@ function canonicalOrdered(children: OrderedEntry[], omittedTags = new Set<string
     );
   }
   return result;
+}
+
+/** Compact MusicXML-like spelling for already-normalized semantic values. */
+function formatSemanticValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'object') return String(value);
+  if (Array.isArray(value)) return value.map(formatSemanticValue).filter(Boolean).join(' ');
+  const record = value as Record<string, unknown>;
+  if (typeof record.tag === 'string') {
+    const attributes = Object.entries((record.attributes || {}) as Record<string, unknown>)
+      .map(([name, item]) => ` ${name.replace(/^@_/, '')}="${String(item)}"`)
+      .join('');
+    const body = formatSemanticValue(record.children || []);
+    return body
+      ? `<${record.tag}${attributes}>${body}</${record.tag}>`
+      : `<${record.tag}${attributes}/>`;
+  }
+  return Object.entries(record)
+    .filter(([, item]) => item !== undefined && item !== null && item !== '')
+    .map(([name, item]) => `${name} ${formatSemanticValue(item)}`)
+    .join(', ');
+}
+
+function displayPitch(pitch: string): string {
+  if (pitch === 'R') return 'rest';
+  const match = /^([A-G]):([^:]+):(.+)$/.exec(pitch);
+  if (!match) return pitch;
+  const accidental =
+    match[2] === '0'
+      ? ''
+      : match[2] === '1'
+        ? '♯'
+        : match[2] === '-1'
+          ? '♭'
+          : `(${match[2]})`;
+  return `${match[1]}${accidental}${match[3]}`;
+}
+
+function boundedDetail(value: string, limit = 240): string {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  return compact.length > limit ? `${compact.slice(0, limit - 1).trimEnd()}…` : compact;
 }
 
 const signature = (version: string, value: unknown): string =>
@@ -514,6 +569,28 @@ function describeMeasure(
     directions: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:directions`, directions),
     notations: signature(`${SCANNER_MEASURE_DESCRIPTOR_VERSION}:notations`, notations)
   };
+  const noteIdentity = (note: SemanticNote): string =>
+    `${displayPitch(note.pitch)} at quarter ${note.onset}`;
+  const componentDetails: ScannerMeasureComponentDetails = {
+    notation: sortedNotes.map((note) =>
+      boundedDetail(
+        `${noteIdentity(note)}, ${note.grace ? 'grace note' : `duration ${note.duration} quarter${note.duration === '1' ? '' : 's'}`}${
+          note.ties.length > 0 ? `, tie ${note.ties.join('/')}` : ''
+        }`
+      )
+    ),
+    voice: sortedNotes.map((note) => `${noteIdentity(note)} in voice ${note.voice}`),
+    staff: sortedNotes.map((note) => `${noteIdentity(note)} on staff ${note.staff}`),
+    attributes: orderedAttributes.map((change) =>
+      boundedDetail(
+        `${change.identity.replace(':', ' staff ')} at quarter ${change.onset}: ${formatSemanticValue(change.value)}`
+      )
+    ),
+    lyrics: lyrics.map((value) => boundedDetail(formatSemanticValue(value))),
+    dynamics: dynamics.map((value) => boundedDetail(formatSemanticValue(value))),
+    directions: directions.map((value) => boundedDetail(formatSemanticValue(value))),
+    notations: notations.map((value) => boundedDetail(formatSemanticValue(value)))
+  };
   return {
     descriptor: {
       measureIndex,
@@ -521,6 +598,7 @@ function describeMeasure(
       coarseKey: signature(SCANNER_COARSE_MEASURE_KEY_VERSION, sortedCoarse),
       richHash: signature(SCANNER_MEASURE_DESCRIPTOR_VERSION, components),
       componentHashes,
+      componentDetails,
       markings: { dynamics: dynamics.length > 0, lyrics: lyrics.length > 0 },
       eventCount: notes.length,
       alignment

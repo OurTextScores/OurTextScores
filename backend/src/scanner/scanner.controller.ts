@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -33,6 +34,25 @@ import { SCANNER_REQUEST_OVERHEAD_BYTES, SCANNER_UPLOAD_DIRECTORY } from './scan
 
 /** Zoom levels for a review crop; scanner-crop.ts explains why only two. */
 const SCANNER_CROP_LEVELS = { staff: 'staff', context: 'context' } as const;
+
+function parseEditedMeasures(value: string | undefined):
+  | Array<{
+      measureIndex: number;
+      stablePartKey?: string;
+    }>
+  | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) throw new Error('not an array');
+    return parsed.map((entry) => ({
+      measureIndex: Number(entry?.measureIndex),
+      ...(typeof entry?.stablePartKey === 'string' ? { stablePartKey: entry.stablePartKey } : {})
+    }));
+  } catch {
+    throw new BadRequestException('Edited measures must be a JSON array');
+  }
+}
 
 @ApiTags('scanner')
 @ApiBearerAuth()
@@ -376,6 +396,7 @@ export class ScannerController {
     @Query('basisSignature') basisSignature: string | undefined,
     @Query('revision') revision: string | undefined,
     @Query('edited') edited: string | undefined,
+    @Query('editedMeasures') editedMeasures: string | undefined,
     @Query('acceptStale') acceptStale: string | undefined
   ) {
     return this.scanner.saveMergedScore(user.userId, jobId, pageNumber, {
@@ -384,7 +405,30 @@ export class ScannerController {
       basisSignature: String(basisSignature ?? ''),
       revision: revision === undefined ? Number.NaN : Number(revision),
       edited: edited === 'true',
+      editedMeasures: parseEditedMeasures(editedMeasures),
       acceptStale: acceptStale === 'true'
+    });
+  }
+
+  /** Persist the wholesale engine choice before any block decision or edit. */
+  @Post(':jobId/pages/:pageNumber/merged/source')
+  chooseMergedScoreSource(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body()
+    body: {
+      engineId?: string;
+      baseEngine?: string;
+      candidateEngine?: string;
+      revision?: number;
+    }
+  ) {
+    return this.scanner.chooseMergedScoreSource(user.userId, jobId, pageNumber, {
+      engineId: String(body?.engineId ?? ''),
+      baseEngineId: String(body?.baseEngine ?? ''),
+      candidateEngineId: String(body?.candidateEngine ?? ''),
+      revision: Number(body?.revision)
     });
   }
 
@@ -450,6 +494,31 @@ export class ScannerController {
       candidateEngineId: String(body?.candidateEngine ?? ''),
       revision: Number(body?.revision),
       kind: body?.kind === 'lyrics' ? 'lyrics' : 'dynamics'
+    });
+  }
+
+  @Post(':jobId/pages/:pageNumber/merged/decisions/flag')
+  flagMergedScoreBlock(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body()
+    body: {
+      blockIndex?: number;
+      contentSignature?: string;
+      baseEngine?: string;
+      candidateEngine?: string;
+      revision?: number;
+      flagged?: boolean;
+    }
+  ) {
+    return this.scanner.flagMergedScoreBlock(user.userId, jobId, pageNumber, {
+      blockIndex: Number(body?.blockIndex),
+      contentSignature: String(body?.contentSignature ?? ''),
+      baseEngineId: String(body?.baseEngine ?? ''),
+      candidateEngineId: String(body?.candidateEngine ?? ''),
+      revision: Number(body?.revision),
+      flagged: body?.flagged !== false
     });
   }
 

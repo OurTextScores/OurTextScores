@@ -15,6 +15,7 @@
     "smoke:scanner:recovery": "node scripts/smoke-scanner-recovery.cjs",
     "smoke:scanner:load": "node scripts/smoke-scanner-load.cjs",
     "smoke:scanner:merge": "node scripts/smoke-scanner-merge.cjs",
+    "smoke:scanner:comparator": "node scripts/smoke-scanner-comparator.cjs",
     "smoke:scanner:service-recovery": "node scripts/smoke-scanner-service-recovery.cjs",
     "scanner:modal:check": "node scripts/check-modal-provider.cjs",
     "scanner:modal:up": "docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-modal.yml up -d --build && node smoke/utils/wait.cjs",

@@ -146,6 +146,14 @@ describe("ScannerJobClient", () => {
     expect(left.value).toBe("scan");
     expect(right.value).toBe("homr");
     expect(screen.getByAltText("Source preview for page 1")).toBeInTheDocument();
+    const pageCard = screen.getByTestId("scanner-page-card");
+    const compareCard = screen.getByTestId("scanner-compare-card");
+    const finishedCard = screen.getByTestId("scanner-finished-card");
+    expect(pageCard).not.toContainElement(compareCard);
+    expect(
+      compareCard.compareDocumentPosition(finishedCard) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     fireEvent.change(left, { target: { value: "homr" } });
     fireEvent.change(right, { target: { value: "transcoda" } });

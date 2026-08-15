@@ -13,16 +13,14 @@ import {
  * of that, and it refuses before acting and validates after.
  */
 
-const part = (measures: string) => Buffer.from(`<?xml version="1.0"?>
+const part = (measures: string) =>
+  Buffer.from(`<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Cello</part-name></score-part></part-list>
   <part id="P1">${measures}</part>
 </score-partwise>`);
 
-const bar = (
-  contents: string,
-  options: { number?: string; attributes?: string } = {}
-) => `
+const bar = (contents: string, options: { number?: string; attributes?: string } = {}) => `
   <measure number="${options.number || '1'}">
     ${options.attributes || ''}
     ${contents}
@@ -66,12 +64,16 @@ describe('scanner splice', () => {
     // match the time signature in either reading, and no decision about bar 5
     // could be made because of it.
     const malformed = part(
-      bar(note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }) +
-        bar(note(4) + note(4) + note(4) + note(4), { number: '2' })
+      bar(note(4) + note(4), {
+        attributes:
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>'
+      }) + bar(note(4) + note(4) + note(4) + note(4), { number: '2' })
     );
     const replacement = part(
-      bar(note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }) +
-        bar(note(2) + note(2) + note(4) + note(4) + note(4), { number: '2' })
+      bar(note(4) + note(4), {
+        attributes:
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>'
+      }) + bar(note(2) + note(2) + note(4) + note(4) + note(4), { number: '2' })
     );
 
     // Bar 1 is short in both, and that is not this splice's doing.
@@ -97,9 +99,17 @@ describe('scanner splice', () => {
     // would be worse than the over-full bar, because it moves music nobody
     // asked to move. The bar arrives marked, and the merged pane offers to set
     // it back to its time signature.
-    const base = part(bar(note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }));
+    const base = part(
+      bar(note(4) + note(4) + note(4) + note(4), {
+        attributes:
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>'
+      })
+    );
     const longer = part(
-      bar(note(4) + note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' })
+      bar(note(4) + note(4) + note(4) + note(4) + note(4), {
+        attributes:
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>'
+      })
     );
 
     const taken = spliceScannerMeasures({
@@ -125,9 +135,17 @@ describe('scanner splice', () => {
   it('confines the length change to the passage it was asked about', () => {
     // The replaced bar is allowed to be the wrong length; the rest of the part
     // is not. A splice that broke a bar it was not asked to touch still refuses.
-    const base = part(bar(note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' }));
+    const base = part(
+      bar(note(4) + note(4) + note(4) + note(4), {
+        attributes:
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>'
+      })
+    );
     const longer = part(
-      bar(note(4) + note(4) + note(4) + note(4) + note(4), { attributes: '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' })
+      bar(note(4) + note(4) + note(4) + note(4) + note(4), {
+        attributes:
+          '<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>'
+      })
     );
     const taken = spliceScannerMeasures({
       baseXml: base,
@@ -253,15 +271,12 @@ describe('scanner splice', () => {
     const result = splice(base, candidate, [0]);
 
     expect(result.musicXml).toBeNull();
-    expect(result.refusals.map((refusal) => refusal.code)).toContain(
-      'divisions-incommensurable'
-    );
+    expect(result.refusals.map((refusal) => refusal.code)).toContain('divisions-incommensurable');
   });
 
   it('keeps the base numbering, because every reference counts from it', () => {
     const base = part(
-      bar(fullBar(4), { number: '5', attributes: attributes(4) }) +
-        bar(fullBar(4), { number: '6' })
+      bar(fullBar(4), { number: '5', attributes: attributes(4) }) + bar(fullBar(4), { number: '6' })
     );
     const candidate = part(
       bar(fullBar(4, 'G'), { number: '1', attributes: attributes(4) }) +
@@ -291,6 +306,52 @@ describe('scanner splice', () => {
     expect(xml).not.toContain('<step>C</step>');
     expect((xml.match(/<step>G<\/step>/g) || []).length).toBe(8);
     expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
+  });
+
+  it('takes every candidate bar in a one-to-two replacement', () => {
+    const base = part(
+      bar(fullBar(4), { attributes: attributes(4) }) +
+        bar(fullBar(4, 'D'), { number: '2' }) +
+        bar(fullBar(4), { number: '3' })
+    );
+    const candidate = part(
+      bar(fullBar(4), { attributes: attributes(4) }) +
+        bar(fullBar(4, 'E'), { number: '2' }) +
+        bar(fullBar(4, 'F'), { number: '3' })
+    );
+
+    const result = splice(base, candidate, [1], [1, 2]);
+
+    expect(result.musicXml).not.toBeNull();
+    const facts = readScannerSpliceFacts(result.musicXml!)[0].measures;
+    expect(facts).toHaveLength(4);
+    expect(facts.map((measure) => measure.measureNumber)).toEqual(['1', '2', '3', '4']);
+    const xml = result.musicXml!.toString('utf8');
+    expect(xml).toContain('<step>E</step>');
+    expect(xml).toContain('<step>F</step>');
+  });
+
+  it('removes the complete base span in a two-to-one replacement', () => {
+    const base = part(
+      bar(fullBar(4), { attributes: attributes(4) }) +
+        bar(fullBar(4, 'D'), { number: '2' }) +
+        bar(fullBar(4, 'E'), { number: '3' }) +
+        bar(fullBar(4), { number: '4' })
+    );
+    const candidate = part(
+      bar(fullBar(4), { attributes: attributes(4) }) + bar(fullBar(4, 'G'), { number: '2' })
+    );
+
+    const result = splice(base, candidate, [1, 2], [1]);
+
+    expect(result.musicXml).not.toBeNull();
+    const facts = readScannerSpliceFacts(result.musicXml!)[0].measures;
+    expect(facts).toHaveLength(3);
+    expect(facts.map((measure) => measure.measureNumber)).toEqual(['1', '2', '3']);
+    const xml = result.musicXml!.toString('utf8');
+    expect(xml).toContain('<step>G</step>');
+    expect(xml).not.toContain('<step>D</step>');
+    expect(xml).not.toContain('<step>E</step>');
   });
 
   it('deletes a bar the other reading does not have, and renumbers', () => {
@@ -373,7 +434,6 @@ describe('scanner splice', () => {
     expect(xml.split('<measure')[1]).toContain('<step>G</step>');
     expect(readScannerSpliceFacts(result.musicXml!)[0].measures).toHaveLength(2);
   });
-
 
   it('lands on the right bar after an earlier decision changed the length', () => {
     // The composition the measure map exists for, and the one a reviewer

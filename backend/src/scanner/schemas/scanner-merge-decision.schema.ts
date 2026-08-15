@@ -21,7 +21,8 @@ export type ScannerMergeOutcome =
   | 'took-lyrics'
   | 'removed-bars'
   | 'inserted-bars'
-  | 'edited';
+  | 'edited'
+  | 'flagged';
 
 /** Outcomes that credit an engine with having read the notes correctly. */
 export const SCANNER_NOTE_WIN_OUTCOMES: ScannerMergeOutcome[] = [
@@ -47,7 +48,7 @@ export class ScannerMergeDecision {
   candidateEngineId!: string;
 
   /**
-   * The engine credited by this decision, and **absent for `edited`**.
+   * The engine credited by this decision, and absent for `edited` or `flagged`.
    *
    * An edited bar is evidence that *both* engines were wrong there. Recording
    * it against either would poison the corpus this feature exists to build, so
@@ -56,19 +57,31 @@ export class ScannerMergeDecision {
   @Prop({ index: true })
   engineId?: string;
 
-  @Prop({ required: true, enum: [
-    'took-notes',
-    'took-dynamics',
-    'took-lyrics',
-    'removed-bars',
-    'inserted-bars',
-    'edited'
-  ], index: true })
+  @Prop({
+    required: true,
+    enum: [
+      'took-notes',
+      'took-dynamics',
+      'took-lyrics',
+      'removed-bars',
+      'inserted-bars',
+      'edited',
+      'flagged'
+    ],
+    index: true
+  })
   outcome!: ScannerMergeOutcome;
 
-  /** Absent for a page-level edit, which is not about one block. */
+  /** Absent only for a retained client's legacy page-level edit. */
   @Prop()
   blockIndex?: number;
+
+  /** Pair-scoped part and merged bar for hand edits and part-local decisions. */
+  @Prop()
+  stablePartKey?: string;
+
+  @Prop()
+  measureIndex?: number;
 
   /**
    * Binds the decision to both artifact revisions and the block's own content.
@@ -108,12 +121,9 @@ export class ScannerMergeDecision {
   repairs!: Array<{ code: string; detail: string }>;
 
   /**
-   * Decisions already made on this page when a hand edit was saved.
-   *
-   * An edit is page-level: nothing records which bars it touched. So a
-   * consumer training on "which engine was right for this bar" should discount
-   * the takes on a page that was later edited, and this is what tells them
-   * there were any.
+   * Decisions already made on this page when a hand edit was saved. Exact new
+   * records also carry `stablePartKey` and `measureIndex`; this field remains
+   * useful for sequence context and for legacy page-level edits.
    */
   @Prop()
   priorDecisions?: number;
@@ -129,6 +139,5 @@ export class ScannerMergeDecision {
 }
 
 export type ScannerMergeDecisionDocument = HydratedDocument<ScannerMergeDecision>;
-export const ScannerMergeDecisionSchema =
-  SchemaFactory.createForClass(ScannerMergeDecision);
+export const ScannerMergeDecisionSchema = SchemaFactory.createForClass(ScannerMergeDecision);
 ScannerMergeDecisionSchema.index({ pageSha256: 1, blockIndex: 1, outcome: 1 });

@@ -1,3 +1,5 @@
+import type { ScannerMergedEditedMeasure } from './schemas/scanner-job.schema';
+
 export const SCANNER_MERGED_MEASURE_MAP_VERSION = 'scanner-merged-measure-map-v1';
 
 /**
@@ -107,6 +109,37 @@ export const withReplacedMeasures = (
 };
 
 /**
+ * Exact hand-edited bars after a take changes one matched part.
+ *
+ * Edits inside the replaced passage are no longer edits to the bars now in the
+ * document. Later bars in the same part move with an N→M replacement; bars in
+ * every other part retain their independent numbering.
+ */
+export function editedMeasuresAfterSplice(
+  entries: readonly ScannerMergedEditedMeasure[],
+  stablePartKey: string,
+  baseMeasureIndexes: readonly number[],
+  candidateMeasureCount: number,
+  baseAnchorIndex: number
+): ScannerMergedEditedMeasure[] {
+  const orderedBase = [...baseMeasureIndexes].sort((left, right) => left - right);
+  const start = orderedBase.length > 0 ? orderedBase[0] : baseAnchorIndex + 1;
+  const end = orderedBase.length > 0 ? orderedBase[orderedBase.length - 1] : start - 1;
+  const delta = candidateMeasureCount - orderedBase.length;
+
+  return entries.flatMap((entry) => {
+    // A part-neutral legacy/edit-repair marker may describe several parts. It
+    // cannot be safely rebased from one part's splice, so preserve it as-is.
+    if (entry.stablePartKey !== stablePartKey) return [entry];
+    if (entry.measureIndex >= start && entry.measureIndex <= end) return [];
+    if (entry.measureIndex > end) {
+      return [{ ...entry, measureIndex: entry.measureIndex + delta }];
+    }
+    return [entry];
+  });
+}
+
+/**
  * Which reading a block's notes currently come from.
  *
  * The merged score starts as a copy of one engine, so every block reads from
@@ -124,11 +157,13 @@ export const withReplacedMeasures = (
 export function mergedBlockReadsFrom(
   blockIndex: number,
   sourceEngineId: string,
-  decisions: ReadonlyArray<{
-    blockIndex?: number;
-    engineId?: string;
-    markingsOnly?: 'dynamics' | 'lyrics';
-  }> | undefined
+  decisions:
+    | ReadonlyArray<{
+        blockIndex?: number;
+        engineId?: string;
+        markingsOnly?: 'dynamics' | 'lyrics';
+      }>
+    | undefined
 ): string {
   let current = sourceEngineId;
   for (const decision of decisions || []) {

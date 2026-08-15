@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { buildScannerHomrMeasureGeometry } from './scanner-homr-measure-geometry';
-import { compareScannerPage } from './scanner-page-comparison';
+import { compareScannerPage, scannerComparisonSystems } from './scanner-page-comparison';
 
 const sha = (body: Buffer | string) => createHash('sha256').update(body).digest('hex');
 const raster = { checksumSha256: sha('recognition-raster'), width: 100, height: 50 };
@@ -67,6 +67,50 @@ function input() {
 }
 
 describe('scanner page comparison pipeline', () => {
+  it('keeps part-local staff rows inside each scan system', () => {
+    const systems = scannerComparisonSystems(
+      {
+        measureRefs: [
+          {
+            engine: 'homr',
+            stablePartKey: 'violin',
+            measureIndex: 0,
+            cropRegions: [{ systemIndex: 0, staffIndices: [0], region: [0, 0, 100, 20] }]
+          },
+          {
+            engine: 'transcoda',
+            stablePartKey: 'violin',
+            measureIndex: 0,
+            cropRegions: [{ systemIndex: 0, staffIndices: [0], region: [0, 0, 100, 20] }]
+          },
+          {
+            engine: 'homr',
+            stablePartKey: 'cello',
+            measureIndex: 0,
+            cropRegions: [{ systemIndex: 0, staffIndices: [1], region: [0, 22, 100, 50] }]
+          }
+        ]
+      },
+      { baseEngineId: 'homr', candidateEngineId: 'transcoda' }
+    );
+
+    expect(systems[0].region).toEqual([0, 0, 100, 50]);
+    expect(systems[0].staffRows).toEqual([
+      expect.objectContaining({
+        stablePartKey: 'violin',
+        staffIndices: [0],
+        baseMeasureIndexes: [0],
+        candidateMeasureIndexes: [0]
+      }),
+      expect.objectContaining({
+        stablePartKey: 'cello',
+        staffIndices: [1],
+        baseMeasureIndexes: [0],
+        candidateMeasureIndexes: []
+      })
+    ]);
+  });
+
   it('runs the complete stored-artifact pipeline and returns grounded blocks', async () => {
     const result = await compareScannerPage(input());
 

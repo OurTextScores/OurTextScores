@@ -34,8 +34,7 @@ const orderedBuilder = () =>
     preserveOrder: true
   });
 
-const tagOf = (entry: OrderedEntry): string =>
-  Object.keys(entry).filter((key) => key !== ':@')[0];
+const tagOf = (entry: OrderedEntry): string => Object.keys(entry).filter((key) => key !== ':@')[0];
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -55,9 +54,7 @@ function rescaleDurations(entries: OrderedEntry[], numerator: bigint, denominato
     const children: OrderedEntry[] = entry[tag];
     if (!Array.isArray(children)) continue;
     if (tag === 'duration') {
-      const text = children.find((child) =>
-        Object.prototype.hasOwnProperty.call(child, '#text')
-      );
+      const text = children.find((child) => Object.prototype.hasOwnProperty.call(child, '#text'));
       if (text && /^\d+$/.test(String(text['#text']))) {
         text['#text'] = ((BigInt(String(text['#text'])) * numerator) / denominator).toString();
       }
@@ -209,8 +206,7 @@ function dropDanglingSlurs(partChildren: OrderedEntry[]): number {
       }
       // A `<notations>` emptied by the removal has nothing left to say.
       child.note = noteChildren.filter(
-        (entry) =>
-          tagOf(entry) !== 'notations' || (entry.notations as OrderedEntry[]).length > 0
+        (entry) => tagOf(entry) !== 'notations' || (entry.notations as OrderedEntry[]).length > 0
       );
     }
   }
@@ -234,33 +230,35 @@ function dropDanglingSlurs(partChildren: OrderedEntry[]): number {
  * increase is this splice's doing, and no increase is not.
  */
 function introducedViolations(
-    before: readonly ScannerSemanticViolation[],
-    after: readonly ScannerSemanticViolation[],
-    positionsHeld: boolean
+  before: readonly ScannerSemanticViolation[],
+  after: readonly ScannerSemanticViolation[],
+  positionsHeld: boolean
 ): ScannerSemanticViolation[] {
-    if (positionsHeld) {
-        const inherited = new Set(
-            before.map((violation) => `${violation.partIndex}:${violation.measureIndex}:${violation.code}`)
-        );
-        return after.filter(
-            (violation) =>
-                !inherited.has(`${violation.partIndex}:${violation.measureIndex}:${violation.code}`)
-        );
-    }
-    const countBefore = new Map<string, number>();
-    for (const violation of before) {
-        const key = `${violation.partIndex}:${violation.code}`;
-        countBefore.set(key, (countBefore.get(key) || 0) + 1);
-    }
-    const introduced: ScannerSemanticViolation[] = [];
-    const seen = new Map<string, number>();
-    for (const violation of after) {
-        const key = `${violation.partIndex}:${violation.code}`;
-        const index = (seen.get(key) || 0) + 1;
-        seen.set(key, index);
-        if (index > (countBefore.get(key) || 0)) introduced.push(violation);
-    }
-    return introduced;
+  if (positionsHeld) {
+    const inherited = new Set(
+      before.map(
+        (violation) => `${violation.partIndex}:${violation.measureIndex}:${violation.code}`
+      )
+    );
+    return after.filter(
+      (violation) =>
+        !inherited.has(`${violation.partIndex}:${violation.measureIndex}:${violation.code}`)
+    );
+  }
+  const countBefore = new Map<string, number>();
+  for (const violation of before) {
+    const key = `${violation.partIndex}:${violation.code}`;
+    countBefore.set(key, (countBefore.get(key) || 0) + 1);
+  }
+  const introduced: ScannerSemanticViolation[] = [];
+  const seen = new Map<string, number>();
+  for (const violation of after) {
+    const key = `${violation.partIndex}:${violation.code}`;
+    const index = (seen.get(key) || 0) + 1;
+    seen.set(key, index);
+    if (index > (countBefore.get(key) || 0)) introduced.push(violation);
+  }
+  return introduced;
 }
 
 /**
@@ -311,9 +309,7 @@ export function spliceScannerMeasures(input: {
    * over-full bar: it moves music the reviewer did not ask to move, and the
    * only sign is that the rest of the page is subtly wrong.
    */
-  const overruled = assessment.refusals.filter(
-    (refusal) => refusal.code === 'duration-differs'
-  );
+  const overruled = assessment.refusals.filter((refusal) => refusal.code === 'duration-differs');
   const blocking = assessment.refusals.filter((refusal) => !overruled.includes(refusal));
   if (blocking.length > 0) {
     return {
@@ -326,7 +322,8 @@ export function spliceScannerMeasures(input: {
 
   parseValidMusicXml(input.baseXml);
   parseValidMusicXml(input.candidateXml);
-  const parse = (xml: Buffer) => musicXmlParser({ preserveOrder: true }).parse(xml.toString('utf8'));
+  const parse = (xml: Buffer) =>
+    musicXmlParser({ preserveOrder: true }).parse(xml.toString('utf8'));
   const baseTree = parse(input.baseXml);
   const candidateTree = parse(input.candidateXml);
   const rootOf = (tree: any) =>
@@ -353,9 +350,7 @@ export function spliceScannerMeasures(input: {
   // written in. For a replacement that is the bar being replaced; for an
   // insertion it is whatever the bar before it established, or the first bar's
   // if it is going at the very start.
-  const anchorIndex = inserting
-    ? (input.baseAnchorIndex ?? -1)
-    : input.baseMeasureIndexes[0];
+  const anchorIndex = inserting ? (input.baseAnchorIndex ?? -1) : input.baseMeasureIndexes[0];
   const baseMeasureFacts = base[input.basePartIndex].measures;
   const baseUnit = BigInt(
     (baseMeasureFacts[anchorIndex] || baseMeasureFacts[0] || { divisions: '1' }).divisions
@@ -367,7 +362,13 @@ export function spliceScannerMeasures(input: {
       );
 
   const replacements = input.candidateMeasureIndexes.map((candidateIndex, position) => {
-    const copy: OrderedEntry = clone(candidateMeasures[candidateIndex]);
+    const candidateMeasure = candidateMeasures[candidateIndex];
+    if (!candidateMeasure) {
+      throw new Error(
+        'Scanner splice could not locate every candidate measure it was asked to take'
+      );
+    }
+    const copy: OrderedEntry = clone(candidateMeasure);
     const children: OrderedEntry[] = copy.measure;
     rescaleDurations(children, baseUnit, candidateUnit);
     const original = baseMeasures[input.baseMeasureIndexes[position]];
@@ -388,7 +389,17 @@ export function spliceScannerMeasures(input: {
     return copy;
   });
 
-  let touched = 0;
+  const baseIndexes = [...input.baseMeasureIndexes].sort((left, right) => left - right);
+  if (
+    baseIndexes.some((index, position) => position > 0 && index !== baseIndexes[position - 1] + 1)
+  ) {
+    throw new Error('Scanner splice requires one contiguous base passage');
+  }
+  if (baseIndexes.some((index) => !baseMeasures[index])) {
+    throw new Error('Scanner splice could not locate every base measure it was asked to change');
+  }
+
+  let insertedReplacement = false;
   const spliced: OrderedEntry[] = [];
   for (const entry of basePartChildren) {
     if (tagOf(entry) !== 'measure') {
@@ -396,32 +407,41 @@ export function spliceScannerMeasures(input: {
       continue;
     }
     const index = baseMeasures.indexOf(entry);
-    if (deleting && input.baseMeasureIndexes.includes(index)) {
-      // Removed outright: the reviewer is saying this bar is not on the page.
-      touched += 1;
+    if (input.baseMeasureIndexes.includes(index)) {
+      // A block may contain N bars on one side and M on the other. Insert the
+      // complete candidate span once, where the base span began, then remove
+      // every base bar in that span. Emitting one replacement per base bar
+      // silently dropped the tail of a 1->2 take and produced `undefined` for
+      // the tail of a 2->1 take.
+      if (!insertedReplacement && !deleting) {
+        spliced.push(...replacements);
+        insertedReplacement = true;
+      }
       continue;
     }
-    const position = input.baseMeasureIndexes.indexOf(index);
-    spliced.push(position >= 0 ? (touched += 1, replacements[position]) : entry);
+    spliced.push(entry);
     if (inserting && index === anchorIndex) {
       spliced.push(...replacements);
-      touched += replacements.length;
+      insertedReplacement = true;
     }
   }
   if (inserting && anchorIndex < 0) {
     // Before the first bar; nothing preceded it to insert after.
     const first = spliced.findIndex((entry) => tagOf(entry) === 'measure');
     spliced.splice(first < 0 ? spliced.length : first, 0, ...replacements);
-    touched += replacements.length;
+    insertedReplacement = true;
   }
-  const expected = inserting
-    ? input.candidateMeasureIndexes.length
-    : input.baseMeasureIndexes.length;
-  if (touched !== expected) {
-    throw new Error('Scanner splice could not locate every measure it was asked to change');
+  if (replacements.length > 0 && !insertedReplacement) {
+    throw new Error('Scanner splice could not place every candidate measure it was asked to take');
   }
   basePartEntry.part = spliced;
-  if (inserting || deleting) renumberMeasures(basePartEntry.part);
+  if (
+    inserting ||
+    deleting ||
+    input.baseMeasureIndexes.length !== input.candidateMeasureIndexes.length
+  ) {
+    renumberMeasures(basePartEntry.part);
+  }
 
   const dangling = dropDanglingSlurs(basePartEntry.part);
   const repairs: ScannerSpliceRepair[] = [
@@ -453,7 +473,7 @@ export function spliceScannerMeasures(input: {
     violations: introducedViolations(
       before,
       validateScannerMusicXmlSemantics(musicXml).violations,
-      !inserting && !deleting
+      input.baseMeasureIndexes.length === input.candidateMeasureIndexes.length
     )
   };
   /*
@@ -464,7 +484,15 @@ export function spliceScannerMeasures(input: {
    */
   // The bars the replacement landed on. For a straight replacement that is
   // where they already were.
-  const replaced = new Set(input.baseMeasureIndexes);
+  const replacementStart = inserting
+    ? (input.baseAnchorIndex ?? -1) + 1
+    : Math.min(...input.baseMeasureIndexes);
+  const replaced = new Set(
+    Array.from(
+      { length: input.candidateMeasureIndexes.length },
+      (_value, index) => replacementStart + index
+    )
+  );
   const asked = report.violations.filter(
     (violation) =>
       replaced.has(violation.measureIndex) &&

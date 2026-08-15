@@ -86,10 +86,12 @@ export interface ScannerEngineProvenance {
  */
 export interface ScannerMergedDecision {
   blockIndex: number;
+  /** Pair-scoped part identity; required by new records, absent on retained legacy ones. */
+  stablePartKey?: string;
   /** Binds the decision to both artifact revisions; see `scannerBlockContentSignature`. */
   contentSignature: string;
-  /** The engine the passage was taken from. */
-  engineId: string;
+  /** The engine the passage was taken from; absent for a flag record. */
+  engineId?: string;
   /** Measures of the merged document that this replaced. */
   measureIndexes: number[];
   /** Anything the splice changed beyond copying, reported at the time. */
@@ -102,7 +104,15 @@ export interface ScannerMergedDecision {
    * from somewhere else, and may have come from the engine that lost.
    */
   markingsOnly?: 'dynamics' | 'lyrics';
+  /** Latest value wins, so clearing a flag is durable and auditable too. */
+  flagged?: boolean;
   decidedAt: Date;
+}
+
+/** One hand-corrected merged bar, localized to the matched part when known. */
+export interface ScannerMergedEditedMeasure {
+  measureIndex: number;
+  stablePartKey?: string;
 }
 
 export interface ScannerMergedScore {
@@ -118,6 +128,8 @@ export interface ScannerMergedScore {
    * the corpus this feature exists to build.
    */
   edited?: boolean;
+  /** Exact merged bars touched by hand; `edited` remains the legacy/page summary. */
+  editedMeasures?: ScannerMergedEditedMeasure[];
   /** Saves of this merged score; increments on every accepted write. */
   revision: number;
   /** Bar-level takes, in the order they were made. */
@@ -132,6 +144,16 @@ export interface ScannerMergedScore {
    * has changed.
    */
   measureMap?: Array<number | null>;
+  /**
+   * The same provenance map per matched part.
+   *
+   * `measureMap` predates multi-part decisions and remains the compatibility
+   * projection for the first part (and for the row renderer's page-wide line
+   * starts). A structural take in another part must not shift that first-part
+   * map, so Phase D stores the authoritative maps by pair-scoped stable part
+   * key here.
+   */
+  measureMaps?: Record<string, Array<number | null>>;
   updatedAt: Date;
 }
 

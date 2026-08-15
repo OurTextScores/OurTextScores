@@ -128,6 +128,12 @@ describe('scanner measure analysis', () => {
 
     expect(candidate.coarseKey).not.toBe(base.coarseKey);
     expect(classifyScannerMeasureDifference(base, candidate)).toEqual(['notation']);
+    expect(base.componentDetails?.notation).toEqual([
+      'C4 at quarter 0, duration 1 quarter'
+    ]);
+    expect(candidate.componentDetails?.notation).toEqual([
+      'D4 at quarter 0, duration 2 quarters'
+    ]);
   });
 
   it('uses ordered backup/forward cursor movement to retain semantic onset', () => {

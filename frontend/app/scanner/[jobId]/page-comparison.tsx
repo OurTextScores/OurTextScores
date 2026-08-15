@@ -398,7 +398,10 @@ export default function PageComparison({
       : undefined;
 
   return (
-    <section className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 dark:border-cyan-900 dark:bg-cyan-950/20">
+    <section
+      data-testid="scanner-compare-card"
+      className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 dark:border-cyan-900 dark:bg-cyan-950/20"
+    >
       {/*
         The card is a doorway when it is not the page.
 
@@ -423,7 +426,7 @@ export default function PageComparison({
             href={`/scanner/${encodeURIComponent(jobId)}/pages/${page.pageNumber}/compare`}
             className="rounded-lg border border-cyan-300 bg-white px-3 py-2 text-sm text-cyan-800 hover:bg-cyan-50 dark:border-cyan-800 dark:bg-slate-900 dark:text-cyan-200"
           >
-            Compare engine readings →
+            Resolve engine conflicts
           </Link>
         )}
       </div>
