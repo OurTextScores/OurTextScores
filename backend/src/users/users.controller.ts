@@ -1,9 +1,15 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/types/auth-user';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import {
+  NOTIFICATION_EMAIL_CATEGORIES,
+  isNotificationEmailCategory,
+  notificationPreferencesWithDefaults,
+  type NotificationEmailCategories
+} from './notification-preferences';
 
 @ApiTags('users')
 @Controller('users/me')
@@ -34,7 +40,21 @@ export class UsersController {
             notify: {
               type: 'object',
               properties: {
-                watchPreference: { type: 'string', enum: ['immediate', 'daily', 'weekly'], example: 'immediate' }
+                watchPreference: {
+                  type: 'string',
+                  enum: ['immediate', 'daily', 'weekly'],
+                  example: 'immediate'
+                },
+                emailEnabled: { type: 'boolean', example: true },
+                emailCategories: {
+                  type: 'object',
+                  properties: Object.fromEntries(
+                    NOTIFICATION_EMAIL_CATEGORIES.map((category) => [
+                      category,
+                      { type: 'boolean' }
+                    ])
+                  )
+                }
               }
             }
           }
@@ -49,14 +69,14 @@ export class UsersController {
     return {
       user: {
         id: String(doc._id),
-            email: doc.email,
-            displayName: doc.displayName,
-            username: doc.username,
-            roles: doc.roles,
-            ...(doc.status ? { status: doc.status } : {}),
-            notify: doc.notify ?? { watchPreference: 'immediate' }
-          }
-        };
+        email: doc.email,
+        displayName: doc.displayName,
+        username: doc.username,
+        roles: doc.roles,
+        ...(doc.status ? { status: doc.status } : {}),
+        notify: notificationPreferencesWithDefaults(doc.notify)
+      }
+    };
   }
 
   @Patch()
@@ -122,7 +142,24 @@ export class UsersController {
     schema: {
       type: 'object',
       properties: {
-        watchPreference: { type: 'string', enum: ['immediate', 'daily', 'weekly'], example: 'daily', description: 'How often to receive watch notifications' }
+        watchPreference: {
+          type: 'string',
+          enum: ['immediate', 'daily', 'weekly'],
+          example: 'daily',
+          description: 'How often to receive notification emails'
+        },
+        emailEnabled: {
+          type: 'boolean',
+          example: true,
+          description: 'Catch-all switch for notification email delivery'
+        },
+        emailCategories: {
+          type: 'object',
+          description: 'Per-category email delivery switches; in-app notifications are unaffected',
+          properties: Object.fromEntries(
+            NOTIFICATION_EMAIL_CATEGORIES.map((category) => [category, { type: 'boolean' }])
+          )
+        }
       }
     }
   })
@@ -130,14 +167,48 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updatePreferences(
     @CurrentUser() user: RequestUser,
-    @Body('watchPreference') watchPreference?: 'immediate' | 'daily' | 'weekly'
+    @Body()
+    body: {
+      watchPreference?: 'immediate' | 'daily' | 'weekly';
+      emailEnabled?: boolean;
+      emailCategories?: NotificationEmailCategories;
+    }
   ) {
     const doc = await this.users.findById(user.userId);
     if (!doc) return { ok: false };
-    if (watchPreference) {
-      doc.notify = { ...(doc.notify ?? {}), watchPreference };
+
+    const preferences = notificationPreferencesWithDefaults(doc.notify);
+    if (body.watchPreference !== undefined) {
+      if (!['immediate', 'daily', 'weekly'].includes(body.watchPreference)) {
+        throw new BadRequestException('Invalid notification email frequency');
+      }
+      preferences.watchPreference = body.watchPreference;
     }
+    if (body.emailEnabled !== undefined) {
+      if (typeof body.emailEnabled !== 'boolean') {
+        throw new BadRequestException('emailEnabled must be a boolean');
+      }
+      preferences.emailEnabled = body.emailEnabled;
+    }
+    if (body.emailCategories !== undefined) {
+      if (
+        !body.emailCategories ||
+        typeof body.emailCategories !== 'object' ||
+        Array.isArray(body.emailCategories)
+      ) {
+        throw new BadRequestException('emailCategories must be an object');
+      }
+      for (const [category, enabled] of Object.entries(body.emailCategories)) {
+        if (
+          !isNotificationEmailCategory(category) || typeof enabled !== 'boolean'
+        ) {
+          throw new BadRequestException(`Invalid notification email category: ${category}`);
+        }
+        preferences.emailCategories[category] = enabled;
+      }
+    }
+    doc.notify = preferences;
     await doc.save();
-    return { ok: true };
+    return { ok: true, notify: preferences };
   }
 }

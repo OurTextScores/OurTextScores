@@ -11,6 +11,10 @@ import { UsersService } from '../users/users.service';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { randomUUID } from 'crypto';
+import {
+  notificationEmailEnabled,
+  type NotificationEmailCategory
+} from '../users/notification-preferences';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
@@ -34,14 +38,13 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     revisionId: string;
     ownerUserId?: string;
   }) {
-    const recipients: string[] = [];
-    if (params.ownerUserId) recipients.push(`user:${params.ownerUserId}`);
-    await this.outboxModel.create({
-      type: 'push_request',
+    if (!params.ownerUserId) return;
+    await this.createNotification({
+      userId: params.ownerUserId,
+      type: 'approval_request',
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
-      recipients,
       payload: {}
     });
   }
@@ -367,14 +370,18 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           if (r.startsWith('user:')) {
             const id = r.substring('user:'.length);
             const user = await this.users.findById(id);
-            if (user?.email) emails.push(user.email);
+            if (user?.email && notificationEmailEnabled(user.notify, 'approvals')) {
+              emails.push(user.email);
+            }
           } else if (r.includes('@')) {
             emails.push(r);
           }
         }
         if (emails.length > 0 && this.transporter) {
           const subject = this.renderSubject(n.type, n.workId, n.sourceId, n.revisionId);
-          const html = this.renderHtml(n.type, n.workId, n.sourceId, n.revisionId);
+          const html = this.withEmailPreferencesFooter(
+            this.renderHtml(n.type, n.workId, n.sourceId, n.revisionId)
+          );
           await this.transporter.sendMail({
             from: this.emailFrom,
             to: emails.join(','),
@@ -430,13 +437,27 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         if (!user?.email) continue;
 
         const preference = user.notify?.watchPreference || 'immediate';
+        const deliverableNotifications: typeof userNotifications = [];
+        for (const notification of userNotifications) {
+          const category = this.inboxEmailCategory(notification.type);
+          if (notificationEmailEnabled(user.notify, category)) {
+            deliverableNotifications.push(notification);
+            continue;
+          }
+          notification.emailSent = true;
+          notification.emailSuppressedAt = now;
+          await notification.save();
+        }
+        if (deliverableNotifications.length === 0) continue;
 
         if (preference === 'immediate') {
           // Send email for each notification immediately
-          for (const notification of userNotifications) {
+          for (const notification of deliverableNotifications) {
             if (this.transporter) {
               const subject = this.renderNotificationSubject(notification);
-              const html = this.renderNotificationHtml(notification);
+              const html = this.withEmailPreferencesFooter(
+                this.renderNotificationHtml(notification)
+              );
               await this.transporter.sendMail({
                 from: this.emailFrom,
                 to: user.email,
@@ -456,12 +477,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
               : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
           // Only send digest if notifications are old enough
-          const oldNotifications = userNotifications.filter((n) => n.createdAt <= threshold);
+          const oldNotifications = deliverableNotifications.filter((n) => n.createdAt <= threshold);
           if (oldNotifications.length === 0) continue;
 
           if (this.transporter) {
             const subject = `[${preference} digest] ${oldNotifications.length} new notification${oldNotifications.length > 1 ? 's' : ''}`;
-            const html = this.renderDigestHtml(oldNotifications);
+            const html = this.withEmailPreferencesFooter(this.renderDigestHtml(oldNotifications));
             await this.transporter.sendMail({
               from: this.emailFrom,
               to: user.email,
@@ -482,6 +503,36 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
     }
+  }
+
+  private inboxEmailCategory(type: NotificationType): NotificationEmailCategory {
+    switch (type) {
+      case 'comment_reply':
+      case 'source_comment':
+        return 'comments';
+      case 'new_revision':
+        return 'revisions';
+      case 'change_review_submitted':
+      case 'change_review_activity':
+        return 'reviews';
+      case 'approval_request':
+        return 'approvals';
+      case 'scanner_job_succeeded':
+      case 'scanner_job_partial':
+      case 'scanner_job_failed':
+        return 'scanner';
+    }
+  }
+
+  private withEmailPreferencesFooter(html: string): string {
+    const preferencesUrl = `${this.publicWebBaseUrl}/notifications#notification-settings`;
+    return `${html}
+      <hr>
+      <p style="font-size: 12px; color: #64748b;">
+        <a href="${preferencesUrl}">Manage or unsubscribe from notification emails</a>.
+        In-app notifications will remain available.
+      </p>
+    `;
   }
 
   private renderSubject(
@@ -546,6 +597,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         return `New comment on your source ${notification.workId}/${notification.sourceId}`;
       case 'new_revision':
         return `New revision on ${notification.workId}/${notification.sourceId}`;
+      case 'approval_request':
+        return `Approval requested for ${notification.workId}/${notification.sourceId}`;
       case 'change_review_submitted':
         return `Change review submitted on ${notification.workId}/${notification.sourceId}`;
       case 'change_review_activity':
@@ -586,6 +639,12 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           <p>Source: <code>${notification.workId}/${notification.sourceId}</code></p>
           <p>Revision: <code>${notification.revisionId}</code></p>
           <p><a href="${workUrl}">View work</a> • <a href="${notificationsUrl}">See all notifications</a></p>
+        `;
+      case 'approval_request':
+        return `
+          <p>A new revision <code>${notification.revisionId}</code> requires your approval.</p>
+          <p>Source: <code>${notification.workId}/${notification.sourceId}</code></p>
+          <p><a href="${this.publicWebBaseUrl}/approvals">Open approvals inbox</a> • <a href="${workUrl}">View work</a> • <a href="${notificationsUrl}">See all notifications</a></p>
         `;
       case 'change_review_submitted':
         return `
@@ -639,6 +698,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
             break;
           case 'new_revision':
             typeLabel = 'New revision';
+            break;
+          case 'approval_request':
+            typeLabel = 'Approval requested';
             break;
           case 'change_review_submitted':
             typeLabel = 'Change review submitted';

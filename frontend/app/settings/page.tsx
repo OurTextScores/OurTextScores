@@ -15,6 +15,14 @@ export default async function SettingsPage() {
   const data = await res.json();
   const user = data?.user;
   const pref = (user?.notify?.watchPreference as 'immediate' | 'daily' | 'weekly' | undefined) || 'immediate';
+  const emailEnabled = user?.notify?.emailEnabled !== false;
+  const emailCategories = {
+    comments: user?.notify?.emailCategories?.comments !== false,
+    revisions: user?.notify?.emailCategories?.revisions !== false,
+    reviews: user?.notify?.emailCategories?.reviews !== false,
+    scanner: user?.notify?.emailCategories?.scanner !== false,
+    approvals: user?.notify?.emailCategories?.approvals !== false
+  };
   const roles: string[] = Array.isArray(user?.roles) ? user.roles as string[] : [];
   const roleLabel = roles.length ? roles.join(", ") : "user";
 
@@ -42,9 +50,13 @@ export default async function SettingsPage() {
           )}
         </section>
 
-        <section className="rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
+        <section id="notifications" className="rounded border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-slate-900/60">
           <h2 className="mb-3 text-lg font-semibold">Notifications</h2>
-          <NotificationsForm preference={pref} />
+          <NotificationsForm
+            preference={pref}
+            emailEnabled={emailEnabled}
+            emailCategories={emailCategories}
+          />
         </section>
 
         {roles.includes('admin') && (

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { fetchBackendSession } from "../lib/server-session";
 import { getApiAuthHeaders } from "../lib/authToken";
 import NotificationsClient from "./notifications-client";
+import { NotificationsForm } from "../settings/notifications-form";
+import type { NotificationEmailCategories } from "../settings/actions";
 
 function getBackendApiBase(): string {
   const raw = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://backend:4000/api";
@@ -12,7 +14,7 @@ function getBackendApiBase(): string {
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity' | 'scanner_job_succeeded' | 'scanner_job_partial' | 'scanner_job_failed';
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'approval_request' | 'change_review_submitted' | 'change_review_activity' | 'scanner_job_succeeded' | 'scanner_job_partial' | 'scanner_job_failed';
   workId?: string;
   sourceId?: string;
   revisionId?: string;
@@ -23,6 +25,20 @@ interface Notification {
   read: boolean;
   createdAt: Date;
 }
+
+interface NotificationPreferences {
+  preference: 'immediate' | 'daily' | 'weekly';
+  emailEnabled: boolean;
+  emailCategories: NotificationEmailCategories;
+}
+
+const defaultEmailCategories: NotificationEmailCategories = {
+  comments: true,
+  revisions: true,
+  reviews: true,
+  scanner: true,
+  approvals: true
+};
 
 async function fetchNotifications(): Promise<{ notifications: Notification[]; unreadCount: number }> {
   const API = getBackendApiBase();
@@ -49,6 +65,41 @@ async function fetchNotifications(): Promise<{ notifications: Notification[]; un
   }
 }
 
+async function fetchNotificationPreferences(): Promise<NotificationPreferences> {
+  const API = getBackendApiBase();
+  const auth = await getApiAuthHeaders();
+  const fallback: NotificationPreferences = {
+    preference: 'immediate',
+    emailEnabled: true,
+    emailCategories: { ...defaultEmailCategories }
+  };
+
+  try {
+    const res = await fetch(`${API}/users/me`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(auth.Authorization && { Authorization: auth.Authorization })
+      },
+      cache: "no-store"
+    });
+    if (!res.ok) return fallback;
+    const user = (await res.json())?.user;
+    return {
+      preference: user?.notify?.watchPreference || 'immediate',
+      emailEnabled: user?.notify?.emailEnabled !== false,
+      emailCategories: {
+        comments: user?.notify?.emailCategories?.comments !== false,
+        revisions: user?.notify?.emailCategories?.revisions !== false,
+        reviews: user?.notify?.emailCategories?.reviews !== false,
+        scanner: user?.notify?.emailCategories?.scanner !== false,
+        approvals: user?.notify?.emailCategories?.approvals !== false
+      }
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export default async function NotificationsPage() {
   const session = await fetchBackendSession();
 
@@ -56,7 +107,10 @@ export default async function NotificationsPage() {
     redirect("/");
   }
 
-  const { notifications, unreadCount } = await fetchNotifications();
+  const [{ notifications, unreadCount }, preferences] = await Promise.all([
+    fetchNotifications(),
+    fetchNotificationPreferences()
+  ]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 py-8 px-4">
@@ -90,6 +144,24 @@ export default async function NotificationsPage() {
             <NotificationsClient initialNotifications={notifications} />
           )}
         </div>
+
+        <section
+          id="notification-settings"
+          className="mt-6 rounded-lg bg-white p-6 text-sm shadow-lg dark:bg-slate-800"
+        >
+          <h2 className="mb-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Notification email settings
+          </h2>
+          <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+            Choose which notification emails to receive, or unsubscribe from all of them.
+            In-app notifications remain available here.
+          </p>
+          <NotificationsForm
+            preference={preferences.preference}
+            emailEnabled={preferences.emailEnabled}
+            emailCategories={preferences.emailCategories}
+          />
+        </section>
       </div>
     </div>
   );

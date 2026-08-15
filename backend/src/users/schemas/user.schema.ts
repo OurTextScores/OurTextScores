@@ -1,5 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import {
+  DEFAULT_NOTIFICATION_EMAIL_CATEGORIES,
+  type UserNotificationPreferences
+} from '../notification-preferences';
 
 @Schema({
   collection: 'users',
@@ -40,14 +44,32 @@ export class User {
 
   @Prop({
     type: {
-      watchPreference: { type: String, enum: ['immediate', 'daily', 'weekly'], default: 'immediate' }
+      watchPreference: {
+        type: String,
+        enum: ['immediate', 'daily', 'weekly'],
+        default: 'immediate'
+      },
+      emailEnabled: { type: Boolean, default: true },
+      emailCategories: {
+        type: {
+          comments: { type: Boolean, default: true },
+          revisions: { type: Boolean, default: true },
+          reviews: { type: Boolean, default: true },
+          scanner: { type: Boolean, default: true },
+          approvals: { type: Boolean, default: true }
+        },
+        _id: false,
+        default: { ...DEFAULT_NOTIFICATION_EMAIL_CATEGORIES }
+      }
     },
     _id: false,
-    default: { watchPreference: 'immediate' }
+    default: {
+      watchPreference: 'immediate',
+      emailEnabled: true,
+      emailCategories: { ...DEFAULT_NOTIFICATION_EMAIL_CATEGORIES }
+    }
   })
-  notify?: {
-    watchPreference?: 'immediate' | 'daily' | 'weekly';
-  };
+  notify?: UserNotificationPreferences;
 }
 
 export type UserDocument = HydratedDocument<User>;

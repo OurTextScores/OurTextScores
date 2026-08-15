@@ -1,5 +1,4 @@
 import { jest } from "@jest/globals";
-import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 // Mock dependencies FIRST before any imports
@@ -26,12 +25,14 @@ jest.mock("./profile-form", () => {
 
 jest.mock("./notifications-form", () => {
   return {
-    NotificationsForm: function MockNotificationsForm({ preference }: any) {
+    NotificationsForm: function MockNotificationsForm({ preference, emailEnabled, emailCategories }: any) {
       return (
         <div data-testid="notifications-form-mock">
           <input data-testid="pref-immediate" type="radio" checked={preference === 'immediate'} readOnly />
           <input data-testid="pref-daily" type="radio" checked={preference === 'daily'} readOnly />
           <input data-testid="pref-weekly" type="radio" checked={preference === 'weekly'} readOnly />
+          <input data-testid="email-enabled" type="checkbox" checked={emailEnabled} readOnly />
+          <span data-testid="comments-enabled">{String(emailCategories.comments)}</span>
         </div>
       );
     }
@@ -67,5 +68,38 @@ describe("SettingsPage", () => {
     });
 
     await expect(SettingsPage()).rejects.toThrow("Failed to load user");
+  });
+
+  it("passes persisted email opt-outs to the notification form", async () => {
+    (fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        user: {
+          email: "user@example.com",
+          roles: ["user"],
+          notify: {
+            watchPreference: "daily",
+            emailEnabled: false,
+            emailCategories: { comments: false }
+          }
+        }
+      })
+    });
+
+    const page: any = await SettingsPage();
+    const findNotificationForm = (node: any): any => {
+      if (!node || typeof node !== "object") return undefined;
+      if (node.props?.emailCategories && node.props?.preference) return node;
+      const children = Array.isArray(node.props?.children)
+        ? node.props.children
+        : [node.props?.children];
+      return children.map(findNotificationForm).find(Boolean);
+    };
+    const form = findNotificationForm(page);
+
+    expect(form.props.preference).toBe("daily");
+    expect(form.props.emailEnabled).toBe(false);
+    expect(form.props.emailCategories.comments).toBe(false);
+    expect(form.props.emailCategories.revisions).toBe(true);
   });
 });

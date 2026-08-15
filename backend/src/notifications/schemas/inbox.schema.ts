@@ -7,6 +7,7 @@ export type NotificationType =
   | 'comment_reply'
   | 'source_comment'
   | 'new_revision'
+  | 'approval_request'
   | 'change_review_submitted'
   | 'change_review_activity'
   | 'scanner_job_succeeded'
@@ -30,6 +31,7 @@ export class NotificationInbox {
       'comment_reply',
       'source_comment',
       'new_revision',
+      'approval_request',
       'change_review_submitted',
       'change_review_activity',
       'scanner_job_succeeded',
@@ -64,10 +66,13 @@ export class NotificationInbox {
   read!: boolean;
 
   @Prop({ default: false })
-  emailSent?: boolean; // Track if email notification was sent
+  emailSent?: boolean; // Delivery was handled: sent, or deliberately suppressed
 
   @Prop({ type: Date })
   emailSentAt?: Date; // When email was sent
+
+  @Prop({ type: Date })
+  emailSuppressedAt?: Date; // Preference prevented delivery; do not retry later
 
   @Prop({ type: Date, required: true })
   createdAt!: Date;

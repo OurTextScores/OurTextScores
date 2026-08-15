@@ -42,35 +42,28 @@ describe('NotificationsService', () => {
   });
 
   describe('queuePushRequest', () => {
-    it('enqueues owner notification with ownerUserId', async () => {
-      outboxModel.create.mockResolvedValue({});
+    it('creates a batchable inbox notification for the owner', async () => {
+      inboxModel.create.mockResolvedValue({});
       await svc.queuePushRequest({
         workId: 'w',
         sourceId: 's',
         revisionId: 'r',
         ownerUserId: 'u1'
       });
-      expect(outboxModel.create).toHaveBeenCalledWith({
-        type: 'push_request',
-        workId: 'w',
-        sourceId: 's',
-        revisionId: 'r',
-        recipients: ['user:u1'],
-        payload: {}
-      });
+      expect(inboxModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u1',
+          type: 'approval_request',
+          workId: 'w',
+          sourceId: 's',
+          revisionId: 'r'
+        })
+      );
     });
 
-    it('enqueues notification without recipients when no ownerUserId', async () => {
-      outboxModel.create.mockResolvedValue({});
+    it('does nothing when there is no owner to notify', async () => {
       await svc.queuePushRequest({ workId: 'w', sourceId: 's', revisionId: 'r' });
-      expect(outboxModel.create).toHaveBeenCalledWith({
-        type: 'push_request',
-        workId: 'w',
-        sourceId: 's',
-        revisionId: 'r',
-        recipients: [],
-        payload: {}
-      });
+      expect(inboxModel.create).not.toHaveBeenCalled();
     });
   });
 
@@ -194,8 +187,38 @@ describe('NotificationsService', () => {
       await svc.processOutbox();
 
       expect((svc as any).transporter.sendMail).toHaveBeenCalled();
+      expect((svc as any).transporter.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.stringContaining('/notifications#notification-settings')
+        })
+      );
       expect(doc.status).toBe('sent');
       expect(doc.attempts).toBe(1);
+    });
+
+    it('suppresses approval email when that category is disabled', async () => {
+      const doc = {
+        type: 'push_request',
+        workId: 'w',
+        sourceId: 's',
+        revisionId: 'r',
+        recipients: ['user:u1'],
+        status: 'queued',
+        attempts: 0,
+        save: jest.fn().mockResolvedValue({})
+      } as any;
+      outboxModel.find.mockReturnValueOnce({
+        sort: () => ({ limit: () => ({ exec: () => Promise.resolve([doc]) }) })
+      });
+      users.findById.mockResolvedValue({
+        email: 'user@example.com',
+        notify: { emailCategories: { approvals: false } }
+      });
+
+      await svc.processOutbox();
+
+      expect((svc as any).transporter.sendMail).not.toHaveBeenCalled();
+      expect(doc.status).toBe('sent');
     });
 
     it('handles email recipients directly', async () => {
@@ -382,6 +405,88 @@ describe('NotificationsService', () => {
         })
       );
       expect(digestDoc.emailSent).toBe(true);
+    });
+
+    it('keeps in-app notifications but suppresses disabled email categories', async () => {
+      const comment = {
+        notificationId: 'comment',
+        userId: 'u1',
+        type: 'source_comment',
+        workId: 'w1',
+        sourceId: 's1',
+        revisionId: 'r1',
+        createdAt: new Date(),
+        emailSent: false,
+        save: jest.fn().mockResolvedValue({})
+      } as any;
+      const revision = {
+        notificationId: 'revision',
+        userId: 'u1',
+        type: 'new_revision',
+        workId: 'w1',
+        sourceId: 's1',
+        revisionId: 'r2',
+        createdAt: new Date(),
+        emailSent: false,
+        save: jest.fn().mockResolvedValue({})
+      } as any;
+      outboxModel.find.mockReturnValueOnce({
+        sort: () => ({ limit: () => ({ exec: () => Promise.resolve([]) }) })
+      });
+      inboxModel.find.mockReturnValue({
+        sort: () => ({ exec: () => Promise.resolve([comment, revision]) })
+      });
+      users.findById.mockResolvedValue({
+        email: 'user@example.com',
+        notify: {
+          watchPreference: 'immediate',
+          emailCategories: { comments: false, revisions: true }
+        }
+      });
+
+      await svc.processOutbox();
+
+      expect((svc as any).transporter.sendMail).toHaveBeenCalledTimes(1);
+      expect((svc as any).transporter.sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: expect.stringContaining('New revision'),
+          html: expect.stringContaining('/notifications#notification-settings')
+        })
+      );
+      expect(comment.emailSent).toBe(true);
+      expect(comment.emailSuppressedAt).toBeInstanceOf(Date);
+      expect(comment.read).toBeUndefined();
+      expect(revision.emailSent).toBe(true);
+    });
+
+    it('suppresses every email when the catch-all is disabled', async () => {
+      const notification = {
+        notificationId: 'scan',
+        userId: 'u1',
+        type: 'scanner_job_succeeded',
+        resourceType: 'scanner_job',
+        resourceId: 'scan-1',
+        payload: { originalFilename: 'score.png' },
+        createdAt: new Date(),
+        emailSent: false,
+        save: jest.fn().mockResolvedValue({})
+      } as any;
+      outboxModel.find.mockReturnValueOnce({
+        sort: () => ({ limit: () => ({ exec: () => Promise.resolve([]) }) })
+      });
+      inboxModel.find.mockReturnValue({
+        sort: () => ({ exec: () => Promise.resolve([notification]) })
+      });
+      users.findById.mockResolvedValue({
+        email: 'user@example.com',
+        notify: { emailEnabled: false }
+      });
+
+      await svc.processOutbox();
+
+      expect((svc as any).transporter.sendMail).not.toHaveBeenCalled();
+      expect(notification.emailSent).toBe(true);
+      expect(notification.emailSuppressedAt).toBeInstanceOf(Date);
     });
   });
 

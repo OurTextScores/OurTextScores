@@ -5,7 +5,7 @@ import Link from "next/link";
 
 interface Notification {
   notificationId: string;
-  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'change_review_submitted' | 'change_review_activity' | 'scanner_job_succeeded' | 'scanner_job_partial' | 'scanner_job_failed';
+  type: 'comment_reply' | 'source_comment' | 'new_revision' | 'approval_request' | 'change_review_submitted' | 'change_review_activity' | 'scanner_job_succeeded' | 'scanner_job_partial' | 'scanner_job_failed';
   workId?: string;
   sourceId?: string;
   revisionId?: string;
@@ -46,6 +46,11 @@ export default function NotificationsClient({ initialNotifications }: Props) {
       case 'new_revision':
         return {
           title: `New revision on watched work`,
+          description: `${n.workId}/${n.sourceId}`
+        };
+      case 'approval_request':
+        return {
+          title: 'Revision approval requested',
           description: `${n.workId}/${n.sourceId}`
         };
       case 'change_review_submitted':
@@ -96,6 +101,7 @@ export default function NotificationsClient({ initialNotifications }: Props) {
     if ((n.type === 'change_review_submitted' || n.type === 'change_review_activity') && n.payload?.reviewId) {
       return `/change-reviews/${encodeURIComponent(String(n.payload.reviewId))}`;
     }
+    if (n.type === 'approval_request') return '/approvals';
     // Create deep link with URL parameters to open specific source/revision
     const params = new URLSearchParams({
       source: n.sourceId || "",
@@ -165,6 +171,8 @@ export default function NotificationsClient({ initialNotifications }: Props) {
         return '📝';
       case 'new_revision':
         return '📄';
+      case 'approval_request':
+        return '✅';
       case 'change_review_submitted':
         return '🧾';
       case 'change_review_activity':

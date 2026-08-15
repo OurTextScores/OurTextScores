@@ -4,6 +4,48 @@ import { revalidatePath } from "next/cache";
 import { getApiBase } from "../lib/api";
 import { getApiAuthHeaders } from "../lib/authToken";
 
+export type NotificationEmailCategory =
+  | 'comments'
+  | 'revisions'
+  | 'reviews'
+  | 'scanner'
+  | 'approvals';
+
+export type NotificationEmailCategories = Record<NotificationEmailCategory, boolean>;
+
+export type NotificationPreferences = {
+  watchPreference: 'immediate' | 'daily' | 'weekly';
+  emailEnabled: boolean;
+  emailCategories: NotificationEmailCategories;
+};
+
+const notificationEmailCategories: NotificationEmailCategory[] = [
+  'comments',
+  'revisions',
+  'reviews',
+  'scanner',
+  'approvals'
+];
+
+export async function updateNotificationPreferences(preferences: NotificationPreferences) {
+  const API_BASE = getApiBase();
+  const headers = await getApiAuthHeaders();
+  const res = await fetch(`${API_BASE}/users/me/preferences`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    },
+    body: JSON.stringify(preferences)
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || 'Failed to update preferences');
+  }
+  revalidatePath('/settings');
+  revalidatePath('/notifications');
+}
+
 export async function updateWatchPreference(pref: 'immediate' | 'daily' | 'weekly') {
   const API_BASE = getApiBase();
   const headers = await getApiAuthHeaders();
@@ -25,7 +67,17 @@ export async function updateWatchPreference(pref: 'immediate' | 'daily' | 'weekl
 export async function handleUpdateWatchPreference(prevState: any, formData: FormData) {
   try {
     const value = String(formData.get('watchPreference') || 'immediate') as 'immediate' | 'daily' | 'weekly';
-    await updateWatchPreference(value);
+    const emailCategories = Object.fromEntries(
+      notificationEmailCategories.map((category) => [
+        category,
+        formData.has(`emailCategory_${category}`)
+      ])
+    ) as NotificationEmailCategories;
+    await updateNotificationPreferences({
+      watchPreference: value,
+      emailEnabled: formData.has('emailEnabled'),
+      emailCategories
+    });
     return { success: true };
   } catch (error) {
     return { success: false, error: 'Failed to update notification preferences' };
@@ -59,4 +111,3 @@ export async function handleUpdateProfile(prevState: any, formData: FormData) {
     return { success: false, error: 'An unexpected error occurred' };
   }
 }
-

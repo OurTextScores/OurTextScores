@@ -1,6 +1,11 @@
 "use server";
 
-import { updateWatchPreference, updateProfile, handleUpdateProfile } from "./actions";
+import {
+  updateNotificationPreferences,
+  updateWatchPreference,
+  updateProfile,
+  handleUpdateProfile
+} from "./actions";
 import { getApiBase } from "../lib/api";
 import { getApiAuthHeaders } from "../lib/authToken";
 import { revalidatePath } from "next/cache";
@@ -46,6 +51,35 @@ describe("settings-actions", () => {
       });
 
       await expect(updateWatchPreference("weekly")).rejects.toThrow("Server error");
+    });
+  });
+
+  describe("updateNotificationPreferences", () => {
+    it("updates the catch-all, categories, and frequency together", async () => {
+      (fetch as jest.Mock).mockResolvedValueOnce({ ok: true });
+      const preferences = {
+        watchPreference: "weekly" as const,
+        emailEnabled: false,
+        emailCategories: {
+          comments: false,
+          revisions: true,
+          reviews: false,
+          scanner: true,
+          approvals: false
+        }
+      };
+
+      await updateNotificationPreferences(preferences);
+
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:4000/api/users/me/preferences",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify(preferences)
+        })
+      );
+      expect(revalidatePath).toHaveBeenCalledWith("/settings");
+      expect(revalidatePath).toHaveBeenCalledWith("/notifications");
     });
   });
 
