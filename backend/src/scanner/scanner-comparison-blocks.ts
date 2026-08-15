@@ -33,6 +33,8 @@ export interface ScannerComparisonMeasureIdentity {
   stablePartKey: string;
   documentPartId: string;
   measureIndex: number;
+  /** Reader-facing number; raw measureNumber remains the geometry identity. */
+  displayMeasureNumber?: string;
   measureNumber?: string;
 }
 
@@ -226,6 +228,7 @@ function measureRef(
     stablePartKey,
     documentPartId: side.documentPartId,
     measureIndex: descriptor.measureIndex,
+    displayMeasureNumber: descriptor.displayMeasureNumber,
     measureNumber: descriptor.measureNumber
   };
 }

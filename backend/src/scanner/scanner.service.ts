@@ -1056,7 +1056,9 @@ export class ScannerService implements OnModuleInit {
      * arithmetic the consumer can do on indexes.
      */
     const measureLabel = (refs: any[]): string => {
-      const numbers = refs.map((ref) => ref.measureNumber).filter(Boolean);
+      const numbers = refs
+        .map((ref) => ref.displayMeasureNumber || ref.measureNumber)
+        .filter(Boolean);
       if (numbers.length === 0) return '';
       if (numbers.length === 1) return `bar ${numbers[0]}`;
       const first = Number(numbers[0]);

@@ -68,6 +68,12 @@ export type ScannerMeasureComponentDetails = Record<
 
 export interface ScannerMeasureDescriptor {
   measureIndex: number;
+  /**
+   * Reader-facing bar number. This can differ from the source MusicXML label:
+   * some recognizers number an unmarked pickup as measure 1, while the score
+   * editor and MuseScore conventionally call it measure 0.
+   */
+  displayMeasureNumber?: string;
   measureNumber?: string;
   coarseKey: string;
   richHash: string;
@@ -147,6 +153,11 @@ const add = (left: Fraction, right: Fraction): Fraction =>
 
 const subtract = (left: Fraction, right: Fraction): Fraction =>
   fraction(left[0] * right[1] - right[0] * left[1], left[1] * right[1]);
+
+const compareFractions = (left: Fraction, right: Fraction): number => {
+  const difference = left[0] * right[1] - right[0] * left[1];
+  return difference < BIGINT_ZERO ? -1 : difference > BIGINT_ZERO ? 1 : 0;
+};
 
 const formatFraction = (value: Fraction): string =>
   value[1] === BIGINT_ONE ? String(value[0]) : `${value[0]}/${value[1]}`;
@@ -386,15 +397,37 @@ function compareFractionStrings(left: string, right: string): number {
   return difference < BIGINT_ZERO ? -1 : difference > BIGINT_ZERO ? 1 : 0;
 }
 
+/** The duration in quarter notes declared by the last time signature here. */
+function declaredMeasureDuration(measure: OrderedEntry): Fraction | undefined {
+  let result: Fraction | undefined;
+  for (const attributesEntry of directEntries(contents(measure, 'measure'), 'attributes')) {
+    for (const timeEntry of directEntries(contents(attributesEntry, 'attributes'), 'time')) {
+      const timeChildren = contents(timeEntry, 'time');
+      const rawBeats = directText(timeChildren, 'beats');
+      const rawBeatType = directText(timeChildren, 'beat-type');
+      if (!/^\d+(?:\+\d+)*$/.test(rawBeats) || !/^\d+$/.test(rawBeatType)) continue;
+      const beats = rawBeats
+        .split('+')
+        .map((value) => BigInt(value))
+        .reduce((total, value) => total + value, BIGINT_ZERO);
+      const beatType = BigInt(rawBeatType);
+      if (beats <= BIGINT_ZERO || beatType <= BIGINT_ZERO) continue;
+      result = fraction(beats * BigInt(4), beatType);
+    }
+  }
+  return result;
+}
+
 function describeMeasure(
   measure: OrderedEntry,
   measureIndex: number,
   initialDivisions: bigint,
   attributeState: Map<string, string>
-): { descriptor: ScannerMeasureDescriptor; divisions: bigint } {
+): { descriptor: ScannerMeasureDescriptor; divisions: bigint; duration: Fraction } {
   const measureChildren = contents(measure, 'measure');
   let divisions = initialDivisions;
   let cursor = zero;
+  let measureDuration = zero;
   let previousNoteOnset = zero;
   const notes: SemanticNote[] = [];
   const coarseEvents: CoarseEvent[] = [];
@@ -418,6 +451,7 @@ function describeMeasure(
     if (Object.prototype.hasOwnProperty.call(child, 'forward')) {
       const raw = directText(contents(child, 'forward'), 'duration');
       cursor = add(cursor, fraction(parsePositiveInteger(raw, 'forward duration'), divisions));
+      if (compareFractions(cursor, measureDuration) > 0) measureDuration = cursor;
       continue;
     }
     if (Object.prototype.hasOwnProperty.call(child, 'direction')) {
@@ -454,7 +488,7 @@ function describeMeasure(
     const chord = Boolean(firstEntry(noteChildren, 'chord'));
     const grace = Boolean(firstEntry(noteChildren, 'grace'));
     const rawDuration = directText(noteChildren, 'duration');
-    const duration = grace
+    const noteDuration = grace
       ? zero
       : fraction(parsePositiveInteger(rawDuration, 'note duration'), divisions);
     const onset = chord ? previousNoteOnset : cursor;
@@ -462,7 +496,7 @@ function describeMeasure(
     const ties = tieTypes(noteChildren);
     const semantic: SemanticNote = {
       onset: formatFraction(onset),
-      duration: formatFraction(duration),
+      duration: formatFraction(noteDuration),
       pitch,
       ties,
       voice: canonicalNumber(directText(noteChildren, 'voice')) || '1',
@@ -473,6 +507,8 @@ function describeMeasure(
       lyrics: noteLyrics(noteChildren)
     };
     notes.push(semantic);
+    const noteEnd = add(onset, noteDuration);
+    if (compareFractions(noteEnd, measureDuration) > 0) measureDuration = noteEnd;
     dynamics.push(
       ...noteDynamics(noteChildren).map((value) => ({
         onset: semantic.onset,
@@ -489,7 +525,7 @@ function describeMeasure(
     } else {
       coarseEvents.push({ members: [member] });
       previousNoteOnset = onset;
-      if (!grace) cursor = add(cursor, duration);
+      if (!grace) cursor = noteEnd;
     }
   }
 
@@ -603,7 +639,8 @@ function describeMeasure(
       eventCount: notes.length,
       alignment
     },
-    divisions
+    divisions,
+    duration: measureDuration
   };
 }
 
@@ -634,11 +671,25 @@ export function describeScannerMusicXmlMeasures(musicXml: Buffer): ScannerDescri
     }
     let divisions = BIGINT_ONE;
     const attributeState = new Map<string, string>();
-    const descriptors = measures.map((measure, measureIndex) => {
+    const describedMeasures = measures.map((measure, measureIndex) => {
       const described = describeMeasure(measure, measureIndex, divisions, attributeState);
       divisions = described.divisions;
-      return described.descriptor;
+      return described;
     });
+    const firstMeasure = measures[0];
+    const firstAttributes = attrs(firstMeasure);
+    const declaredDuration = declaredMeasureDuration(firstMeasure);
+    const firstDuration = describedMeasures[0].duration;
+    const hasPickup =
+      String(firstAttributes['@_number'] || '') === '0' ||
+      String(firstAttributes['@_implicit'] || '') === 'yes' ||
+      (declaredDuration !== undefined &&
+        compareFractions(firstDuration, zero) > 0 &&
+        compareFractions(firstDuration, declaredDuration) < 0);
+    const descriptors = describedMeasures.map(({ descriptor }, measureIndex) => ({
+      ...descriptor,
+      displayMeasureNumber: hasPickup ? String(measureIndex) : descriptor.measureNumber
+    }));
     return { documentPartId, measures: descriptors };
   });
 }

@@ -185,6 +185,31 @@ describe('scanner measure analysis', () => {
     );
   });
 
+  it('numbers an unmarked pickup from 0 without changing its MusicXML identity', () => {
+    const pickup = describeScannerMusicXmlMeasures(
+      score(
+        measure(
+          '<attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
+            note({ step: 'C' }),
+          '1'
+        ) + measure(noteSequence(['D', 'E', 'F', 'G']), '2')
+      )
+    )[0].measures;
+    const regular = describeScannerMusicXmlMeasures(
+      score(
+        measure(
+          '<attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
+            noteSequence(['C', 'D', 'E', 'F']),
+          '1'
+        ) + measure(noteSequence(['D', 'E', 'F', 'G']), '2')
+      )
+    )[0].measures;
+
+    expect(pickup.map((item) => item.measureNumber)).toEqual(['1', '2']);
+    expect(pickup.map((item) => item.displayMeasureNumber)).toEqual(['0', '1']);
+    expect(regular.map((item) => item.displayMeasureNumber)).toEqual(['1', '2']);
+  });
+
   it('treats repeated attributes as carried state while retaining real changes', () => {
     const repeated = describeScannerMusicXmlMeasures(
       score(

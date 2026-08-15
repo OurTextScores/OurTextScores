@@ -703,7 +703,7 @@ describe('ScannerService', () => {
   it('compares the selected reviewed and raw engine artifacts through the live pipeline', async () => {
     const score = (partId: string, voice: number) =>
       Buffer.from(
-        `<score-partwise><part-list><score-part id="${partId}"><part-name>Cello</part-name></score-part></part-list><part id="${partId}"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>${voice}</voice><staff>1</staff></note></measure></part></score-partwise>`
+        `<score-partwise><part-list><score-part id="${partId}"><part-name>Cello</part-name></score-part></part-list><part id="${partId}"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes><note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>${voice}</voice><staff>1</staff></note></measure></part></score-partwise>`
       );
     const reviewedHomr = score('P1', 1);
     const rawTranscoda = score('T9', 2);
@@ -839,11 +839,15 @@ describe('ScannerService', () => {
       expect(typeof region.contentSignature).toBe('string');
       expect(typeof region.grounded).toBe('boolean');
     }
+    expect(regions.regions[0]).toMatchObject({
+      leftMeasureLabel: 'bar 0',
+      rightMeasureLabel: 'bar 0'
+    });
     expect(regions.regions[0].componentDifferences).toEqual([
       expect.objectContaining({
         component: 'voice',
-        leftMeasureLabel: 'bar 1',
-        rightMeasureLabel: 'bar 1',
+        leftMeasureLabel: 'bar 0',
+        rightMeasureLabel: 'bar 0',
         leftOnly: ['C4 at quarter 0 in voice 1'],
         rightOnly: ['C4 at quarter 0 in voice 2']
       })
