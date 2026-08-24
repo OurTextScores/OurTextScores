@@ -66,9 +66,11 @@ export function buildScoreEditorLaunchUrl(args: {
    *
    * Opt-in rather than implied by `scoreUrl`, because the same URL shape opens
    * the full editor from elsewhere in the product and that must keep its
-   * toolbar. The editor reads this as `embed=1`.
+   * toolbar. Score previews use the dedicated playback surface; `embed=1`
+   * remains an editor-side compatibility alias only.
    */
   embed?: boolean;
+  playerId?: string;
 }) {
   const params = new URLSearchParams();
   params.set('score', args.scoreUrl);
@@ -77,7 +79,10 @@ export function buildScoreEditorLaunchUrl(args: {
     params.set('launchContext', JSON.stringify(launchContext));
   }
   if (args.embed) {
-    params.set('embed', '1');
+    params.set('embed', 'player');
+  }
+  if (args.playerId) {
+    params.set('playerId', args.playerId);
   }
   return `/score-editor/index.html?${params.toString()}`;
 }
