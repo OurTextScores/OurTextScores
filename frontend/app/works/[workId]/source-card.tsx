@@ -745,6 +745,7 @@ export default function SourceCard({
                             start a dozen score engines on expand.
                         */
                         <LazyDetails
+                            unmountOnClose
                             className="border-b border-slate-200 px-5 py-3 dark:border-slate-800"
                             summary={
                                 <summary className="cursor-pointer text-xs font-semibold text-cyan-700 dark:text-cyan-300">

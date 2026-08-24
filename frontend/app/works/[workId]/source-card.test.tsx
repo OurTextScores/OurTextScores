@@ -453,5 +453,9 @@ describe('SourceCard', () => {
         expect(src.searchParams.get('score')).toContain(
             '/works/work-123/sources/source-1/canonical.xml',
         );
+
+        (details as HTMLDetailsElement).open = false;
+        fireEvent(details, new Event('toggle', { bubbles: false }));
+        expect(screen.queryByTestId('score-preview-frame')).not.toBeInTheDocument();
     });
 });

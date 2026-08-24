@@ -50,4 +50,25 @@ describe("LazyDetails", () => {
         // Content should still be in the DOM (just hidden by details behavior, but rendered by React)
         expect(screen.getByTestId("content")).toBeInTheDocument();
     });
+
+    it("can release expensive children while closed and remount them on reopen", () => {
+        render(
+            <LazyDetails summary={<summary>Summary</summary>} unmountOnClose>
+                <div data-testid="content">Content</div>
+            </LazyDetails>
+        );
+
+        const details = screen.getByText("Summary").closest("details")!;
+        details.open = true;
+        fireEvent(details, new Event("toggle"));
+        expect(screen.getByTestId("content")).toBeInTheDocument();
+
+        details.open = false;
+        fireEvent(details, new Event("toggle"));
+        expect(screen.queryByTestId("content")).not.toBeInTheDocument();
+
+        details.open = true;
+        fireEvent(details, new Event("toggle"));
+        expect(screen.getByTestId("content")).toBeInTheDocument();
+    });
 });
