@@ -147,6 +147,19 @@ export function trackUploadOutcomeClient(params: {
   });
 }
 
+export function trackScorePlayerIframeLoadedClient(params: { loadMs: number }): void {
+  trackClientEvent("score_player_iframe_loaded", {
+    surface: "work_source_preview",
+    load_ms: Math.max(0, Math.round(params.loadMs)),
+  });
+}
+
+export function trackScorePlayerEngagedClient(): void {
+  trackClientEvent("score_player_engaged", {
+    surface: "work_source_preview",
+  });
+}
+
 export async function trackApprovalOutcomeServer(params: {
   decision: "approve" | "reject";
   outcome: ServerOutcome;

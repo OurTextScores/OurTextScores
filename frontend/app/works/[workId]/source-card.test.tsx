@@ -446,7 +446,10 @@ describe('SourceCard', () => {
         const src = new URL(frame.getAttribute('src') || '', 'http://localhost');
         expect(src.pathname).toBe('/score-editor/index.html');
         // Chrome-free, so the preview is a score rather than an editor.
-        expect(src.searchParams.get('embed')).toBe('1');
+        expect(src.searchParams.get('embed')).toBe('player');
+        expect(src.searchParams.get('playerId')).toBe('source-preview-source-1');
+        expect(frame).toHaveAttribute('allow', 'autoplay');
+        expect(frame).toHaveAttribute('loading', 'lazy');
         expect(src.searchParams.get('score')).toContain(
             '/works/work-123/sources/source-1/canonical.xml',
         );

@@ -10,6 +10,7 @@ import EditSourceForm from "./edit-source-form";
 import DeleteSourceButton from "./delete-source-button";
 import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
+import ScorePlayerPreview from "./score-player-preview";
 import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction, migrateSourceAction } from "./admin-actions";
 import { buildScoreEditorLaunchUrl, canonicalScoreUrl } from "./score-editor-launch";
 
@@ -755,18 +756,14 @@ export default function SourceCard({
                             }
                         >
                             <div className="mt-3">
-                                <iframe
-                                    data-testid="score-preview-frame"
-                                    src={buildScoreEditorLaunchUrl({
-                                        scoreUrl: canonicalScoreUrl({
-                                            apiBase: PUBLIC_API_BASE,
-                                            workId,
-                                            sourceId: source.sourceId,
-                                        }),
-                                        embed: true,
+                                <ScorePlayerPreview
+                                    scoreUrl={canonicalScoreUrl({
+                                        apiBase: PUBLIC_API_BASE,
+                                        workId,
+                                        sourceId: source.sourceId,
                                     })}
-                                    title={`Score preview of ${source.label || source.sourceId}`}
-                                    className="h-[min(70vh,44rem)] min-h-[24rem] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
+                                    sourceId={source.sourceId}
+                                    title={`Playback of ${source.label || source.sourceId}`}
                                 />
                             </div>
                         </LazyDetails>

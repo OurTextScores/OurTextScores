@@ -44,7 +44,7 @@ async function getMagicLink(request, toEmail, timeoutMs = 30000) {
 }
 
 test.describe('Viewers + Diff + Watch', () => {
-  test('renders OSMD/PDF and diff, and toggles watch', async ({ page, request }) => {
+  test('renders playback/PDF and diff, and toggles watch', async ({ page, request }) => {
     const email = process.env.SMOKE_EMAIL || 'smoke@example.test';
     // Sign in
     await page.goto(`${BASE_URL}/api/auth/signin`);
@@ -66,13 +66,22 @@ test.describe('Viewers + Diff + Watch', () => {
     const work = works.find((w) => (w.availableFormats || []).length > 0) || works[0];
     await page.goto(`${BASE_URL}/works/${encodeURIComponent(work.workId)}`);
 
-    // OSMD (MXL preview)
-    const mxlSummary = page.locator('summary', { hasText: 'Score preview (MXL)' });
-    if (await mxlSummary.count()) {
-      await mxlSummary.first().click();
-      // Wait for any OSMD SVG on the page
-      await expect(page.locator('svg[id^="osmdSvgPage"], svg[id*="osmdSvg"]').first()).toBeVisible({ timeout: 15000 });
-    }
+    // The playback iframe stays behind both lazy source-card boundaries.
+    const firstSourceHeader = page.getByTestId('source-card-header').first();
+    await expect(firstSourceHeader).toBeVisible();
+    await firstSourceHeader.click();
+    const playerSummary = page.locator('summary', { hasText: 'Preview score' }).first();
+    await expect(playerSummary).toBeVisible();
+    await expect(page.getByTestId('score-preview-frame')).toHaveCount(0);
+    await playerSummary.click();
+
+    const playerFrame = page.getByTestId('score-preview-frame').first();
+    await expect(playerFrame).toHaveAttribute('allow', 'autoplay');
+    const playerSrc = new URL(await playerFrame.getAttribute('src'), BASE_URL);
+    expect(playerSrc.searchParams.get('embed')).toBe('player');
+    const embeddedPlayer = page.frameLocator('[data-testid="score-preview-frame"]').first().getByTestId('embedded-score-player');
+    await expect(embeddedPlayer).toBeVisible({ timeout: 60000 });
+    await expect(page.frameLocator('[data-testid="score-preview-frame"]').first().getByTestId('player-svg').locator('svg')).toBeVisible({ timeout: 60000 });
 
     // PDF preview
     const pdfSummary = page.locator('summary', { hasText: 'Score preview (PDF)' });
