@@ -30,6 +30,10 @@ describe("Header", () => {
     expect(signInLink).toBeInTheDocument();
     expect(signInLink).toHaveAttribute("href", "/signin");
     expect(screen.queryByRole("link", { name: /Join beta/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Player/i })).toHaveAttribute(
+      "href",
+      "/player",
+    );
   });
 
   it("offers Scanner to signed-out visitors when it is enabled", () => {

@@ -3,6 +3,8 @@ import Link from "next/link";
 const platformFeatures: Array<{
   title: string;
   body: string;
+  href?: string;
+  linkLabel?: string;
   media?: { light: string; dark?: string };
 }> = [
   {
@@ -17,6 +19,12 @@ const platformFeatures: Array<{
     title: "Integrated Score Editor",
     body: "Open and edit scores directly in the browser to reduce context switching between tools.",
     media: { light: "/images/features/score-editor-light.webm" },
+  },
+  {
+    title: "Standalone Score Player",
+    body: "Play a public MusicXML or MuseScore URL in the browser, or open a score file directly from your device.",
+    href: "/player",
+    linkLabel: "Open Score Player",
   },
   {
     title: "Scanner",
@@ -119,6 +127,7 @@ const quickLinks = [
   { href: "/upload", label: "Upload New Source", icon: "↑" },
   { href: "/projects", label: "Explore Projects", icon: "▦" },
   { href: "/score-editor", label: "Open Score Editor", icon: "✎" },
+  { href: "/player", label: "Open Score Player", icon: "♫" },
   // Shown whenever Scanner is built into this deployment. Signing in is
   // handled by the page itself, so an unauthenticated visitor still gets the
   // explanation rather than a dead end.
@@ -198,6 +207,14 @@ export default function WelcomePage() {
                   <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">
                     {feature.body}
                   </p>
+                  {feature.href && (
+                    <Link
+                      href={feature.href}
+                      className="mt-3 inline-flex text-sm font-semibold text-cyan-700 hover:underline dark:text-cyan-300"
+                    >
+                      {feature.linkLabel ?? "Learn more"} <span aria-hidden="true">→</span>
+                    </Link>
+                  )}
                   {feature.media && (
                     <div className="relative mt-3">
                       <video
