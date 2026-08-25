@@ -1,5 +1,14 @@
 import Link from "next/link";
 
+const FAURE_SCORE_URL =
+  "https://raw.githubusercontent.com/OpenScore/StringQuartets/refs/heads/main/scores/Faur%C3%A9,_Gabriel/String_Quartet,_Op.121/sq7358708.mxl";
+const BEETHOVEN_SCORE_URL =
+  "https://raw.githubusercontent.com/DCMLab/beethoven_piano_sonatas/main/MS3/01-1.mscx";
+
+function scoreExampleHref(path: "/player" | "/score-editor/index.html", scoreUrl: string) {
+  return `${path}?${new URLSearchParams({ score: scoreUrl }).toString()}`;
+}
+
 const platformFeatures: Array<{
   title: string;
   body: string;
@@ -10,6 +19,8 @@ const platformFeatures: Array<{
   {
     title: "Versioned Sources",
     body: "Every source has full revision history with branching workflows to manage community editorial work.",
+    href: "/works/1148359",
+    linkLabel: "Open Example Versioned Sources",
     media: {
       light: "/images/features/versioned-sources-light.webm",
       dark: "/images/features/versioned-sources-dark.webm",
@@ -18,13 +29,15 @@ const platformFeatures: Array<{
   {
     title: "Score Editor",
     body: "Open and edit scores directly in the browser to reduce context switching between tools.",
+    href: scoreExampleHref("/score-editor/index.html", FAURE_SCORE_URL),
+    linkLabel: "Open Example in Score Editor",
     media: { light: "/images/features/score-editor-light.webm" },
   },
   {
     title: "Score Player",
     body: "Integrated score-following audio player",
-    href: "/player",
-    linkLabel: "Open Score Player",
+    href: scoreExampleHref("/player", BEETHOVEN_SCORE_URL),
+    linkLabel: "Open Example in Score Player",
     media: {
       light: "/images/features/player-light.webm",
       dark: "/images/features/player-dark.webm",
@@ -33,6 +46,8 @@ const platformFeatures: Array<{
   {
     title: "Scanner",
     body: "Turn a photo or PDF of printed sheet music into editable MusicXML, review the pages, then open the result in the Score Editor.",
+    href: "/scanner",
+    linkLabel: "Try the Scanner",
     media: {
       light: "/images/features/scanner-light.webm",
       dark: "/images/features/scanner-dark.webm",
@@ -41,6 +56,8 @@ const platformFeatures: Array<{
   {
     title: "Catalogue Discovery",
     body: "Search and browse works by title, composer and catalogue number.",
+    href: "/catalogue",
+    linkLabel: "Explore the Catalogue",
     media: {
       light: "/images/features/catalogue-light.webm",
       dark: "/images/features/catalogue-dark.webm",
@@ -49,6 +66,8 @@ const platformFeatures: Array<{
   {
     title: "Change Review Workflows",
     body: "Get feedback on each changed line in the Visual Score Diff and resolve comments across multiple rounds of revisions.",
+    href: "/change-reviews/b81896dd-0ce1-4b60-b5e4-29273c7384aa",
+    linkLabel: "Open Example Change Review",
     media: {
       light: "/images/features/change-review-light.webm",
       dark: "/images/features/change-review-dark.webm",
