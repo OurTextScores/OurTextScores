@@ -23,12 +23,12 @@ describe("WelcomePage", () => {
       ["Open Example in Score Editor", "/score-editor/index.html"],
       [
         "Open Example Scan",
-        "/scanner/59fcaa3c-9ddb-428d-9fe5-340c2ead6ab2",
+        "/scanner/ef98b123-329e-4ae7-a01f-cf15059b354b",
       ],
       ["Explore the Catalogue", "/catalogue"],
       [
         "Open Example Change Review",
-        "/change-reviews/b81896dd-0ce1-4b60-b5e4-29273c7384aa",
+        "/change-reviews/f8fce149-4c91-488a-8516-e051d9868f30",
       ],
     ] as const;
     for (const [name, pathname] of exampleLinks) {

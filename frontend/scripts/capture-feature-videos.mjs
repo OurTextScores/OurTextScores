@@ -14,7 +14,7 @@ mkdirSync(OUT, { recursive: true });
 mkdirSync(TMP, { recursive: true });
 
 const WORK_ID = '1148359'; // Coleridge-Taylor Piano Trio — 4 visually distinct sources
-const REVIEW_ID = 'b81896dd-0ce1-4b60-b5e4-29273c7384aa';
+const REVIEW_ID = 'f8fce149-4c91-488a-8516-e051d9868f30';
 const FAURE_SCORE_URL = 'https://raw.githubusercontent.com/OpenScore/StringQuartets/refs/heads/main/scores/Faur%C3%A9,_Gabriel/String_Quartet,_Op.121/sq7358708.mxl';
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || 'dev-secret';
 const USER_EMAIL = 'jhlusko@gmail.com';
