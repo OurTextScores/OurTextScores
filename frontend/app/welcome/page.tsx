@@ -24,7 +24,7 @@ const platformFeatures: Array<{
     title: "Versioned Sources",
     body: "Every source has full revision history with branching workflows to manage community editorial work.",
     href: "/works/1148359",
-    linkLabel: "Open Example Versioned Sources",
+    linkLabel: "Open Example Versioned Source",
     media: {
       light: "/images/features/versioned-sources-light.webm",
       dark: "/images/features/versioned-sources-dark.webm",
@@ -39,7 +39,7 @@ const platformFeatures: Array<{
   },
   {
     title: "Score Player",
-    body: "Integrated score-following audio player",
+    body: "Integrated score-following audio player.",
     href: scoreExampleHref("/player", BEETHOVEN_SCORE_URL),
     linkLabel: "Open Example in Score Player",
     media: {
@@ -144,7 +144,6 @@ const waysToContribute = [
 const quickLinks = [
   { href: "/catalogue", label: "Browse Catalogue", icon: "≡" },
   { href: "/upload", label: "Upload New Source", icon: "↑" },
-  { href: "/projects", label: "Explore Projects", icon: "▦" },
   { href: "/score-editor", label: "Open Score Editor", icon: "✎" },
   { href: "/player", label: "Open Score Player", icon: "♫" },
   // Shown whenever Scanner is built into this deployment. Signing in is

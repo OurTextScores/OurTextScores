@@ -8,7 +8,7 @@ describe("WelcomePage", () => {
     expect(
       screen.getByRole("heading", { name: "Score Player" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Integrated score-following audio player")).toBeInTheDocument();
+    expect(screen.getByText("Integrated score-following audio player.")).toBeInTheDocument();
     const playerExample = screen.getByRole("link", {
       name: /Open Example in Score Player/,
     });
@@ -19,7 +19,7 @@ describe("WelcomePage", () => {
     );
 
     const exampleLinks = [
-      ["Open Example Versioned Sources", "/works/1148359"],
+      ["Open Example Versioned Source", "/works/1148359"],
       ["Open Example in Score Editor", "/score-editor/index.html"],
       [
         "Open Example Scan",
@@ -40,6 +40,9 @@ describe("WelcomePage", () => {
     expect(screen.getByRole("heading", { name: "Score Editor" })).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Project Workspaces" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Explore Projects" }),
     ).not.toBeInTheDocument();
 
     const playerCard = screen.getByRole("heading", { name: "Score Player" }).closest("article");
