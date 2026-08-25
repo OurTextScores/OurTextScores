@@ -90,6 +90,17 @@ describe("ScannerJobClient", () => {
   });
 
   it("keeps a public example browsable while hiding every mutation", async () => {
+    (globalThis.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...partialJob,
+        hasThumbnail: false,
+        pages: partialJob.pages.map((page) => ({
+          ...page,
+          hasThumbnail: false,
+        })),
+      }),
+    });
     render(<ScannerJobClient jobId="job-1" readOnly />);
 
     expect(await screen.findByRole("status")).toHaveTextContent(
@@ -103,6 +114,10 @@ describe("ScannerJobClient", () => {
       screen.getByText(/This public example is retained for exploration/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Reconcile a page above/)).toBeNull();
+    expect(screen.getByAltText("Source preview for page 1")).toHaveAttribute(
+      "src",
+      "/images/examples/scanner-klengel-source.webp",
+    );
     expect(
       screen.queryByRole("button", { name: "Retry eligible pages" }),
     ).toBeNull();

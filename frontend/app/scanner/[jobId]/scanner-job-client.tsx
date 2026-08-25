@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageComparison from "./page-comparison";
 import PageReview from "./page-review";
+import { PUBLIC_SCANNER_SOURCE_PREVIEW_URL } from "../../lib/public-examples";
 import {
   activeScannerStatuses,
   ScannerJob,
@@ -173,6 +174,15 @@ export default function ScannerJobClient({
     },
     [base],
   );
+
+  const sourcePreviewUrl = (page: ScannerPage): string | null => {
+    if (readOnly && page.pageNumber === 1) {
+      return PUBLIC_SCANNER_SOURCE_PREVIEW_URL;
+    }
+    return page.hasThumbnail
+      ? artifactUrl("thumbnail", page.pageNumber)
+      : null;
+  };
 
   const editorUrl = (pageNumber?: number, engineId?: string) => {
     const scoreUrl = artifactUrl("musicxml", pageNumber, engineId);
@@ -675,10 +685,10 @@ export default function ScannerJobClient({
                 className={`rounded-lg border p-3 ${page.included ? "border-slate-200 dark:border-slate-700" : "border-slate-200 bg-slate-50 opacity-70 dark:border-slate-800 dark:bg-slate-950"}`}
               >
                 <div className="flex h-48 items-center justify-center overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
-                  {page.hasThumbnail ? (
+                  {sourcePreviewUrl(page) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={artifactUrl("thumbnail", page.pageNumber)}
+                      src={sourcePreviewUrl(page) || undefined}
                       alt={`Source page ${page.pageNumber}`}
                       className="h-full w-full bg-white object-contain transition-transform"
                       style={{
@@ -797,10 +807,10 @@ export default function ScannerJobClient({
                 aria-pressed={selectedPage === page.pageNumber}
                 className={`w-24 overflow-hidden rounded-lg border text-left transition ${selectedPage === page.pageNumber ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900" : "border-slate-200 dark:border-slate-700"}`}
               >
-                {page.hasThumbnail ? (
+                {sourcePreviewUrl(page) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={artifactUrl("thumbnail", page.pageNumber)}
+                    src={sourcePreviewUrl(page) || undefined}
                     alt=""
                     className="h-24 w-full bg-white object-contain"
                     style={{ transform: `rotate(${page.rotationDegrees}deg)` }}
@@ -1023,10 +1033,10 @@ export default function ScannerJobClient({
                     className="min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
                   >
                     {choice.kind === "scan" ? (
-                      selected.hasThumbnail ? (
+                      sourcePreviewUrl(selected) ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={artifactUrl("thumbnail", selected.pageNumber)}
+                          src={sourcePreviewUrl(selected) || undefined}
                           alt={`Source preview for page ${selected.pageNumber}`}
                           className="max-h-[70vh] w-full object-contain"
                           style={{
