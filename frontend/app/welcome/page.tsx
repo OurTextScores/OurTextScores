@@ -16,15 +16,19 @@ const platformFeatures: Array<{
     },
   },
   {
-    title: "Integrated Score Editor",
+    title: "Score Editor",
     body: "Open and edit scores directly in the browser to reduce context switching between tools.",
     media: { light: "/images/features/score-editor-light.webm" },
   },
   {
-    title: "Standalone Score Player",
-    body: "Play a public MusicXML or MuseScore URL in the browser, or open a score file directly from your device.",
+    title: "Score Player",
+    body: "Integrated score-following audio player",
     href: "/player",
     linkLabel: "Open Score Player",
+    media: {
+      light: "/images/features/player-light.webm",
+      dark: "/images/features/player-dark.webm",
+    },
   },
   {
     title: "Scanner",
@@ -40,14 +44,6 @@ const platformFeatures: Array<{
     media: {
       light: "/images/features/catalogue-light.webm",
       dark: "/images/features/catalogue-dark.webm",
-    },
-  },
-  {
-    title: "Project Workspaces",
-    body: "Coordinate contributors, track project-linked sources, and manage collaborative progress in dedicated project pages.",
-    media: {
-      light: "/images/features/projects-light.webm",
-      dark: "/images/features/projects-dark.webm",
     },
   },
   {

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import PlayerClient, {
+  buildStandaloneEditorUrl,
   buildStandalonePlayerUrl,
   normalizeRemoteScoreUrl,
 } from "./player-client";
@@ -43,6 +44,24 @@ describe("standalone score player", () => {
     expect(url.searchParams.get("score")).toBe(
       "https://raw.githubusercontent.com/OpenScore/StringQuartets/main/score.mxl?download=1",
     );
+    expect(url.searchParams.has("theme")).toBe(false);
+    expect(
+      new URL(
+        buildStandalonePlayerUrl("/score.mxl", "dark"),
+        "https://www.ourtextscores.com",
+      ).searchParams.get("theme"),
+    ).toBe("dark");
+  });
+
+  it("builds an editor URL for the same score source", () => {
+    const src = buildStandaloneEditorUrl("blob:https://www.ourtextscores.com/score");
+    const url = new URL(src, "https://www.ourtextscores.com");
+
+    expect(url.pathname).toBe("/score-editor/index.html");
+    expect(url.searchParams.get("score")).toBe(
+      "blob:https://www.ourtextscores.com/score",
+    );
+    expect(url.searchParams.has("embed")).toBe(false);
   });
 
   it("accepts http(s) and same-origin paths but rejects unsafe URL schemes", () => {
@@ -62,7 +81,16 @@ describe("standalone score player", () => {
     const frame = screen.getByTitle("Playback of quartet.mxl");
     const src = new URL(frame.getAttribute("src")!, "https://www.ourtextscores.com");
     expect(src.searchParams.get("score")).toBe("https://example.org/quartet.mxl");
+    expect(src.searchParams.get("theme")).toBe("light");
     expect(screen.getAllByText("Score URL")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /Open in Editor/ })).toHaveAttribute(
+      "href",
+      "/score-editor/index.html?score=https%3A%2F%2Fexample.org%2Fquartet.mxl",
+    );
+    expect(screen.getByRole("link", { name: /Open in Editor/ })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
   });
 
   it("opens a pasted URL and writes a shareable player URL", async () => {

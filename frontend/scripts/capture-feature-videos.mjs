@@ -9,12 +9,13 @@ const BASE = 'http://localhost:3000';
 const PROD = 'https://ourtextscores.com';
 const OUT = resolve(import.meta.dirname, '../public/images/features');
 const TMP = resolve(import.meta.dirname, '../.video-tmp');
+const FFMPEG_BIN = process.env.FFMPEG_BIN || 'ffmpeg';
 mkdirSync(OUT, { recursive: true });
 mkdirSync(TMP, { recursive: true });
 
 const WORK_ID = '1148359'; // Coleridge-Taylor Piano Trio — 4 visually distinct sources
 const REVIEW_ID = 'b81896dd-0ce1-4b60-b5e4-29273c7384aa';
-const SCORE_SOURCE_ID = '6d54848c-2da6-49e4-ac40-de769eadca1e';
+const FAURE_SCORE_URL = 'https://raw.githubusercontent.com/OpenScore/StringQuartets/refs/heads/main/scores/Faur%C3%A9,_Gabriel/String_Quartet,_Op.121/sq7358708.mxl';
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || 'dev-secret';
 const USER_EMAIL = 'jhlusko@gmail.com';
 const USER_SUB = '69a0e95ce53be0fd8f60b812';
@@ -37,7 +38,7 @@ async function generateSessionCookie() {
 
 function processVideo(srcPath, destPath, { trimStart = 0, width = 1280 } = {}) {
   const ssArg = trimStart > 0 ? `-ss ${trimStart}` : '';
-  const cmd = `ffmpeg -y ${ssArg} -i "${srcPath}" -vf "scale=${width}:-2" -an -c:v libvpx -b:v 600k -crf 25 "${destPath}"`;
+  const cmd = `${JSON.stringify(FFMPEG_BIN)} -y ${ssArg} -i "${srcPath}" -vf "scale=${width}:-2" -an -c:v libvpx -b:v 600k -crf 25 "${destPath}"`;
   execSync(cmd, { stdio: 'pipe' });
 }
 
@@ -48,6 +49,7 @@ async function recordScenario(browser, sessionCookie, { name, darkMode, interact
 
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
+    colorScheme: darkMode ? 'dark' : 'light',
     recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } },
   });
   await context.addCookies([sessionCookie]);
@@ -58,8 +60,9 @@ async function recordScenario(browser, sessionCookie, { name, darkMode, interact
   }
 
   const page = await context.newPage();
+  let interactionResult;
   try {
-    await interact(page);
+    interactionResult = await interact(page);
   } catch (err) {
     console.error(`  ERROR in ${name}-${suffix}:`, err.message);
   }
@@ -69,7 +72,9 @@ async function recordScenario(browser, sessionCookie, { name, darkMode, interact
   await context.close();
 
   const outPath = `${OUT}/${name}-${suffix}.webm`;
-  processVideo(rawVideoPath, outPath, { trimStart });
+  processVideo(rawVideoPath, outPath, {
+    trimStart: interactionResult?.trimStart ?? trimStart,
+  });
   console.log(`  captured ${name}-${suffix}.webm`);
 
   try { unlinkSync(rawVideoPath); } catch {}
@@ -145,14 +150,28 @@ async function visualDiff(page) {
 
 // ── Scenario: Score Editor — load score, delete bars, right sidebar tabs ──
 async function scoreEditor(page) {
-  const scoreUrl = encodeURIComponent(
-    `${BASE}/api/works/${WORK_ID}/sources/${SCORE_SOURCE_ID}/canonical.xml`
-  );
+  const captureStartedAt = Date.now();
+  const scoreUrl = encodeURIComponent(FAURE_SCORE_URL);
   await page.goto(`${BASE}/score-editor/index.html?score=${scoreUrl}`, {
     waitUntil: 'networkidle',
     timeout: 60000,
   });
-  await page.waitForTimeout(8000); // WASM load time
+  await page.locator('[data-testid="svg-container"] svg').waitFor({
+    state: 'visible',
+    timeout: 120000,
+  });
+  await page.waitForTimeout(750);
+
+  const zoomMenu = page.getByTestId('zoom-preset-trigger');
+  if (await zoomMenu.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await zoomMenu.click();
+    const zoomPreset = page.getByTestId('zoom-preset-50');
+    if (await zoomPreset.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await zoomPreset.click();
+      await page.waitForTimeout(1000);
+    }
+  }
+  const trimStart = Math.max(0, (Date.now() - captureStartedAt) / 1000 - 0.25);
 
   // Click on the score area to select a note — find the score rendering area
   // The score content starts below the toolbar, roughly at y=250 from viewport top
@@ -205,6 +224,38 @@ async function scoreEditor(page) {
     await nextBtn.click();
     await page.waitForTimeout(1500);
   }
+
+  await page.waitForTimeout(5000);
+  return { trimStart };
+}
+
+// ── Scenario: Score Player — load Fauré, start playback, show score following ──
+async function scorePlayer(page) {
+  const scoreUrl = encodeURIComponent(FAURE_SCORE_URL);
+  await page.goto(`${BASE}/player?score=${scoreUrl}`, {
+    waitUntil: 'networkidle',
+    timeout: 120000,
+  });
+
+  const playerFrame = page.locator('[data-testid="standalone-player-frame"]');
+  const frame = page.frameLocator('[data-testid="standalone-player-frame"]');
+  await frame.getByTestId('player-svg').locator('svg').waitFor({
+    state: 'visible',
+    timeout: 120000,
+  });
+
+  await playerFrame.evaluate((element) => {
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  await page.waitForTimeout(1500);
+
+  const playButton = frame.getByRole('button', { name: 'Play', exact: true });
+  await playButton.click();
+  await frame.getByRole('button', { name: 'Pause', exact: true }).waitFor({
+    state: 'visible',
+    timeout: 120000,
+  });
+  await page.waitForTimeout(12000);
 }
 
 // ── Scenario: Catalogue (uses prod for real content) ──
@@ -215,19 +266,6 @@ async function catalogue(page) {
   for (let i = 0; i < 4; i++) {
     await page.evaluate(() => window.scrollBy({ top: 250, behavior: 'smooth' }));
     await page.waitForTimeout(1000);
-  }
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
-  await page.waitForTimeout(1500);
-}
-
-// ── Scenario: Projects (uses prod for real content) ──
-async function projects(page) {
-  await page.goto(`${PROD}/projects`, { waitUntil: 'networkidle', timeout: 30000 });
-  await page.waitForTimeout(2000);
-
-  for (let i = 0; i < 3; i++) {
-    await page.evaluate(() => window.scrollBy({ top: 300, behavior: 'smooth' }));
-    await page.waitForTimeout(1200);
   }
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   await page.waitForTimeout(1500);
@@ -328,15 +366,25 @@ async function changeReview(page) {
     { name: 'versioned-sources', darkMode: true, interact: versionedSources, trimStart: 3 },
     { name: 'visual-diff', darkMode: false, interact: visualDiff, trimStart: 15 },
     { name: 'score-editor', darkMode: false, interact: scoreEditor, trimStart: 10 },
+    { name: 'player', darkMode: false, interact: scorePlayer, trimStart: 15 },
+    { name: 'player', darkMode: true, interact: scorePlayer, trimStart: 15 },
     { name: 'catalogue', darkMode: false, interact: catalogue, trimStart: 3 },
     { name: 'catalogue', darkMode: true, interact: catalogue, trimStart: 3 },
-    { name: 'projects', darkMode: false, interact: projects, trimStart: 3 },
-    { name: 'projects', darkMode: true, interact: projects, trimStart: 3 },
     { name: 'change-review', darkMode: false, interact: changeReview, trimStart: 3 },
     { name: 'change-review', darkMode: true, interact: changeReview, trimStart: 3 },
   ];
 
-  for (const scenario of scenarios) {
+  const requestedNames = new Set(process.argv.slice(2));
+  const selectedScenarios = requestedNames.size > 0
+    ? scenarios.filter((scenario) => requestedNames.has(scenario.name))
+    : scenarios;
+  const availableNames = new Set(scenarios.map((scenario) => scenario.name));
+  const unknownNames = [...requestedNames].filter((name) => !availableNames.has(name));
+  if (unknownNames.length > 0) {
+    throw new Error(`Unknown feature scenario(s): ${unknownNames.join(', ')}`);
+  }
+
+  for (const scenario of selectedScenarios) {
     await recordScenario(browser, sessionCookie, scenario);
   }
 

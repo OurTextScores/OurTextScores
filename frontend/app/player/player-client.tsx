@@ -32,12 +32,21 @@ export function normalizeRemoteScoreUrl(value: string): string | null {
   }
 }
 
-export function buildStandalonePlayerUrl(scoreUrl: string): string {
+export function buildStandalonePlayerUrl(
+  scoreUrl: string,
+  theme?: "light" | "dark",
+): string {
   const params = new URLSearchParams({
     score: scoreUrl,
     embed: "player",
     playerId: "standalone-player",
   });
+  if (theme) params.set("theme", theme);
+  return `/score-editor/index.html?${params.toString()}`;
+}
+
+export function buildStandaloneEditorUrl(scoreUrl: string): string {
+  const params = new URLSearchParams({ score: scoreUrl });
   return `/score-editor/index.html?${params.toString()}`;
 }
 
@@ -80,6 +89,7 @@ export default function PlayerClient({
       ? "Enter an http(s) score URL or a path beginning with /."
       : "",
   );
+  const [playerTheme, setPlayerTheme] = useState<"light" | "dark" | null>(null);
 
   useEffect(() => {
     return () => {
@@ -87,6 +97,17 @@ export default function PlayerClient({
         URL.revokeObjectURL(localObjectUrlRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateTheme = () => {
+      setPlayerTheme(root.classList.contains("dark") ? "dark" : "light");
+    };
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
   }, []);
 
   const releaseLocalObjectUrl = () => {
@@ -207,22 +228,38 @@ export default function PlayerClient({
 
         {activeScore ? (
           <section aria-labelledby="player-heading" className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 px-1">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3 px-1">
               <h2 id="player-heading" className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {activeScore.label}
               </h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {activeScore.source === "local" ? "Local file" : "Score URL"}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {activeScore.source === "local" ? "Local file" : "Score URL"}
+                </span>
+                <a
+                  href={buildStandaloneEditorUrl(activeScore.url)}
+                  target="_blank"
+                  rel="noopener"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-500 hover:text-cyan-800 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-cyan-400 dark:hover:text-cyan-200 dark:focus:ring-offset-slate-900"
+                >
+                  Open in Editor <span aria-hidden="true">↗</span>
+                </a>
+              </div>
             </div>
-            <iframe
-              key={activeScore.key}
-              data-testid="standalone-player-frame"
-              src={buildStandalonePlayerUrl(activeScore.url)}
-              title={`Playback of ${activeScore.label}`}
-              allow="autoplay"
-              className="h-[min(72vh,52rem)] min-h-[32rem] w-full rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700"
-            />
+            {playerTheme ? (
+              <iframe
+                key={`${activeScore.key}:${playerTheme}`}
+                data-testid="standalone-player-frame"
+                src={buildStandalonePlayerUrl(activeScore.url, playerTheme)}
+                title={`Playback of ${activeScore.label}`}
+                allow="autoplay"
+                className="h-[min(72vh,52rem)] min-h-[32rem] w-full rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700"
+              />
+            ) : (
+              <div className="flex min-h-[32rem] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                Preparing player…
+              </div>
+            )}
           </section>
         ) : (
           <section className="flex min-h-72 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 text-center dark:border-slate-700 dark:bg-slate-900/50">
