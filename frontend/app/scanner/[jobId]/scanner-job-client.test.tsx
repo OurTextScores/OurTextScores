@@ -89,6 +89,31 @@ describe("ScannerJobClient", () => {
     );
   });
 
+  it("keeps a public example browsable while hiding every mutation", async () => {
+    render(<ScannerJobClient jobId="job-1" readOnly />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Public example · read only",
+    );
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Download results so far (.zip)" }),
+    ).toHaveAttribute("href", "/api/proxy/scanner/jobs/job-1/artifacts/zip");
+    expect(
+      screen.getByText(/This public example is retained for exploration/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Reconcile a page above/)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Retry eligible pages" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Delete scan" })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Page 2.*Failed/i }),
+    );
+    expect(screen.queryByRole("button", { name: "Retry page" })).toBeNull();
+  });
+
   it("lets the reader put any two readings side by side", async () => {
     // It used to be a fixed stack of "Scan versus HOMR" then "Scan versus
     // Transcoda", which could show either engine against the source but never

@@ -21,7 +21,10 @@ describe("WelcomePage", () => {
     const exampleLinks = [
       ["Open Example Versioned Sources", "/works/1148359"],
       ["Open Example in Score Editor", "/score-editor/index.html"],
-      ["Try the Scanner", "/scanner"],
+      [
+        "Open Example Scan",
+        "/scanner/59fcaa3c-9ddb-428d-9fe5-340c2ead6ab2",
+      ],
       ["Explore the Catalogue", "/catalogue"],
       [
         "Open Example Change Review",

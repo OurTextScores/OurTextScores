@@ -23,6 +23,10 @@ import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { StorageService } from '../storage/storage.service';
 import {
+  isPublicScannerJob,
+  PUBLIC_EXAMPLE_VIEWER_ID
+} from '../auth/public-examples';
+import {
   ScannerJob,
   ScannerJobDocument,
   ScannerMergedDecision,
@@ -168,6 +172,7 @@ export class ScannerService implements OnModuleInit {
   }
 
   assertAvailable(userId: string): void {
+    if (userId === PUBLIC_EXAMPLE_VIEWER_ID) return;
     if (!this.bool('SCANNER_ENABLED', false)) {
       throw new ServiceUnavailableException('Scanner is not currently available');
     }
@@ -3164,7 +3169,8 @@ export class ScannerService implements OnModuleInit {
   }
 
   private async ownedJob(userId: string, jobId: string): Promise<ScannerJobDocument> {
-    const job = await this.jobs.findOne({ userId, jobId }).exec();
+    const query = isPublicScannerJob(jobId) ? { jobId } : { userId, jobId };
+    const job = await this.jobs.findOne(query).exec();
     if (!job) throw new NotFoundException('Scanner job not found');
     return job;
   }
@@ -3175,6 +3181,7 @@ export class ScannerService implements OnModuleInit {
     const enginePlan = this.enginePlanForJob(job);
     return {
       jobId: job.jobId,
+      publicExample: isPublicScannerJob(job.jobId),
       status: job.status,
       statusVersion: job.statusVersion || 1,
       originalFilename: job.originalFilename,

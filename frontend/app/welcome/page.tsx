@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  PUBLIC_CHANGE_REVIEW_ID,
+  PUBLIC_SCANNER_JOB_ID,
+} from "../lib/public-examples";
 
 const FAURE_SCORE_URL =
   "https://raw.githubusercontent.com/OpenScore/StringQuartets/refs/heads/main/scores/Faur%C3%A9,_Gabriel/String_Quartet,_Op.121/sq7358708.mxl";
@@ -46,8 +50,8 @@ const platformFeatures: Array<{
   {
     title: "Scanner",
     body: "Turn a photo or PDF of printed sheet music into editable MusicXML, review the pages, then open the result in the Score Editor.",
-    href: "/scanner",
-    linkLabel: "Try the Scanner",
+    href: `/scanner/${PUBLIC_SCANNER_JOB_ID}`,
+    linkLabel: "Open Example Scan",
     media: {
       light: "/images/features/scanner-light.webm",
       dark: "/images/features/scanner-dark.webm",
@@ -66,7 +70,7 @@ const platformFeatures: Array<{
   {
     title: "Change Review Workflows",
     body: "Get feedback on each changed line in the Visual Score Diff and resolve comments across multiple rounds of revisions.",
-    href: "/change-reviews/b81896dd-0ce1-4b60-b5e4-29273c7384aa",
+    href: `/change-reviews/${PUBLIC_CHANGE_REVIEW_ID}`,
     linkLabel: "Open Example Change Review",
     media: {
       light: "/images/features/change-review-light.webm",

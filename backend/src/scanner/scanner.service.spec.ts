@@ -23,6 +23,10 @@ import {
 } from './scanner-dual-engine';
 import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
 import * as scannerBeamNormalization from './scanner-beam-normalization';
+import {
+  PUBLIC_EXAMPLE_VIEWER_ID,
+  PUBLIC_SCANNER_JOB_ID
+} from '../auth/public-examples';
 
 /** Durable training records; kept out of the job so they outlive it. */
 const corrections = { create: jest.fn(async (doc: any) => doc) } as any;
@@ -414,6 +418,7 @@ describe('ScannerService', () => {
     );
     expect(() => service.assertAvailable('user-2')).toThrow(ForbiddenException);
     expect(() => service.assertAvailable('user-1')).not.toThrow();
+    expect(() => service.assertAvailable(PUBLIC_EXAMPLE_VIEWER_ID)).not.toThrow();
   });
 
   it('keeps existing results accessible when provider budget is exhausted', () => {
@@ -428,6 +433,38 @@ describe('ScannerService', () => {
       config
     );
     expect(() => service.assertAvailable('user-1')).not.toThrow();
+  });
+
+  it('reads the curated public example without matching an owner id', async () => {
+    jobs.findOne.mockReturnValue({
+      exec: jest.fn().mockResolvedValue({
+        jobId: PUBLIC_SCANNER_JOB_ID,
+        status: 'succeeded',
+        statusVersion: 1,
+        originalFilename: 'warmup-page.png',
+        pageCount: 1,
+        pages: [],
+        options: {},
+        timings: {},
+        resultExpiresAt: new Date('2026-09-08T00:00:00Z'),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    });
+    const service = new ScannerService(
+      jobs,
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
+    );
+
+    const result = await service.getJob(PUBLIC_EXAMPLE_VIEWER_ID, PUBLIC_SCANNER_JOB_ID);
+
+    expect(jobs.findOne).toHaveBeenCalledWith({ jobId: PUBLIC_SCANNER_JOB_ID });
+    expect(result.publicExample).toBe(true);
   });
 
   it('accepts new work while either enabled engine still has capacity', () => {

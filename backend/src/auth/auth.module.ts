@@ -5,12 +5,19 @@ import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { AuthOptionalGuard } from './guards/auth-optional.guard';
 import { AuthRequiredGuard } from './guards/auth-required.guard';
+import { PublicExampleAccessGuard } from './guards/public-example-access.guard';
 
 @Module({
   imports: [ConfigModule, forwardRef(() => UsersModule)],
   controllers: [AuthController],
-  providers: [AuthService, AuthOptionalGuard, AuthRequiredGuard],
+  providers: [AuthService, AuthOptionalGuard, AuthRequiredGuard, PublicExampleAccessGuard],
   // Re-export UsersModule so guards' UsersService dependency resolves
-  exports: [AuthService, AuthOptionalGuard, AuthRequiredGuard, UsersModule]
+  exports: [
+    AuthService,
+    AuthOptionalGuard,
+    AuthRequiredGuard,
+    PublicExampleAccessGuard,
+    UsersModule
+  ]
 })
 export class AuthModule {}

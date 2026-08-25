@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { fetchBackendSession } from "../../../../../lib/server-session";
+import { isPublicScannerJob } from "../../../../../lib/public-examples";
 import ComparePageClient from "./compare-client";
 
 /**
@@ -18,7 +19,7 @@ export default async function ComparePage({
 }) {
   const session = await fetchBackendSession();
   const target = `/scanner/${params.jobId}/pages/${params.pageNumber}/compare`;
-  if (!session?.user) {
+  if (!session?.user && !isPublicScannerJob(params.jobId)) {
     redirect(`/signin?callbackUrl=${encodeURIComponent(target)}`);
   }
   const pageNumber = Number(params.pageNumber);

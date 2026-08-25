@@ -9,6 +9,7 @@ import { Work } from '../works/schemas/work.schema';
 import { Source } from '../works/schemas/source.schema';
 import { SourceRevision } from '../works/schemas/source-revision.schema';
 import { SourceBranch } from '../branches/schemas/source-branch.schema';
+import { PUBLIC_CHANGE_REVIEW_ID } from '../auth/public-examples';
 
 function chain<T>(result: T) {
   return {
@@ -348,6 +349,61 @@ describe('ChangeReviewsService', () => {
     const detail = await service.getReviewDetail('review-1', { userId: 'reviewer-1', roles: ['user'] });
 
     expect(detail.viewerUserId).toBe('reviewer-1');
+  });
+
+  it('serves the curated review anonymously with read-only permissions', async () => {
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: PUBLIC_CHANGE_REVIEW_ID,
+        workId: '164349',
+        sourceId: 'src-1',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open',
+      }),
+    );
+
+    const detail = await service.getReviewDetail(PUBLIC_CHANGE_REVIEW_ID);
+
+    expect(detail).toMatchObject({
+      reviewId: PUBLIC_CHANGE_REVIEW_ID,
+      publicExample: true,
+      permissions: {
+        canRead: true,
+        canEditDraft: false,
+        canAddThread: false,
+        canSubmit: false,
+        canClose: false,
+        canWithdraw: false,
+        canReply: false,
+        canResolve: false,
+      },
+    });
+  });
+
+  it('serves only score revisions belonging to the curated review', async () => {
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: PUBLIC_CHANGE_REVIEW_ID,
+        workId: '164349',
+        sourceId: 'src-1',
+        baseRevisionId: 'rev-1',
+        headRevisionId: 'rev-2',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        status: 'open',
+      }),
+    );
+
+    await expect(
+      service.getReviewCanonicalScore(PUBLIC_CHANGE_REVIEW_ID, 'rev-2'),
+    ).resolves.toEqual(Buffer.from('<score-partwise/>\n'));
+    expect(storageService.getObjectBuffer).toHaveBeenCalledWith('der', 'head.xml');
+
+    await expect(
+      service.getReviewCanonicalScore(PUBLIC_CHANGE_REVIEW_ID, 'unrelated-revision'),
+    ).rejects.toThrow(NotFoundException);
   });
 
   it('deletes an empty thread after its author deletes the last comment', async () => {

@@ -18,6 +18,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { StorageService } from '../storage/storage.service';
+import { PUBLIC_SCANNER_JOB_ID } from '../auth/public-examples';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DerivativePipelineService } from '../works/derivative-pipeline.service';
 import {
@@ -2118,7 +2119,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   private async cleanupExpiredArtifacts(): Promise<void> {
     const now = new Date();
     const sources = await this.jobs
-      .find({ sourceExpiresAt: { $lte: now }, sourceDeletedAt: { $exists: false } })
+      .find({
+        jobId: { $ne: PUBLIC_SCANNER_JOB_ID },
+        sourceExpiresAt: { $lte: now },
+        sourceDeletedAt: { $exists: false }
+      })
       .limit(25)
       .exec();
     for (const job of sources) {
@@ -2153,7 +2158,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     const results = await this.jobs
-      .find({ resultExpiresAt: { $lte: now }, resultsDeletedAt: { $exists: false } })
+      .find({
+        jobId: { $ne: PUBLIC_SCANNER_JOB_ID },
+        resultExpiresAt: { $lte: now },
+        resultsDeletedAt: { $exists: false }
+      })
       .limit(25)
       .exec();
     for (const job of results) {

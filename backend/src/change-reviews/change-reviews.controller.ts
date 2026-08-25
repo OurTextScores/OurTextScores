@@ -1,12 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
+import { PublicExampleAccessGuard } from '../auth/guards/public-example-access.guard';
 import type { RequestUser } from '../auth/types/auth-user';
 import { ChangeReviewsService } from './change-reviews.service';
 
 @ApiTags('change-reviews')
 @Controller()
+@UseGuards(AuthOptionalGuard, PublicExampleAccessGuard)
 export class ChangeReviewsController {
   constructor(private readonly changeReviewsService: ChangeReviewsService) {}
 
@@ -65,19 +69,17 @@ export class ChangeReviewsController {
   }
 
   @Get('change-reviews/:reviewId')
-  @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Get change review detail',
     description: 'Returns review metadata and permissions for the current user.',
   })
   @ApiParam({ name: 'reviewId', example: 'a245d562-7f9d-4b1c-8269-23ccfcab4e1b' })
   @ApiResponse({ status: 200, description: 'Change review detail returned' })
-  getReviewDetail(@Param('reviewId') reviewId: string, @CurrentUser() viewer: RequestUser) {
+  getReviewDetail(@Param('reviewId') reviewId: string, @CurrentUser() viewer?: RequestUser) {
     return this.changeReviewsService.getReviewDetail(reviewId, viewer);
   }
 
   @Get('change-reviews/:reviewId/diff')
-  @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Get structured diff for a change review',
     description: 'Returns structured canonical XML diff hunks and attached review threads.',
@@ -87,14 +89,13 @@ export class ChangeReviewsController {
   getReviewDiff(
     @Param('reviewId') reviewId: string,
     @Query('patchset') patchset: string | undefined,
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer?: RequestUser,
   ) {
     const patchsetNumber = patchset ? Number(patchset) : undefined;
     return this.changeReviewsService.getReviewDiff(reviewId, viewer, patchsetNumber);
   }
 
   @Get('change-reviews/:reviewId/score-view')
-  @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Get the single-score change review view',
     description: 'Returns all commentable bars in the head score, changed-bar metadata, removed regions, and threads.',
@@ -104,10 +105,28 @@ export class ChangeReviewsController {
   getReviewScoreView(
     @Param('reviewId') reviewId: string,
     @Query('patchset') patchset: string | undefined,
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer?: RequestUser,
   ) {
     const patchsetNumber = patchset ? Number(patchset) : undefined;
     return this.changeReviewsService.getReviewScoreView(reviewId, viewer, patchsetNumber);
+  }
+
+  @Get('change-reviews/:reviewId/revisions/:revisionId/canonical.xml')
+  @ApiOperation({ summary: 'Get a canonical score used by a readable change review' })
+  async getReviewCanonicalScore(
+    @Param('reviewId') reviewId: string,
+    @Param('revisionId') revisionId: string,
+    @CurrentUser() viewer: RequestUser | undefined,
+    @Res() response: Response,
+  ) {
+    const score = await this.changeReviewsService.getReviewCanonicalScore(
+      reviewId,
+      revisionId,
+      viewer,
+    );
+    response.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    response.setHeader('Cache-Control', 'private, no-cache');
+    response.send(score);
   }
 
   @Post('change-reviews/:reviewId/threads')

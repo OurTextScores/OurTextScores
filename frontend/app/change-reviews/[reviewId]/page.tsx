@@ -6,7 +6,8 @@ import ChangeReviewDetailClient from "../change-review-detail-client";
 
 interface ChangeReviewDetail {
   reviewId: string;
-  viewerUserId: string;
+  viewerUserId?: string;
+  publicExample?: boolean;
   workId: string;
   sourceId: string;
   branchName?: string;
@@ -140,6 +141,11 @@ export default async function ChangeReviewDetailPage({
               <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                 {review.status}
               </span>
+              {review.publicExample ? (
+                <span className="rounded-full border border-cyan-300 bg-cyan-50 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-cyan-800 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200">
+                  Public example · read only
+                </span>
+              ) : null}
             </div>
             <div className="text-sm text-slate-600 dark:text-slate-400">
               {review.work.title || review.work.workId}

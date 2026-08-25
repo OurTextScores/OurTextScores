@@ -26,7 +26,8 @@ import { mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
-import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
+import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
+import { PublicExampleAccessGuard } from '../auth/guards/public-example-access.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequestUser } from '../auth/types/auth-user';
 import { ScannerService } from './scanner.service';
@@ -57,7 +58,7 @@ function parseEditedMeasures(value: string | undefined):
 @ApiTags('scanner')
 @ApiBearerAuth()
 @Controller('scanner/jobs')
-@UseGuards(AuthRequiredGuard)
+@UseGuards(AuthOptionalGuard, PublicExampleAccessGuard)
 export class ScannerController {
   constructor(private readonly scanner: ScannerService) {}
 

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 
 type ReviewDetail = {
   reviewId: string;
-  viewerUserId: string;
+  viewerUserId?: string;
+  publicExample?: boolean;
   workId: string;
   sourceId: string;
   branchName?: string;
@@ -172,7 +173,7 @@ export default function ChangeReviewDetailClient({
   const diffHeadSeq = activePatchset?.headSequenceNumber ?? review.headSequenceNumber;
   const isSingleRevisionReview = review.baseRevisionId === review.headRevisionId;
   const scoreUrl = (revisionId: string) =>
-    `/api/score-editor/ots/works/${encodeURIComponent(review.workId)}/sources/${encodeURIComponent(review.sourceId)}/canonical.xml?r=${encodeURIComponent(revisionId)}`;
+    `/api/proxy/change-reviews/${encodeURIComponent(review.reviewId)}/revisions/${encodeURIComponent(revisionId)}/canonical.xml`;
   const visualDiffUrl = isSingleRevisionReview
     ? `/score-editor/index.html?reviewScore=${encodeURIComponent(scoreUrl(diff.headRevisionId))}&reviewLabel=${encodeURIComponent(
       `Rev #${diffHeadSeq}`,

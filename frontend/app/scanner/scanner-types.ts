@@ -32,6 +32,7 @@ export interface ScannerEngineRun {
 
 export interface ScannerJob {
   jobId: string;
+  publicExample?: boolean;
   status: ScannerStatus;
   /** Increments on every visible change; see design section 7.1. */
   statusVersion?: number;

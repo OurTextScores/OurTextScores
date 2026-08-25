@@ -22,6 +22,7 @@ import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
 import { WatchesService } from '../watches/watches.service';
 import type { RequestUser } from '../auth/types/auth-user';
+import { isPublicChangeReview } from '../auth/public-examples';
 import { alignSequenceLcs } from '../common/sequence-alignment';
 
 type ReviewRole = 'reviewer' | 'owner' | 'all';
@@ -367,7 +368,7 @@ export class ChangeReviewsService {
     };
   }
 
-  async getReviewDetail(reviewId: string, viewer: RequestUser) {
+  async getReviewDetail(reviewId: string, viewer?: RequestUser) {
     const review = await this.getReadableReview(reviewId, viewer);
 
     const [work, source] = await Promise.all([
@@ -382,7 +383,7 @@ export class ChangeReviewsService {
     return this.buildReviewDetail(review as any, work as any, source as any, viewer);
   }
 
-  async getReviewDiff(reviewId: string, viewer: RequestUser, patchsetNumber?: number) {
+  async getReviewDiff(reviewId: string, viewer?: RequestUser, patchsetNumber?: number) {
     const review = await this.getReadableReview(reviewId, viewer);
 
     let baseRevisionId = review.baseRevisionId;
@@ -444,7 +445,7 @@ export class ChangeReviewsService {
     };
   }
 
-  async getReviewScoreView(reviewId: string, viewer: RequestUser, patchsetNumber?: number) {
+  async getReviewScoreView(reviewId: string, viewer?: RequestUser, patchsetNumber?: number) {
     const diff = await this.getReviewDiff(reviewId, viewer, patchsetNumber);
     const review = await this.getReadableReview(reviewId, viewer);
     const headRevision = await this.sourceRevisionModel
@@ -514,6 +515,43 @@ export class ChangeReviewsService {
       removedRegions: diff.scoreRegions.filter((region) => region.changeType === 'removed'),
       threads: diff.threads,
     };
+  }
+
+  async getReviewCanonicalScore(
+    reviewId: string,
+    revisionId: string,
+    viewer?: RequestUser,
+  ): Promise<Buffer> {
+    const review = await this.getReadableReview(reviewId, viewer);
+    let belongsToReview =
+      revisionId === review.baseRevisionId || revisionId === review.headRevisionId;
+    if (!belongsToReview) {
+      const patchset = await this.patchsetModel
+        .findOne({
+          reviewId: review.reviewId,
+          $or: [{ baseRevisionId: revisionId }, { headRevisionId: revisionId }],
+        })
+        .lean()
+        .exec();
+      belongsToReview = Boolean(patchset);
+    }
+    if (!belongsToReview) {
+      throw new NotFoundException('Review score revision not found');
+    }
+
+    const revision = await this.sourceRevisionModel
+      .findOne({
+        workId: review.workId,
+        sourceId: review.sourceId,
+        revisionId,
+      })
+      .lean()
+      .exec();
+    const locator = (revision as any)?.derivatives?.canonicalXml;
+    if (!locator) {
+      throw new NotFoundException('Canonical XML missing for review revision');
+    }
+    return this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
   }
 
   async createThread(input: {
@@ -873,7 +911,8 @@ export class ChangeReviewsService {
     return { ok: true };
   }
 
-  private async buildReviewDetail(review: any, work: any, source: any, viewer: RequestUser) {
+  private async buildReviewDetail(review: any, work: any, source: any, viewer?: RequestUser) {
+    const publicExample = isPublicChangeReview(review.reviewId);
     const participantIds = Array.from(
       new Set(
         [review.reviewerUserId, review.ownerUserId, ...(review.participantUserIds || [])].filter(Boolean),
@@ -898,7 +937,8 @@ export class ChangeReviewsService {
 
     return {
       reviewId: review.reviewId,
-      viewerUserId: viewer.userId,
+      viewerUserId: viewer?.userId,
+      publicExample,
       workId: review.workId,
       sourceId: review.sourceId,
       branchName: review.branchName,
@@ -946,16 +986,25 @@ export class ChangeReviewsService {
       })),
       permissions: {
         canRead: true,
-        canEditDraft: review.status === 'draft' && review.reviewerUserId === viewer.userId,
+        canEditDraft:
+          !publicExample && review.status === 'draft' && review.reviewerUserId === viewer?.userId,
         canAddThread:
-          (review.status === 'draft' && review.reviewerUserId === viewer.userId)
-          || (review.status === 'open' && this.canCreateTopLevelThread(review, viewer)),
-        canSubmit: review.status === 'draft' && review.reviewerUserId === viewer.userId,
-        canClose: review.status === 'open' && this.canManageOpenReview(review, viewer),
+          !publicExample && (
+            (review.status === 'draft' && review.reviewerUserId === viewer?.userId)
+            || (review.status === 'open' && this.canCreateTopLevelThread(review, viewer))
+          ),
+        canSubmit:
+          !publicExample && review.status === 'draft' && review.reviewerUserId === viewer?.userId,
+        canClose:
+          !publicExample && review.status === 'open' && this.canManageOpenReview(review, viewer),
         canWithdraw:
-          ['draft', 'open'].includes(String(review.status)) && review.reviewerUserId === viewer.userId,
-        canReply: review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
-        canResolve: review.status === 'open' && this.canManageOpenReview(review, viewer),
+          !publicExample
+          && ['draft', 'open'].includes(String(review.status))
+          && review.reviewerUserId === viewer?.userId,
+        canReply:
+          !publicExample && review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
+        canResolve:
+          !publicExample && review.status === 'open' && this.canManageOpenReview(review, viewer),
       },
     };
   }
@@ -1121,7 +1170,7 @@ export class ChangeReviewsService {
     return { work, source, baseRevision, headRevision };
   }
 
-  private async getReadableReview(reviewId: string, viewer: RequestUser) {
+  private async getReadableReview(reviewId: string, viewer?: RequestUser) {
     const review = await this.reviewModel.findOne({ reviewId }).lean().exec();
     if (!review) {
       throw new NotFoundException('Change review not found');
@@ -1159,9 +1208,12 @@ export class ChangeReviewsService {
     return undefined;
   }
 
-  private assertCanReadReview(review: any, viewer: RequestUser) {
+  private assertCanReadReview(review: any, viewer?: RequestUser) {
+    if (review.status !== 'draft' && isPublicChangeReview(review.reviewId)) {
+      return;
+    }
     if (review.status === 'draft') {
-      if (review.reviewerUserId !== viewer.userId) {
+      if (review.reviewerUserId !== viewer?.userId) {
         throw new NotFoundException('Change review not found');
       }
       return;
@@ -1195,16 +1247,16 @@ export class ChangeReviewsService {
     }
   }
 
-  private canParticipateInOpenReview(review: any, viewer: RequestUser) {
+  private canParticipateInOpenReview(review: any, viewer?: RequestUser) {
     return Boolean(viewer?.userId);
   }
 
-  private canCreateTopLevelThread(review: any, viewer: RequestUser) {
+  private canCreateTopLevelThread(review: any, viewer?: RequestUser) {
     return Boolean(viewer?.userId);
   }
 
-  private canManageOpenReview(review: any, viewer: RequestUser) {
-    return this.isAdmin(viewer) || review.ownerUserId === viewer.userId;
+  private canManageOpenReview(review: any, viewer?: RequestUser) {
+    return this.isAdmin(viewer) || review.ownerUserId === viewer?.userId;
   }
 
   private canViewerAccessRevision(revision: RevisionLike, viewer?: RequestUser, viewerIsAdmin?: boolean): boolean {

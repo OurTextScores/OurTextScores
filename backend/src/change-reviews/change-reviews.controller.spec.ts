@@ -1,5 +1,7 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
+import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
+import { PublicExampleAccessGuard } from '../auth/guards/public-example-access.guard';
 import { ChangeReviewsController } from './change-reviews.controller';
 import { ChangeReviewsService } from './change-reviews.service';
 
@@ -10,6 +12,7 @@ describe('ChangeReviewsController', () => {
     getReviewDetail: jest.fn(),
     getReviewDiff: jest.fn(),
     getReviewScoreView: jest.fn(),
+    getReviewCanonicalScore: jest.fn(),
     createThread: jest.fn(),
     addThreadComment: jest.fn(),
     updateComment: jest.fn(),
@@ -74,12 +77,14 @@ describe('ChangeReviewsController', () => {
     expect(service.getReviewScoreView).toHaveBeenCalledWith('review-1', viewer, 2);
   });
 
-  it('requires auth for all routes', () => {
+  it('allows guarded public reads while keeping mutations authenticated', () => {
+    const controllerGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController);
     const createBranchReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.createOrOpenBranchReview);
     const listGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.listReviews);
     const detailGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewDetail);
     const diffGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewDiff);
     const scoreViewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewScoreView);
+    const scoreGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewCanonicalScore);
     const createThreadGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.createThread);
     const addThreadCommentGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.addThreadComment);
     const updateCommentGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.updateComment);
@@ -92,9 +97,13 @@ describe('ChangeReviewsController', () => {
 
     expect(createBranchReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(listGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
-    expect(detailGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
-    expect(diffGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
-    expect(scoreViewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
+    expect(controllerGuards).toEqual(
+      expect.arrayContaining([AuthOptionalGuard, PublicExampleAccessGuard]),
+    );
+    expect(detailGuards || []).not.toContain(AuthRequiredGuard);
+    expect(diffGuards || []).not.toContain(AuthRequiredGuard);
+    expect(scoreViewGuards || []).not.toContain(AuthRequiredGuard);
+    expect(scoreGuards || []).not.toContain(AuthRequiredGuard);
     expect(createThreadGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(addThreadCommentGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(updateCommentGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));

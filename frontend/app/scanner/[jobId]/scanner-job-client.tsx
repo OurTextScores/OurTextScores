@@ -97,7 +97,13 @@ function pageStageLabel(job: ScannerJob, page: ScannerPage): string {
   return scannerStatusLabel(page.status);
 }
 
-export default function ScannerJobClient({ jobId }: { jobId: string }) {
+export default function ScannerJobClient({
+  jobId,
+  readOnly = false,
+}: {
+  jobId: string;
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const [job, setJob] = useState<ScannerJob | null>(null);
   const [selectedPage, setSelectedPage] = useState(1);
@@ -466,6 +472,15 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
         </div>
       )}
 
+      {readOnly && (
+        <div
+          role="status"
+          className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-200"
+        >
+          Public example · read only
+        </div>
+      )}
+
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -478,7 +493,11 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                 : `${completedPages}/${job.includedPageCount} included pages complete · ${scannerStatusLabel(job.status)}`}
             </p>
           </div>
-          {active || reviewing ? (
+          {readOnly ? (
+            <span className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              Example
+            </span>
+          ) : active || reviewing ? (
             <button
               type="button"
               disabled={Boolean(busyAction)}
@@ -825,7 +844,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {selected.canRetry && !active && (
+              {selected.canRetry && !active && !readOnly && (
                 <button
                   type="button"
                   disabled={Boolean(busyAction)}
@@ -950,7 +969,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               the source image.
             </p>
           )}
-          {selected.status === "succeeded" && supportsSpotReview && (
+          {selected.status === "succeeded" && supportsSpotReview && !readOnly && (
             <div className="mt-4">
               <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
             </div>
@@ -1102,7 +1121,7 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                 >
                   Go to page {selectedOrdinal + 1} of {includedPageCount} →
                 </button>
-              ) : (
+              ) : !readOnly ? (
                 <button
                   type="button"
                   onClick={() => void runAction("reassemble", `${base}/reassemble`)}
@@ -1114,8 +1133,8 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
                     : job.hasCombinedMusicXml
                       ? "Rebuild the combined score"
                       : "Combine pages"}
-                </button>
-              ))}
+                  </button>
+              ) : null)}
             {(job.hasCombinedMusicXml || includedPageCount === 1) &&
               job.hasMusicXml && (
                 <a
@@ -1220,8 +1239,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
               </>
             ) : (
               <>
-                Built from the {primaryEngineName} reading. Reconcile a page
-                above and these are rebuilt from what you decided.
+                Built from the {primaryEngineName} reading.
+                {!readOnly &&
+                  " Reconcile a page above and these are rebuilt from what you decided."}
               </>
             )}{" "}
             The archive carries both: each engine&apos;s own reading of every
@@ -1236,7 +1256,9 @@ export default function ScannerJobClient({ jobId }: { jobId: string }) {
             </p>
           ) : null}
           <p className="mt-4 text-xs text-slate-500">
-            Results expire {new Date(job.resultExpiresAt).toLocaleString()}.
+            {readOnly
+              ? "This public example is retained for exploration."
+              : `Results expire ${new Date(job.resultExpiresAt).toLocaleString()}.`}
             {!job.hasCombinedMusicXml &&
               " The ZIP preserves independent page files."}{" "}
             Results are not added to the catalogue automatically.

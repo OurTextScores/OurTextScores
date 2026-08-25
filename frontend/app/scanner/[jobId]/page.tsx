@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { fetchBackendSession } from "../../lib/server-session";
+import { isPublicScannerJob } from "../../lib/public-examples";
 import ScannerJobClient from "./scanner-job-client";
 
 export default async function ScannerJobPage({
@@ -9,7 +10,8 @@ export default async function ScannerJobPage({
   params: { jobId: string };
 }) {
   const session = await fetchBackendSession();
-  if (!session?.user) {
+  const publicExample = isPublicScannerJob(params.jobId);
+  if (!session?.user && !publicExample) {
     redirect(
       `/signin?callbackUrl=${encodeURIComponent(`/scanner/${params.jobId}`)}`,
     );
@@ -23,7 +25,7 @@ export default async function ScannerJobPage({
       >
         ← All scans
       </Link>
-      <ScannerJobClient jobId={params.jobId} />
+      <ScannerJobClient jobId={params.jobId} readOnly={publicExample} />
     </main>
   );
 }

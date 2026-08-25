@@ -95,6 +95,12 @@ describe("ChangeReviewDetailClient", () => {
     expect(iframe?.getAttribute("src")).not.toContain("reviewScore=");
     expect(iframe?.getAttribute("src")).toContain("compareLeft=");
     expect(iframe?.getAttribute("src")).toContain("compareRight=");
+    expect(decodeURIComponent(iframe?.getAttribute("src") || "")).toContain(
+      "/api/proxy/change-reviews/review-1/revisions/rev-1/canonical.xml",
+    );
+    expect(decodeURIComponent(iframe?.getAttribute("src") || "")).toContain(
+      "/api/proxy/change-reviews/review-1/revisions/rev-2/canonical.xml",
+    );
   });
 
   it("embeds an initial same-revision review in single-score mode", () => {
