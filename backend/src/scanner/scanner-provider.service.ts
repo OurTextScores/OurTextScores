@@ -66,6 +66,7 @@ export class ScannerProviderService implements ScannerPageProvider {
     pageNumber: number;
     detectTitle: boolean;
     generation: number;
+    engineOptions?: unknown;
   }): string {
     return scannerProviderIdempotencyKey({
       engine: this.engine,

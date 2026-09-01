@@ -162,6 +162,32 @@ describe('dual-engine content identity', () => {
     );
   });
 
+  it('includes immutable engine policy in provider idempotency keys', () => {
+    const input = {
+      engine: 'ots-homr',
+      modelRevision: 'rare-num-r1',
+      preprocessingRevision: 'preprocess-v1',
+      inputSha256: 'page',
+      pageNumber: 1,
+      detectTitle: false,
+      generation: 1
+    };
+    expect(
+      scannerProviderIdempotencyKey({
+        ...input,
+        engineOptions: { textDetector: 'lyrics', structuredHeads: { mode: 'off' } }
+      })
+    ).not.toBe(
+      scannerProviderIdempotencyKey({
+        ...input,
+        engineOptions: {
+          textDetector: 'non-lyric-text',
+          structuredHeads: { mode: 'experimental-output' }
+        }
+      })
+    );
+  });
+
   it('derives a usable page when one engine succeeds and the other fails', () => {
     const run = (engine: string, status: any): any => ({
       engine,

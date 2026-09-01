@@ -32,6 +32,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { RequestUser } from '../auth/types/auth-user';
 import { ScannerService } from './scanner.service';
 import { SCANNER_REQUEST_OVERHEAD_BYTES, SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
+import { isScannerOtsHomrEngineOptions, ScannerOtsHomrEngineOptions } from './scanner-dual-engine';
 
 /** Zoom levels for a review crop; scanner-crop.ts explains why only two. */
 const SCANNER_CROP_LEVELS = { staff: 'staff', context: 'context' } as const;
@@ -52,6 +53,18 @@ function parseEditedMeasures(value: string | undefined):
     }));
   } catch {
     throw new BadRequestException('Edited measures must be a JSON array');
+  }
+}
+
+/** Multipart fields are strings: refuse malformed experimental engine policy before staging a job. */
+function parseOtsHomrOptions(value: string | undefined): ScannerOtsHomrEngineOptions | undefined {
+  if (value === undefined || value === '') return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    if (!isScannerOtsHomrEngineOptions(parsed)) throw new Error('invalid policy');
+    return parsed;
+  } catch {
+    throw new BadRequestException('OTS-HOMR options are invalid');
   }
 }
 
@@ -105,13 +118,21 @@ export class ScannerController {
     @CurrentUser() user: RequestUser,
     @UploadedFiles() files: Express.Multer.File[],
     @Res({ passthrough: true }) response: Response,
-    @Body('detectTitle') detectTitle?: string
+    @Body('detectTitle') detectTitle?: string,
+    @Body('otsHomr') otsHomr?: string
   ) {
     try {
+      const otsHomrOptions = parseOtsHomrOptions(otsHomr);
       const job = await this.scanner.createJob({
         userId: user.userId,
         files,
-        detectTitle: detectTitle === 'true' || detectTitle === '1'
+        detectTitle: detectTitle === 'true' || detectTitle === '1',
+        ...(otsHomrOptions
+          ? {
+              requestedEngineIds: ['ots-homr'],
+              engineOptions: { 'ots-homr': otsHomrOptions }
+            }
+          : {})
       });
       response.setHeader('Location', `/api/scanner/jobs/${job.jobId}`);
       return job;

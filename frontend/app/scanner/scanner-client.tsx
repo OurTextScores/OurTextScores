@@ -108,6 +108,13 @@ export default function ScannerClient() {
   const [jobs, setJobs] = useState<ScannerJob[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [detectTitle, setDetectTitle] = useState(false);
+  const [useOtsHomr, setUseOtsHomr] = useState(false);
+  const [otsTextDetector, setOtsTextDetector] = useState<
+    "lyrics" | "non-lyric-text" | "none"
+  >("lyrics");
+  const [otsStructuredHeads, setOtsStructuredHeads] = useState<
+    "off" | "experimental-output" | "review-only"
+  >("off");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +197,15 @@ export default function ScannerClient() {
       const body = new FormData();
       for (const file of files) body.append("file", file);
       body.set("detectTitle", String(detectTitle));
+      if (useOtsHomr) {
+        body.set(
+          "otsHomr",
+          JSON.stringify({
+            textDetector: otsTextDetector,
+            structuredHeads: { mode: otsStructuredHeads },
+          }),
+        );
+      }
       const response = await uploadJob(body, (sent) => setSentBytes(sent));
       if (!response.ok) {
         if (response.status === 413) {
@@ -353,6 +369,63 @@ export default function ScannerClient() {
           />
           Attempt title detection
         </label>
+        <details className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+          <summary className="cursor-pointer font-medium text-amber-950 dark:text-amber-100">
+            Experimental OTS-HOMR comparison
+          </summary>
+          <p className="mt-2 text-xs text-amber-900 dark:text-amber-200">
+            Adds the private rareNum OTS-HOMR model beside HOMR. It is
+            experimental and does not replace the normal result.
+          </p>
+          <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={useOtsHomr}
+              onChange={(event) => setUseOtsHomr(event.target.checked)}
+            />
+            Run OTS-HOMR as an additional comparison
+          </label>
+          {useOtsHomr && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                Text detector
+                <select
+                  value={otsTextDetector}
+                  onChange={(event) =>
+                    setOtsTextDetector(
+                      event.target.value as
+                        "lyrics" | "non-lyric-text" | "none",
+                    )
+                  }
+                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+                >
+                  <option value="lyrics">Lyrics (recommended)</option>
+                  <option value="non-lyric-text">Non-lyric text</option>
+                  <option value="none">No text detector</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                Additional heads
+                <select
+                  value={otsStructuredHeads}
+                  onChange={(event) =>
+                    setOtsStructuredHeads(
+                      event.target.value as
+                        "off" | "experimental-output" | "review-only",
+                    )
+                  }
+                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+                >
+                  <option value="off">Off</option>
+                  <option value="review-only">Review-only diagnostics</option>
+                  <option value="experimental-output">
+                    Experimental output (no dynamics)
+                  </option>
+                </select>
+              </label>
+            </div>
+          )}
+        </details>
       </form>
 
       {error && (

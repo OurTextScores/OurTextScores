@@ -16,7 +16,13 @@ class FakeXhr {
   static last: FakeXhr | null = null;
   status = 202;
   responseText = JSON.stringify({ jobId: "job-new", status: "preparing" });
-  upload: { onprogress?: (e: { lengthComputable: boolean; loaded: number; total: number }) => void } = {};
+  upload: {
+    onprogress?: (e: {
+      lengthComputable: boolean;
+      loaded: number;
+      total: number;
+    }) => void;
+  } = {};
   onload?: () => void;
   onerror?: () => void;
   onabort?: () => void;
@@ -146,6 +152,34 @@ describe("ScannerClient", () => {
     ]);
   });
 
+  it("submits the selected OTS-HOMR policy only when experimental comparison is enabled", async () => {
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const file = new File(["score"], "page-1.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByText("Experimental OTS-HOMR comparison"));
+    fireEvent.click(
+      screen.getByLabelText("Run OTS-HOMR as an additional comparison"),
+    );
+    fireEvent.change(screen.getByLabelText("Text detector"), {
+      target: { value: "non-lyric-text" },
+    });
+    fireEvent.change(screen.getByLabelText("Additional heads"), {
+      target: { value: "review-only" },
+    });
+
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    expect(JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")))).toEqual({
+      textDetector: "non-lyric-text",
+      structuredHeads: { mode: "review-only" },
+    });
+  });
+
   it("refuses an oversized selection before sending it", async () => {
     // On Vercel the request never reaches our route handler: the platform
     // rejects the body at the edge and returns a 413 we cannot annotate. The
@@ -158,7 +192,9 @@ describe("ScannerClient", () => {
       target: { files: [huge] },
     });
 
-    fireEvent.submit(screen.getByRole("button", { name: "Select pages" }).closest("form")!);
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
     expect(await screen.findByText(/the limit is/i)).toBeInTheDocument();
     expect(FakeXhr.last).toBeNull();
   });
@@ -169,7 +205,9 @@ describe("ScannerClient", () => {
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: { files: [new File(["a"], "page-1.png", { type: "image/png" })] },
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Select pages" }).closest("form")!);
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
 
     // A platform 413 carries an HTML body, so the JSON path cannot help.
@@ -178,16 +216,24 @@ describe("ScannerClient", () => {
     await act(async () => {
       FakeXhr.last!.finish();
     });
-    expect(await screen.findByText(/refused this upload as too large/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/refused this upload as too large/i),
+    ).toBeInTheDocument();
   });
 
   it("reports real upload progress and then opens the new scan", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText("Score files"), {
-      target: { files: [new File(["x".repeat(2048)], "page.png", { type: "image/png" })] },
+      target: {
+        files: [
+          new File(["x".repeat(2048)], "page.png", { type: "image/png" }),
+        ],
+      },
     });
-    fireEvent.submit(screen.getByRole("button", { name: "Select pages" }).closest("form")!);
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
 
     // Bytes sent, not a spinner: fetch cannot report this, which is why the

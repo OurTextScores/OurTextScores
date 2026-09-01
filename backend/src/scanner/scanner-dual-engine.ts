@@ -89,12 +89,33 @@ export interface ScannerEngineCapabilitySnapshot {
   unsupportedSemanticClasses: string[];
 }
 
+export type ScannerOtsHomrTextDetector = 'lyrics' | 'non-lyric-text' | 'none';
+export type ScannerOtsHomrStructuredHeadsMode = 'off' | 'experimental-output' | 'review-only';
+
+/** Immutable, user-selected policy for one OTS-HOMR engine run. */
+export interface ScannerOtsHomrEngineOptions {
+  textDetector: ScannerOtsHomrTextDetector;
+  structuredHeads: { mode: ScannerOtsHomrStructuredHeadsMode };
+}
+
 export interface ScannerEnginePlan {
   version: typeof SCANNER_ENGINE_PLAN_VERSION;
   engineIds: ScannerEngineId[];
   primaryEngineId: ScannerEngineId;
   fallbackEngineIds: ScannerEngineId[];
   capabilitySnapshots: Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>;
+  /** Engine-specific options are frozen with the plan, never read from current UI state. */
+  engineOptions?: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>;
+}
+
+export function isScannerOtsHomrEngineOptions(value: unknown): value is ScannerOtsHomrEngineOptions {
+  if (!value || typeof value !== 'object') return false;
+  const options = value as ScannerOtsHomrEngineOptions;
+  return (
+    ['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector) &&
+    !!options.structuredHeads &&
+    ['off', 'experimental-output', 'review-only'].includes(options.structuredHeads.mode)
+  );
 }
 
 const BUILTIN_SCANNER_CAPABILITIES: Record<string, ScannerEngineCapabilitySnapshot> = {
@@ -129,7 +150,8 @@ function defaultCapabilitySnapshot(engineId: ScannerEngineId): ScannerEngineCapa
 export function scannerEnginePlan(
   engineIds: ScannerEngineId[],
   primaryEngineId: ScannerEngineId = engineIds[0],
-  capabilitySnapshots: Partial<Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>> = {}
+  capabilitySnapshots: Partial<Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>> = {},
+  engineOptions: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>> = {}
 ): ScannerEnginePlan {
   const uniqueEngineIds = [...new Set(engineIds)];
   const suppliedCapabilities = Object.values(capabilitySnapshots);
@@ -141,11 +163,16 @@ export function scannerEnginePlan(
     !uniqueEngineIds.includes(primaryEngineId) ||
     suppliedCapabilities.some(
       (capability) => capability && !isScannerEngineCapabilitySnapshot(capability)
+    ) ||
+    Object.keys(engineOptions).some(
+      (engineId) =>
+        !uniqueEngineIds.includes(engineId) ||
+        (engineId !== 'ots-homr' || !isScannerOtsHomrEngineOptions(engineOptions[engineId]))
     )
   ) {
     throw new Error('Invalid scanner engine plan');
   }
-  return {
+  const plan: ScannerEnginePlan = {
     version: SCANNER_ENGINE_PLAN_VERSION,
     engineIds: uniqueEngineIds,
     primaryEngineId,
@@ -157,6 +184,8 @@ export function scannerEnginePlan(
       ])
     )
   };
+  if (Object.keys(engineOptions).length > 0) plan.engineOptions = engineOptions;
+  return plan;
 }
 
 export function scannerDefaultEnginePlan(transcodaEnabled: boolean): ScannerEnginePlan {
@@ -184,7 +213,8 @@ export function scannerEnginePlanForJob(
     const normalized = scannerEnginePlan(
       plan.engineIds,
       plan.primaryEngineId,
-      plan.capabilitySnapshots
+      plan.capabilitySnapshots,
+      plan.engineOptions
     );
     if (
       plan.version !== SCANNER_ENGINE_PLAN_VERSION ||

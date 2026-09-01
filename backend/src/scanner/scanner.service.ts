@@ -22,10 +22,7 @@ import { extname } from 'node:path';
 import AdmZip = require('adm-zip');
 import sharp = require('sharp');
 import { StorageService } from '../storage/storage.service';
-import {
-  isPublicScannerJob,
-  PUBLIC_EXAMPLE_VIEWER_ID
-} from '../auth/public-examples';
+import { isPublicScannerJob, PUBLIC_EXAMPLE_VIEWER_ID } from '../auth/public-examples';
 import {
   ScannerJob,
   ScannerJobDocument,
@@ -116,7 +113,8 @@ import type {
   ScannerArtifactInput,
   ScannerEngineId,
   ScannerEngineRun,
-  ScannerMeasureCropRegion
+  ScannerMeasureCropRegion,
+  ScannerOtsHomrEngineOptions
 } from './scanner-dual-engine';
 import type { ScannerRasterIdentity } from './schemas/scanner-job.schema';
 import { compareScannerPage, SCANNER_PAGE_COMPARISON_VERSION } from './scanner-page-comparison';
@@ -190,6 +188,8 @@ export class ScannerService implements OnModuleInit {
     userId: string;
     files: Express.Multer.File[];
     detectTitle?: boolean;
+    requestedEngineIds?: ScannerEngineId[];
+    engineOptions?: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>;
   }): Promise<any> {
     this.assertAvailable(input.userId);
     if (this.providerCapacityExhausted()) {
@@ -294,7 +294,7 @@ export class ScannerService implements OnModuleInit {
         inputs: storedInputs,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
-        enginePlan: this.newJobEnginePlan(),
+        enginePlan: this.newJobEnginePlan(input.requestedEngineIds, input.engineOptions),
         pages: Array.from({ length: pageCount }, (_value, index) =>
           withScannerHomrRun({
             pageNumber: index + 1,
@@ -3730,11 +3730,21 @@ export class ScannerService implements OnModuleInit {
     return error instanceof Error ? error.message : String(error);
   }
 
-  private newJobEnginePlan() {
-    return (
-      this.registeredEngines?.newJobPlan() ||
-      scannerDefaultEnginePlan(this.bool('SCANNER_TRANSCODA_ENABLED', false))
-    );
+  private newJobEnginePlan(
+    requestedEngineIds: ScannerEngineId[] = [],
+    engineOptions: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>> = {}
+  ) {
+    if (this.registeredEngines) {
+      try {
+        return this.registeredEngines.newJobPlan(requestedEngineIds, engineOptions);
+      } catch {
+        throw new BadRequestException('Requested scanner engine is not available for new jobs');
+      }
+    }
+    if (requestedEngineIds.length > 0) {
+      throw new BadRequestException('Requested scanner engine is not available for new jobs');
+    }
+    return scannerDefaultEnginePlan(this.bool('SCANNER_TRANSCODA_ENABLED', false));
   }
 
   private enginePlanForJob(job: ScannerJobDocument) {

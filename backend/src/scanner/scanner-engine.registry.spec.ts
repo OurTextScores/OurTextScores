@@ -88,6 +88,51 @@ describe('ScannerEngineRegistry', () => {
     );
   });
 
+  it('keeps an eligible experimental engine out of ordinary plans until requested', () => {
+    const registry = new ScannerEngineRegistry(config, homr, transcoda);
+    const otsHomr: ScannerEngineDefinition = {
+      id: 'ots-homr',
+      displayName: 'OTS-HOMR (experimental)',
+      adapter: { engine: 'ots-homr' } as any,
+      readable: true,
+      enabledForNewJobs: () => false,
+      eligibleForNewJobs: () => true,
+      includedByDefault: () => false,
+      budgetExhaustedConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED',
+      providerKindConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_KIND',
+      timeoutConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS',
+      capabilities: {
+        displayName: 'OTS-HOMR (experimental)',
+        outputArtifactKinds: ['musicxml'],
+        supportsSpotReview: false,
+        supportsMeasureGeometry: false,
+        unsupportedSemanticClasses: ['dynamics-from-additional-heads']
+      },
+      artifacts: {
+        musicxml: {
+          contentType: 'application/vnd.recordare.musicxml+xml',
+          extension: 'musicxml',
+          maxBytes: 10_485_760,
+          requiredProviderOutput: true
+        }
+      }
+    };
+    registry.register(otsHomr);
+
+    expect(registry.newJobPlan().engineIds).toEqual(['homr']);
+    expect(
+      registry.newJobPlan(['ots-homr'], {
+        'ots-homr': {
+          textDetector: 'lyrics',
+          structuredHeads: { mode: 'off' }
+        }
+      })
+    ).toMatchObject({
+      engineIds: ['homr', 'ots-homr'],
+      engineOptions: { 'ots-homr': { textDetector: 'lyrics' } }
+    });
+  });
+
   it('rejects duplicate IDs and mismatched artifact declarations', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
     expect(() =>

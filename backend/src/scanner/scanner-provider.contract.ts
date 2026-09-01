@@ -13,6 +13,8 @@ export interface ScannerProviderScanInput {
   contentType: string;
   detectTitle: boolean;
   idempotencyKey: string;
+  /** Immutable engine-plan policy, supplied only by the worker. */
+  engineOptions?: unknown;
 }
 
 export interface ScannerProviderResult {
@@ -45,6 +47,7 @@ export interface ScannerPageProvider {
     pageNumber: number;
     detectTitle: boolean;
     generation: number;
+    engineOptions?: unknown;
   }): string;
   scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult>;
   /** Optional normalized regeneration contract for engines that support spot review. */
@@ -62,6 +65,7 @@ export function scannerProviderIdempotencyKey(input: {
   pageNumber: number;
   detectTitle: boolean;
   generation: number;
+  engineOptions?: unknown;
 }): string {
   return createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }

@@ -20,6 +20,7 @@ import { ScannerTelemetryService } from './scanner-telemetry.service';
 import { ScannerWorkerService } from './scanner-worker.service';
 import { ScannerProviderHttpService } from './scanner-provider-http.service';
 import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.service';
+import { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
 import { ScannerEngineRegistry } from './scanner-engine.registry';
 
 @Module({
@@ -43,6 +44,7 @@ import { ScannerEngineRegistry } from './scanner-engine.registry';
     ScannerProviderHttpService,
     ScannerProviderService,
     ScannerTranscodaProviderService,
+    ScannerOtsHomrProviderService,
     ScannerEngineRegistry,
     ScannerTelemetryService,
     ScannerWorkerService

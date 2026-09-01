@@ -858,6 +858,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }): Promise<{ page: ScannerPageResult; providerMs: number }> {
     const { definition } = input;
     const prior = input.page.engines?.[definition.id];
+    const engineOptions = input.job.enginePlan?.engineOptions?.[definition.id];
     const inputSha256 = createHash('sha256').update(input.image).digest('hex');
     if (
       input.recognitionRaster.checksumSha256 !== inputSha256 ||
@@ -876,7 +877,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       inputSha256,
       pageNumber: input.pageNumber,
       detectTitle: input.detectTitle,
-      generation: input.job.generation
+      generation: input.job.generation,
+      engineOptions
     });
     if (
       prior?.status === 'succeeded' &&
@@ -962,7 +964,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           pageNumber: input.pageNumber,
           generation: input.job.generation,
           detectTitle: input.detectTitle,
-          idempotencyKey
+          idempotencyKey,
+          engineOptions
         },
         definition.adapter,
         definition.budgetExhaustedConfigKey
@@ -1311,6 +1314,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       generation?: number;
       detectTitle: boolean;
       idempotencyKey: string;
+      engineOptions?: unknown;
     },
     provider: ScannerPageProvider = this.provider,
     budgetKey = 'SCANNER_PROVIDER_BUDGET_EXHAUSTED'
@@ -1335,7 +1339,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           filename: `page-${input.pageNumber}-generation-${input.generation || 1}.${contentType === 'image/jpeg' ? 'jpg' : 'png'}`,
           contentType,
           detectTitle: input.detectTitle,
-          idempotencyKey: input.idempotencyKey
+          idempotencyKey: input.idempotencyKey,
+          engineOptions: input.engineOptions
         });
         return { result, attempts: attempt };
       } catch (error) {
