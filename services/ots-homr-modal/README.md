@@ -25,6 +25,10 @@ changes from the source instance. Its SHA-256 is:
 
 The Modal image verifies and extracts that archive, applies the patch with
 `git apply --check` followed by `git apply`, and fails the build on any mismatch.
+Because a clean archive has no `.git` metadata, the package install sets
+`POETRY_DYNAMIC_VERSIONING_BYPASS=0.0.0`, matching HOMR's declared static
+fallback version instead of asking its build backend to inspect a nonexistent
+checkout.
 
 ## Pinned private model inputs
 

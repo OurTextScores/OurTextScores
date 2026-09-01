@@ -73,6 +73,10 @@ image = (
         "awk '/^onnxruntime==/{drop=1;next} /^[^[:space:]]/{drop=0} !drop' /tmp/homr-requirements.txt > /tmp/homr-gpu-requirements.txt && mv /tmp/homr-gpu-requirements.txt /tmp/homr-requirements.txt",
         "python -m pip install --no-cache-dir --require-hashes -r /tmp/homr-requirements.txt",
         "python -m pip install --no-cache-dir --require-hashes -r /tmp/security-overrides.txt",
+        # The clean source archive deliberately has no .git directory. HOMR's
+        # dynamic-versioning backend otherwise fails while preparing metadata.
+        # Use the static fallback already declared in its pyproject.toml.
+        "POETRY_DYNAMIC_VERSIONING_BYPASS=0.0.0 "
         "python -m pip install --no-cache-dir --no-deps /opt/homr",
         "python -m pip uninstall -y poetry poetry-plugin-export",
         "python -m pip install --no-cache-dir 'fastapi==0.116.1' 'python-multipart==0.0.30' 'huggingface_hub==0.34.4' 'segmentation-models-pytorch==0.5.0'",

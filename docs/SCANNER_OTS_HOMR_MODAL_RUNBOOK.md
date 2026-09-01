@@ -135,6 +135,12 @@ PY
 If a hash differs, treat it as a release incident. Do not update an expected
 hash just to make a deployment proceed.
 
+The image installs the archived HOMR package with
+`POETRY_DYNAMIC_VERSIONING_BYPASS=0.0.0`. This is required because the exact
+source archive intentionally contains no `.git` directory; removing the
+override makes `poetry-dynamic-versioning` fail during package metadata
+generation.
+
 ---
 
 ## 3. Provider contract that must exist before deployment
