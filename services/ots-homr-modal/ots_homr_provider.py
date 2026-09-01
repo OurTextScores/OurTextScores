@@ -10,6 +10,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import logging
 import time
 import uuid
 from collections import OrderedDict
@@ -34,6 +35,8 @@ ERROR_STATUS = {
     "inference_timeout": 504,
     "inference_failed": 500,
 }
+
+logger = logging.getLogger(__name__)
 
 
 class Engine(Protocol):
@@ -83,7 +86,15 @@ def create_provider_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        task = asyncio.create_task(asyncio.to_thread(engine.warm_up))
+        async def warm_engine() -> None:
+            try:
+                await asyncio.to_thread(engine.warm_up)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("OTS-HOMR background warm-up failed")
+
+        task = asyncio.create_task(warm_engine())
         try:
             yield
         finally:
@@ -121,7 +132,7 @@ def create_provider_app(
             try:
                 await asyncio.to_thread(engine.warm_up)
             except Exception:
-                pass
+                logger.exception("OTS-HOMR readiness warm-up failed")
         body = {
             "ready": engine.is_ready(),
             "schemaVersion": SCHEMA_VERSION,

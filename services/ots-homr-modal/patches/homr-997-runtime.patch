@@ -946,11 +946,22 @@ index 0a28288..b43af23 100644
  
              out_lift = np.concatenate((out_lift, lift_sample), axis=-1)
              out_pitch = np.concatenate((out_pitch, pitch_sample), axis=-1)
-@@ -556,4 +598,21 @@ def get_decoder(config: Config) -> ScoreDecoder:
+@@ -556,4 +598,32 @@ def get_decoder(config: Config) -> ScoreDecoder:
          onnx_transformer = ort.InferenceSession(config.filepaths.decoder_path)
          fp16 = False
  
 -    return ScoreDecoder(onnx_transformer, fp16, use_gpu, config=config)
++    # The graph metadata is authoritative. Fine-tuned exports may retain HOMR's
++    # historical `_fp16` filename while exposing float32 ONNX inputs.
++    context_input = next(
++        input_metadata
++        for input_metadata in onnx_transformer.get_inputs()
++        if input_metadata.name == "context"
++    )
++    if context_input.type not in {"tensor(float)", "tensor(float16)"}:
++        raise RuntimeError(f"Unsupported HOMR decoder context type: {context_input.type}")
++    fp16 = context_input.type == "tensor(float16)"
++
 +    # Optional: absent by default until a deployment actually ships this file, matching
 +    # the pattern download_weights already follows for the decoder/encoder themselves.
 +    # A missing file is normal, not an error - most deployments will not have it yet.
@@ -1148,7 +1159,7 @@ diff --git a/homr/transformer/encoder_inference.py b/homr/transformer/encoder_in
 +
  import numpy as np
  import onnxruntime as ort
-@@ -55,5 +57,11 @@ class Encoder:
+@@ -55,5 +57,19 @@ class Encoder:
              self.encoder = ort.InferenceSession(config.filepaths.encoder_path)
              self.fp16 = False
 -
@@ -1158,6 +1169,14 @@ diff --git a/homr/transformer/encoder_inference.py b/homr/transformer/encoder_in
 +            or "CUDAExecutionProvider" not in self.encoder.get_providers()
 +        ):
 +            raise RuntimeError("HOMR encoder is not using CUDAExecutionProvider")
++
++        # Do not infer tensor precision from the filename. Fine-tuned exports may
++        # retain HOMR's historical `_fp16` name while exposing float32 ONNX inputs.
++        # Binding float16 solely from that name fails before the first encoder op.
++        model_input_type = self.encoder.get_inputs()[0].type
++        if model_input_type not in {"tensor(float)", "tensor(float16)"}:
++            raise RuntimeError(f"Unsupported HOMR encoder input type: {model_input_type}")
++        self.fp16 = model_input_type == "tensor(float16)"
 +
          self.io_binding = self.encoder.io_binding()
          self.device_id = 0

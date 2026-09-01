@@ -66,7 +66,29 @@ class TimeoutEngine(FakeEngine):
         raise error
 
 
+class WarmFailureEngine(FakeEngine):
+    def warm_up(self):
+        raise RuntimeError("diagnostic warm-up detail")
+
+
 class ProviderTest(unittest.TestCase):
+    def test_readiness_logs_warm_up_failure_without_returning_detail(self):
+        with self.assertLogs("ots_homr_provider", level="ERROR") as captured:
+            with TestClient(
+                create_provider_app(
+                    engine=WarmFailureEngine(), service_revision="service"
+                )
+            ) as client:
+                response = client.get("/readyz")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ready"])
+        self.assertNotIn("diagnostic warm-up detail", response.text)
+        self.assertTrue(
+            any("warm-up failed" in message for message in captured.output),
+            captured.output,
+        )
+
     def test_authenticated_scan_preserves_policy_and_digests(self):
         engine = FakeEngine()
         with TestClient(
