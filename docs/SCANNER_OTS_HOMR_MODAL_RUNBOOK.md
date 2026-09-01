@@ -363,7 +363,6 @@ the VPS). Do not put the proxy token in the frontend environment.
 
 ```dotenv
 SCANNER_OTS_HOMR_ENABLED=true
-SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT=false
 SCANNER_OTS_HOMR_PROVIDER_KIND=modal
 SCANNER_OTS_HOMR_PROVIDER_URL=<OTS_HOMR_MODAL_URL>
 SCANNER_OTS_HOMR_MODAL_TOKEN_ID=<wk-...>
@@ -400,11 +399,12 @@ Recreate the API and scanner worker after changing the flag:
 docker compose --profile scanner up -d --force-recreate backend scanner_worker
 ```
 
-Create a Scanner job and open **Experimental OTS-HOMR comparison**. Select the
-additional reading, then verify in the authenticated job response that:
+Create a Scanner job and select OTS-HOMR in either provider dropdown, with one
+other provider in the remaining dropdown. Then verify in the authenticated job
+response that:
 
-- `enginePlan.engineIds` contains both `homr` and `ots-homr`;
-- HOMR is still `primaryEngineId`;
+- `enginePlan.engineIds` contains exactly the two providers selected by the user;
+- `primaryEngineId` is the provider selected in the first dropdown;
 - `enginePlan.engineOptions["ots-homr"]` records the selected policy;
 - `pages[].engines["ots-homr"]` has independent status, provenance, and
   artifacts;
@@ -439,7 +439,7 @@ revoke its dedicated proxy token or stop only the OTS-HOMR Modal App.
 | `provider_execution_provider_mismatch` | Provider was not actually using CUDA. Treat as a deployment failure. |
 | `provider_invalid_response` | Invalid envelope, digest, MusicXML, selected policy, head compatibility, or prohibited dynamics. Inspect provider logs. |
 | `provider_timeout` / `provider_unavailable` | Check cold-start, Modal capacity, and timeout ladder before retrying. |
-| Scanner says engine unavailable | Confirm `SCANNER_OTS_HOMR_ENABLED=true` reaches the API process and the user selected the experimental option. |
+| Scanner says engine unavailable | Confirm `SCANNER_OTS_HOMR_ENABLED=true` reaches the API process and OTS-HOMR appears in the provider dropdowns. |
 
-Never set `SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT=true` during this beta. That
-would turn every ordinary Scanner job into a paid third provider call.
+Every new Scanner job must select exactly two distinct enabled providers. OTS-HOMR
+incurs a provider call only when it is one of those two selections.

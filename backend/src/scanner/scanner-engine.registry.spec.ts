@@ -8,22 +8,30 @@ describe('ScannerEngineRegistry', () => {
 
   beforeEach(() => {
     delete values.SCANNER_TRANSCODA_ENABLED;
+    delete values.SCANNER_OTS_HOMR_ENABLED;
     delete values.SCANNER_PROVIDER_BUDGET_EXHAUSTED;
     delete values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED;
   });
 
-  it('snapshots only engines enabled when a new job is created', () => {
+  it('requires two explicitly selected enabled engines for every new job', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
-    expect(registry.newJobPlan().engineIds).toEqual(['homr']);
+    expect(registry.selectableDefinitions().map(({ id }) => id)).toEqual(['homr']);
+    expect(() => registry.newJobPlan([])).toThrow('Exactly two distinct');
     expect(registry.get('homr')?.measureGeometryProducer).toEqual(expect.any(Function));
     expect(registry.get('transcoda')?.measureGeometryProducer).toBeUndefined();
 
     values.SCANNER_TRANSCODA_ENABLED = 'true';
-    expect(registry.newJobPlan()).toMatchObject({
+    expect(registry.newJobPlan(['homr', 'transcoda'])).toMatchObject({
       engineIds: ['homr', 'transcoda'],
       primaryEngineId: 'homr',
       fallbackEngineIds: ['transcoda']
     });
+    expect(registry.newJobPlan(['transcoda', 'homr'])).toMatchObject({
+      engineIds: ['transcoda', 'homr'],
+      primaryEngineId: 'transcoda',
+      fallbackEngineIds: ['homr']
+    });
+    expect(() => registry.newJobPlan(['homr', 'homr'])).toThrow('Exactly two distinct');
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'true';
     expect(registry.newJobCapacityExhausted()).toBe(false);
     values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED = 'true';
@@ -38,7 +46,7 @@ describe('ScannerEngineRegistry', () => {
     // renderable, or it will silently be missing from the comparison.
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
-    for (const engineId of registry.newJobPlan().engineIds) {
+    for (const engineId of registry.newJobPlan(['homr', 'transcoda']).engineIds) {
       const definition = registry.get(engineId);
       expect(definition?.artifacts.musicxml).toBeDefined();
       expect(definition?.artifacts.pdf).toBeDefined();
@@ -81,28 +89,26 @@ describe('ScannerEngineRegistry', () => {
     };
     registry.register(audiveris);
 
-    expect(registry.newJobPlan().engineIds).toEqual(['homr', 'audiveris-5']);
+    expect(registry.newJobPlan(['homr', 'audiveris-5']).engineIds).toEqual(['homr', 'audiveris-5']);
     expect(registry.readable('audiveris-5')).toMatchObject(audiveris);
     expect(registry.planForJob({ pages: [] }).capabilitySnapshots['audiveris-5']).toEqual(
       audiveris.capabilities
     );
   });
 
-  it('keeps an eligible experimental engine out of ordinary plans until requested', () => {
+  it('treats OTS-HOMR as a peer when it is enabled and selected', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
     const otsHomr: ScannerEngineDefinition = {
       id: 'ots-homr',
-      displayName: 'OTS-HOMR (experimental)',
+      displayName: 'OTS-HOMR',
       adapter: { engine: 'ots-homr' } as any,
       readable: true,
-      enabledForNewJobs: () => false,
-      eligibleForNewJobs: () => true,
-      includedByDefault: () => false,
+      enabledForNewJobs: () => true,
       budgetExhaustedConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED',
       providerKindConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_KIND',
       timeoutConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS',
       capabilities: {
-        displayName: 'OTS-HOMR (experimental)',
+        displayName: 'OTS-HOMR',
         outputArtifactKinds: ['musicxml'],
         supportsSpotReview: false,
         supportsMeasureGeometry: false,
@@ -119,18 +125,36 @@ describe('ScannerEngineRegistry', () => {
     };
     registry.register(otsHomr);
 
-    expect(registry.newJobPlan().engineIds).toEqual(['homr']);
     expect(
-      registry.newJobPlan(['ots-homr'], {
+      registry.newJobPlan(['ots-homr', 'homr'], {
         'ots-homr': {
           textDetector: 'lyrics',
           structuredHeads: { mode: 'off' }
         }
       })
     ).toMatchObject({
-      engineIds: ['homr', 'ots-homr'],
+      engineIds: ['ots-homr', 'homr'],
+      primaryEngineId: 'ots-homr',
       engineOptions: { 'ots-homr': { textDetector: 'lyrics' } }
     });
+  });
+
+  it('lists all three configured providers without connection details', () => {
+    values.SCANNER_TRANSCODA_ENABLED = 'true';
+    values.SCANNER_OTS_HOMR_ENABLED = 'true';
+    const registry = new ScannerEngineRegistry(config, homr, transcoda, {
+      engine: 'ots-homr'
+    } as any);
+
+    expect(registry.selectableDefinitions()).toEqual([
+      expect.objectContaining({ id: 'homr', displayName: 'HOMR' }),
+      expect.objectContaining({ id: 'transcoda', displayName: 'Transcoda' }),
+      expect.objectContaining({ id: 'ots-homr', displayName: 'OTS-HOMR' })
+    ]);
+    expect(registry.newJobPlan(['transcoda', 'ots-homr']).engineIds).toEqual([
+      'transcoda',
+      'ots-homr'
+    ]);
   });
 
   it('rejects duplicate IDs and mismatched artifact declarations', () => {

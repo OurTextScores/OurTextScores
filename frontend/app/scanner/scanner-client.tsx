@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   activeScannerStatuses,
   ScannerJob,
+  ScannerProviderOption,
   scannerStatusLabel,
 } from "./scanner-types";
 
@@ -106,9 +107,11 @@ function uploadSelectionError(files: File[]): string | null {
 
 export default function ScannerClient() {
   const [jobs, setJobs] = useState<ScannerJob[]>([]);
+  const [providers, setProviders] = useState<ScannerProviderOption[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [detectTitle, setDetectTitle] = useState(false);
-  const [useOtsHomr, setUseOtsHomr] = useState(false);
+  const [firstProvider, setFirstProvider] = useState("");
+  const [secondProvider, setSecondProvider] = useState("");
   const [otsTextDetector, setOtsTextDetector] = useState<
     "lyrics" | "non-lyric-text" | "none"
   >("lyrics");
@@ -127,6 +130,13 @@ export default function ScannerClient() {
   const abortUpload = useRef<(() => void) | null>(null);
   const router = useRouter();
   const selectionError = uploadSelectionError(files);
+  const providerSelectionError =
+    !firstProvider || !secondProvider
+      ? "Select two providers."
+      : firstProvider === secondProvider
+        ? "Select two different providers."
+        : null;
+  const usesOtsHomr = [firstProvider, secondProvider].includes("ots-homr");
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const percent =
     totalBytes > 0
@@ -147,23 +157,35 @@ export default function ScannerClient() {
   }, [submitting]);
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/proxy/scanner/jobs?limit=20", {
-      cache: "no-store",
-    });
-    if (response.status === 503 || response.status === 403) {
+    const [jobsResponse, providersResponse] = await Promise.all([
+      fetch("/api/proxy/scanner/jobs?limit=20", { cache: "no-store" }),
+      fetch("/api/proxy/scanner/jobs/engines", { cache: "no-store" }),
+    ]);
+    const unavailableResponse = [jobsResponse, providersResponse].find(
+      (response) => response.status === 503 || response.status === 403,
+    );
+    if (unavailableResponse) {
       setUnavailable(
-        response.status === 403
+        unavailableResponse.status === 403
           ? "Your account is not on the Scanner beta allowlist."
           : "Scanner is not enabled on this deployment.",
       );
       return;
     }
     setUnavailable(null);
-    if (!response.ok) throw new Error(await readError(response));
-    const body = await response.json();
+    if (!jobsResponse.ok) throw new Error(await readError(jobsResponse));
+    if (!providersResponse.ok)
+      throw new Error(await readError(providersResponse));
+    const [body, providerBody] = await Promise.all([
+      jobsResponse.json(),
+      providersResponse.json(),
+    ]);
     // Tolerate the pre-pagination array shape so a rolling deploy where the
     // frontend leads the backend still renders Recent scans.
     setJobs(Array.isArray(body) ? body : (body.items ?? []));
+    setProviders(
+      Array.isArray(providerBody) ? providerBody : (providerBody.items ?? []),
+    );
   }, []);
 
   useEffect(() => {
@@ -190,6 +212,10 @@ export default function ScannerClient() {
       setError(selectionError);
       return;
     }
+    if (providerSelectionError) {
+      setError(providerSelectionError);
+      return;
+    }
     setSubmitting(true);
     setSentBytes(0);
     setError(null);
@@ -197,7 +223,8 @@ export default function ScannerClient() {
       const body = new FormData();
       for (const file of files) body.append("file", file);
       body.set("detectTitle", String(detectTitle));
-      if (useOtsHomr) {
+      body.set("engineIds", JSON.stringify([firstProvider, secondProvider]));
+      if (usesOtsHomr) {
         body.set(
           "otsHomr",
           JSON.stringify({
@@ -300,7 +327,10 @@ export default function ScannerClient() {
           <button
             type="submit"
             disabled={
-              files.length === 0 || Boolean(selectionError) || submitting
+              files.length === 0 ||
+              Boolean(selectionError) ||
+              Boolean(providerSelectionError) ||
+              submitting
             }
             className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -361,6 +391,52 @@ export default function ScannerClient() {
             </ol>
           </div>
         )}
+        <fieldset className="mt-5 rounded-lg border border-slate-200 px-4 py-4 dark:border-slate-800">
+          <legend className="px-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+            Recognition providers
+          </legend>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Choose exactly two providers. Both readings will be processed and
+            shown in the comparison.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {[
+              ["Provider 1", firstProvider, setFirstProvider, secondProvider],
+              ["Provider 2", secondProvider, setSecondProvider, firstProvider],
+            ].map(([label, value, setter, other]) => (
+              <label
+                key={String(label)}
+                className="text-xs font-medium text-slate-700 dark:text-slate-300"
+              >
+                {String(label)}
+                <select
+                  aria-label={String(label)}
+                  value={String(value)}
+                  onChange={(event) =>
+                    (setter as (value: string) => void)(event.target.value)
+                  }
+                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                >
+                  <option value="">Select a provider</option>
+                  {providers.map((provider) => (
+                    <option
+                      key={provider.id}
+                      value={provider.id}
+                      disabled={provider.id === other}
+                    >
+                      {provider.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+          {!loading && providers.length < 2 && (
+            <p className="mt-3 text-xs text-red-700 dark:text-red-300">
+              This deployment does not currently have two providers available.
+            </p>
+          )}
+        </fieldset>
         <label className="mt-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
           <input
             type="checkbox"
@@ -369,24 +445,12 @@ export default function ScannerClient() {
           />
           Attempt title detection
         </label>
-        <details className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
-          <summary className="cursor-pointer font-medium text-amber-950 dark:text-amber-100">
-            Experimental OTS-HOMR comparison
-          </summary>
-          <p className="mt-2 text-xs text-amber-900 dark:text-amber-200">
-            Adds the private rareNum OTS-HOMR model beside HOMR. It is
-            experimental and does not replace the normal result.
-          </p>
-          <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-            <input
-              type="checkbox"
-              checked={useOtsHomr}
-              onChange={(event) => setUseOtsHomr(event.target.checked)}
-            />
-            Run OTS-HOMR as an additional comparison
-          </label>
-          {useOtsHomr && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {usesOtsHomr && (
+          <fieldset className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+            <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
+              OTS-HOMR options
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Text detector
                 <select
@@ -424,8 +488,8 @@ export default function ScannerClient() {
                 </select>
               </label>
             </div>
-          )}
-        </details>
+          </fieldset>
+        )}
       </form>
 
       {error && (

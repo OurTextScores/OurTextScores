@@ -96,7 +96,7 @@ import {
   SCANNER_COMPARE_REGIONS_VERSION,
   scannerArtifactInputSignature,
   scannerArtifactInputMatches,
-  scannerDefaultEnginePlan,
+  scannerEnginePlan,
   scannerEngineArtifactLocators,
   scannerEngineManifest,
   scannerEnginePlanForJob,
@@ -184,6 +184,18 @@ export class ScannerService implements OnModuleInit {
     }
   }
 
+  listNewJobEngines(userId: string) {
+    this.assertAvailable(userId);
+    const items = this.registeredEngines?.selectableDefinitions() || [];
+    return {
+      items: items.map((definition) => ({
+        id: definition.id,
+        displayName: definition.displayName,
+        capabilities: definition.capabilities
+      }))
+    };
+  }
+
   async createJob(input: {
     userId: string;
     files: Express.Multer.File[];
@@ -195,6 +207,7 @@ export class ScannerService implements OnModuleInit {
     if (this.providerCapacityExhausted()) {
       throw new ServiceUnavailableException('Scanner monthly capacity has been reached');
     }
+    const enginePlan = this.newJobEnginePlan(input.requestedEngineIds, input.engineOptions);
     const maxBytes = this.number('SCANNER_MAX_UPLOAD_BYTES', 25 * 1024 * 1024);
     const files = this.sortUploadedFiles(input.files || []);
     if (files.length === 0 || files.some((file) => !file.path)) {
@@ -294,7 +307,7 @@ export class ScannerService implements OnModuleInit {
         inputs: storedInputs,
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
-        enginePlan: this.newJobEnginePlan(input.requestedEngineIds, input.engineOptions),
+        enginePlan,
         pages: Array.from({ length: pageCount }, (_value, index) =>
           withScannerHomrRun({
             pageNumber: index + 1,
@@ -3741,10 +3754,14 @@ export class ScannerService implements OnModuleInit {
         throw new BadRequestException('Requested scanner engine is not available for new jobs');
       }
     }
-    if (requestedEngineIds.length > 0) {
+    if (requestedEngineIds.length !== 2 || new Set(requestedEngineIds).size !== 2) {
+      throw new BadRequestException('Select exactly two different Scanner providers');
+    }
+    try {
+      return scannerEnginePlan(requestedEngineIds, requestedEngineIds[0], {}, engineOptions);
+    } catch {
       throw new BadRequestException('Requested scanner engine is not available for new jobs');
     }
-    return scannerDefaultEnginePlan(this.bool('SCANNER_TRANSCODA_ENABLED', false));
   }
 
   private enginePlanForJob(job: ScannerJobDocument) {

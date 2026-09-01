@@ -76,10 +76,9 @@ services:
       SCANNER_EXPECTED_PROVIDER_REVISION: ${SCANNER_EXPECTED_PROVIDER_REVISION:-ots-homr-modal-v2}
       SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT: ${SCANNER_EXPECTED_PROVIDER_SOURCE_COMMIT:-}
       SCANNER_EXPECTED_EXECUTION_PROVIDER: ${SCANNER_EXPECTED_EXECUTION_PROVIDER:-CUDAExecutionProvider}
-      # OTS-HOMR is an explicit experimental request only. The worker obtains
-      # the provider credentials from `.env`; the API receives only this gate.
+      # OTS-HOMR is a selectable peer provider. The worker obtains its provider
+      # credentials from `.env`; the API receives only the availability gate.
       SCANNER_OTS_HOMR_ENABLED: ${SCANNER_OTS_HOMR_ENABLED:-false}
-      SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT: ${SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT:-false}
       SCANNER_OTS_HOMR_PROVIDER_URL: ""
       SCANNER_OTS_HOMR_PROVIDER_TOKEN: ""
       SCANNER_OTS_HOMR_MODAL_TOKEN_ID: ""

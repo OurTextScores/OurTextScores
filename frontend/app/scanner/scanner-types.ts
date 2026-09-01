@@ -97,6 +97,18 @@ export interface ScannerJob {
   resultExpiresAt: string;
 }
 
+export interface ScannerProviderOption {
+  id: string;
+  displayName: string;
+  capabilities: {
+    displayName: string;
+    outputArtifactKinds: string[];
+    supportsSpotReview: boolean;
+    supportsMeasureGeometry: boolean;
+    unsupportedSemanticClasses: string[];
+  };
+}
+
 export const activeScannerStatuses: ScannerStatus[] = [
   "queued",
   "preparing",

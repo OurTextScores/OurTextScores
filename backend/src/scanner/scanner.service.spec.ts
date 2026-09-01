@@ -117,7 +117,8 @@ describe('ScannerService', () => {
 
       const result = await service.createJob({
         userId: 'user-1',
-        files: [multerFile(pageTenPath, 'page-10.png'), multerFile(pageTwoPath, 'page-2.png')]
+        files: [multerFile(pageTenPath, 'page-10.png'), multerFile(pageTwoPath, 'page-2.png')],
+        requestedEngineIds: ['homr', 'transcoda']
       });
 
       expect(result).toMatchObject({
@@ -129,7 +130,7 @@ describe('ScannerService', () => {
           inputContentType: 'multipart/mixed',
           pageCount: 2,
           enginePlan: expect.objectContaining({
-            engineIds: ['homr'],
+            engineIds: ['homr', 'transcoda'],
             primaryEngineId: 'homr'
           }),
           inputs: [
@@ -184,7 +185,8 @@ describe('ScannerService', () => {
               originalname: 'page.png',
               size: image.length
             } as Express.Multer.File
-          ]
+          ],
+          requestedEngineIds: ['homr', 'transcoda']
         })
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(storage.putRawObject).not.toHaveBeenCalled();

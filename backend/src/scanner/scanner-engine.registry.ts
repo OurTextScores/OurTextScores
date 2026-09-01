@@ -52,10 +52,6 @@ export interface ScannerEngineDefinition {
   adapter: ScannerPageProvider;
   readable: boolean;
   enabledForNewJobs: () => boolean;
-  /** May be requested explicitly, even when omitted from the ordinary default plan. */
-  eligibleForNewJobs?: () => boolean;
-  /** Ordinary jobs include this engine without an explicit advanced selection. */
-  includedByDefault?: () => boolean;
   budgetExhaustedConfigKey: string;
   providerKindConfigKey: string;
   timeoutConfigKey: string;
@@ -167,19 +163,15 @@ export class ScannerEngineRegistry {
     if (otsHomr) {
       this.register({
         id: 'ots-homr',
-        displayName: 'OTS-HOMR (experimental)',
+        displayName: 'OTS-HOMR',
         adapter: otsHomr,
         readable: true,
-        enabledForNewJobs: () => false,
-        eligibleForNewJobs: () => this.bool('SCANNER_OTS_HOMR_ENABLED', false),
-        includedByDefault: () =>
-          this.bool('SCANNER_OTS_HOMR_ENABLED', false) &&
-          this.bool('SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT', false),
+        enabledForNewJobs: () => this.bool('SCANNER_OTS_HOMR_ENABLED', false),
         budgetExhaustedConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED',
         providerKindConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_KIND',
         timeoutConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS',
         capabilities: {
-          displayName: 'OTS-HOMR (experimental)',
+          displayName: 'OTS-HOMR',
           outputArtifactKinds: ['musicxml', 'pdf'],
           supportsSpotReview: false,
           supportsMeasureGeometry: false,
@@ -272,37 +264,34 @@ export class ScannerEngineRegistry {
     return [...this.definitions.values()].filter((definition) => definition.enabledForNewJobs());
   }
 
+  /** Safe metadata for the two provider selectors; never includes connection details. */
+  selectableDefinitions(): Array<
+    Pick<ScannerEngineDefinition, 'id' | 'displayName' | 'capabilities'>
+  > {
+    return this.enabledDefinitions().map(({ id, displayName, capabilities }) => ({
+      id,
+      displayName,
+      capabilities
+    }));
+  }
+
   allDefinitions(): ScannerEngineDefinition[] {
     return [...this.definitions.values()];
   }
 
-  newJobPlan(requestedEngineIds: ScannerEngineId[] = [], engineOptions = {}): ScannerEnginePlan {
-    const defaults = this.allDefinitions().filter((definition) =>
-      (definition.includedByDefault || definition.enabledForNewJobs)()
-    );
+  newJobPlan(requestedEngineIds: ScannerEngineId[], engineOptions = {}): ScannerEnginePlan {
     const requested = [...new Set(requestedEngineIds)];
-    if (requested.length !== requestedEngineIds.length) {
-      throw new Error('Requested scanner engine is not available for new jobs');
-    }
+    if (requestedEngineIds.length !== 2 || requested.length !== 2)
+      throw new Error('Exactly two distinct scanner engines are required');
     for (const engineId of requested) {
       const definition = this.get(engineId);
-      const eligible = definition?.eligibleForNewJobs
-        ? definition.eligibleForNewJobs()
-        : definition?.enabledForNewJobs();
-      if (!eligible) throw new Error('Requested scanner engine is not available for new jobs');
+      if (!definition?.enabledForNewJobs())
+        throw new Error('Requested scanner engine is not available for new jobs');
     }
-    const definitions = [
-      ...defaults,
-      ...requested
-        .map((engineId) => this.get(engineId)!)
-        .filter((definition) => !defaults.includes(definition))
-    ];
-    const primary = definitions.some((definition) => definition.id === 'homr')
-      ? 'homr'
-      : definitions[0]?.id;
+    const definitions = requested.map((engineId) => this.get(engineId)!);
     return scannerEnginePlan(
       definitions.map((definition) => definition.id),
-      primary,
+      definitions[0].id,
       Object.fromEntries(definitions.map((definition) => [definition.id, definition.capabilities])),
       engineOptions
     );

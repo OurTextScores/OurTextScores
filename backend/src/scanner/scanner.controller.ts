@@ -32,7 +32,12 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { RequestUser } from '../auth/types/auth-user';
 import { ScannerService } from './scanner.service';
 import { SCANNER_REQUEST_OVERHEAD_BYTES, SCANNER_UPLOAD_DIRECTORY } from './scanner.constants';
-import { isScannerOtsHomrEngineOptions, ScannerOtsHomrEngineOptions } from './scanner-dual-engine';
+import {
+  isScannerEngineId,
+  isScannerOtsHomrEngineOptions,
+  ScannerEngineId,
+  ScannerOtsHomrEngineOptions
+} from './scanner-dual-engine';
 
 /** Zoom levels for a review crop; scanner-crop.ts explains why only two. */
 const SCANNER_CROP_LEVELS = { staff: 'staff', context: 'context' } as const;
@@ -56,7 +61,7 @@ function parseEditedMeasures(value: string | undefined):
   }
 }
 
-/** Multipart fields are strings: refuse malformed experimental engine policy before staging a job. */
+/** Multipart fields are strings: refuse malformed engine policy before staging a job. */
 function parseOtsHomrOptions(value: string | undefined): ScannerOtsHomrEngineOptions | undefined {
   if (value === undefined || value === '') return undefined;
   try {
@@ -65,6 +70,23 @@ function parseOtsHomrOptions(value: string | undefined): ScannerOtsHomrEngineOpt
     return parsed;
   } catch {
     throw new BadRequestException('OTS-HOMR options are invalid');
+  }
+}
+
+function parseEngineIds(value: string | undefined): ScannerEngineId[] {
+  try {
+    const parsed = JSON.parse(value || 'null');
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length !== 2 ||
+      new Set(parsed).size !== 2 ||
+      !parsed.every(isScannerEngineId)
+    ) {
+      throw new Error('invalid provider pair');
+    }
+    return parsed;
+  } catch {
+    throw new BadRequestException('Select exactly two different Scanner providers');
   }
 }
 
@@ -119,20 +141,23 @@ export class ScannerController {
     @UploadedFiles() files: Express.Multer.File[],
     @Res({ passthrough: true }) response: Response,
     @Body('detectTitle') detectTitle?: string,
+    @Body('engineIds') engineIds?: string,
     @Body('otsHomr') otsHomr?: string
   ) {
     try {
+      const requestedEngineIds = parseEngineIds(engineIds);
       const otsHomrOptions = parseOtsHomrOptions(otsHomr);
+      if (requestedEngineIds.includes('ots-homr') !== Boolean(otsHomrOptions)) {
+        throw new BadRequestException(
+          'OTS-HOMR options must be supplied exactly when OTS-HOMR is selected'
+        );
+      }
       const job = await this.scanner.createJob({
         userId: user.userId,
         files,
         detectTitle: detectTitle === 'true' || detectTitle === '1',
-        ...(otsHomrOptions
-          ? {
-              requestedEngineIds: ['ots-homr'],
-              engineOptions: { 'ots-homr': otsHomrOptions }
-            }
-          : {})
+        requestedEngineIds,
+        ...(otsHomrOptions ? { engineOptions: { 'ots-homr': otsHomrOptions } } : {})
       });
       response.setHeader('Location', `/api/scanner/jobs/${job.jobId}`);
       return job;
@@ -149,6 +174,11 @@ export class ScannerController {
     @Query('cursor') cursor?: string
   ) {
     return this.scanner.listJobs(user.userId, { limit, cursor });
+  }
+
+  @Get('engines')
+  engines(@CurrentUser() user: RequestUser) {
+    return this.scanner.listNewJobEngines(user.userId);
   }
 
   // Operational aggregates only, and admin-only: section 12.1 keeps admin

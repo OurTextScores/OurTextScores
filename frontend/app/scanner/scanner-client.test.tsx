@@ -58,13 +58,35 @@ const job = (jobId: string) => ({
   resultExpiresAt: new Date().toISOString(),
 });
 
+const providers = ["homr", "transcoda", "ots-homr"].map((id) => ({
+  id,
+  displayName:
+    id === "homr" ? "HOMR" : id === "transcoda" ? "Transcoda" : "OTS-HOMR",
+  capabilities: {
+    displayName: id,
+    outputArtifactKinds: ["musicxml", "pdf"],
+    supportsSpotReview: id === "homr",
+    supportsMeasureGeometry: id === "homr",
+    unsupportedSemanticClasses: [],
+  },
+}));
+
+function selectProviders(first = "homr", second = "transcoda") {
+  fireEvent.change(screen.getByLabelText("Provider 1"), {
+    target: { value: first },
+  });
+  fireEvent.change(screen.getByLabelText("Provider 2"), {
+    target: { value: second },
+  });
+}
+
 describe("ScannerClient", () => {
   beforeEach(() => {
     push.mockClear();
     FakeXhr.last = null;
     (globalThis as any).XMLHttpRequest = FakeXhr;
     global.fetch = jest.fn(
-      async (_url: RequestInfo | URL, init?: RequestInit) => {
+      async (url: RequestInfo | URL, init?: RequestInit) => {
         if (init?.method === "POST") {
           return {
             ok: true,
@@ -86,6 +108,12 @@ describe("ScannerClient", () => {
             }),
           } as Response;
         }
+        if (String(url).includes("/engines")) {
+          return {
+            ok: true,
+            json: async () => ({ items: providers }),
+          } as Response;
+        }
         return { ok: true, json: async () => [] } as Response;
       },
     );
@@ -98,7 +126,12 @@ describe("ScannerClient", () => {
     // The array shape keeps a rolling deploy working when the frontend ships
     // ahead of the backend.
     global.fetch = jest.fn(
-      async () => ({ ok: true, json: async () => body }) as Response,
+      async (url: RequestInfo | URL) =>
+        ({
+          ok: true,
+          json: async () =>
+            String(url).includes("/engines") ? { items: providers } : body,
+        }) as Response,
     );
     render(<ScannerClient />);
     expect(await screen.findByText("listed.pdf")).toBeInTheDocument();
@@ -125,6 +158,27 @@ describe("ScannerClient", () => {
     },
   );
 
+  it("requires two different provider selections before upload", async () => {
+    render(<ScannerClient />);
+    expect(await screen.findAllByRole("option", { name: "OTS-HOMR" })).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: {
+        files: [new File(["score"], "page.png", { type: "image/png" })],
+      },
+    });
+
+    const submit = screen.getByRole("button", { name: "Select pages" });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Provider 1"), {
+      target: { value: "homr" },
+    });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Provider 2"), {
+      target: { value: "transcoda" },
+    });
+    expect(submit).toBeEnabled();
+  });
+
   it("shows and submits multiple images in natural filename order", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
@@ -133,6 +187,7 @@ describe("ScannerClient", () => {
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: { files: [pageTen, pageTwo] },
     });
+    selectProviders();
 
     const order = screen.getByText("Initial page order").parentElement;
     expect(order).not.toBeNull();
@@ -152,17 +207,14 @@ describe("ScannerClient", () => {
     ]);
   });
 
-  it("submits the selected OTS-HOMR policy only when experimental comparison is enabled", async () => {
+  it("submits exactly two providers and OTS-HOMR options when it is selected", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const file = new File(["score"], "page-1.png", { type: "image/png" });
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: { files: [file] },
     });
-    fireEvent.click(screen.getByText("Experimental OTS-HOMR comparison"));
-    fireEvent.click(
-      screen.getByLabelText("Run OTS-HOMR as an additional comparison"),
-    );
+    selectProviders("homr", "ots-homr");
     fireEvent.change(screen.getByLabelText("Text detector"), {
       target: { value: "non-lyric-text" },
     });
@@ -174,6 +226,10 @@ describe("ScannerClient", () => {
       screen.getByRole("button", { name: "Select pages" }).closest("form")!,
     );
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    expect(JSON.parse(String(FakeXhr.last!.body!.get("engineIds")))).toEqual([
+      "homr",
+      "ots-homr",
+    ]);
     expect(JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")))).toEqual({
       textDetector: "non-lyric-text",
       structuredHeads: { mode: "review-only" },
@@ -205,6 +261,7 @@ describe("ScannerClient", () => {
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: { files: [new File(["a"], "page-1.png", { type: "image/png" })] },
     });
+    selectProviders();
     fireEvent.submit(
       screen.getByRole("button", { name: "Select pages" }).closest("form")!,
     );
@@ -231,6 +288,7 @@ describe("ScannerClient", () => {
         ],
       },
     });
+    selectProviders();
     fireEvent.submit(
       screen.getByRole("button", { name: "Select pages" }).closest("form")!,
     );

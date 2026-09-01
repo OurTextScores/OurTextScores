@@ -36,7 +36,9 @@ export default async function ScannerPage() {
           Scanner
         </h1>
         <p className="mt-2 max-w-3xl text-slate-600 dark:text-slate-400">
-          Convert printed sheet music to MusicXML with{" "}
+          Convert printed sheet music to MusicXML by choosing two recognition
+          providers, then compare their readings side by side. Available
+          providers include{" "}
           <a
             href="https://github.com/liebharc/homr"
             target="_blank"
@@ -44,8 +46,7 @@ export default async function ScannerPage() {
             className="text-blue-600 hover:underline dark:text-blue-400"
           >
             HOMR
-          </a>{" "}
-          and{" "}
+          </a>,{" "}
           <a
             href="https://huggingface.co/btrkeks/transcoda-59M-zeroshot-v1"
             target="_blank"
@@ -54,7 +55,7 @@ export default async function ScannerPage() {
           >
             Transcoda
           </a>
-          .
+          , and OTS-HOMR.
         </p>
         <div className="mt-4 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           Scanner output is a draft and may contain significant notation errors.

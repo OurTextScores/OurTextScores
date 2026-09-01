@@ -6,7 +6,7 @@ import type {
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
 
-export const BUILTIN_SCANNER_ENGINE_IDS = ['homr', 'transcoda'] as const;
+export const BUILTIN_SCANNER_ENGINE_IDS = ['homr', 'transcoda', 'ots-homr'] as const;
 /** @deprecated Use BUILTIN_SCANNER_ENGINE_IDS for built-ins or ScannerEngineId for contracts. */
 export const SCANNER_ENGINES = BUILTIN_SCANNER_ENGINE_IDS;
 export type ScannerEngineId = string;
