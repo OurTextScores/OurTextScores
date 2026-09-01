@@ -39,6 +39,9 @@ checkout.
 
 The service must validate the compatible-core and head-vocabulary information
 in the same release's `manifest.json` before it loads the sidecar.
+Verified ONNX graphs are copied from the Modal Volume into `/opt/homr` before
+the supervised inference processes spawn. Do not replace these copies with
+volume-backed symlinks: Modal's spawned child cannot reliably resolve them.
 
 The deployed capabilities response links to this directory at the exact
 OurTextScores source commit, including the corresponding HOMR source archive

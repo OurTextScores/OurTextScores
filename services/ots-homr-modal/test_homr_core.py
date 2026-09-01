@@ -62,6 +62,11 @@ class HomrCoreTest(unittest.TestCase):
                 (target / f"structured_heads_{MODEL_NAME}.onnx").read_bytes(),
                 b"heads.onnx",
             )
+            self.assertFalse((target / f"encoder_{MODEL_NAME}_fp16.onnx").is_symlink())
+            self.assertFalse((target / f"decoder_{MODEL_NAME}_fp16.onnx").is_symlink())
+            self.assertFalse(
+                (target / f"structured_heads_{MODEL_NAME}.onnx").is_symlink()
+            )
             self.assertEqual(os.environ["HOMR_MODEL_NAME"], MODEL_NAME)
 
     def test_routes_each_head_mode_without_unnecessary_core_decode(self):

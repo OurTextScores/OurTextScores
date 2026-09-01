@@ -24,12 +24,13 @@ def install_runtime_artifacts(artifacts: Any, *, homr_root: Path) -> None:
         artifacts.heads: transformer / f"structured_heads_{MODEL_NAME}.onnx",
     }
     for source, target in targets.items():
-        if target.exists():
+        # Modal Volume paths are visible in the web process but symlinks into
+        # that FUSE mount are not reliably resolvable by multiprocessing's
+        # spawned HOMR child. Copy the verified graphs into the ordinary
+        # container filesystem before spawning so every process sees them.
+        if os.path.lexists(target):
             target.unlink()
-        try:
-            target.symlink_to(source)
-        except OSError:
-            shutil.copyfile(source, target)
+        shutil.copyfile(source, target)
     os.environ["HOMR_MODEL_NAME"] = MODEL_NAME
 
 
