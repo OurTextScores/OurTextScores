@@ -4,7 +4,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import PageComparison from "./page-comparison";
 import { ScannerJob } from "../scanner-types";
 
-
 const page: ScannerJob["pages"][number] = {
   pageNumber: 1,
   ordinal: 1,
@@ -181,12 +180,66 @@ describe("PageComparison", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  it("keeps a failed selected provider visible and explains why comparison is unavailable", () => {
+    const failedPage = {
+      ...page,
+      engines: {
+        homr: page.engines!.homr,
+        "ots-homr": {
+          status: "failed" as const,
+          attempts: 2,
+          errorCode: "provider_model_not_ready",
+          errorMessage: "The scanner provider is starting up",
+          hasMusicXml: false,
+          hasPdf: false,
+          hasKern: false,
+        },
+      },
+    };
+    const failedJob = {
+      ...job,
+      enginePlan: {
+        ...job.enginePlan!,
+        engineIds: ["homr", "ots-homr"],
+        fallbackEngineIds: ["ots-homr"],
+        capabilitySnapshots: {
+          homr: job.enginePlan!.capabilitySnapshots.homr,
+          "ots-homr": {
+            displayName: "OTS-HOMR",
+            outputArtifactKinds: ["musicxml", "pdf"],
+            supportsSpotReview: true,
+            supportsMeasureGeometry: false,
+            unsupportedSemanticClasses: [],
+          },
+        },
+      },
+      pages: [failedPage],
+    } as ScannerJob;
+
+    render(
+      <PageComparison jobId="job-1" job={failedJob} page={failedPage} open />,
+    );
+
+    expect(
+      [
+        ...(screen.getByLabelText("Candidate reading") as HTMLSelectElement)
+          .options,
+      ].map((option) => option.textContent),
+    ).toEqual(["HOMR", "OTS-HOMR — failed"]);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "OTS-HOMR failed: The scanner provider is starting up",
+    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("grows the frame to the editor's own height rather than scrolling it", async () => {
     // The rows view does not scroll itself: a scrollable box inside a
     // fixed-height frame gives a reader two scrollbars and the shorter of two
     // viewports. The page's own scrollbar is the point.
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
-    const frame = await screen.findByTitle(/Reconciling difference 1 of page 1/);
+    const frame = await screen.findByTitle(
+      /Reconciling difference 1 of page 1/,
+    );
     expect(frame).not.toHaveStyle({ height: "2400px" });
 
     fireEvent(
@@ -202,7 +255,9 @@ describe("PageComparison", () => {
 
   it("ignores a height from anywhere but this site", async () => {
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
-    const frame = await screen.findByTitle(/Reconciling difference 1 of page 1/);
+    const frame = await screen.findByTitle(
+      /Reconciling difference 1 of page 1/,
+    );
 
     fireEvent(
       window,
@@ -222,7 +277,9 @@ describe("PageComparison", () => {
     // thing the reader came for.
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
 
-    const frame = await screen.findByTitle(/Reconciling difference 1 of page 1/);
+    const frame = await screen.findByTitle(
+      /Reconciling difference 1 of page 1/,
+    );
     const url = new URL(frame.getAttribute("src")!, "http://localhost");
     expect(url.searchParams.get("compareBlock")).toBe("0");
   });
@@ -300,7 +357,9 @@ describe("PageComparison", () => {
         ...readyComparison(),
         status: "refused",
         analysis: { status: "succeeded", blocks: [] },
-        refusalReasons: [{ detail: "Staff 1 boundaries do not prove 4 measure crops" }],
+        refusalReasons: [
+          { detail: "Staff 1 boundaries do not prove 4 measure crops" },
+        ],
         geometry: { status: "refused", blocks: [], refusalReasons: [] },
       }),
     });
@@ -308,7 +367,9 @@ describe("PageComparison", () => {
     // As the comparison's own page renders it.
 
     expect(
-      await screen.findByText("The differences have no verified image evidence."),
+      await screen.findByText(
+        "The differences have no verified image evidence.",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByText("These readings cannot be compared safely."),
@@ -340,7 +401,9 @@ describe("PageComparison", () => {
       await screen.findByText(/Transcoda was regrouped to line up\./),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/2 single-staff parts were read as 1 part on 2 staves\./),
+      screen.getByText(
+        /2 single-staff parts were read as 1 part on 2 staves\./,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -474,7 +537,10 @@ describe("PageComparison", () => {
           refusalReasons: [{ detail: "No verified crop maps block 2" }],
           blocks: [
             ...partial.geometry.blocks,
-            { status: "refused", block: { ...partial.geometry.blocks[0].block, blockIndex: 1 } },
+            {
+              status: "refused",
+              block: { ...partial.geometry.blocks[0].block, blockIndex: 1 },
+            },
           ],
         },
       }),

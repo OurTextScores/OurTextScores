@@ -123,9 +123,7 @@ describe("ScannerJobClient", () => {
     ).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete scan" })).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /Page 2.*Failed/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Page 2.*Failed/i }));
     expect(screen.queryByRole("button", { name: "Retry page" })).toBeNull();
   });
 
@@ -142,7 +140,10 @@ describe("ScannerJobClient", () => {
         engineIds: ["homr", "transcoda"],
         capabilitySnapshots: {
           homr: { displayName: "HOMR", unsupportedSemanticClasses: [] },
-          transcoda: { displayName: "Transcoda", unsupportedSemanticClasses: [] },
+          transcoda: {
+            displayName: "Transcoda",
+            unsupportedSemanticClasses: [],
+          },
         },
       },
       pageCount: 1,
@@ -173,7 +174,9 @@ describe("ScannerJobClient", () => {
     });
 
     const { container } = render(<ScannerJobClient jobId="job-1" />);
-    const left = (await screen.findByLabelText("Left pane")) as HTMLSelectElement;
+    const left = (await screen.findByLabelText(
+      "Left pane",
+    )) as HTMLSelectElement;
     const right = screen.getByLabelText("Right pane") as HTMLSelectElement;
 
     // Every reading is offered in either pane.
@@ -185,7 +188,9 @@ describe("ScannerJobClient", () => {
     // The old fixed view is the starting point, so nothing is lost by default.
     expect(left.value).toBe("scan");
     expect(right.value).toBe("homr");
-    expect(screen.getByAltText("Source preview for page 1")).toBeInTheDocument();
+    expect(
+      screen.getByAltText("Source preview for page 1"),
+    ).toBeInTheDocument();
     const pageCard = screen.getByTestId("scanner-page-card");
     const compareCard = screen.getByTestId("scanner-compare-card");
     const finishedCard = screen.getByTestId("scanner-finished-card");
@@ -218,7 +223,12 @@ describe("ScannerJobClient", () => {
       status: "succeeded",
       pages: [
         partialJob.pages[0],
-        { ...partialJob.pages[1], status: "succeeded", hasMusicXml: true, canRetry: false },
+        {
+          ...partialJob.pages[1],
+          status: "succeeded",
+          hasMusicXml: true,
+          canRetry: false,
+        },
       ],
     } as ScannerJob;
     (globalThis.fetch as jest.Mock).mockResolvedValue({
@@ -268,10 +278,9 @@ describe("ScannerJobClient", () => {
     // Preparation writes its pages in one transaction at the end, so without a
     // number that moves, "working" and "stuck" look identical for two minutes.
     expect(screen.getByText("3 of 8 ready")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Pages prepared" })).toHaveAttribute(
-      "aria-valuenow",
-      "3",
-    );
+    expect(
+      screen.getByRole("progressbar", { name: "Pages prepared" }),
+    ).toHaveAttribute("aria-valuenow", "3");
     // And not the grid that says the scan has begun.
     expect(screen.queryByLabelText("Scan pages")).toBeNull();
     expect(
@@ -373,6 +382,15 @@ describe("ScannerJobClient", () => {
     expect(
       screen.getByRole("button", { name: "Retry HOMR" }),
     ).toBeInTheDocument();
+    expect(
+      [
+        ...(screen.getByLabelText("Left pane") as HTMLSelectElement).options,
+      ].map((option) => option.textContent),
+    ).toEqual(["Scan", "HOMR — Failed", "Transcoda"]);
+    expect(screen.getByTestId("scanner-compare-card")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("HOMR is temporarily unavailable.").length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows the active engine instead of presenting Transcoda time as rendering", async () => {
@@ -782,9 +800,7 @@ describe("ScannerJobClient", () => {
       await screen.findByRole("heading", { name: "Combine pages and review" }),
     ).toBeInTheDocument();
     // Says how much of the work is the reviewer's and how much is the engine's.
-    expect(
-      screen.getByText(/1 of 2 pages reconciled/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 pages reconciled/)).toBeInTheDocument();
     expect(
       screen.getByRole("link", {
         name: "Open the finished score in the Score Editor",
@@ -830,7 +846,12 @@ describe("ScannerJobClient", () => {
       hasZip: true,
       pages: [
         { ...partialJob.pages[0] },
-        { ...partialJob.pages[0], pageNumber: 2, ordinal: 2, status: "running" },
+        {
+          ...partialJob.pages[0],
+          pageNumber: 2,
+          ordinal: 2,
+          status: "running",
+        },
       ],
     };
     globalThis.fetch = jest
@@ -842,7 +863,9 @@ describe("ScannerJobClient", () => {
       await screen.findByRole("heading", { name: "two-pages.pdf" }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Download results so far/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Download results so far/),
+    ).not.toBeInTheDocument();
   });
 
   it("says the archive is partial when the scan did not fully succeed", async () => {
@@ -853,7 +876,9 @@ describe("ScannerJobClient", () => {
     render(<ScannerJobClient jobId="job-1" />);
 
     // `partial` is terminal, so the download is offered — but not as "all".
-    expect(await screen.findByText(/Download results so far/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Download results so far/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
   });
 });

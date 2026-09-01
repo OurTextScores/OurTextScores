@@ -124,13 +124,15 @@ function useEmbeddedCompareHeight(): number | null {
       // Same-origin only: the embed is served from this site, and a height from
       // anywhere else is not this editor talking.
       if (event.origin !== window.location.origin) return;
-      const value = (event.data as { type?: string; height?: number } | null) || null;
-      if (value?.type !== 'ots-compare-height') return;
-      if (typeof value.height !== 'number' || !Number.isFinite(value.height)) return;
+      const value =
+        (event.data as { type?: string; height?: number } | null) || null;
+      if (value?.type !== "ots-compare-height") return;
+      if (typeof value.height !== "number" || !Number.isFinite(value.height))
+        return;
       setHeight(Math.max(480, Math.ceil(value.height)));
     };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, []);
   return height;
 }
@@ -143,9 +145,10 @@ function FullBleed({
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [bleed, setBleed] = useState<{ marginLeft: number; width: number } | null>(
-    null,
-  );
+  const [bleed, setBleed] = useState<{
+    marginLeft: number;
+    width: number;
+  } | null>(null);
 
   useEffect(() => {
     const node = ref.current;
@@ -163,7 +166,9 @@ function FullBleed({
     };
     measure();
     const observer =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(measure);
     observer?.observe(parent);
     observer?.observe(document.documentElement);
     window.addEventListener("resize", measure);
@@ -179,7 +184,9 @@ function FullBleed({
       className={className}
       // Until it has been measured it is an ordinary block, which is the right
       // thing to be wrong about: too narrow never breaks the page's layout.
-      style={bleed ? { marginLeft: bleed.marginLeft, width: bleed.width } : undefined}
+      style={
+        bleed ? { marginLeft: bleed.marginLeft, width: bleed.width } : undefined
+      }
     >
       {children}
     </div>
@@ -211,23 +218,25 @@ export default function PageComparison({
   /** True on the comparison's own page, where there is nothing to expand. */
   open?: boolean;
 }) {
-  const eligibleEngineIds = useMemo(
-    () =>
-      (job.enginePlan?.engineIds || Object.keys(page.engines || {})).filter(
-        (engineId) => {
-          const run = page.engines?.[engineId];
-          return run?.status === "succeeded" && run.hasMusicXml;
-        },
-      ),
+  const plannedEngineIds = useMemo(
+    () => job.enginePlan?.engineIds || Object.keys(page.engines || {}),
     [job.enginePlan?.engineIds, page.engines],
   );
-  const defaultBase = eligibleEngineIds.includes(
+  const eligibleEngineIds = useMemo(
+    () =>
+      plannedEngineIds.filter((engineId) => {
+        const run = page.engines?.[engineId];
+        return run?.status === "succeeded" && run.hasMusicXml;
+      }),
+    [page.engines, plannedEngineIds],
+  );
+  const defaultBase = plannedEngineIds.includes(
     job.enginePlan?.primaryEngineId || "",
   )
     ? String(job.enginePlan?.primaryEngineId)
-    : eligibleEngineIds[0] || "";
+    : plannedEngineIds[0] || "";
   const defaultCandidate =
-    eligibleEngineIds.find((engineId) => engineId !== defaultBase) || "";
+    plannedEngineIds.find((engineId) => engineId !== defaultBase) || "";
 
   const [baseEngine, setBaseEngine] = useState(defaultBase);
   const [candidateEngine, setCandidateEngine] = useState(defaultCandidate);
@@ -242,6 +251,9 @@ export default function PageComparison({
   const [reloadToken, setReloadToken] = useState(0);
   const embeddedHeight = useEmbeddedCompareHeight();
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
+  const canCompareSelected = [baseEngine, candidateEngine].every((engineId) =>
+    eligibleEngineIds.includes(engineId),
+  );
 
   useEffect(() => {
     setBaseEngine(defaultBase);
@@ -256,7 +268,8 @@ export default function PageComparison({
       !open ||
       !baseEngine ||
       !candidateEngine ||
-      baseEngine === candidateEngine
+      baseEngine === candidateEngine ||
+      !canCompareSelected
     )
       return;
     const controller = new AbortController();
@@ -295,9 +308,17 @@ export default function PageComparison({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [base, baseEngine, candidateEngine, open, page.pageNumber, reloadToken]);
+  }, [
+    base,
+    baseEngine,
+    canCompareSelected,
+    candidateEngine,
+    open,
+    page.pageNumber,
+    reloadToken,
+  ]);
 
-  if (eligibleEngineIds.length < 2) return null;
+  if (plannedEngineIds.length < 2) return null;
 
   const engineName = (engineId: string) =>
     job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId;
@@ -307,7 +328,8 @@ export default function PageComparison({
   // scan evidence for where the differences are — a different problem with a
   // different answer, and one this page hid behind the wrong sentence.
   const readingsAligned =
-    comparison?.status === "ready" || comparison?.analysis?.status === "succeeded";
+    comparison?.status === "ready" ||
+    comparison?.analysis?.status === "succeeded";
   const readyBlocks =
     comparison?.geometry?.blocks.filter(
       (entry): entry is ComparisonBlockResult & { status: "ready" } =>
@@ -322,11 +344,13 @@ export default function PageComparison({
     to scroll through to reach the one thing the reader came for. The editor's
     own arrows move from here.
   */
-  const selectedBlock =
-    (selectedBlockIndex === null
+  const selectedBlock = (
+    selectedBlockIndex === null
       ? readyBlocks[0]
-      : readyBlocks.find((entry) => entry.block.blockIndex === selectedBlockIndex)
-    )?.block;
+      : readyBlocks.find(
+          (entry) => entry.block.blockIndex === selectedBlockIndex,
+        )
+  )?.block;
   // The whole-page view needs no crops, so it survives a geometry refusal.
   // Prefer the structural analysis and fall back to whatever the geometry join
   // carried through.
@@ -383,7 +407,6 @@ export default function PageComparison({
       }).toString()}`
     : undefined;
 
-
   const cropUrl =
     comparison && selectedBlock && geometrySignature
       ? `${base}/pages/${page.pageNumber}/comparison/blocks/${selectedBlock.blockIndex}/crop?${new URLSearchParams(
@@ -426,7 +449,9 @@ export default function PageComparison({
             href={`/scanner/${encodeURIComponent(jobId)}/pages/${page.pageNumber}/compare`}
             className="rounded-lg border border-cyan-300 bg-white px-3 py-2 text-sm text-cyan-800 hover:bg-cyan-50 dark:border-cyan-800 dark:bg-slate-900 dark:text-cyan-200"
           >
-            Resolve engine conflicts
+            {eligibleEngineIds.length >= 2
+              ? "Resolve engine conflicts"
+              : "View provider status"}
           </Link>
         )}
       </div>
@@ -442,13 +467,16 @@ export default function PageComparison({
                 onChange={(event) => setBaseEngine(event.target.value)}
                 className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
               >
-                {eligibleEngineIds.map((engineId) => (
+                {plannedEngineIds.map((engineId) => (
                   <option
                     key={engineId}
                     value={engineId}
                     disabled={engineId === candidateEngine}
                   >
                     {engineName(engineId)}
+                    {page.engines?.[engineId]?.status === "succeeded"
+                      ? ""
+                      : ` — ${page.engines?.[engineId]?.status || "no result"}`}
                   </option>
                 ))}
               </select>
@@ -461,18 +489,49 @@ export default function PageComparison({
                 onChange={(event) => setCandidateEngine(event.target.value)}
                 className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
               >
-                {eligibleEngineIds.map((engineId) => (
+                {plannedEngineIds.map((engineId) => (
                   <option
                     key={engineId}
                     value={engineId}
                     disabled={engineId === baseEngine}
                   >
                     {engineName(engineId)}
+                    {page.engines?.[engineId]?.status === "succeeded"
+                      ? ""
+                      : ` — ${page.engines?.[engineId]?.status || "no result"}`}
                   </option>
                 ))}
               </select>
             </label>
           </div>
+
+          {!canCompareSelected && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+            >
+              <p className="font-medium">
+                These providers cannot be compared yet.
+              </p>
+              <ul className="mt-1 list-disc pl-5">
+                {[baseEngine, candidateEngine].map((engineId) => {
+                  const run = page.engines?.[engineId];
+                  if (run?.status === "succeeded" && run.hasMusicXml)
+                    return null;
+                  return (
+                    <li key={`unavailable-${engineId}`}>
+                      {engineName(engineId)} {run?.status || "has no result"}
+                      {run?.errorMessage ? `: ${run.errorMessage}` : "."}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2">
+                Retry the failed provider from the page review, then return here
+                when both readings have MusicXML.
+              </p>
+            </div>
+          )}
 
           {comparison &&
             [comparison.base, comparison.candidate].some(
@@ -508,8 +567,8 @@ export default function PageComparison({
             // otherwise be left to work that out for themselves.
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
               <span className="font-medium">
-                {engineName(comparison.layoutReconciliation.engineId)} was regrouped
-                to line up.
+                {engineName(comparison.layoutReconciliation.engineId)} was
+                regrouped to line up.
               </span>{" "}
               {comparison.layoutReconciliation.note}
             </p>
@@ -559,14 +618,15 @@ export default function PageComparison({
                   Some differences have no verified image evidence.
                 </p>
                 <p className="mt-1">
-                  Showing {readyBlocks.length} of {comparison.geometry.blocks.length}{" "}
-                  differing blocks whose locations can be proven. The remaining
-                  blocks are withheld.
+                  Showing {readyBlocks.length} of{" "}
+                  {comparison.geometry.blocks.length} differing blocks whose
+                  locations can be proven. The remaining blocks are withheld.
                 </p>
               </div>
             )}
           {comparison &&
-            (comparison.geometry?.status === "ready" || readyBlocks.length > 0) && (
+            (comparison.geometry?.status === "ready" ||
+              readyBlocks.length > 0) && (
               <>
                 {readyBlocks.length === 0 ? (
                   <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
@@ -602,7 +662,9 @@ export default function PageComparison({
                       key={embeddedCompareUrl}
                       src={embeddedCompareUrl}
                       title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
-                      style={embeddedHeight ? { height: embeddedHeight } : undefined}
+                      style={
+                        embeddedHeight ? { height: embeddedHeight } : undefined
+                      }
                       // No border: the frame is sized to the height its document reports, and a
                       // border makes the element that much taller than the viewport
                       // inside it — two pixels the document then has to scroll, which
@@ -613,7 +675,6 @@ export default function PageComparison({
                 )}
               </>
             )}
-
 
           {/*
             Nothing could be placed on the scan, so there is no difference to
@@ -641,7 +702,9 @@ export default function PageComparison({
                     key={embeddedCompareUrl}
                     src={embeddedCompareUrl}
                     title={`Reviewing page ${page.pageNumber}`}
-                    style={embeddedHeight ? { height: embeddedHeight } : undefined}
+                    style={
+                      embeddedHeight ? { height: embeddedHeight } : undefined
+                    }
                     // No border; see the frame above.
                     className="block min-h-[30rem] w-full rounded-lg bg-white"
                   />

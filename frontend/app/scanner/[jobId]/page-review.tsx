@@ -31,7 +31,12 @@ interface Review {
   contentSignature: string;
   spots: Spot[];
   remainingFloor: number | null;
-  suitability: { symbols: number; spots: number; askableRatio: number; unsuitable: boolean };
+  suitability: {
+    symbols: number;
+    spots: number;
+    askableRatio: number;
+    unsuitable: boolean;
+  };
 }
 
 const HEAD_LABELS: Record<string, string> = {
@@ -132,7 +137,8 @@ export function describeDuration(kern: string): string {
   if (!match) return kern;
   const [, digits, grace, dots] = match;
   const base = digits === "" ? 4 : Number(digits);
-  const dotted = dots.length === 1 ? "dotted " : dots.length > 1 ? "double-dotted " : "";
+  const dotted =
+    dots.length === 1 ? "dotted " : dots.length > 1 ? "double-dotted " : "";
   const gracePrefix = grace ? "grace " : "";
 
   // kern 0 is the whole-measure rest, not a note value.
@@ -218,19 +224,28 @@ export function mergeOptions(options: Option[]): Option[] {
     byLabel.set(option.label, {
       label: option.label,
       confidence: existing.confidence + option.confidence,
-      value: existing.confidence >= option.confidence ? existing.value : option.value,
-      recognised: existing.recognised || option.recognised
+      value:
+        existing.confidence >= option.confidence
+          ? existing.value
+          : option.value,
+      recognised: existing.recognised || option.recognised,
     });
   }
-  return [...byLabel.values()].sort((left, right) => right.confidence - left.confidence);
+  return [...byLabel.values()].sort(
+    (left, right) => right.confidence - left.confidence,
+  );
 }
 
 export default function PageReview({
   jobId,
   pageNumber,
+  engineId,
+  engineLabel,
 }: {
   jobId: string;
   pageNumber: number;
+  engineId?: string;
+  engineLabel?: string;
 }) {
   const [review, setReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
@@ -243,7 +258,10 @@ export default function PageReview({
     let cancelled = false;
     setLoading(true);
     setPosition(0);
-    fetch(`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review`)
+    const query = engineId
+      ? `?${new URLSearchParams({ engineId }).toString()}`
+      : "";
+    fetch(`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review${query}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!cancelled) {
@@ -257,7 +275,7 @@ export default function PageReview({
     return () => {
       cancelled = true;
     };
-  }, [jobId, pageNumber]);
+  }, [engineId, jobId, pageNumber]);
 
   // Reset the zoom when moving on: the previous spot's context says nothing
   // about the next one.
@@ -296,7 +314,9 @@ export default function PageReview({
         if (!response.ok) {
           if (response.status === 409) {
             const refreshed = await fetch(
-              `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review`,
+              `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review?${new URLSearchParams(
+                { engineId: review?.engineId || engineId || "" },
+              ).toString()}`,
             );
             if (refreshed.ok) {
               setReview(await refreshed.json());
@@ -308,9 +328,12 @@ export default function PageReview({
           throw new Error("save failed");
         }
         const result = await response.json();
-        if (!result?.contentSignature) throw new Error("save response was incomplete");
+        if (!result?.contentSignature)
+          throw new Error("save response was incomplete");
         setReview((current) =>
-          current ? { ...current, contentSignature: result.contentSignature } : current,
+          current
+            ? { ...current, contentSignature: result.contentSignature }
+            : current,
         );
         advance();
       } catch (cause) {
@@ -325,12 +348,21 @@ export default function PageReview({
         setSaving(false);
       }
     },
-    [advance, jobId, pageNumber, review?.contentSignature, review?.engineId],
+    [
+      advance,
+      engineId,
+      jobId,
+      pageNumber,
+      review?.contentSignature,
+      review?.engineId,
+    ],
   );
 
   if (loading) {
     return (
-      <p className="text-xs text-slate-500 dark:text-slate-400">Loading review…</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Loading review…
+      </p>
     );
   }
   if (!review || review.spots.length === 0) {
@@ -348,7 +380,7 @@ export default function PageReview({
     <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Check the uncertain spots
+          Check {engineLabel ? `${engineLabel}'s` : "the"} uncertain spots
         </h3>
         {spot && (
           <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -361,10 +393,11 @@ export default function PageReview({
         // Say so rather than presenting hundreds of questions as though the page
         // were nearly right. Never a gate: the queue is still below.
         <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          The scanner was unsure about {percent(review.suitability.askableRatio)} of this
-          page, so it is probably past what automatic recognition can do — handwritten
-          or heavily marked scores usually are. You can still work through the list,
-          but the Score Editor may be faster.
+          The scanner was unsure about{" "}
+          {percent(review.suitability.askableRatio)} of this page, so it is
+          probably past what automatic recognition can do — handwritten or
+          heavily marked scores usually are. You can still work through the
+          list, but the Score Editor may be faster.
         </p>
       )}
 
@@ -450,7 +483,9 @@ export default function PageReview({
               onClick={() => setLevel(level === "staff" ? "context" : "staff")}
               className="rounded border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              {level === "staff" ? "Show the staves around it" : "Back to this staff"}
+              {level === "staff"
+                ? "Show the staves around it"
+                : "Back to this staff"}
             </button>
           </div>
 
@@ -482,7 +517,9 @@ export default function PageReview({
                   onClick={() => void choose(spot.id, option.value)}
                   className="flex w-full items-center gap-2 rounded border border-slate-200 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/40"
                 >
-                  <span className="text-slate-900 dark:text-slate-100">{option.label}</span>
+                  <span className="text-slate-900 dark:text-slate-100">
+                    {option.label}
+                  </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {percent(option.confidence)}
                     {option.recognised ? " — what the scanner chose" : ""}
@@ -492,7 +529,9 @@ export default function PageReview({
             ))}
           </ul>
           {error && (
-            <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">{error}</p>
+            <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+              {error}
+            </p>
           )}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">

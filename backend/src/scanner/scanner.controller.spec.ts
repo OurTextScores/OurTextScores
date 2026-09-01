@@ -4,13 +4,14 @@ import { ScannerController } from './scanner.controller';
 describe('ScannerController provider selection', () => {
   const user = { userId: 'user-1' } as any;
   const response = { setHeader: jest.fn() } as any;
-  let scanner: { createJob: jest.Mock; listNewJobEngines: jest.Mock };
+  let scanner: { createJob: jest.Mock; listNewJobEngines: jest.Mock; pageReview: jest.Mock };
   let controller: ScannerController;
 
   beforeEach(() => {
     scanner = {
       createJob: jest.fn().mockResolvedValue({ jobId: 'job-1' }),
-      listNewJobEngines: jest.fn().mockReturnValue({ items: [] })
+      listNewJobEngines: jest.fn().mockReturnValue({ items: [] }),
+      pageReview: jest.fn().mockReturnValue({ engineId: 'ots-homr' })
     };
     controller = new ScannerController(scanner as any);
     response.setHeader.mockClear();
@@ -68,5 +69,10 @@ describe('ScannerController provider selection', () => {
   it('exposes only the service-provided safe selector metadata', () => {
     controller.engines(user);
     expect(scanner.listNewJobEngines).toHaveBeenCalledWith('user-1');
+  });
+
+  it('requests review for the selected engine instead of silently choosing the first', () => {
+    controller.review(user, 'job-1', 3, 'ots-homr');
+    expect(scanner.pageReview).toHaveBeenCalledWith('user-1', 'job-1', 3, 'ots-homr');
   });
 });

@@ -280,9 +280,10 @@ export class ScannerController {
   review(
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
-    @Param('pageNumber', ParseIntPipe) pageNumber: number
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Query('engineId') engineId?: string
   ) {
-    return this.scanner.pageReview(user.userId, jobId, pageNumber);
+    return this.scanner.pageReview(user.userId, jobId, pageNumber, engineId);
   }
 
   @Get(':jobId/pages/:pageNumber/comparison')

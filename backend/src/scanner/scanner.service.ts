@@ -859,7 +859,12 @@ export class ScannerService implements OnModuleInit {
    * Selection runs here rather than being stored, so the thresholds can be
    * retuned against real reviewer behaviour without re-scanning the page.
    */
-  async pageReview(userId: string, jobId: string, pageNumber: number): Promise<any> {
+  async pageReview(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId?: string
+  ): Promise<any> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
@@ -868,7 +873,7 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Spot review is unavailable after engine reconciliation');
     }
 
-    const reviewEngine = this.reviewEngineForPage(job, page);
+    const reviewEngine = this.reviewEngineForPage(job, page, engineId);
     const staves = reviewEngine.run.review?.staves || [];
     const thresholds = this.reviewThresholds();
     const spots = selectSpots(staves, thresholds);
@@ -3313,6 +3318,7 @@ export class ScannerService implements OnModuleInit {
       hasMusicXml: Boolean(run.artifacts.musicXml),
       hasPdf: Boolean(run.artifacts.pdf),
       hasKern: Boolean(run.artifacts.kern),
+      hasReview: Boolean(run.review?.staves?.length),
       artifactKinds: Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
         locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
       )

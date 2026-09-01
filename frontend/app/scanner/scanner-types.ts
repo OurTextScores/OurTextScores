@@ -19,6 +19,7 @@ export interface ScannerEngineRun {
   hasMusicXml: boolean;
   hasPdf: boolean;
   hasKern: boolean;
+  hasReview?: boolean;
   artifactKinds?: string[];
   completeness?: "complete" | "possibly-incomplete" | "incomplete" | "unknown";
   generation?: {

@@ -21,6 +21,12 @@ class FakeEngine:
 
     def transcribe(self, page, content_type, detect_title, detector, heads):
         self.calls.append((page, content_type, detect_title, detector, heads))
+        return {
+            "musicxml": b'<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>',
+            "review": {"staves": []},
+        }
+
+    def regenerate(self, staffs, title=""):
         return b'<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>'
 
     def identity(self, detector, heads):
@@ -111,6 +117,7 @@ class ProviderTest(unittest.TestCase):
             body = response.json()
             self.assertEqual(body["inputSha256"], hashlib.sha256(page).hexdigest())
             self.assertEqual(body["engine"]["textDetector"]["id"], "lyrics")
+            self.assertEqual(body["review"], {"staves": []})
             self.assertEqual(engine.calls[0][2:], (True, "lyrics", "review-only"))
             replay = client.post(
                 "/v1/scan-page",
@@ -124,6 +131,18 @@ class ProviderTest(unittest.TestCase):
             )
             self.assertEqual(replay.json()["requestId"], body["requestId"])
             self.assertEqual(len(engine.calls), 1)
+
+            regenerated = client.post(
+                "/v1/regenerate",
+                headers={"Authorization": "Bearer secret"},
+                json={
+                    "staffs": [
+                        [["note_4", "C4", "_", "_", "_", "upper"]]
+                    ]
+                },
+            )
+            self.assertEqual(regenerated.status_code, 200, regenerated.text)
+            self.assertIn("musicXmlBase64", regenerated.json()["result"])
 
             changed_policy = client.post(
                 "/v1/scan-page",

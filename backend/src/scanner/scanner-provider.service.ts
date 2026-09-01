@@ -303,7 +303,7 @@ export class ScannerProviderService implements ScannerPageProvider {
  * are coerced, unknown keys are dropped, and a failure yields no review rather
  * than a partially-trusted one.
  */
-function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
+export function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined {
   const staves = raw?.staves;
   if (!Array.isArray(staves)) return undefined;
   const clean: ReviewStaff[] = [];

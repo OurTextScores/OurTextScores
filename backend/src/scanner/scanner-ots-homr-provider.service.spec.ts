@@ -56,6 +56,18 @@ describe('ScannerOtsHomrProviderService', () => {
       executionProvider: 'CUDAExecutionProvider'
     },
     result: { musicXmlBase64: musicXml.toString('base64'), musicXmlSha256: sha256(musicXml) },
+    review: {
+      staves: [
+        {
+          index: 0,
+          partIndex: 0,
+          systemIndex: 0,
+          region: [0, 0, 100, 20],
+          tokens: [['note_4', 'C4', '_', '_', '_', 'upper']],
+          symbols: []
+        }
+      ]
+    },
     timing: { inferenceMs: 42 },
     ...overrides
   });
@@ -89,7 +101,8 @@ describe('ScannerOtsHomrProviderService', () => {
         modelArtifact: 'jhlusko/OTS-homr',
         modelArtifactSha256: 'a'.repeat(64),
         executionProvider: 'CUDAExecutionProvider'
-      }
+      },
+      review: { staves: [expect.objectContaining({ index: 0 })] }
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -127,5 +140,22 @@ describe('ScannerOtsHomrProviderService', () => {
         engineOptions: { textDetector: 'none', structuredHeads: { mode: 'off' } }
       })
     );
+  });
+
+  it('regenerates reviewed OTS-HOMR tokens through its own provider', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ result: { musicXmlBase64: musicXml.toString('base64') } }), {
+          status: 200
+        })
+      );
+    const staffs = [[['note_4', 'C4', '_', '_', '_', 'upper']]];
+
+    await expect(
+      new ScannerOtsHomrProviderService(config).regenerateReview(staffs)
+    ).resolves.toEqual(musicXml);
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://ots-homr.example/v1/regenerate');
+    expect(fetchSpy.mock.calls[0][1]?.body).toBe(JSON.stringify({ staffs }));
   });
 });

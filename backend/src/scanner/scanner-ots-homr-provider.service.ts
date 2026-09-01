@@ -14,6 +14,7 @@ import {
   ScannerProviderHttpService
 } from './scanner-provider-http.service';
 import { isScannerOtsHomrEngineOptions, ScannerOtsHomrEngineOptions } from './scanner-dual-engine';
+import { normaliseReview } from './scanner-provider.service';
 
 /** Strict adapter for the private rareNum OTS-HOMR provider. */
 @Injectable()
@@ -27,6 +28,23 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
 
   get expectedRevision(): string {
     return this.text('SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION');
+  }
+
+  async regenerateReview(staffs: string[][][]): Promise<Buffer> {
+    const result: any = await this.http.postJson({
+      connection: { ...this.connection(), timeoutMs: 60_000 },
+      path: '/v1/regenerate',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ staffs }),
+      nonOkError: {
+        message: 'The corrected OTS-HOMR score could not be rebuilt',
+        code: 'provider_generation_failed',
+        retryable: false
+      }
+    });
+    const musicXml = this.decode(result?.result?.musicXmlBase64, 'MusicXML');
+    assertValidMusicXml(musicXml);
+    return musicXml;
   }
 
   createIdempotencyKey(input: {
@@ -122,6 +140,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       engine: this.engine,
       musicXml,
       musicXmlSha256,
+      review: normaliseReview(envelope?.review),
       providerRevision: String(engine.serviceRevision),
       modelRevision: String(core.revision),
       requestId: typeof envelope.requestId === 'string' ? envelope.requestId : undefined,

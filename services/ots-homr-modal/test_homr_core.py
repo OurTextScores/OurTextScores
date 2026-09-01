@@ -25,7 +25,10 @@ class FakeHomrEngine:
     def transcribe(self, page, suffix, detect_title):
         self.calls.append((page, suffix, detect_title))
         kind = b"heads" if self.options["structured_heads_path"] else b"plain"
-        return {"musicxml": kind}
+        return {"musicxml": kind, "review": {"staves": [{"index": 0}]}}
+
+    def regenerate(self, staffs, title=""):
+        return {"ok": True, "musicxml": b"regenerated"}
 
     def shutdown(self):
         self.ready = False
@@ -82,21 +85,22 @@ class HomrCoreTest(unittest.TestCase):
             self.assertTrue(core.is_ready())
 
             self.assertEqual(
-                core.transcribe(b"off", "image/png", False, "off"), b"plain"
+                core.transcribe(b"off", "image/png", False, "off")["musicxml"], b"plain"
             )
             self.assertEqual(
-                core.transcribe(b"review", "image/jpeg", True, "review-only"), b"plain"
+                core.transcribe(b"review", "image/jpeg", True, "review-only")["musicxml"], b"plain"
             )
             self.assertEqual(
                 core.transcribe(
                     b"experimental", "image/png", False, "experimental-output"
-                ),
+                )["musicxml"],
                 b"heads",
             )
             self.assertEqual([call[0] for call in plain.calls], [b"off", b"review"])
             self.assertEqual(
                 [call[0] for call in heads.calls], [b"review", b"experimental"]
             )
+            self.assertEqual(core.regenerate([[['note_4', 'C4', '_', '_', '_', 'upper']]]), b"regenerated")
 
 
 if __name__ == "__main__":

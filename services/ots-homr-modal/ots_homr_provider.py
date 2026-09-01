@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from homr_review import prune_staves
 
 SCHEMA_VERSION = "ots-ots-homr-provider.v1"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
@@ -49,7 +50,8 @@ class Engine(Protocol):
         detect_title: bool,
         text_detector: str,
         head_mode: str,
-    ) -> bytes: ...
+    ) -> dict[str, Any]: ...
+    def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes: ...
     def identity(self, text_detector: str, head_mode: str) -> dict[str, Any]: ...
 
 
@@ -230,13 +232,22 @@ def create_provider_app(
                 )
             app.state.result_cache.move_to_end(idempotency_key)
             return cached["response"]
+        # A Modal container can accept its first request while lifespan warm-up
+        # is still loading the graphs. Wait behind the engine's warm-up lock;
+        # returning 503 immediately makes the caller spend every retry before a
+        # cold container could possibly become ready.
+        if not engine.is_ready():
+            try:
+                await asyncio.to_thread(engine.warm_up)
+            except Exception:
+                logger.exception("OTS-HOMR request warm-up failed")
         if not engine.is_ready():
             return _error(
                 request_id, "model_not_ready", "The inference worker is not ready", 503
             )
         started = time.monotonic()
         try:
-            xml = await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 engine.transcribe,
                 content,
                 page.content_type,
@@ -244,6 +255,7 @@ def create_provider_app(
                 textDetector,
                 structuredHeadsMode,
             )
+            xml = result["musicxml"]
         except Exception as error:
             code = str(getattr(error, "code", "inference_failed"))
             if code not in ERROR_STATUS:
@@ -277,6 +289,11 @@ def create_provider_app(
                 "musicXmlBase64": base64.b64encode(xml).decode(),
                 "musicXmlSha256": hashlib.sha256(xml).hexdigest(),
             },
+            "review": {
+                "staves": prune_staves(
+                    ((result.get("review") or {}).get("staves") or [])
+                )
+            },
             "timing": {"inferenceMs": int((time.monotonic() - started) * 1000)},
         }
         app.state.result_cache[idempotency_key] = {
@@ -287,5 +304,49 @@ def create_provider_app(
         while len(app.state.result_cache) > 16:
             app.state.result_cache.popitem(last=False)
         return response
+
+    @app.post("/v1/regenerate")
+    async def regenerate(
+        body: dict[str, Any],
+        authorization: str | None = Header(None, alias="Authorization"),
+    ) -> Any:
+        auth(authorization)
+        request_id = uuid.uuid4().hex
+        staffs = body.get("staffs")
+        if not isinstance(staffs, list) or not staffs:
+            return _error(request_id, "invalid_option", "staffs is required")
+        for staff in staffs:
+            if not isinstance(staff, list):
+                return _error(request_id, "invalid_option", "Each staff must be a list")
+            for token in staff:
+                if (
+                    not isinstance(token, list)
+                    or len(token) != 6
+                    or not all(isinstance(field, str) for field in token)
+                ):
+                    return _error(
+                        request_id,
+                        "invalid_option",
+                        "Each symbol must have six string fields",
+                    )
+        try:
+            xml = await asyncio.to_thread(
+                engine.regenerate, staffs, str(body.get("title", ""))
+            )
+        except Exception:
+            logger.exception("OTS-HOMR review regeneration failed")
+            return _error(
+                request_id,
+                "generation_failed",
+                "The edited score could not be rebuilt",
+            )
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "requestId": request_id,
+            "result": {
+                "musicXmlBase64": base64.b64encode(xml).decode(),
+                "musicXmlSha256": hashlib.sha256(xml).hexdigest(),
+            },
+        }
 
     return app

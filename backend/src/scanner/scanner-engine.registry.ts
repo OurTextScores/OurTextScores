@@ -173,7 +173,7 @@ export class ScannerEngineRegistry {
         capabilities: {
           displayName: 'OTS-HOMR',
           outputArtifactKinds: ['musicxml', 'pdf'],
-          supportsSpotReview: false,
+          supportsSpotReview: true,
           supportsMeasureGeometry: false,
           unsupportedSemanticClasses: ['dynamics-from-additional-heads']
         },

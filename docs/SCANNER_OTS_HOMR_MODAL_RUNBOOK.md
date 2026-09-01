@@ -176,12 +176,17 @@ The provider must return `ots-ots-homr-provider.v1` and a response shaped like:
     "executionProvider": "CUDAExecutionProvider"
   },
   "result": { "musicXmlBase64": "...", "musicXmlSha256": "..." },
+  "review": { "staves": [] },
   "timing": { "inferenceMs": 0 }
 }
 ```
 
 Required routes are `/healthz`, `/readyz`, `/v1/capabilities`, and
-`/v1/scan-page`, all behind Modal proxy auth. `/readyz` must remain false until
+`/v1/scan-page`, plus `/v1/regenerate` for reviewed token corrections, all
+behind Modal proxy auth. The first scan request must wait for the same guarded
+warm-up as `/readyz`; returning `model_not_ready` while a cold-start warm-up is
+still in progress exhausts the Scanner worker's retries before the model can
+become ready. `/readyz` must remain false until
 all selected model components have been downloaded at their exact revision,
 their SHA-256 values match, the compatibility manifest matches the rareNum
 core, and a genuine GPU warm-up has succeeded. Set Hugging Face offline mode
@@ -408,6 +413,8 @@ response that:
 - `enginePlan.engineOptions["ots-homr"]` records the selected policy;
 - `pages[].engines["ots-homr"]` has independent status, provenance, and
   artifacts;
+- both successful review-capable engines have their own uncertainty section;
+- a failed selected provider remains visible with its error and retry action;
 - a failure in OTS-HOMR does not discard a successful HOMR result.
 
 ---

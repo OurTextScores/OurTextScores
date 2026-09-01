@@ -179,9 +179,7 @@ export default function ScannerJobClient({
     if (readOnly && page.pageNumber === 1) {
       return PUBLIC_SCANNER_SOURCE_PREVIEW_URL;
     }
-    return page.hasThumbnail
-      ? artifactUrl("thumbnail", page.pageNumber)
-      : null;
+    return page.hasThumbnail ? artifactUrl("thumbnail", page.pageNumber) : null;
   };
 
   const editorUrl = (pageNumber?: number, engineId?: string) => {
@@ -347,7 +345,9 @@ export default function ScannerJobClient({
   const primaryEngineId = job.enginePlan?.primaryEngineId || engineIds[0];
   // What the job-level downloads are actually built from: each page's effective
   // MusicXML, which is the reconciled score wherever one exists.
-  const includedPageCount = job.pages.filter((page) => page.included !== false).length;
+  const includedPageCount = job.pages.filter(
+    (page) => page.included !== false,
+  ).length;
   // Terminal, in the sense that no page is still going to change. Anything
   // offered before this describes a scan that is not finished.
   const jobFinished = ["succeeded", "partial", "failed", "cancelled"].includes(
@@ -358,16 +358,20 @@ export default function ScannerJobClient({
     .filter((page) => page.included !== false)
     .sort((left, right) => left.ordinal - right.ordinal);
   const selectedOrdinal =
-    orderedIncluded.findIndex((page) => page.pageNumber === selected?.pageNumber) + 1;
+    orderedIncluded.findIndex(
+      (page) => page.pageNumber === selected?.pageNumber,
+    ) + 1;
   const nextIncludedPage = orderedIncluded.find(
     (page) => page.ordinal > (selected?.ordinal ?? 0),
   )?.pageNumber;
   // Once the work has been combined the reader has been through it, so going
   // back to an earlier page should not hide the button that rebuilds it.
-  const pagesRemain = nextIncludedPage !== undefined && !job.hasCombinedMusicXml;
+  const pagesRemain =
+    nextIncludedPage !== undefined && !job.hasCombinedMusicXml;
   const decidedPages = job.pages.filter((page) => page.hasMergedScore).length;
   const primaryEngineName =
-    job.enginePlan?.capabilitySnapshots[primaryEngineId]?.displayName || primaryEngineId;
+    job.enginePlan?.capabilitySnapshots[primaryEngineId]?.displayName ||
+    primaryEngineId;
   const effectiveEngineId = selectedRawEngineId(job, selected);
   const primaryRun = primaryEngineId
     ? selected?.engines?.[primaryEngineId]
@@ -391,9 +395,18 @@ export default function ScannerJobClient({
     ? job.enginePlan?.capabilitySnapshots[effectiveEngineId]
         ?.unsupportedSemanticClasses || []
     : [];
-  // Every engine that produced a reading can be put in either pane.
-  const previewEngineIds = engineIds.filter(
-    (engineId) => selected?.engines?.[engineId]?.status === "succeeded",
+  const failedEngineIds = engineIds.filter(
+    (engineId) => selected?.engines?.[engineId]?.status === "failed",
+  );
+  const failedRuns = failedEngineIds.map((engineId) => ({
+    engineId,
+    run: selected?.engines?.[engineId],
+  }));
+  // Every planned engine remains visible in either pane. A failed provider is
+  // an outcome the user needs to see, not a reason to silently remove the
+  // provider they selected.
+  const previewEngineIds = engineIds.filter((engineId) =>
+    Boolean(selected?.engines?.[engineId]),
   );
   // Either engine's rendering of this page, or the scan itself.
   const previewChoices = [
@@ -402,7 +415,12 @@ export default function ScannerJobClient({
       ? previewEngineIds.map((engineId) => ({
           key: engineId,
           kind: "engine" as const,
-          label: engineLabel(job, engineId),
+          label: `${engineLabel(job, engineId)}${
+            selected?.engines?.[engineId]?.status === "succeeded"
+              ? ""
+              : ` — ${engineRunLabel(selected!.engines![engineId]!.status)}`
+          }`,
+          run: selected?.engines?.[engineId],
           pdfUrl: selected?.engines?.[engineId]?.hasPdf
             ? artifactUrl("pdf", selected.pageNumber, engineId)
             : undefined,
@@ -412,6 +430,9 @@ export default function ScannerJobClient({
             key: "effective",
             kind: "engine" as const,
             label: effectiveLabel,
+            run: effectiveEngineId
+              ? selected?.engines?.[effectiveEngineId]
+              : undefined,
             pdfUrl: selected?.hasPdf
               ? artifactUrl("pdf", selected.pageNumber)
               : undefined,
@@ -422,15 +443,24 @@ export default function ScannerJobClient({
   // engines succeeded, so a key that isn't on offer here falls back rather than
   // rendering an empty pane.
   const previewFallbackRight =
-    previewChoices.find((choice) => choice.kind === "engine")?.key || "scan";
+    previewChoices.find(
+      (choice) =>
+        choice.kind === "engine" && choice.run?.status === "succeeded",
+    )?.key ||
+    previewChoices.find((choice) => choice.kind === "engine")?.key ||
+    "scan";
   const resolvePreview = (key: string, fallback: string) =>
     previewChoices.some((choice) => choice.key === key) ? key : fallback;
   const leftPreviewKey = resolvePreview(previewLeft, "scan");
   const rightPreviewKey = resolvePreview(previewRight, previewFallbackRight);
-  const supportsSpotReview = engineIds.some((engineId) => {
+  const reviewableEngineIds = engineIds.filter((engineId) => {
     const run = selected?.engines?.[engineId];
     const capability = job.enginePlan?.capabilitySnapshots[engineId];
-    return run?.status === "succeeded" && capability?.supportsSpotReview;
+    return (
+      run?.status === "succeeded" &&
+      run.hasReview &&
+      capability?.supportsSpotReview
+    );
   });
   const progressPage = activePage(job, selected);
   const progressEngineIds = progressPage
@@ -639,7 +669,10 @@ export default function ScannerJobClient({
                 }}
               />
             </div>
-            <p className="text-sm tabular-nums text-slate-500" aria-live="polite">
+            <p
+              className="text-sm tabular-nums text-slate-500"
+              aria-live="polite"
+            >
               {preparedPages} of {job.pageCount} ready
             </p>
           </div>
@@ -868,11 +901,15 @@ export default function ScannerJobClient({
                 >
                   {busyAction === `retry-${selected.pageNumber}`
                     ? "Queuing…"
-                    : selected.hasMusicXml
-                      ? fallbackUsed
-                        ? `Retry ${primaryLabel}`
-                        : "Retry PDF render"
-                      : "Retry page"}
+                    : failedEngineIds.length > 0
+                      ? `Retry ${failedEngineIds
+                          .map((engineId) => engineLabel(job, engineId))
+                          .join(" and ")}`
+                      : selected.hasMusicXml
+                        ? fallbackUsed
+                          ? `Retry ${primaryLabel}`
+                          : "Retry PDF render"
+                        : "Retry page"}
                 </button>
               )}
             </div>
@@ -882,6 +919,41 @@ export default function ScannerJobClient({
             "whichever engine the plan selected", which is unguessable once two
             engines have read the same page.
           */}
+          {engineIds.length > 0 && (
+            <div className="mt-4 rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Recognition providers
+              </h3>
+              <ul className="mt-2 space-y-2 text-sm">
+                {engineIds.map((engineId) => {
+                  const run = selected.engines?.[engineId];
+                  return (
+                    <li key={`provider-status-${engineId}`}>
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="font-medium text-slate-800 dark:text-slate-200">
+                          {engineLabel(job, engineId)}
+                        </span>
+                        <span
+                          className={
+                            run?.status === "failed"
+                              ? "font-medium text-red-700 dark:text-red-300"
+                              : "text-slate-500 dark:text-slate-400"
+                          }
+                        >
+                          {run ? engineRunLabel(run.status) : "No result"}
+                        </span>
+                      </div>
+                      {run?.errorMessage && (
+                        <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+                          {run.errorMessage}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           {previewEngineIds.length > 0 && (
             <div className="mt-4 space-y-2">
               {previewEngineIds.map((engineId) => {
@@ -918,7 +990,11 @@ export default function ScannerJobClient({
                     )}
                     {run?.hasKern && (
                       <a
-                        href={artifactUrl("kern", selected.pageNumber, engineId)}
+                        href={artifactUrl(
+                          "kern",
+                          selected.pageNumber,
+                          engineId,
+                        )}
                         download
                         className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
                       >
@@ -957,11 +1033,30 @@ export default function ScannerJobClient({
               {primaryRun?.errorMessage || selected.errorMessage}
             </p>
           )}
-          {!fallbackUsed && selected.errorMessage && (
-            <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              {selected.errorMessage}
-            </p>
-          )}
+          {!fallbackUsed &&
+            selected.errorMessage &&
+            failedRuns.length === 0 && (
+              <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                {selected.errorMessage}
+              </p>
+            )}
+          {failedRuns
+            .filter(
+              ({ engineId }) => !(fallbackUsed && engineId === primaryEngineId),
+            )
+            .map(({ engineId, run }) => (
+              <p
+                key={`failed-${engineId}`}
+                role="alert"
+                className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+              >
+                <span className="font-medium">
+                  {engineLabel(job, engineId)} failed.
+                </span>{" "}
+                {run?.errorMessage ||
+                  "This provider produced no reading for this page."}
+              </p>
+            ))}
           {incompleteRuns.map(([engineId, run]) => (
             <p
               key={`incomplete-${engineId}`}
@@ -979,11 +1074,21 @@ export default function ScannerJobClient({
               the source image.
             </p>
           )}
-          {selected.status === "succeeded" && supportsSpotReview && !readOnly && (
-            <div className="mt-4">
-              <PageReview jobId={jobId} pageNumber={selected.pageNumber} />
-            </div>
-          )}
+          {selected.status === "succeeded" &&
+            reviewableEngineIds.length > 0 &&
+            !readOnly && (
+              <div className="mt-4 space-y-4">
+                {reviewableEngineIds.map((engineId) => (
+                  <PageReview
+                    key={engineId}
+                    jobId={jobId}
+                    pageNumber={selected.pageNumber}
+                    engineId={engineId}
+                    engineLabel={engineLabel(job, engineId)}
+                  />
+                ))}
+              </div>
+            )}
           {/*
             One pane of the page beside another, with each side chosen by the
             reader. It used to be a fixed stack — "Scan versus HOMR" then "Scan
@@ -1003,7 +1108,9 @@ export default function ScannerJobClient({
                 ] as const
               ).map(([side, value, setValue], index) => (
                 <span key={side} className="flex items-center gap-2">
-                  {index === 1 && <span className="text-slate-400">versus</span>}
+                  {index === 1 && (
+                    <span className="text-slate-400">versus</span>
+                  )}
                   <label className="sr-only" htmlFor={`preview-${side}`}>
                     {index === 0 ? "Left pane" : "Right pane"}
                   </label>
@@ -1056,14 +1163,19 @@ export default function ScannerJobClient({
                       >
                         <p className="p-4 text-sm">
                           PDF preview is unavailable in this browser.{" "}
-                          <a className="text-blue-600 underline" href={choice.pdfUrl}>
+                          <a
+                            className="text-blue-600 underline"
+                            href={choice.pdfUrl}
+                          >
                             Download it instead.
                           </a>
                         </p>
                       </object>
                     ) : (
                       <p className="flex min-h-[420px] items-center justify-center p-5 text-sm text-slate-500">
-                        No rendered PDF is available for {choice.label} on this page.
+                        {choice.run?.status === "failed"
+                          ? `${choice.label}. ${choice.run.errorMessage || "This provider produced no reading for this page."}`
+                          : `No rendered PDF is available for ${choice.label} on this page.`}
                       </p>
                     )}
                   </div>
@@ -1071,7 +1183,6 @@ export default function ScannerJobClient({
               })}
             </div>
           </div>
-
         </section>
       )}
 
@@ -1134,7 +1245,9 @@ export default function ScannerJobClient({
               ) : !readOnly ? (
                 <button
                   type="button"
-                  onClick={() => void runAction("reassemble", `${base}/reassemble`)}
+                  onClick={() =>
+                    void runAction("reassemble", `${base}/reassemble`)
+                  }
                   disabled={Boolean(busyAction)}
                   className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50"
                 >
@@ -1143,7 +1256,7 @@ export default function ScannerJobClient({
                     : job.hasCombinedMusicXml
                       ? "Rebuild the combined score"
                       : "Combine pages"}
-                  </button>
+                </button>
               ) : null)}
             {(job.hasCombinedMusicXml || includedPageCount === 1) &&
               job.hasMusicXml && (
@@ -1159,7 +1272,8 @@ export default function ScannerJobClient({
           </div>
           {includedPageCount > 1 && !job.hasCombinedMusicXml && (
             <p className="mt-3 text-xs text-slate-500">
-              {job.mergeStatus === "incompatible" || job.mergeStatus === "failed"
+              {job.mergeStatus === "incompatible" ||
+              job.mergeStatus === "failed"
                 ? `The pages were not combined${job.mergeReason ? `: ${job.mergeReason}` : ""}. Each page file below is complete and unaffected.`
                 : "The pages have not been combined yet."}
             </p>
@@ -1227,7 +1341,9 @@ export default function ScannerJobClient({
                 rel="noreferrer"
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:border-slate-700"
               >
-                {job.hasCombinedPdf ? "Open combined PDF" : "Open page preview PDF"}
+                {job.hasCombinedPdf
+                  ? "Open combined PDF"
+                  : "Open page preview PDF"}
               </a>
             )}
           </div>

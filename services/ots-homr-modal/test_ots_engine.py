@@ -38,6 +38,9 @@ class FakeCore:
 
     def transcribe(self, page, content_type, detect_title, head_mode):
         self.calls.append((page, content_type, detect_title, head_mode))
+        return {"musicxml": b"<score-partwise/>", "review": {"staves": []}}
+
+    def regenerate(self, staffs, title=""):
         return b"<score-partwise/>"
 
     def shutdown(self):
@@ -62,9 +65,11 @@ class OtsHomrEngineTest(unittest.TestCase):
         result = engine.transcribe(
             b"lyrics-page", "image/png", True, "lyrics", "review-only"
         )
-        self.assertEqual(result, b"<score-partwise/>")
+        self.assertEqual(result["musicxml"], b"<score-partwise/>")
         self.assertEqual(detectors["lyrics"].calls, [b"lyrics-page"])
         self.assertEqual(detectors["non-lyric-text"].calls, [])
+
+        self.assertEqual(engine.regenerate([[['note_4', 'C4', '_', '_', '_', 'upper']]]), b"<score-partwise/>")
         self.assertEqual(core.calls[-1][-1], "review-only")
 
         engine.transcribe(b"plain-page", "image/jpeg", False, "none", "off")

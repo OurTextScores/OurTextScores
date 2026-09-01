@@ -81,17 +81,22 @@ class PatchedHomrCore:
 
     def transcribe(
         self, page: bytes, content_type: str, detect_title: bool, head_mode: str
-    ) -> bytes:
+    ) -> dict[str, Any]:
         suffix = ".png" if content_type == "image/png" else ".jpg"
         if head_mode == "experimental-output":
-            return self._with_heads.transcribe(page, suffix, detect_title)["musicxml"]
+            return self._with_heads.transcribe(page, suffix, detect_title)
 
-        plain = self._plain.transcribe(page, suffix, detect_title)["musicxml"]
+        plain = self._plain.transcribe(page, suffix, detect_title)
         if head_mode == "review-only":
             # Exercise and validate the sidecar while returning untouched core output.
             self._with_heads.transcribe(page, suffix, detect_title)
-            return plain
         return plain
+
+    def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes:
+        result = self._plain.regenerate(staffs, title)
+        if not result.get("ok") or not isinstance(result.get("musicxml"), bytes):
+            raise RuntimeError("OTS-HOMR could not regenerate reviewed MusicXML")
+        return result["musicxml"]
 
     def shutdown(self) -> None:
         self._plain.shutdown()
