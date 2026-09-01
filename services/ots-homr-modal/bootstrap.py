@@ -13,6 +13,7 @@ from runtime_identity import load_structured_manifest, require_artifact
 
 CORE_REPOSITORY = "jhlusko/OTS-homr"
 CORE_REVISION = "1dbc87399c70238136da0dfd412fff032d17b76c"
+CORE_ARTIFACT_SHA256 = "1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3"
 CORE_SHA256 = {
     "encoder.onnx": "f5b429929b17c375f2940739d00e04c62592f75afe4aeba6112859a6eb427aa1",
     "decoder.onnx": "7abc3ea71caac8f5a4fd9a96f0ce40c9f3b224ff83ed05899eae735c9917a1b4",
