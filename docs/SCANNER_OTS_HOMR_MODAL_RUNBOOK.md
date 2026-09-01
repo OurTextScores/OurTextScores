@@ -1,0 +1,416 @@
+# Scanner: OTS-HOMR Modal provider deployment runbook
+
+Operational procedure for deploying the private rareNum OTS-HOMR model as an
+**opt-in third Scanner engine**. The existing HOMR provider remains the normal
+primary engine; this runbook never changes `SCANNER_PROVIDER_URL` or its
+credentials.
+
+Design reference: `docs/private/SCANNER_OTS_HOMR_PROVIDER_DESIGN_2026-08-31.md`.
+
+**Status:** application integration is committed in `41bd204`; the dedicated
+`services/ots-homr-modal/` provider implementation is still required before
+deployment steps 4 onward can be run.
+
+**Cost and safety:** use a distinct Modal App, a distinct proxy token, and a
+small staging budget. The provider gets a read-only Hugging Face token; neither
+the Scanner worker nor a browser ever receives that token.
+
+---
+
+## 0. What is being deployed
+
+The release comprises four private Hugging Face repositories. Pin both the
+repository revision and the file SHA-256; a branch name such as `main` is not a
+pin.
+
+| Component | Repository | Immutable revision | File / SHA-256 |
+| --- | --- | --- | --- |
+| rareNum core | `jhlusko/OTS-homr` | `1dbc87399c70238136da0dfd412fff032d17b76c` | `OTS-homr.pth` / `1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3` |
+| lyrics detector (E2) | `jhlusko/lyrics` | `1bf2201d2eead54f78d79e2beba502b204614a92` | `lyrics.pth` / `7ff21020d5fefe5b774af71dd50610d1b05011f040c4b2c9c58f249b43f39804` |
+| non-lyric text detector (E4) | `jhlusko/non-lyric-text` | `9073adb53d901c90419f63b0f7e3fb4372ed18cc` | `non-lyric-text.pth` / `fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82` |
+| additional heads | `jhlusko/OTS-homr-additonal-heads` | `4cf9f48672cf8f3563e14ebdec6e2ef2e3ddef13` | `OTS-homr-additonal-heads.pth` / `f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650` |
+
+The additional-head manifest is at the same revision. Its byte SHA-256 is
+`e0403bbe0ea287d61af744402bcf0151a00ddbf34458536c9c444d58fd9865c6`.
+
+The UI exposes three stable policies:
+
+| Option | Meaning |
+| --- | --- |
+| Text detector: `lyrics` | E2, recommended for the first beta. |
+| Text detector: `non-lyric-text` | E4, comparison/experimental choice. |
+| Text detector: `none` | Diagnostic mode. |
+| Heads: `off` | No additional-head processing. |
+| Heads: `review-only` | Diagnostics only; no MusicXML change. |
+| Heads: `experimental-output` | Only provider-approved experimental output. `dynamic.mark` must never be emitted. |
+
+---
+
+## 1. Prerequisites
+
+- A clean, committed OurTextScores checkout containing the provider service
+  directory once implemented. Deploy from the repository root: Modal's image
+  build must include provider source and its exact release pins.
+- A dedicated Modal workspace or a verified budget boundary. Set a deliberately
+  small staging budget before the first GPU request.
+- Modal CLI, authenticated to the intended environment:
+
+  ```bash
+  uv tool install 'modal==1.5.3'
+  modal --version
+  modal setup
+  export MODAL_ENVIRONMENT=main
+  modal environment list
+  ```
+
+- A Hugging Face **read** token with access only to the four private model
+  repositories. Store it as a Modal secret named, for example,
+  `ots-homr-hf-read`; do not place it in `.env`, application containers, or
+  shell history.
+- The provider implementation must meet the contract in §3. Until
+  `services/ots-homr-modal/` exists and is tested, stop here: there is nothing
+  safe to deploy yet.
+
+---
+
+## 2. Pre-deployment checks
+
+Run from the repository root:
+
+```bash
+test -z "$(git status --porcelain)" || {
+  echo 'Refusing to deploy a dirty checkout' >&2
+  exit 1
+}
+
+export OTS_SOURCE_COMMIT="$(git rev-parse HEAD)"
+printf '%s\n' "$OTS_SOURCE_COMMIT"
+test -f services/ots-homr-modal/modal_app.py
+test -f services/ots-homr-provider/ots_homr_provider.py
+```
+
+The last two commands intentionally fail today. They are the implementation
+gate; do not substitute the upstream HOMR provider or its model endpoint.
+
+Before deploying, verify the private release pins from a machine holding a
+read-only HF token. The following prints only public identifiers and hashes,
+never the token:
+
+```bash
+python3 - <<'PY'
+import hashlib
+import os
+from huggingface_hub import HfApi, hf_hub_download
+
+repos = {
+    'OTS-homr': ('1dbc87399c70238136da0dfd412fff032d17b76c', 'OTS-homr.pth'),
+    'lyrics': ('1bf2201d2eead54f78d79e2beba502b204614a92', 'lyrics.pth'),
+    'non-lyric-text': ('9073adb53d901c90419f63b0f7e3fb4372ed18cc', 'non-lyric-text.pth'),
+    'OTS-homr-additonal-heads': ('4cf9f48672cf8f3563e14ebdec6e2ef2e3ddef13', 'OTS-homr-additonal-heads.pth'),
+}
+api = HfApi(token=os.environ['HF_TOKEN'])
+for repo, (revision, filename) in repos.items():
+    info = api.model_info(f'jhlusko/{repo}', revision=revision)
+    assert info.sha == revision, (repo, info.sha)
+    path = hf_hub_download(f'jhlusko/{repo}', filename, revision=revision,
+                           token=os.environ['HF_TOKEN'])
+    print(repo, revision, filename, hashlib.sha256(open(path, 'rb').read()).hexdigest())
+PY
+```
+
+If a hash differs, treat it as a release incident. Do not update an expected
+hash just to make a deployment proceed.
+
+---
+
+## 3. Provider contract that must exist before deployment
+
+The OTS backend adapter calls an authenticated `POST /v1/scan-page` with:
+
+```text
+multipart field: page
+multipart fields: detectTitle, textDetector, structuredHeadsMode
+header: Idempotency-Key
+```
+
+The provider must return `ots-ots-homr-provider.v1` and a response shaped like:
+
+```json
+{
+  "schemaVersion": "ots-ots-homr-provider.v1",
+  "requestId": "...",
+  "inputSha256": "<sha256 of page bytes>",
+  "engine": {
+    "name": "ots-homr",
+    "serviceRevision": "ots-ots-homr-provider-v1",
+    "core": { "repository": "jhlusko/OTS-homr", "revision": "...", "sha256": "..." },
+    "textDetector": { "id": "lyrics", "revision": "...", "sha256": "..." },
+    "structuredHeads": {
+      "mode": "review-only",
+      "revision": "...",
+      "sha256": "...",
+      "manifestSha256": "...",
+      "compatibleCoreRevision": "...",
+      "emittedHeadFamilies": []
+    },
+    "executionProvider": "CUDAExecutionProvider"
+  },
+  "result": { "musicXmlBase64": "...", "musicXmlSha256": "..." },
+  "timing": { "inferenceMs": 0 }
+}
+```
+
+Required routes are `/healthz`, `/readyz`, `/v1/capabilities`, and
+`/v1/scan-page`, all behind Modal proxy auth. `/readyz` must remain false until
+all selected model components have been downloaded at their exact revision,
+their SHA-256 values match, the compatibility manifest matches the rareNum
+core, and a genuine GPU warm-up has succeeded. Set Hugging Face offline mode
+after this preparation; inference must not download a mutable release.
+
+The provider must reject invalid selections and must reject rather than omit a
+prohibited dynamic output. It may not report a CPU backend as CUDA.
+
+---
+
+## 4. Build and deploy the provider
+
+After the service exists, deploy it from the clean checkout:
+
+```bash
+cd services/ots-homr-modal
+export OTS_SOURCE_COMMIT="$(git -C ../.. rev-parse HEAD)"
+modal deploy modal_app.py
+```
+
+Record the printed web-function URL as `OTS_HOMR_MODAL_URL`. Keep
+`OTS_SOURCE_COMMIT` in deployment inventory with the provider service revision.
+The Modal image should download the pinned snapshots while building or warming
+up, validate the exact SHA-256 values in §0, then disable network model lookup.
+
+Use one L4 (or explicitly documented equivalent), `max_containers=1`,
+`max_inputs=1`, and `min_containers=0` for the initial beta. Keep the provider
+function timeout above the sum of readiness wait and hard inference timeout,
+and keep that sum below `SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS` (default 600 s).
+
+---
+
+## 5. Create a dedicated proxy token
+
+```bash
+modal workspace proxy-tokens create
+modal workspace proxy-tokens list
+```
+
+Store the resulting `wk-...` ID and `ws-...` secret only in deployment secret
+storage. If the token is environment-scoped, allow it for the intended
+environment:
+
+```bash
+modal workspace proxy-tokens allow <token-id> --environment "$MODAL_ENVIRONMENT"
+```
+
+Never reuse the existing HOMR or Transcoda token. Never expose this token to the
+frontend or in a bug report.
+
+---
+
+## 6. Verify provider authentication and provenance
+
+```bash
+export OTS_HOMR_MODAL_URL='https://<deployment>.modal.run'
+OTS_HOMR_MODAL_URL="${OTS_HOMR_MODAL_URL%/}"
+read -r -p 'OTS-HOMR Modal token ID: ' SCANNER_OTS_HOMR_MODAL_TOKEN_ID
+read -r -s -p 'OTS-HOMR Modal token secret: ' SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET
+echo
+export SCANNER_OTS_HOMR_MODAL_TOKEN_ID SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET
+
+OTS_HOMR_AUTH=(
+  -H "Modal-Key: $SCANNER_OTS_HOMR_MODAL_TOKEN_ID"
+  -H "Modal-Secret: $SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET"
+)
+
+curl -sS -o /dev/null -w 'unauthenticated: HTTP %{http_code}\n' \
+  "$OTS_HOMR_MODAL_URL/healthz"              # expect 401
+curl --fail-with-body -sS "${OTS_HOMR_AUTH[@]}" \
+  "$OTS_HOMR_MODAL_URL/healthz" | python3 -m json.tool
+```
+
+Poll readiness before sending a score:
+
+```bash
+for attempt in $(seq 1 150); do
+  status=$(curl -sS -o /tmp/ots-homr-ready.json -w '%{http_code}' \
+    "${OTS_HOMR_AUTH[@]}" "$OTS_HOMR_MODAL_URL/readyz")
+  [ "$status" = 200 ] && break
+  printf 'ready attempt %s: HTTP %s\n' "$attempt" "$status"
+  sleep 5
+done
+test "$status" = 200
+python3 -m json.tool /tmp/ots-homr-ready.json
+```
+
+Fetch capabilities and confirm every identity before wiring Scanner:
+
+```bash
+curl --fail-with-body -sS "${OTS_HOMR_AUTH[@]}" \
+  "$OTS_HOMR_MODAL_URL/v1/capabilities" > /tmp/ots-homr-capabilities.json
+python3 - <<'PY'
+import json, re
+from pathlib import Path
+
+c = json.loads(Path('/tmp/ots-homr-capabilities.json').read_text())
+assert c['schemaVersion'] == 'ots-ots-homr-provider.v1'
+assert c['engine'] == 'ots-homr'
+assert c['core']['repository'] == 'jhlusko/OTS-homr'
+assert c['core']['revision'] == '1dbc87399c70238136da0dfd412fff032d17b76c'
+assert c['core']['sha256'] == '1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3'
+assert c['executionProvider'] == 'CUDAExecutionProvider'
+assert 'dynamic.mark' not in c.get('allowedEmittedHeadFamilies', [])
+for detector in c['textDetectors']:
+    assert detector['id'] in {'lyrics', 'non-lyric-text'}
+    assert re.fullmatch(r'[a-f0-9]{40}', detector['revision'])
+    assert re.fullmatch(r'[a-f0-9]{64}', detector['sha256'])
+print('OTS-HOMR capabilities verified')
+PY
+```
+
+If any assertion fails, stop. Fix or redeploy the provider; do not weaken the
+backend pins.
+
+---
+
+## 7. Run one authenticated provider inference
+
+Use the OTS-owned warm-up image, not a user score:
+
+```bash
+smoke_page=services/homr-provider/warmup-page.png
+idempotency_key=$(sha256sum "$smoke_page" | awk '{print $1}')
+
+curl --fail-with-body -sS --max-time 590 "${OTS_HOMR_AUTH[@]}" \
+  -H "Idempotency-Key: $idempotency_key" \
+  -H 'Accept: application/json' \
+  -F "page=@${smoke_page};type=image/png" \
+  -F 'detectTitle=false' \
+  -F 'textDetector=lyrics' \
+  -F 'structuredHeadsMode=review-only' \
+  "$OTS_HOMR_MODAL_URL/v1/scan-page" > /tmp/ots-homr-smoke.json
+```
+
+Verify the response and document bytes:
+
+```bash
+python3 - <<'PY'
+import base64, hashlib, json
+from pathlib import Path
+
+page = Path('services/homr-provider/warmup-page.png').read_bytes()
+body = json.loads(Path('/tmp/ots-homr-smoke.json').read_text())
+assert body['schemaVersion'] == 'ots-ots-homr-provider.v1'
+assert body['inputSha256'] == hashlib.sha256(page).hexdigest()
+assert body['engine']['name'] == 'ots-homr'
+assert body['engine']['textDetector']['id'] == 'lyrics'
+assert body['engine']['structuredHeads']['mode'] == 'review-only'
+assert 'dynamic.mark' not in body['engine']['structuredHeads']['emittedHeadFamilies']
+xml = base64.b64decode(body['result']['musicXmlBase64'], validate=True)
+assert hashlib.sha256(xml).hexdigest() == body['result']['musicXmlSha256']
+assert b'<!DOCTYPE' not in xml.upper() and b'<!ENTITY' not in xml.upper()
+assert b'<score-partwise' in xml or b'<score-timewise' in xml
+Path('/tmp/ots-homr-smoke.musicxml').write_bytes(xml)
+print('requestId:', body.get('requestId'))
+print('inferenceMs:', body.get('timing', {}).get('inferenceMs'))
+PY
+```
+
+A valid response only proves the contract. Before broadening access, inspect
+the MusicXML, compare it with HOMR, and test each non-default policy separately.
+
+---
+
+## 8. Configure Scanner after verification
+
+Store the following in the worker environment (or `/opt/ourtextscores/.env` on
+the VPS). Do not put the proxy token in the frontend environment.
+
+```dotenv
+SCANNER_OTS_HOMR_ENABLED=true
+SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT=false
+SCANNER_OTS_HOMR_PROVIDER_KIND=modal
+SCANNER_OTS_HOMR_PROVIDER_URL=<OTS_HOMR_MODAL_URL>
+SCANNER_OTS_HOMR_MODAL_TOKEN_ID=<wk-...>
+SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET=<ws-...>
+SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED=false
+
+SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v1
+SCANNER_EXPECTED_OTS_HOMR_CORE_REPOSITORY=jhlusko/OTS-homr
+SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION=1dbc87399c70238136da0dfd412fff032d17b76c
+SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256=1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3
+SCANNER_EXPECTED_OTS_HOMR_EXECUTION_PROVIDER=CUDAExecutionProvider
+
+SCANNER_EXPECTED_OTS_HOMR_LYRICS_REVISION=1bf2201d2eead54f78d79e2beba502b204614a92
+SCANNER_EXPECTED_OTS_HOMR_LYRICS_SHA256=7ff21020d5fefe5b774af71dd50610d1b05011f040c4b2c9c58f249b43f39804
+SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION=9073adb53d901c90419f63b0f7e3fb4372ed18cc
+SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256=fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82
+
+SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION=4cf9f48672cf8f3563e14ebdec6e2ef2e3ddef13
+SCANNER_EXPECTED_OTS_HOMR_HEADS_SHA256=f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650
+SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256=e0403bbe0ea287d61af744402bcf0151a00ddbf34458536c9c444d58fd9865c6
+
+SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS=600000
+SCANNER_OTS_HOMR_MAX_PROVIDER_RESPONSE_BYTES=33554432
+```
+
+The API container also needs `SCANNER_OTS_HOMR_ENABLED=true`; it needs no
+provider credentials. The repository Compose file passes the gate to the API
+and loads all worker values from `.env`. For a hand-maintained VPS Compose file,
+add the gate to `backend` and use `env_file: .env` for `scanner_worker`.
+
+Recreate the API and scanner worker after changing the flag:
+
+```bash
+docker compose --profile scanner up -d --force-recreate backend scanner_worker
+```
+
+Create a Scanner job and open **Experimental OTS-HOMR comparison**. Select the
+additional reading, then verify in the authenticated job response that:
+
+- `enginePlan.engineIds` contains both `homr` and `ots-homr`;
+- HOMR is still `primaryEngineId`;
+- `enginePlan.engineOptions["ots-homr"]` records the selected policy;
+- `pages[].engines["ots-homr"]` has independent status, provenance, and
+  artifacts;
+- a failure in OTS-HOMR does not discard a successful HOMR result.
+
+---
+
+## 9. Routine operation, rollback, and failure signatures
+
+Tail the dedicated App rather than the existing HOMR App:
+
+```bash
+modal app logs ourtextscores-ots-homr-scanner \
+  --env "$MODAL_ENVIRONMENT" --follow --timestamps
+modal app history ourtextscores-ots-homr-scanner --env "$MODAL_ENVIRONMENT"
+```
+
+The fast application rollback is independent of Modal:
+
+```dotenv
+SCANNER_OTS_HOMR_ENABLED=false
+```
+
+Recreate the API and worker. Existing OTS-HOMR artifacts remain readable under
+normal retention; new jobs cannot request it. For a provider incident, also
+revoke its dedicated proxy token or stop only the OTS-HOMR Modal App.
+
+| Symptom | Meaning / response |
+| --- | --- |
+| `provider_not_configured` | A required URL, pin, or selected-component pin is missing. Populate it; do not use empty defaults. |
+| `provider_model_revision_mismatch` or `provider_model_artifact_mismatch` | Modal service does not match the pinned private release. Stop the engine and redeploy/repin deliberately. |
+| `provider_execution_provider_mismatch` | Provider was not actually using CUDA. Treat as a deployment failure. |
+| `provider_invalid_response` | Invalid envelope, digest, MusicXML, selected policy, head compatibility, or prohibited dynamics. Inspect provider logs. |
+| `provider_timeout` / `provider_unavailable` | Check cold-start, Modal capacity, and timeout ladder before retrying. |
+| Scanner says engine unavailable | Confirm `SCANNER_OTS_HOMR_ENABLED=true` reaches the API process and the user selected the experimental option. |
+
+Never set `SCANNER_OTS_HOMR_INCLUDED_BY_DEFAULT=true` during this beta. That
+would turn every ordinary Scanner job into a paid third provider call.
