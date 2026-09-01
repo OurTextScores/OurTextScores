@@ -49,8 +49,13 @@ from .detector_data import Box, collect
 #: common non-Lyrics class in the corpus - placed early, like Fingering, since it is small
 #: and specific rather than a sprawling text class.
 CLASS_ORDER = (
-    "Dynamic", "Fingering", "Expression", "Tempo",
-    "MeasureNumber", "StaffText", "Lyrics",
+    "Dynamic",
+    "Fingering",
+    "Expression",
+    "Tempo",
+    "MeasureNumber",
+    "StaffText",
+    "Lyrics",
 )
 
 #: 27.92: SystemText stayed at exactly 0% whole-page precision/recall even after 27.90
@@ -135,13 +140,17 @@ def describe(pairs: list[tuple[str, str]]) -> str:
             f"  text pixels: {np.mean(coverage):.2%} of a page, sampled over {len(coverage)}"
         )
         lines.append("  (a 320x320 patch tiled at random over a page this sparse needs")
-        lines.append("  positive sampling, or nearly every patch trains on background alone)")
+        lines.append(
+            "  positive sampling, or nearly every patch trains on background alone)"
+        )
     return "\n".join(lines)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument("--boxes", type=Path, required=True, help="A musescore_boxes out dir.")
+    parser.add_argument(
+        "--boxes", type=Path, required=True, help="A musescore_boxes out dir."
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
@@ -150,7 +159,10 @@ def main() -> None:
         raise SystemExit(f"No masks produced from {args.boxes}")
     write_index(pairs, args.out / "index.txt")
     print(describe(pairs))
-    print(f"\nclass order (index: name): " + ", ".join(f"{i + 1}:{n}" for i, n in enumerate(CLASS_ORDER)))
+    print(
+        f"\nclass order (index: name): "
+        + ", ".join(f"{i + 1}:{n}" for i, n in enumerate(CLASS_ORDER))
+    )
 
 
 if __name__ == "__main__":

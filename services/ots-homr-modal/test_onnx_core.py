@@ -11,9 +11,17 @@ class OnnxCoreTest(unittest.TestCase):
             @staticmethod
             def get_available_providers():
                 return ["CPUExecutionProvider"]
+
         with patch.dict("sys.modules", {"onnxruntime": Ort}):
             with self.assertRaises(CoreLoadError):
-                load_rare_num_sessions(encoder=__import__("pathlib").Path("encoder"), decoder=__import__("pathlib").Path("decoder"), heads=__import__("pathlib").Path("heads"), encoder_sha256="a" * 64, decoder_sha256="b" * 64, heads_sha256="c" * 64)
+                load_rare_num_sessions(
+                    encoder=__import__("pathlib").Path("encoder"),
+                    decoder=__import__("pathlib").Path("decoder"),
+                    heads=__import__("pathlib").Path("heads"),
+                    encoder_sha256="a" * 64,
+                    decoder_sha256="b" * 64,
+                    heads_sha256="c" * 64,
+                )
 
 
 if __name__ == "__main__":

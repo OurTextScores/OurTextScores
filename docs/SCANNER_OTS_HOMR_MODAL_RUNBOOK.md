@@ -8,8 +8,8 @@ credentials.
 Design reference: `docs/private/SCANNER_OTS_HOMR_PROVIDER_DESIGN_2026-08-31.md`.
 
 **Status:** application integration is committed in `41bd204`; the dedicated
-`services/ots-homr-modal/` provider implementation is still required before
-deployment steps 4 onward can be run.
+`services/ots-homr-modal/` provider is implemented locally. Complete the local
+verification and commit gate below before its first deployment.
 
 **Cost and safety:** use a distinct Modal App, a distinct proxy token, and a
 small staging budget. The provider gets a read-only Hugging Face token; neither
@@ -28,10 +28,12 @@ pin.
 | rareNum core | `jhlusko/OTS-homr` | `1dbc87399c70238136da0dfd412fff032d17b76c` | `OTS-homr.pth` / `1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3` |
 | lyrics detector (E2) | `jhlusko/lyrics` | `1bf2201d2eead54f78d79e2beba502b204614a92` | `lyrics.pth` / `7ff21020d5fefe5b774af71dd50610d1b05011f040c4b2c9c58f249b43f39804` |
 | non-lyric text detector (E4) | `jhlusko/non-lyric-text` | `9073adb53d901c90419f63b0f7e3fb4372ed18cc` | `non-lyric-text.pth` / `fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82` |
-| additional heads | `jhlusko/OTS-homr-additonal-heads` | `4cf9f48672cf8f3563e14ebdec6e2ef2e3ddef13` | `OTS-homr-additonal-heads.pth` / `f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650` |
+| additional heads | `jhlusko/OTS-homr-additonal-heads` | `c3d4bb0430f0516665897c618f2e971d197630cc` | `OTS-homr-additonal-heads.pth` / `f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650` |
 
-The additional-head manifest is at the same revision. Its byte SHA-256 is
-`e0403bbe0ea287d61af744402bcf0151a00ddbf34458536c9c444d58fd9865c6`.
+The additional-head manifest is at the same revision. Its current byte SHA-256
+is `7f92b9b948e6a39daef1f8bcdb66c8ebdfed2c38024ad532f292e0b4d04781fa`;
+it declares `structured_heads_rareNumMixed.onnx` with SHA-256
+`75d313e091d060723cc6bcec3edd1c7aecbe7beb2b637a8f6f4e50afad8e4db2`.
 
 The UI exposes three stable policies:
 
@@ -67,9 +69,8 @@ The UI exposes three stable policies:
   repositories. Store it as a Modal secret named, for example,
   `ots-homr-hf-read`; do not place it in `.env`, application containers, or
   shell history.
-- The provider implementation must meet the contract in §3. Until
-  `services/ots-homr-modal/` exists and is tested, stop here: there is nothing
-  safe to deploy yet.
+- The provider implementation must meet the contract in §3 and its focused
+  tests must pass before deployment.
 
 ---
 
@@ -86,11 +87,24 @@ test -z "$(git status --porcelain)" || {
 export OTS_SOURCE_COMMIT="$(git rev-parse HEAD)"
 printf '%s\n' "$OTS_SOURCE_COMMIT"
 test -f services/ots-homr-modal/modal_app.py
-test -f services/ots-homr-provider/ots_homr_provider.py
+test -f services/ots-homr-modal/ots_homr_provider.py
+test -f services/ots-homr-modal/source/homr-997b70-source.tar.gz
+printf '%s  %s\n' \
+  819eca26f26e977e2a376d03c8aa4ddaf1f631db69a87ccc9d1ad943f75b4de9 \
+  services/ots-homr-modal/source/homr-997b70-source.tar.gz | sha256sum --check --strict
+printf '%s  %s\n' \
+  4970d1eeaedce7a5444ff70764a8662b1f0a6d47c0f564073342628048245898 \
+  services/ots-homr-modal/patches/homr-997-runtime.patch | sha256sum --check --strict
+
+uv run \
+  --with fastapi==0.116.1 \
+  --with httpx==0.28.1 \
+  --with python-multipart==0.0.30 \
+  python -m unittest discover -s services/ots-homr-modal -p 'test_*.py'
 ```
 
-The last two commands intentionally fail today. They are the implementation
-gate; do not substitute the upstream HOMR provider or its model endpoint.
+These checks are an implementation gate; do not substitute the upstream HOMR
+provider or its model endpoint.
 
 Before deploying, verify the private release pins from a machine holding a
 read-only HF token. The following prints only public identifiers and hashes,
@@ -106,7 +120,7 @@ repos = {
     'OTS-homr': ('1dbc87399c70238136da0dfd412fff032d17b76c', 'OTS-homr.pth'),
     'lyrics': ('1bf2201d2eead54f78d79e2beba502b204614a92', 'lyrics.pth'),
     'non-lyric-text': ('9073adb53d901c90419f63b0f7e3fb4372ed18cc', 'non-lyric-text.pth'),
-    'OTS-homr-additonal-heads': ('4cf9f48672cf8f3563e14ebdec6e2ef2e3ddef13', 'OTS-homr-additonal-heads.pth'),
+    'OTS-homr-additonal-heads': ('c3d4bb0430f0516665897c618f2e971d197630cc', 'OTS-homr-additonal-heads.pth'),
 }
 api = HfApi(token=os.environ['HF_TOKEN'])
 for repo, (revision, filename) in repos.items():
@@ -189,8 +203,10 @@ up, validate the exact SHA-256 values in §0, then disable network model lookup.
 
 Use one L4 (or explicitly documented equivalent), `max_containers=1`,
 `max_inputs=1`, and `min_containers=0` for the initial beta. Keep the provider
-function timeout above the sum of readiness wait and hard inference timeout,
-and keep that sum below `SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS` (default 600 s).
+function timeout at 660 seconds. Each core decode has a 280-second hard limit;
+the two serial decodes in `review-only` therefore remain below
+`SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS` (default 600 seconds), with 40 seconds
+reserved for detector and HTTP overhead.
 
 ---
 
@@ -261,11 +277,18 @@ from pathlib import Path
 c = json.loads(Path('/tmp/ots-homr-capabilities.json').read_text())
 assert c['schemaVersion'] == 'ots-ots-homr-provider.v1'
 assert c['engine'] == 'ots-homr'
+assert re.fullmatch(r'[a-f0-9]{40}', c['providerSourceCommit'])
+assert c['providerSource'].endswith('/services/ots-homr-modal')
 assert c['core']['repository'] == 'jhlusko/OTS-homr'
 assert c['core']['revision'] == '1dbc87399c70238136da0dfd412fff032d17b76c'
 assert c['core']['sha256'] == '1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3'
+assert c['core']['runtimeArtifacts']['encoderOnnxSha256'] == 'f5b429929b17c375f2940739d00e04c62592f75afe4aeba6112859a6eb427aa1'
+assert c['core']['runtimeArtifacts']['decoderOnnxSha256'] == '7abc3ea71caac8f5a4fd9a96f0ce40c9f3b224ff83ed05899eae735c9917a1b4'
 assert c['executionProvider'] == 'CUDAExecutionProvider'
 assert 'dynamic.mark' not in c.get('allowedEmittedHeadFamilies', [])
+assert c['structuredHeads']['revision'] == 'c3d4bb0430f0516665897c618f2e971d197630cc'
+assert c['structuredHeads']['sha256'] == 'f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650'
+assert c['structuredHeads']['runtimeArtifacts']['onnxSha256'] == '75d313e091d060723cc6bcec3edd1c7aecbe7beb2b637a8f6f4e50afad8e4db2'
 for detector in c['textDetectors']:
     assert detector['id'] in {'lyrics', 'non-lyric-text'}
     assert re.fullmatch(r'[a-f0-9]{40}', detector['revision'])
@@ -352,9 +375,9 @@ SCANNER_EXPECTED_OTS_HOMR_LYRICS_SHA256=7ff21020d5fefe5b774af71dd50610d1b05011f0
 SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION=9073adb53d901c90419f63b0f7e3fb4372ed18cc
 SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256=fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82
 
-SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION=4cf9f48672cf8f3563e14ebdec6e2ef2e3ddef13
+SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION=c3d4bb0430f0516665897c618f2e971d197630cc
 SCANNER_EXPECTED_OTS_HOMR_HEADS_SHA256=f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650
-SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256=e0403bbe0ea287d61af744402bcf0151a00ddbf34458536c9c444d58fd9865c6
+SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256=7f92b9b948e6a39daef1f8bcdb66c8ebdfed2c38024ad532f292e0b4d04781fa
 
 SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS=600000
 SCANNER_OTS_HOMR_MAX_PROVIDER_RESPONSE_BYTES=33554432

@@ -47,7 +47,10 @@ class PredictedBox:
 
 def load_model(weights: Path, device: str) -> CamVidModel:
     model = CamVidModel(
-        arch="Unet", encoder_name="resnet18", in_channels=3, out_classes=NUM_CLASSES,
+        arch="Unet",
+        encoder_name="resnet18",
+        in_channels=3,
+        out_classes=NUM_CLASSES,
         skip_weights_download=True,
     )
     model.load_state_dict(torch.load(weights, map_location=device))
@@ -113,8 +116,14 @@ def boxes_from_probs(probs: np.ndarray, min_area: int = 4) -> list[PredictedBox]
             if area < min_area:
                 continue
             region = binary[top : top + h, left : left + w] > 0
-            confidence = float(confidence_map[top : top + h, left : left + w][region].mean())
-            boxes.append(PredictedBox(label, int(left), int(top), int(left + w), int(top + h), confidence))
+            confidence = float(
+                confidence_map[top : top + h, left : left + w][region].mean()
+            )
+            boxes.append(
+                PredictedBox(
+                    label, int(left), int(top), int(left + w), int(top + h), confidence
+                )
+            )
     return boxes
 
 
@@ -133,7 +142,9 @@ def main() -> None:
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--out", type=Path)
-    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--device", default="cuda" if torch.cuda.is_available() else "cpu"
+    )
     args = parser.parse_args()
 
     model = load_model(args.weights, args.device)
@@ -141,7 +152,10 @@ def main() -> None:
     by_class: dict[str, int] = {}
     for box in boxes:
         by_class[box.label] = by_class.get(box.label, 0) + 1
-    print(f"{len(boxes)} boxes: " + ", ".join(f"{k}={v}" for k, v in sorted(by_class.items())))
+    print(
+        f"{len(boxes)} boxes: "
+        + ", ".join(f"{k}={v}" for k, v in sorted(by_class.items()))
+    )
 
     if args.out:
         args.out.write_text(

@@ -29,13 +29,32 @@ def sha256_file(path: Path) -> str:
 class TextDetector:
     """Loads one immutable checkpoint and predicts page-coordinate boxes."""
 
-    def __init__(self, *, detector_id: str, checkpoint: Path, revision: str, sha256: str, device: str) -> None:
+    def __init__(
+        self,
+        *,
+        detector_id: str,
+        checkpoint: Path,
+        revision: str,
+        sha256: str,
+        device: str,
+    ) -> None:
         if detector_id not in {"lyrics", "non-lyric-text"}:
             raise DetectorLoadError("Unsupported text detector")
         if sha256_file(checkpoint) != sha256:
             raise DetectorLoadError("Text detector does not match its pinned SHA-256")
-        self.detector_id, self.revision, self.sha256, self.device = detector_id, revision, sha256, device
-        model = CamVidModel(arch="Unet", encoder_name="resnet18", in_channels=3, out_classes=NUM_CLASSES, skip_weights_download=True)
+        self.detector_id, self.revision, self.sha256, self.device = (
+            detector_id,
+            revision,
+            sha256,
+            device,
+        )
+        model = CamVidModel(
+            arch="Unet",
+            encoder_name="resnet18",
+            in_channels=3,
+            out_classes=NUM_CLASSES,
+            skip_weights_download=True,
+        )
         state = torch.load(checkpoint, map_location=device, weights_only=True)
         model.load_state_dict(state, strict=True)
         self.model = model.to(device).eval()

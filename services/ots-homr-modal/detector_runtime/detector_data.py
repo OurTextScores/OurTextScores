@@ -41,8 +41,20 @@ from pathlib import Path
 #: how it gets read afterwards, and at 5,013 boxes it is the most common non-Lyrics class
 #: in the corpus.
 DETECTION_CLASSES = frozenset(
-    {"Lyrics", "Tempo", "StaffText", "SystemText", "Expression", "Text",
-     "InstrumentName", "MeasureNumber", "RehearsalMark", "Fingering", "Harmony", "Dynamic"}
+    {
+        "Lyrics",
+        "Tempo",
+        "StaffText",
+        "SystemText",
+        "Expression",
+        "Text",
+        "InstrumentName",
+        "MeasureNumber",
+        "RehearsalMark",
+        "Fingering",
+        "Harmony",
+        "Dynamic",
+    }
 )
 
 
@@ -66,13 +78,29 @@ def boxes_of(record: dict, image_path: str) -> list[Box]:
     found = []
     for lyric in record.get("lyrics", []):
         found.append(
-            Box(image_path, "Lyrics", lyric["left"], lyric["top"], lyric["right"], lyric["bottom"])
+            Box(
+                image_path,
+                "Lyrics",
+                lyric["left"],
+                lyric["top"],
+                lyric["right"],
+                lyric["bottom"],
+            )
         )
     for label, boxes in record.get("text_boxes", {}).items():
         if label not in DETECTION_CLASSES:
             continue
         for box in boxes:
-            found.append(Box(image_path, label, box["left"], box["top"], box["right"], box["bottom"]))
+            found.append(
+                Box(
+                    image_path,
+                    label,
+                    box["left"],
+                    box["top"],
+                    box["right"],
+                    box["bottom"],
+                )
+            )
     return found
 
 
@@ -91,9 +119,12 @@ def write_manifest(boxes: list[Box], path: Path) -> None:
             handle.write(
                 json.dumps(
                     {
-                        "image": box.image, "label": box.label,
-                        "left": box.left, "top": box.top,
-                        "right": box.right, "bottom": box.bottom,
+                        "image": box.image,
+                        "label": box.label,
+                        "left": box.left,
+                        "top": box.top,
+                        "right": box.right,
+                        "bottom": box.bottom,
                     }
                 )
                 + "\n"
@@ -122,7 +153,9 @@ def describe(boxes: list[Box]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument("--boxes", type=Path, required=True, help="A musescore_boxes out dir.")
+    parser.add_argument(
+        "--boxes", type=Path, required=True, help="A musescore_boxes out dir."
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 

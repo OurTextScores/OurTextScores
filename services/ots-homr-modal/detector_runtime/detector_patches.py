@@ -94,8 +94,12 @@ def box_centres_by_class(mask: np.ndarray) -> dict[str, list[tuple[int, int]]]:
         binary = (mask == class_index).astype(np.uint8)
         if not binary.any():
             continue
-        count, _, _, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
-        found[label] = [(int(round(cy)), int(round(cx))) for cx, cy in centroids[1:count]]
+        count, _, _, centroids = cv2.connectedComponentsWithStats(
+            binary, connectivity=8
+        )
+        found[label] = [
+            (int(round(cy)), int(round(cx))) for cx, cy in centroids[1:count]
+        ]
     return found
 
 
@@ -145,7 +149,9 @@ def patch_origin(
     max_shift = int(PATCH_SIZE * jitter)
     y = center[0] - PATCH_SIZE // 2 + rng.randint(-max_shift, max_shift)
     x = center[1] - PATCH_SIZE // 2 + rng.randint(-max_shift, max_shift)
-    return max(0, min(y, max(0, height - PATCH_SIZE))), max(0, min(x, max(0, width - PATCH_SIZE)))
+    return max(0, min(y, max(0, height - PATCH_SIZE))), max(
+        0, min(x, max(0, width - PATCH_SIZE))
+    )
 
 
 def extract_patch(
@@ -219,7 +225,11 @@ class DetectorPatches(Dataset):
             if image is None or mask is None:
                 raise FileNotFoundError(f"cannot read {sample.image} or {sample.mask}")
             centres_by_class = box_centres_by_class(mask)
-            self._cache_index, self._cache_image, self._cache_mask = image_index, image, mask
+            self._cache_index, self._cache_image, self._cache_mask = (
+                image_index,
+                image,
+                mask,
+            )
             self._cache_centres = centres_by_class
 
         positive = centres_by_class and self.rng.random() < self.positive_ratio
@@ -241,7 +251,8 @@ class DetectorPatches(Dataset):
             center = self.rng.choice(centres_by_class[label])
         else:
             center = (
-                self.rng.randint(0, mask.shape[0] - 1), self.rng.randint(0, mask.shape[1] - 1)
+                self.rng.randint(0, mask.shape[0] - 1),
+                self.rng.randint(0, mask.shape[1] - 1),
             )
         origin = patch_origin(center, mask.shape[:2], JITTER, self.rng)
 
@@ -297,7 +308,9 @@ class ImageBlockSampler(Sampler[int]):
         generator = torch.Generator()
         generator.manual_seed(self.seed + self.epoch)
         self.epoch += 1
-        for image_index in torch.randperm(self.num_images, generator=generator).tolist():
+        for image_index in torch.randperm(
+            self.num_images, generator=generator
+        ).tolist():
             base = image_index * self.patches_per_image
             yield from range(base, base + self.patches_per_image)
 

@@ -83,7 +83,7 @@ index a87324b..4eeb342 100644
 +    a network hiccup fetching it, must not turn an optional feature into a startup
 +    failure for everyone.
 +    """
-+    if os.path.exists(model):
++    if not model or os.path.exists(model):
          return
 -
 -    eprint("Downloading", len(missing_models), "models - this is only required once")
@@ -723,9 +723,9 @@ index 21af2b3..a5a1f19 100644
 +        # and the decoder graph already emits `hidden`, so nothing about the decoder
 +        # export has to change to carry them - which also means a deployment can drop
 +        # this file and keep working exactly as it did.
-+        self.structured_heads_path = os.path.join(
-+            workspace,
-+            f"structured_heads_{model_name}.onnx",
++        self.structured_heads_path = os.environ.get(
++            "HOMR_STRUCTURED_HEADS_PATH",
++            os.path.join(workspace, f"structured_heads_{model_name}.onnx"),
 +        )  # noqa: E501
 +
          self.encoder_path_fp16 = os.path.join(
@@ -946,7 +946,7 @@ index 0a28288..b43af23 100644
  
              out_lift = np.concatenate((out_lift, lift_sample), axis=-1)
              out_pitch = np.concatenate((out_pitch, pitch_sample), axis=-1)
-@@ -556,4 +598,13 @@ def get_decoder(config: Config) -> ScoreDecoder:
+@@ -556,4 +598,21 @@ def get_decoder(config: Config) -> ScoreDecoder:
          onnx_transformer = ort.InferenceSession(config.filepaths.decoder_path)
          fp16 = False
  
@@ -954,9 +954,17 @@ index 0a28288..b43af23 100644
 +    # Optional: absent by default until a deployment actually ships this file, matching
 +    # the pattern download_weights already follows for the decoder/encoder themselves.
 +    # A missing file is normal, not an error - most deployments will not have it yet.
++    if os.environ.get("HOMR_REQUIRE_CUDA") == "1" and not use_gpu:
++        raise RuntimeError("HOMR decoder is not using CUDAExecutionProvider")
++
 +    structured_heads = None
 +    if os.path.exists(config.filepaths.structured_heads_path):
-+        structured_heads = ort.InferenceSession(config.filepaths.structured_heads_path)
++        providers = gpu_providers()[0] if use_gpu else ["CPUExecutionProvider"]
++        structured_heads = ort.InferenceSession(
++            config.filepaths.structured_heads_path, providers=providers
++        )
++        if use_gpu and "CUDAExecutionProvider" not in structured_heads.get_providers():
++            raise RuntimeError("Structured heads are not using CUDAExecutionProvider")
 +
 +    return ScoreDecoder(
 +        onnx_transformer, fp16, use_gpu, config=config, structured_heads=structured_heads
@@ -1132,3 +1140,40 @@ index b62115b..44a9f02 100644
  
      def active_beam_levels(self) -> int:
          return sum(1 for state in self.beam_levels if state != BeamLevelState.NOT_APPLICABLE)
+diff --git a/homr/transformer/encoder_inference.py b/homr/transformer/encoder_inference.py
+--- a/homr/transformer/encoder_inference.py
++++ b/homr/transformer/encoder_inference.py
+@@ -1,2 +1,4 @@
++import os
++
+ import numpy as np
+ import onnxruntime as ort
+@@ -55,5 +57,11 @@ class Encoder:
+             self.encoder = ort.InferenceSession(config.filepaths.encoder_path)
+             self.fp16 = False
+-
++
++        if os.environ.get("HOMR_REQUIRE_CUDA") == "1" and (
++            not self.use_gpu
++            or "CUDAExecutionProvider" not in self.encoder.get_providers()
++        ):
++            raise RuntimeError("HOMR encoder is not using CUDAExecutionProvider")
++
+         self.io_binding = self.encoder.io_binding()
+         self.device_id = 0
+diff --git a/homr/segmentation/inference_segnet.py b/homr/segmentation/inference_segnet.py
+--- a/homr/segmentation/inference_segnet.py
++++ b/homr/segmentation/inference_segnet.py
+@@ -79,5 +79,11 @@ class Segnet:
+             self.model = ort.InferenceSession(segnet_path_onnx)
+             self.fp16 = False
+-
++
++        if os.environ.get("HOMR_REQUIRE_CUDA") == "1" and (
++            not self.use_gpu
++            or "CUDAExecutionProvider" not in self.model.get_providers()
++        ):
++            raise RuntimeError("HOMR segmentation is not using CUDAExecutionProvider")
++
+         self.io_binding = self.model.io_binding()
+         self.device_id = 0
