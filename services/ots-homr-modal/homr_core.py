@@ -24,10 +24,9 @@ def install_runtime_artifacts(artifacts: Any, *, homr_root: Path) -> None:
         artifacts.heads: transformer / f"structured_heads_{MODEL_NAME}.onnx",
     }
     for source, target in targets.items():
-        # Modal Volume paths are visible in the web process but symlinks into
-        # that FUSE mount are not reliably resolvable by multiprocessing's
-        # spawned HOMR child. Copy the verified graphs into the ordinary
-        # container filesystem before spawning so every process sees them.
+        # Copy the verified graphs into the ordinary container filesystem
+        # before spawning, so inference does not retain a runtime dependency
+        # on volume-backed links.
         if os.path.lexists(target):
             target.unlink()
         shutil.copyfile(source, target)

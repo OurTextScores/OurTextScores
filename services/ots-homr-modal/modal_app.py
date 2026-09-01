@@ -98,7 +98,9 @@ image = (
     )
     .env(
         {
-            "PYTHONPATH": "/opt/ots-homr-provider:/opt/homr-provider-support",
+            "PYTHONPATH": (
+                "/opt/homr:/opt/ots-homr-provider:/opt/homr-provider-support"
+            ),
             "PYTHONUNBUFFERED": "1",
             "HOMR_WARMUP_PAGE": "/opt/homr-provider-support/warmup-page.png",
             "HOMR_REQUIRE_CUDA": "1",
