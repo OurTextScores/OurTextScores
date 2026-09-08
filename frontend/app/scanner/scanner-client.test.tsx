@@ -158,6 +158,27 @@ describe("ScannerClient", () => {
     },
   );
 
+  it("keeps providers selectable when retained scan history fails", async () => {
+    global.fetch = jest.fn(
+      async (url: RequestInfo | URL) =>
+        String(url).includes("/engines")
+          ? ({ ok: true, status: 200, json: async () => ({ items: providers }) } as Response)
+          : ({
+              ok: false,
+              status: 500,
+              json: async () => ({ message: "Invalid retained scan" }),
+            } as Response),
+    );
+
+    render(<ScannerClient />);
+
+    expect(await screen.findAllByRole("option", { name: "OTS-HOMR" })).toHaveLength(2);
+    expect(screen.getByText("Invalid retained scan")).toBeInTheDocument();
+    expect(
+      screen.queryByText("This deployment does not currently have a provider available."),
+    ).not.toBeInTheDocument();
+  });
+
   it("requires one provider and makes a second provider optional", async () => {
     render(<ScannerClient />);
     expect(await screen.findAllByRole("option", { name: "OTS-HOMR" })).toHaveLength(2);

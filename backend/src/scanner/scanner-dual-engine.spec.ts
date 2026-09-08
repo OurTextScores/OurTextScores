@@ -185,6 +185,39 @@ describe('dual-engine content identity', () => {
     );
   });
 
+  it('normalizes retired head-mode fields when reading a persisted job plan', () => {
+    const current = scannerEnginePlan(
+      ['ots-homr'],
+      'ots-homr',
+      {
+        'ots-homr': {
+          displayName: 'OTS-HOMR',
+          outputArtifactKinds: ['musicxml'],
+          supportsSpotReview: true,
+          supportsMeasureGeometry: false,
+          unsupportedSemanticClasses: []
+        }
+      },
+      { 'ots-homr': { textDetector: 'lyrics' } }
+    );
+    const legacy = {
+      ...current,
+      engineOptions: {
+        'ots-homr': {
+          textDetector: 'lyrics',
+          structuredHeads: { mode: 'review-only' }
+        }
+      }
+    } as any;
+
+    expect(scannerEnginePlanForJob({ enginePlan: legacy })).toMatchObject({
+      engineOptions: { 'ots-homr': { textDetector: 'lyrics' } }
+    });
+    expect(scannerEnginePlanForJob({ enginePlan: legacy }).engineOptions?.['ots-homr']).toEqual({
+      textDetector: 'lyrics'
+    });
+  });
+
   it('derives a usable page when one engine succeeds and the other fails', () => {
     const run = (engine: string, status: any): any => ({
       engine,

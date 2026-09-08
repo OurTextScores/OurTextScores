@@ -170,19 +170,19 @@ export default function ScannerClient() {
       return;
     }
     setUnavailable(null);
-    if (!jobsResponse.ok) throw new Error(await readError(jobsResponse));
     if (!providersResponse.ok)
       throw new Error(await readError(providersResponse));
-    const [body, providerBody] = await Promise.all([
-      jobsResponse.json(),
-      providersResponse.json(),
-    ]);
-    // Tolerate the pre-pagination array shape so a rolling deploy where the
-    // frontend leads the backend still renders Recent scans.
-    setJobs(Array.isArray(body) ? body : (body.items ?? []));
+    const providerBody = await providersResponse.json();
     setProviders(
       Array.isArray(providerBody) ? providerBody : (providerBody.items ?? []),
     );
+    // Provider selection is independent of scan history. Keep it usable—and
+    // show the real history error—if an old retained job cannot be listed.
+    if (!jobsResponse.ok) throw new Error(await readError(jobsResponse));
+    const body = await jobsResponse.json();
+    // Tolerate the pre-pagination array shape so a rolling deploy where the
+    // frontend leads the backend still renders Recent scans.
+    setJobs(Array.isArray(body) ? body : (body.items ?? []));
   }, []);
 
   useEffect(() => {

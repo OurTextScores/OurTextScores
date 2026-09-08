@@ -217,11 +217,20 @@ export function scannerEnginePlanForJob(
     ) {
       throw new Error('Invalid persisted scanner engine plan');
     }
+    const persistedOtsHomr = plan.engineOptions?.['ots-homr'] as
+      | (Record<string, unknown> & { textDetector?: unknown })
+      | undefined;
+    const normalizedEngineOptions = persistedOtsHomr
+      ? {
+          ...plan.engineOptions,
+          'ots-homr': { textDetector: persistedOtsHomr.textDetector }
+        }
+      : plan.engineOptions;
     const normalized = scannerEnginePlan(
       plan.engineIds,
       plan.primaryEngineId,
       plan.capabilitySnapshots,
-      plan.engineOptions
+      normalizedEngineOptions as Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>
     );
     if (
       plan.version !== SCANNER_ENGINE_PLAN_VERSION ||
