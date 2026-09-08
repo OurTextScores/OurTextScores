@@ -9,7 +9,7 @@ from pathlib import Path
 import modal
 
 HOMR_COMMIT = "997b70a88c9f945b632f4129b036b2cd0972b2a3"
-SERVICE_REVISION = "ots-ots-homr-provider-v1"
+SERVICE_REVISION = "ots-ots-homr-provider-v2"
 HARD_TIMEOUT_SECONDS = 280
 CUDA_BASE = "nvidia/cuda@sha256:17e2934e1fa96152b14f78078bfbafd0f00f391df995dc6c641a720fce1202bb"
 HERE = Path(__file__).resolve().parent

@@ -272,6 +272,24 @@ export class ScannerController {
     return this.scanner.retryPage(user.userId, jobId, pageNumber);
   }
 
+  /** Select structured OTS-HOMR families without repeating model inference. */
+  @Put(':jobId/pages/:pageNumber/engines/:engineId/structured-output')
+  selectStructuredOutput(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('engineId') engineId: string,
+    @Body() body: { families?: unknown }
+  ) {
+    return this.scanner.selectStructuredOutput(
+      user.userId,
+      jobId,
+      pageNumber,
+      engineId,
+      body?.families
+    );
+  }
+
   @Delete(':jobId')
   remove(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.deleteJob(user.userId, jobId);

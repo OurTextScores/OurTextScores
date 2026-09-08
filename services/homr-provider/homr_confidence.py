@@ -96,6 +96,7 @@ class PageCapture:
         # with physical staff regions below.
         self._detected_bar_lines: list[Any] = []
         self._bar_line_candidates: list[Any] = []
+        self.title = ""
 
     # -- decoder side -----------------------------------------------------
 
@@ -305,6 +306,14 @@ class PageCapture:
                     ]
                     for symbol in symbols
                 ],
+                # Parallel to `tokens`, so the provider can later regenerate
+                # any selected subset of structured families without repeating
+                # model inference. Values are plain JSON scalars, never Python
+                # enum implementation details.
+                "structured": [
+                    _structured_notation(getattr(symbol, "notation", None))
+                    for symbol in symbols
+                ],
                 "region": [int(value) for value in region] if region is not None else None,
                 # Detected bar lines in page coordinates. These are what make a
                 # measure-level crop possible: unlike the attention point they
@@ -356,7 +365,7 @@ class PageCapture:
             or self._page_width <= 0
             or self._page_height <= 0
         ):
-            return {"staves": self.staves}
+            return {"staves": self.staves, "title": self.title}
         scale_x = source_width / self._page_width
         scale_y = source_height / self._page_height
         staves: list[dict[str, Any]] = []
@@ -381,7 +390,25 @@ class PageCapture:
                     ],
                 }
             )
-        return {"staves": staves}
+        return {"staves": staves, "title": self.title}
+
+
+def _structured_notation(notation: Any) -> dict[str, Any] | None:
+    if notation is None:
+        return None
+    return {
+        "beamLevels": [str(value) for value in getattr(notation, "beam_levels", ())],
+        "stem": str(getattr(notation, "stem", "not_applicable")),
+        "tie": str(getattr(notation, "tie", "none")),
+        "slurs": [
+            [str(event), str(side)]
+            for event, side in getattr(notation, "slurs", ())
+        ],
+        # Dynamic predictions are retained as evidence but the materializer
+        # never accepts the dynamic family for output.
+        "dynamic": str(getattr(notation, "dynamic", "none")),
+        "advance": str(getattr(notation, "advance", "not_applicable")),
+    }
 
 
 def _attention_point(coordinates: Any) -> list[float] | None:
@@ -410,6 +437,17 @@ class capture_page:  # noqa: N801 - used as a context manager
 
         page = self.page
         _ACTIVE[0] = page
+
+        original_generate_xml = homr_main.generate_xml
+
+        def generate_xml(args: Any, staffs: Any, title: str) -> Any:
+            page.title = str(title or "")
+            return original_generate_xml(args, staffs, title)
+
+        homr_main.generate_xml = generate_xml
+        self._undo.append(
+            lambda: setattr(homr_main, "generate_xml", original_generate_xml)
+        )
 
         original_predict = staff2score.Staff2Score.predict
 

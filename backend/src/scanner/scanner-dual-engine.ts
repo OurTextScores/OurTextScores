@@ -51,6 +51,11 @@ export interface ScannerEngineArtifacts {
   [kind: string]: ScannerStorageLocator | undefined;
 }
 
+export interface ScannerEngineOutputCandidate {
+  musicXml: ScannerStorageLocator;
+  review?: ScannerPageResult['review'];
+}
+
 /** Independent state for one engine; page status is derived from both records. */
 export interface ScannerEngineRun {
   engine: ScannerEngineId;
@@ -74,6 +79,12 @@ export interface ScannerEngineRun {
   review?: ScannerPageResult['review'];
   reviewedMusicXml?: ScannerStorageLocator;
   corrections?: ScannerPageResult['corrections'];
+  /** Immutable candidates retained from the original provider call. */
+  outputCandidates?: Record<string, ScannerEngineOutputCandidate | undefined>;
+  /** Families the provider can materialize from its retained predictions. */
+  availableStructuredHeadFamilies?: string[];
+  /** The currently effective structured subset; empty means core output. */
+  selectedStructuredHeadFamilies?: string[];
   artifacts: ScannerEngineArtifacts;
 }
 
@@ -90,12 +101,9 @@ export interface ScannerEngineCapabilitySnapshot {
 }
 
 export type ScannerOtsHomrTextDetector = 'lyrics' | 'non-lyric-text' | 'none';
-export type ScannerOtsHomrStructuredHeadsMode = 'off' | 'experimental-output' | 'review-only';
-
 /** Immutable, user-selected policy for one OTS-HOMR engine run. */
 export interface ScannerOtsHomrEngineOptions {
   textDetector: ScannerOtsHomrTextDetector;
-  structuredHeads: { mode: ScannerOtsHomrStructuredHeadsMode };
 }
 
 export interface ScannerEnginePlan {
@@ -112,9 +120,8 @@ export function isScannerOtsHomrEngineOptions(value: unknown): value is ScannerO
   if (!value || typeof value !== 'object') return false;
   const options = value as ScannerOtsHomrEngineOptions;
   return (
-    ['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector) &&
-    !!options.structuredHeads &&
-    ['off', 'experimental-output', 'review-only'].includes(options.structuredHeads.mode)
+    Object.keys(value).length === 1 &&
+    ['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector)
   );
 }
 
@@ -453,9 +460,11 @@ export function scannerMergedScoreStale(page: {
 export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerStorageLocator[] {
   return Object.values(page.engines || {}).flatMap((run) =>
     run
-      ? ([...Object.values(run.artifacts || {}), run.reviewedMusicXml].filter(
-          Boolean
-        ) as ScannerStorageLocator[])
+      ? ([
+          ...Object.values(run.artifacts || {}),
+          ...Object.values(run.outputCandidates || {}).map((candidate) => candidate?.musicXml),
+          run.reviewedMusicXml
+        ].filter(Boolean) as ScannerStorageLocator[])
       : []
   );
 }
@@ -483,6 +492,13 @@ export function scannerEngineManifest(page: ScannerPageResult): Record<string, u
                 modelRevision: run.modelRevision,
                 provenance: run.provenance,
                 completeness: run.completeness,
+                availableStructuredHeadFamilies: run.availableStructuredHeadFamilies,
+                selectedStructuredHeadFamilies: run.selectedStructuredHeadFamilies,
+                outputCandidateChecksumsSha256: Object.fromEntries(
+                  Object.entries(run.outputCandidates || {}).flatMap(([id, candidate]) =>
+                    candidate ? [[id, candidate.musicXml.checksumSha256]] : []
+                  )
+                ),
                 reviewedMusicXmlChecksumSha256: run.reviewedMusicXml?.checksumSha256,
                 artifactChecksumsSha256: Object.fromEntries(
                   Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>

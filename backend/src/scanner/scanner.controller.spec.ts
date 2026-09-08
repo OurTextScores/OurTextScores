@@ -56,10 +56,7 @@ describe('ScannerController provider selection', () => {
   });
 
   it('requires OTS-HOMR options exactly when OTS-HOMR is selected', async () => {
-    const options = {
-      textDetector: 'lyrics',
-      structuredHeads: { mode: 'review-only' }
-    };
+    const options = { textDetector: 'lyrics' };
     await expect(create(['homr', 'ots-homr'])).rejects.toBeInstanceOf(BadRequestException);
     await expect(create(['homr', 'transcoda'], options)).rejects.toBeInstanceOf(
       BadRequestException

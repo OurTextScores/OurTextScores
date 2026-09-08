@@ -221,6 +221,38 @@ export default function ScannerJobClient({
     }
   }
 
+  async function selectStructuredOutput(
+    pageNumber: number,
+    engineId: string,
+    families: string[],
+  ) {
+    const action = `structured-${pageNumber}-${engineId}`;
+    setBusyAction(action);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${base}/pages/${pageNumber}/engines/${encodeURIComponent(engineId)}/structured-output`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ families }),
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          await responseError(response, "Unable to select structured output"),
+        );
+      setJob(await response.json());
+      // Rendered derivatives rebuild asynchronously; refresh once after the
+      // worker has had a chance to replace them.
+      window.setTimeout(() => void refresh().catch(() => undefined), 2_000);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function remove() {
     if (!window.confirm("Delete this scan and all retained files?")) return;
     setBusyAction("delete");
@@ -958,58 +990,118 @@ export default function ScannerJobClient({
             <div className="mt-4 space-y-2">
               {previewEngineIds.map((engineId) => {
                 const run = selected.engines?.[engineId];
+                const availableFamilies =
+                  run?.availableStructuredHeadFamilies || [];
+                const selectedFamilies =
+                  run?.selectedStructuredHeadFamilies || [];
                 return (
                   <div
                     key={`downloads-${engineId}`}
-                    className="flex flex-wrap items-center gap-2"
+                    className="space-y-2"
                   >
-                    <span className="min-w-24 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      {engineLabel(job, engineId)}
-                    </span>
-                    {run?.hasMusicXml && (
-                      <a
-                        href={artifactUrl(
-                          "musicxml",
-                          selected.pageNumber,
-                          engineId,
-                        )}
-                        download
-                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                      >
-                        MusicXML
-                      </a>
-                    )}
-                    {run?.hasPdf && (
-                      <a
-                        href={artifactUrl("pdf", selected.pageNumber, engineId)}
-                        download
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
-                      >
-                        PDF
-                      </a>
-                    )}
-                    {run?.hasKern && (
-                      <a
-                        href={artifactUrl(
-                          "kern",
-                          selected.pageNumber,
-                          engineId,
-                        )}
-                        download
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
-                      >
-                        Kern
-                      </a>
-                    )}
-                    {run?.hasMusicXml && (
-                      <a
-                        href={editorUrl(selected.pageNumber, engineId)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
-                      >
-                        Open in Score Editor
-                      </a>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-24 text-xs font-medium uppercase tracking-wide text-slate-500">
+                        {engineLabel(job, engineId)}
+                      </span>
+                      {run?.hasMusicXml && (
+                        <a
+                          href={artifactUrl(
+                            "musicxml",
+                            selected.pageNumber,
+                            engineId,
+                          )}
+                          download
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                        >
+                          MusicXML
+                        </a>
+                      )}
+                      {run?.hasPdf && (
+                        <a
+                          href={artifactUrl(
+                            "pdf",
+                            selected.pageNumber,
+                            engineId,
+                          )}
+                          download
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                        >
+                          PDF
+                        </a>
+                      )}
+                      {run?.hasKern && (
+                        <a
+                          href={artifactUrl(
+                            "kern",
+                            selected.pageNumber,
+                            engineId,
+                          )}
+                          download
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                        >
+                          Kern
+                        </a>
+                      )}
+                      {run?.hasMusicXml && (
+                        <a
+                          href={editorUrl(selected.pageNumber, engineId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                        >
+                          Open in Score Editor
+                        </a>
+                      )}
+                    </div>
+                    {availableFamilies.length > 0 && (
+                      <fieldset className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/20">
+                        <legend className="px-1 text-xs font-medium text-slate-700 dark:text-slate-300">
+                          OTS-HOMR structured output
+                        </legend>
+                        <div className="flex flex-wrap gap-x-4 gap-y-2">
+                          {availableFamilies.map((family) => {
+                            const checked = selectedFamilies.includes(family);
+                            return (
+                              <label
+                                key={family}
+                                className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={
+                                    readOnly ||
+                                    busyAction ===
+                                      `structured-${selected.pageNumber}-${engineId}`
+                                  }
+                                  onChange={() =>
+                                    void selectStructuredOutput(
+                                      selected.pageNumber,
+                                      engineId,
+                                      checked
+                                        ? selectedFamilies.filter(
+                                            (item) => item !== family,
+                                          )
+                                        : [...selectedFamilies, family],
+                                    )
+                                  }
+                                />
+                                {family === "beam"
+                                  ? "Beams"
+                                  : family === "advance"
+                                    ? "Rhythmic spacing"
+                                    : family[0].toUpperCase() + family.slice(1)}
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          Core output is used with no boxes checked. Changes
+                          regenerate MusicXML from stored predictions without
+                          rerunning recognition. Dynamics are shown only as
+                          diagnostic evidence and are never applied.
+                        </p>
+                      </fieldset>
                     )}
                   </div>
                 );
@@ -1080,7 +1172,10 @@ export default function ScannerJobClient({
               <div className="mt-4 space-y-4">
                 {reviewableEngineIds.map((engineId) => (
                   <PageReview
-                    key={engineId}
+                    key={`${engineId}-${(
+                      selected.engines?.[engineId]
+                        ?.selectedStructuredHeadFamilies || []
+                    ).join(",")}`}
                     jobId={jobId}
                     pageNumber={selected.pageNumber}
                     engineId={engineId}

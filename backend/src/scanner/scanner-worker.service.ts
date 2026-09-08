@@ -1047,6 +1047,18 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         generation: scanned.result.generation,
         completeness: scanned.result.completeness,
         review: scanned.result.review,
+        outputCandidates: scanned.result.outputCandidates
+          ? Object.fromEntries(
+              Object.entries(scanned.result.outputCandidates).flatMap(([id, candidate]) => {
+                const locator = storedArtifacts[candidate.artifactKind];
+                return locator ? [[id, { musicXml: locator, review: candidate.review }]] : [];
+              })
+            )
+          : undefined,
+        availableStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies,
+        selectedStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies
+          ? []
+          : undefined,
         providerRevision: scanned.result.providerRevision,
         modelRevision: scanned.result.modelRevision,
         provenance: scanned.result.provenance,

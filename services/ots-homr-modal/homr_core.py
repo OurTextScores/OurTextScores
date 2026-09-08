@@ -79,23 +79,37 @@ class PatchedHomrCore:
     def is_ready(self) -> bool:
         return self._plain.is_ready() and self._with_heads.is_ready()
 
-    def transcribe(
-        self, page: bytes, content_type: str, detect_title: bool, head_mode: str
-    ) -> dict[str, Any]:
+    def transcribe_both(
+        self, page: bytes, content_type: str, detect_title: bool
+    ) -> dict[str, dict[str, Any]]:
         suffix = ".png" if content_type == "image/png" else ".jpg"
-        if head_mode == "experimental-output":
-            return self._with_heads.transcribe(page, suffix, detect_title)
-
-        plain = self._plain.transcribe(page, suffix, detect_title)
-        if head_mode == "review-only":
-            # Exercise and validate the sidecar while returning untouched core output.
-            self._with_heads.transcribe(page, suffix, detect_title)
-        return plain
+        # Both candidates are first-class outputs. Selection belongs to the
+        # consuming Scanner job, so changing it never repeats GPU inference.
+        return {
+            "core": self._plain.transcribe(page, suffix, detect_title),
+            "additional-heads": self._with_heads.transcribe(
+                page, suffix, detect_title
+            ),
+        }
 
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes:
         result = self._plain.regenerate(staffs, title)
         if not result.get("ok") or not isinstance(result.get("musicxml"), bytes):
             raise RuntimeError("OTS-HOMR could not regenerate reviewed MusicXML")
+        return result["musicxml"]
+
+    def materialize_structured(
+        self,
+        staffs: list[list[list[str]]],
+        structured: list[list[dict[str, Any] | None]],
+        families: list[str],
+        title: str = "",
+    ) -> bytes:
+        result = self._with_heads.regenerate(
+            staffs, title, structured=structured, families=families
+        )
+        if not result.get("ok") or not isinstance(result.get("musicxml"), bytes):
+            raise RuntimeError("OTS-HOMR could not materialize structured MusicXML")
         return result["musicxml"]
 
     def shutdown(self) -> None:

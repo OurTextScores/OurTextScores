@@ -19,17 +19,34 @@ class FakeEngine:
     def shutdown(self):
         self.ready = False
 
-    def transcribe(self, page, content_type, detect_title, detector, heads):
-        self.calls.append((page, content_type, detect_title, detector, heads))
-        return {
+    def transcribe(self, page, content_type, detect_title, detector):
+        self.calls.append((page, content_type, detect_title, detector))
+        core = {
             "musicxml": b'<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>',
-            "review": {"staves": []},
+            "review": {"title": "Core", "staves": []},
         }
+        heads = {
+            "musicxml": core["musicxml"].replace(b"Core", b"Heads"),
+            "review": {
+                "title": "Heads",
+                "staves": [{
+                    "index": 0,
+                    "tokens": [["note_4", "C4", "_", "_", "_", "upper"]],
+                    "structured": [{"beamLevels": ["none"], "dynamic": "f"}],
+                    "symbols": [],
+                }],
+            },
+        }
+        return {"core": core, "additional-heads": heads}
 
     def regenerate(self, staffs, title=""):
         return b'<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>'
 
-    def identity(self, detector, heads):
+    def materialize_structured(self, staffs, structured, families, title=""):
+        self.calls.append(("materialize", staffs, structured, families, title))
+        return b'<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>'
+
+    def identity(self, detector):
         value = {
             "core": {
                 "repository": "jhlusko/OTS-homr",
@@ -44,20 +61,21 @@ class FakeEngine:
                 "revision": "detector",
                 "sha256": "b" * 64,
             }
-        if heads != "off":
-            value["structuredHeads"] = {
-                "mode": heads,
-                "revision": "heads",
-                "sha256": "c" * 64,
-                "manifestSha256": "d" * 64,
-                "compatibleCoreRevision": "core",
-                "emittedHeadFamilies": [],
-            }
+        value["structuredHeads"] = {
+            "mode": "both",
+            "revision": "heads",
+            "sha256": "c" * 64,
+            "manifestSha256": "d" * 64,
+            "compatibleCoreRevision": "core",
+            "emittedHeadFamilies": [
+                "beam.level", "advance.delta", "stem.direction", "tie", "slur"
+            ],
+        }
         return value
 
     def capabilities_identity(self):
         return {
-            **self.identity("none", "off"),
+            **self.identity("none"),
             "textDetectors": [
                 {"id": "lyrics", "revision": "detector", "sha256": "b" * 64},
                 {"id": "non-lyric-text", "revision": "detector", "sha256": "b" * 64},
@@ -66,7 +84,7 @@ class FakeEngine:
 
 
 class TimeoutEngine(FakeEngine):
-    def transcribe(self, page, content_type, detect_title, detector, heads):
+    def transcribe(self, page, content_type, detect_title, detector):
         error = RuntimeError("private provider detail")
         error.code = "inference_timeout"
         raise error
@@ -110,15 +128,20 @@ class ProviderTest(unittest.TestCase):
                 data={
                     "detectTitle": "true",
                     "textDetector": "lyrics",
-                    "structuredHeadsMode": "review-only",
                 },
             )
             self.assertEqual(response.status_code, 200, response.text)
             body = response.json()
             self.assertEqual(body["inputSha256"], hashlib.sha256(page).hexdigest())
             self.assertEqual(body["engine"]["textDetector"]["id"], "lyrics")
-            self.assertEqual(body["review"], {"staves": []})
-            self.assertEqual(engine.calls[0][2:], (True, "lyrics", "review-only"))
+            self.assertEqual(body["schemaVersion"], "ots-ots-homr-provider.v2")
+            self.assertEqual(body["result"]["selectedCandidate"], "core")
+            self.assertEqual(body["result"]["candidates"]["core"]["review"]["title"], "Core")
+            self.assertEqual(
+                body["result"]["candidates"]["additional-heads"]["review"]["staves"][0]["structured"][0]["dynamic"],
+                "f",
+            )
+            self.assertEqual(engine.calls[0][2:], (True, "lyrics"))
             replay = client.post(
                 "/v1/scan-page",
                 headers={"Authorization": "Bearer secret", "Idempotency-Key": "e" * 64},
@@ -126,7 +149,6 @@ class ProviderTest(unittest.TestCase):
                 data={
                     "detectTitle": "true",
                     "textDetector": "lyrics",
-                    "structuredHeadsMode": "review-only",
                 },
             )
             self.assertEqual(replay.json()["requestId"], body["requestId"])
@@ -144,6 +166,19 @@ class ProviderTest(unittest.TestCase):
             self.assertEqual(regenerated.status_code, 200, regenerated.text)
             self.assertIn("musicXmlBase64", regenerated.json()["result"])
 
+            materialized = client.post(
+                "/v1/materialize-structured",
+                headers={"Authorization": "Bearer secret"},
+                json={
+                    "title": "Title",
+                    "staves": [[ ["note_4", "C4", "_", "_", "_", "upper"] ]],
+                    "structured": [[{"beamLevels": ["none"]}]],
+                    "families": ["beam", "tie"],
+                },
+            )
+            self.assertEqual(materialized.status_code, 200, materialized.text)
+            self.assertEqual(materialized.json()["result"]["families"], ["beam", "tie"])
+
             changed_policy = client.post(
                 "/v1/scan-page",
                 headers={
@@ -154,7 +189,6 @@ class ProviderTest(unittest.TestCase):
                 data={
                     "detectTitle": "true",
                     "textDetector": "non-lyric-text",
-                    "structuredHeadsMode": "review-only",
                 },
             )
             self.assertEqual(changed_policy.status_code, 400)
@@ -203,6 +237,22 @@ class ProviderTest(unittest.TestCase):
             )
             self.assertEqual(body["providerSourceCommit"], "f" * 40)
             self.assertIn("/services/ots-homr-modal", body["providerSource"])
+            self.assertEqual(body["outputCandidates"], ["core", "additional-heads"])
+            self.assertEqual(
+                body["allowedStructuredFamilies"],
+                ["advance", "beam", "slur", "stem", "tie"],
+            )
+
+    def test_rejects_dynamic_as_a_materialized_family(self):
+        with TestClient(
+            create_provider_app(engine=FakeEngine(), service_revision="service")
+        ) as client:
+            response = client.post(
+                "/v1/materialize-structured",
+                json={"title": "", "staves": [], "structured": [], "families": ["dynamic"]},
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["error"]["code"], "invalid_option")
 
     def test_maps_classified_timeout_without_leaking_detail(self):
         with TestClient(

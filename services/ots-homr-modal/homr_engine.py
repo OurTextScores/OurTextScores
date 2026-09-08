@@ -231,6 +231,42 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                     remove_duplicated_symbols,
                 )
 
+                structured = request.get("structured")
+                families = request.get("families")
+                from homr.transformer.structured_notation import (
+                    AdvanceClass,
+                    BeamLevelState,
+                    DynamicMark,
+                    NoteNotation,
+                    SlurEvent,
+                    SlurSide,
+                    StemDirection,
+                    TieState,
+                )
+
+                def notation(staff_index: int, token_index: int) -> NoteNotation | None:
+                    if not isinstance(structured, list) or staff_index >= len(structured):
+                        return None
+                    staff = structured[staff_index]
+                    if not isinstance(staff, list) or token_index >= len(staff):
+                        return None
+                    value = staff[token_index]
+                    if not isinstance(value, dict):
+                        return None
+                    return NoteNotation(
+                        beam_levels=tuple(
+                            BeamLevelState(item) for item in value.get("beamLevels", [])
+                        ),
+                        stem=StemDirection(value.get("stem", "not_applicable")),
+                        tie=TieState(value.get("tie", "none")),
+                        slurs=tuple(
+                            (SlurEvent(item[0]), SlurSide(item[1]))
+                            for item in value.get("slurs", [])
+                        ),
+                        dynamic=DynamicMark.NONE,
+                        advance=AdvanceClass(value.get("advance", "not_applicable")),
+                    )
+
                 staffs = [
                     remove_duplicated_symbols(
                         [
@@ -241,15 +277,25 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                                 articulation=token[3],
                                 slur=token[4],
                                 position=token[5],
+                                notation=notation(staff_index, token_index),
                             )
-                            for token in staff
+                            for token_index, token in enumerate(staff)
                         ]
                     )
-                    for staff in request["staffs"]
+                    for staff_index, staff in enumerate(request["staffs"])
                 ]
-                xml = generate_xml(
-                    XmlGeneratorArguments(), staffs, request.get("title", "")
-                )
+                previous_export = os.environ.get("HOMR_STRUCTURED_EXPORT")
+                try:
+                    if isinstance(families, list):
+                        os.environ["HOMR_STRUCTURED_EXPORT"] = ",".join(families)
+                    xml = generate_xml(
+                        XmlGeneratorArguments(), staffs, request.get("title", "")
+                    )
+                finally:
+                    if previous_export is None:
+                        os.environ.pop("HOMR_STRUCTURED_EXPORT", None)
+                    else:
+                        os.environ["HOMR_STRUCTURED_EXPORT"] = previous_export
                 import xml.etree.ElementTree as ElementTree
 
                 connection.send(
@@ -556,7 +602,11 @@ class HomrEngine:
             self._warm = True
 
     def regenerate(
-        self, staffs: list[list[list[str]]], title: str = ""
+        self,
+        staffs: list[list[list[str]]],
+        title: str = "",
+        structured: list[list[dict[str, Any] | None]] | None = None,
+        families: list[str] | None = None,
     ) -> dict[str, Any]:
         """Rebuild MusicXML from an edited token sequence.
 
@@ -566,7 +616,13 @@ class HomrEngine:
         with self._lock:
             self._ensure_child_locked()
             return self._request_locked(
-                {"kind": "regenerate", "staffs": staffs, "title": title},
+                {
+                    "kind": "regenerate",
+                    "staffs": staffs,
+                    "title": title,
+                    "structured": structured,
+                    "families": families,
+                },
                 timeout=60,
             )
 

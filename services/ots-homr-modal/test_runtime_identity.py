@@ -38,18 +38,24 @@ class RuntimeIdentityTest(unittest.TestCase):
                     path, expected_sha256=digest, core_training_revision="other"
                 )
 
-    def test_review_only_heads_never_claim_emitted_dynamics(self):
+    def test_both_candidates_claim_supported_families_but_never_dynamics(self):
         identity = selected_components(
             core_revision="core",
             core_sha256="a" * 64,
             execution_provider="CUDAExecutionProvider",
             text_detector="none",
-            heads_mode="review-only",
+            heads_mode="both",
             heads_revision="heads",
             heads_sha256="b" * 64,
             manifest_sha256="c" * 64,
         )
-        self.assertEqual(identity["structuredHeads"]["emittedHeadFamilies"], [])
+        self.assertEqual(
+            identity["structuredHeads"]["emittedHeadFamilies"],
+            ["beam.level", "advance.delta", "stem.direction", "tie", "slur"],
+        )
+        self.assertNotIn(
+            "dynamic.mark", identity["structuredHeads"]["emittedHeadFamilies"]
+        )
 
 
 if __name__ == "__main__":

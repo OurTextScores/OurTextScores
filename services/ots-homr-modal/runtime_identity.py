@@ -86,8 +86,14 @@ def selected_components(
             "sha256": heads_sha256,
             "manifestSha256": manifest_sha256,
             "compatibleCoreRevision": core_revision,
-            "emittedHeadFamilies": ["beam.level", "advance.delta"]
-            if heads_mode == "experimental-output"
+            "emittedHeadFamilies": [
+                "beam.level",
+                "advance.delta",
+                "stem.direction",
+                "tie",
+                "slur",
+            ]
+            if heads_mode == "both"
             else [],
         }
     return result

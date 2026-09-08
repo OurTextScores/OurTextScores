@@ -172,7 +172,13 @@ export class ScannerEngineRegistry {
         timeoutConfigKey: 'SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS',
         capabilities: {
           displayName: 'OTS-HOMR',
-          outputArtifactKinds: ['musicxml', 'pdf'],
+          outputArtifactKinds: [
+            'musicxml',
+            'additional-heads-musicxml',
+            'structured-heads',
+            'selected-heads-musicxml',
+            'pdf'
+          ],
           supportsSpotReview: true,
           supportsMeasureGeometry: false,
           unsupportedSemanticClasses: ['dynamics-from-additional-heads']
@@ -184,6 +190,26 @@ export class ScannerEngineRegistry {
             maxBytes: 10_485_760,
             maxBytesConfigKey: 'SCANNER_MAX_MUSICXML_BYTES',
             requiredProviderOutput: true
+          },
+          'additional-heads-musicxml': {
+            contentType: 'application/vnd.recordare.musicxml+xml',
+            extension: 'heads.musicxml',
+            maxBytes: 10_485_760,
+            maxBytesConfigKey: 'SCANNER_MAX_MUSICXML_BYTES',
+            requiredProviderOutput: true
+          },
+          'structured-heads': {
+            contentType: 'application/json',
+            extension: 'heads.json',
+            maxBytes: 10_485_760,
+            requiredProviderOutput: true
+          },
+          'selected-heads-musicxml': {
+            contentType: 'application/vnd.recordare.musicxml+xml',
+            extension: 'sel.musicxml',
+            maxBytes: 10_485_760,
+            maxBytesConfigKey: 'SCANNER_MAX_MUSICXML_BYTES',
+            requiredProviderOutput: false
           },
           pdf: {
             contentType: 'application/pdf',

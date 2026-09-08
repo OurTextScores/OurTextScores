@@ -21,6 +21,8 @@ export interface ScannerEngineRun {
   hasKern: boolean;
   hasReview?: boolean;
   artifactKinds?: string[];
+  availableStructuredHeadFamilies?: string[];
+  selectedStructuredHeadFamilies?: string[];
   completeness?: "complete" | "possibly-incomplete" | "incomplete" | "unknown";
   generation?: {
     hitMaxLength: boolean;

@@ -567,6 +567,131 @@ export class ScannerService implements OnModuleInit {
     return this.present(updated);
   }
 
+  async selectStructuredOutput(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId: string,
+    requestedFamilies: unknown
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    if (isPublicScannerJob(jobId)) throw new ForbiddenException('Public examples are read only');
+    if (!isScannerEngineId(engineId)) throw new BadRequestException('Invalid scanner engine id');
+    const job = await this.ownedJob(userId, jobId);
+    if (!['succeeded', 'partial'].includes(job.status)) {
+      throw new ConflictException('Structured output can be selected only after scanning finishes');
+    }
+    const page = job.pages.find((candidate) => candidate.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const run = page.engines?.[engineId];
+    if (run?.status !== 'succeeded') {
+      throw new ConflictException('This engine has no completed output to select');
+    }
+    if (
+      run.reviewedMusicXml ||
+      (run.corrections?.length || 0) > 0 ||
+      page.mergedMusicXml ||
+      page.mergedScore
+    ) {
+      throw new ConflictException(
+        'Choose structured output before correcting or reconciling this page'
+      );
+    }
+    if (
+      !Array.isArray(requestedFamilies) ||
+      requestedFamilies.some((family) => typeof family !== 'string')
+    ) {
+      throw new BadRequestException('Structured output families must be an array');
+    }
+    const available = run.availableStructuredHeadFamilies || [];
+    const unique = [...new Set(requestedFamilies as string[])];
+    if (
+      unique.length !== requestedFamilies.length ||
+      unique.some((family) => !available.includes(family))
+    ) {
+      throw new BadRequestException('Structured output selection contains an unavailable family');
+    }
+    const families = available.filter((family) => unique.includes(family));
+    if (
+      JSON.stringify(families) === JSON.stringify(run.selectedStructuredHeadFamilies || [])
+    ) {
+      return this.present(job);
+    }
+
+    const core = run.outputCandidates?.core;
+    const allStructured = run.outputCandidates?.['all-structured'];
+    if (!core || !allStructured) {
+      throw new ConflictException('This retained result has no selectable structured outputs');
+    }
+    let selected = core.musicXml;
+    let selectedReview = core.review;
+    let materialized: ScannerStorageLocator | undefined;
+    if (families.length === available.length) {
+      selected = allStructured.musicXml;
+      selectedReview = allStructured.review;
+    } else if (families.length > 0) {
+      const proposals = run.artifacts['structured-heads'];
+      const adapter = this.registeredEngines?.readable(engineId)?.adapter;
+      if (!proposals || !adapter?.materializeStructured) {
+        throw new ConflictException('Structured output materialization is unavailable');
+      }
+      const proposalBody = await this.storage.getObjectBuffer(
+        proposals.bucket,
+        proposals.objectKey
+      );
+      const body = await adapter.materializeStructured(proposalBody, families);
+      assertValidMusicXml(body);
+      materialized = await this.storeAuxiliaryArtifact(
+        `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-${engineId}-selected-heads-${randomUUID()}.musicxml`,
+        body,
+        'application/vnd.recordare.musicxml+xml'
+      );
+      selected = materialized;
+      selectedReview = allStructured.review;
+    }
+
+    const priorPdf = run.artifacts.pdf;
+    const priorMaterialized = run.artifacts['selected-heads-musicxml'];
+    const updatedRun: ScannerEngineRun = {
+      ...run,
+      review: selectedReview,
+      selectedStructuredHeadFamilies: families,
+      artifacts: {
+        ...run.artifacts,
+        musicXml: selected,
+        pdf: undefined,
+        'selected-heads-musicxml': materialized
+      }
+    };
+    const updatedPage = {
+      ...withScannerEngineRun(page, updatedRun),
+      pdf: undefined
+    };
+    const pages = job.pages.map((candidate) =>
+      candidate.pageNumber === pageNumber ? updatedPage : candidate
+    );
+    const updated = await this.jobs
+      .findOneAndUpdate(
+        { _id: job._id, userId, jobId, statusVersion: job.statusVersion || 1 },
+        {
+          $set: { pages, reassembleRequestedAt: new Date() },
+          $inc: { statusVersion: 1 }
+        },
+        { new: true }
+      )
+      .exec();
+    if (!updated) {
+      if (materialized)
+        await this.storage.deleteObject(materialized.bucket, materialized.objectKey);
+      throw new ConflictException('Scanner job changed; refresh and try again');
+    }
+    if (priorPdf) await this.storage.deleteObject(priorPdf.bucket, priorPdf.objectKey);
+    if (priorMaterialized && priorMaterialized.objectKey !== materialized?.objectKey) {
+      await this.storage.deleteObject(priorMaterialized.bucket, priorMaterialized.objectKey);
+    }
+    return this.present(updated);
+  }
+
   async retryPage(userId: string, jobId: string, pageNumber: number): Promise<any> {
     this.assertAvailable(userId);
     if (this.providerCapacityExhausted()) {
@@ -3319,6 +3444,8 @@ export class ScannerService implements OnModuleInit {
       hasPdf: Boolean(run.artifacts.pdf),
       hasKern: Boolean(run.artifacts.kern),
       hasReview: Boolean(run.review?.staves?.length),
+      availableStructuredHeadFamilies: run.availableStructuredHeadFamilies,
+      selectedStructuredHeadFamilies: run.selectedStructuredHeadFamilies,
       artifactKinds: Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
         locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
       )
@@ -3820,6 +3947,26 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('This scanner engine does not support spot review');
     }
     throw new ConflictException('No reviewable scanner engine result is available for this page');
+  }
+
+  private async storeAuxiliaryArtifact(
+    objectKey: string,
+    body: Buffer,
+    contentType: string
+  ): Promise<ScannerStorageLocator> {
+    const stored = await this.storage.putAuxiliaryObject(
+      objectKey,
+      body,
+      body.length,
+      contentType
+    );
+    return {
+      bucket: stored.bucket,
+      objectKey: stored.objectKey,
+      sizeBytes: body.length,
+      contentType,
+      checksumSha256: createHash('sha256').update(body).digest('hex')
+    };
   }
 
   private number(key: string, fallback: number): number {

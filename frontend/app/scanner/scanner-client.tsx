@@ -115,9 +115,6 @@ export default function ScannerClient() {
   const [otsTextDetector, setOtsTextDetector] = useState<
     "lyrics" | "non-lyric-text" | "none"
   >("lyrics");
-  const [otsStructuredHeads, setOtsStructuredHeads] = useState<
-    "off" | "experimental-output" | "review-only"
-  >("off");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -234,7 +231,6 @@ export default function ScannerClient() {
           "otsHomr",
           JSON.stringify({
             textDetector: otsTextDetector,
-            structuredHeads: { mode: otsStructuredHeads },
           }),
         );
       }
@@ -471,7 +467,7 @@ export default function ScannerClient() {
             <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
               OTS-HOMR options
             </legend>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div>
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Text detector
                 <select
@@ -494,32 +490,12 @@ export default function ScannerClient() {
                   it does not yet change the returned MusicXML.
                 </span>
               </label>
-              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                Additional heads
-                <select
-                  aria-label="Additional heads"
-                  value={otsStructuredHeads}
-                  onChange={(event) =>
-                    setOtsStructuredHeads(
-                      event.target.value as
-                        "off" | "experimental-output" | "review-only",
-                    )
-                  }
-                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-                >
-                  <option value="off">Off</option>
-                  <option value="review-only">Review-only diagnostics</option>
-                  <option value="experimental-output">
-                    Experimental output (no dynamics)
-                  </option>
-                </select>
-                <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
-                  Review-only validates with the extra model but keeps the core
-                  score. Experimental output returns approved head output;
-                  dynamics remain excluded.
-                </span>
-              </label>
             </div>
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              OTS-HOMR always runs its additional notation heads. Choose which
+              families to apply after recognition; core output remains the safe
+              default and dynamics are never applied.
+            </p>
           </fieldset>
         )}
       </form>

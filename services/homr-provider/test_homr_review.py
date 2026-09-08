@@ -77,6 +77,41 @@ class PruneTest(unittest.TestCase):
 
 
 class VoiceSystemMappingTest(unittest.TestCase):
+    def test_retains_structured_notation_parallel_to_tokens(self):
+        page = PageCapture()
+        notation = SimpleNamespace(
+            beam_levels=("begin", "continue"),
+            stem="up",
+            tie="start",
+            slurs=(("start", "above"),),
+            dynamic="f",
+            advance="wide",
+        )
+        decoded = SimpleNamespace(
+            rhythm="note_8",
+            pitch="C4",
+            lift="_",
+            articulation="_",
+            slur="_",
+            position="upper",
+            notation=notation,
+        )
+
+        page.add_staff(0, [0, 0, 100, 20], [decoded])
+
+        self.assertEqual(len(page.staves[0]["structured"]), len(page.staves[0]["tokens"]))
+        self.assertEqual(
+            page.staves[0]["structured"][0],
+            {
+                "beamLevels": ["begin", "continue"],
+                "stem": "up",
+                "tie": "start",
+                "slurs": [["start", "above"]],
+                "dynamic": "f",
+                "advance": "wide",
+            },
+        )
+
     def test_assigns_voice_major_physical_staves_to_parts_and_systems(self):
         page = PageCapture()
         page.staves = [

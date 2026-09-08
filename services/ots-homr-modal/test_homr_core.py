@@ -27,7 +27,8 @@ class FakeHomrEngine:
         kind = b"heads" if self.options["structured_heads_path"] else b"plain"
         return {"musicxml": kind, "review": {"staves": [{"index": 0}]}}
 
-    def regenerate(self, staffs, title=""):
+    def regenerate(self, staffs, title="", structured=None, families=None):
+        self.calls.append(("regenerate", staffs, title, structured, families))
         return {"ok": True, "musicxml": b"regenerated"}
 
     def shutdown(self):
@@ -72,7 +73,7 @@ class HomrCoreTest(unittest.TestCase):
             )
             self.assertEqual(os.environ["HOMR_MODEL_NAME"], MODEL_NAME)
 
-    def test_routes_each_head_mode_without_unnecessary_core_decode(self):
+    def test_returns_both_candidates_and_materializes_selected_families(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             core = PatchedHomrCore(
@@ -84,23 +85,23 @@ class HomrCoreTest(unittest.TestCase):
             core.warm_up()
             self.assertTrue(core.is_ready())
 
-            self.assertEqual(
-                core.transcribe(b"off", "image/png", False, "off")["musicxml"], b"plain"
-            )
-            self.assertEqual(
-                core.transcribe(b"review", "image/jpeg", True, "review-only")["musicxml"], b"plain"
-            )
-            self.assertEqual(
-                core.transcribe(
-                    b"experimental", "image/png", False, "experimental-output"
-                )["musicxml"],
-                b"heads",
-            )
-            self.assertEqual([call[0] for call in plain.calls], [b"off", b"review"])
-            self.assertEqual(
-                [call[0] for call in heads.calls], [b"review", b"experimental"]
-            )
+            candidates = core.transcribe_both(b"page", "image/png", True)
+            self.assertEqual(candidates["core"]["musicxml"], b"plain")
+            self.assertEqual(candidates["additional-heads"]["musicxml"], b"heads")
+            self.assertEqual([call[0] for call in plain.calls], [b"page"])
+            self.assertEqual([call[0] for call in heads.calls], [b"page"])
             self.assertEqual(core.regenerate([[['note_4', 'C4', '_', '_', '_', 'upper']]]), b"regenerated")
+            structured = [[{"beamLevels": ["none"]}]]
+            self.assertEqual(
+                core.materialize_structured(
+                    [[['note_4', 'C4', '_', '_', '_', 'upper']]],
+                    structured,
+                    ["beam"],
+                    "Title",
+                ),
+                b"regenerated",
+            )
+            self.assertEqual(heads.calls[-1][3:], (structured, ["beam"]))
 
 
 if __name__ == "__main__":

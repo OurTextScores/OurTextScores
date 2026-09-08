@@ -12,7 +12,7 @@ describe('ScannerOtsHomrProviderService', () => {
     SCANNER_OTS_HOMR_PROVIDER_URL: 'https://ots-homr.example',
     SCANNER_OTS_HOMR_MODAL_TOKEN_ID: 'modal-id',
     SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET: 'modal-secret',
-    SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION: 'ots-homr-provider-v1',
+    SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION: 'ots-homr-provider-v2',
     SCANNER_EXPECTED_OTS_HOMR_CORE_REPOSITORY: 'jhlusko/OTS-homr',
     SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION: 'core-revision',
     SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256: 'a'.repeat(64),
@@ -27,18 +27,38 @@ describe('ScannerOtsHomrProviderService', () => {
     get: jest.fn((key: string, fallback?: string) => values[key] ?? fallback)
   } as any;
   const sha256 = (value: Buffer) => createHash('sha256').update(value).digest('hex');
-  const options = {
-    textDetector: 'lyrics' as const,
-    structuredHeads: { mode: 'review-only' as const }
+  const options = { textDetector: 'lyrics' as const };
+
+  const structured = {
+    beamLevels: ['none'],
+    stem: 'up',
+    tie: 'none',
+    slurs: [],
+    dynamic: 'f',
+    advance: 'normal'
+  };
+  const review = {
+    title: 'Example',
+    staves: [
+      {
+        index: 0,
+        partIndex: 0,
+        systemIndex: 0,
+        region: [0, 0, 100, 20],
+        tokens: [['note_4', 'C4', '_', '_', '_', 'upper']],
+        structured: [structured],
+        symbols: []
+      }
+    ]
   };
 
   const envelope = (overrides: Record<string, unknown> = {}) => ({
-    schemaVersion: 'ots-ots-homr-provider.v1',
+    schemaVersion: 'ots-ots-homr-provider.v2',
     requestId: 'ots-homr-request',
     inputSha256: sha256(image),
     engine: {
       name: 'ots-homr',
-      serviceRevision: 'ots-homr-provider-v1',
+      serviceRevision: 'ots-homr-provider-v2',
       core: {
         repository: 'jhlusko/OTS-homr',
         revision: 'core-revision',
@@ -46,27 +66,29 @@ describe('ScannerOtsHomrProviderService', () => {
       },
       textDetector: { id: 'lyrics', revision: 'lyrics-revision', sha256: 'b'.repeat(64) },
       structuredHeads: {
-        mode: 'review-only',
+        mode: 'both',
         revision: 'heads-revision',
         sha256: 'c'.repeat(64),
         manifestSha256: 'd'.repeat(64),
         compatibleCoreRevision: 'core-revision',
-        emittedHeadFamilies: ['beam.group', 'advance.warning']
+        emittedHeadFamilies: ['beam.level', 'advance.delta', 'stem.direction', 'tie', 'slur']
       },
       executionProvider: 'CUDAExecutionProvider'
     },
-    result: { musicXmlBase64: musicXml.toString('base64'), musicXmlSha256: sha256(musicXml) },
-    review: {
-      staves: [
-        {
-          index: 0,
-          partIndex: 0,
-          systemIndex: 0,
-          region: [0, 0, 100, 20],
-          tokens: [['note_4', 'C4', '_', '_', '_', 'upper']],
-          symbols: []
+    result: {
+      selectedCandidate: 'core',
+      candidates: {
+        core: {
+          musicXmlBase64: musicXml.toString('base64'),
+          musicXmlSha256: sha256(musicXml),
+          review
+        },
+        'additional-heads': {
+          musicXmlBase64: musicXml.toString('base64'),
+          musicXmlSha256: sha256(musicXml),
+          review
         }
-      ]
+      }
     },
     timing: { inferenceMs: 42 },
     ...overrides
@@ -84,7 +106,7 @@ describe('ScannerOtsHomrProviderService', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it('accepts the selected detector and review-only heads only with pinned provenance', async () => {
+  it('accepts both output candidates with pinned provenance and retains proposals', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
       expect(String(url)).toBe('https://ots-homr.example/v1/scan-page');
       expect(new Headers(init?.headers).get('Modal-Key')).toBe('modal-id');
@@ -95,14 +117,23 @@ describe('ScannerOtsHomrProviderService', () => {
     await expect(scan()).resolves.toMatchObject({
       engine: 'ots-homr',
       musicXml,
-      providerRevision: 'ots-homr-provider-v1',
+      providerRevision: 'ots-homr-provider-v2',
       modelRevision: 'core-revision',
       provenance: {
         modelArtifact: 'jhlusko/OTS-homr',
         modelArtifactSha256: 'a'.repeat(64),
         executionProvider: 'CUDAExecutionProvider'
       },
-      review: { staves: [expect.objectContaining({ index: 0 })] }
+      review: { staves: [expect.objectContaining({ index: 0 })] },
+      availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
+      outputCandidates: {
+        core: { artifactKind: 'musicxml' },
+        'all-structured': { artifactKind: 'additional-heads-musicxml' }
+      },
+      nativeArtifacts: {
+        'additional-heads-musicxml': musicXml,
+        'structured-heads': expect.any(Buffer)
+      }
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -131,13 +162,13 @@ describe('ScannerOtsHomrProviderService', () => {
     });
   });
 
-  it('uses the chosen detector and head policy in idempotency identity', () => {
+  it('uses the chosen detector in idempotency identity', () => {
     const service = new ScannerOtsHomrProviderService(config);
     const base = { inputSha256: 'f'.repeat(64), pageNumber: 1, detectTitle: false, generation: 1 };
     expect(service.createIdempotencyKey({ ...base, engineOptions: options })).not.toBe(
       service.createIdempotencyKey({
         ...base,
-        engineOptions: { textDetector: 'none', structuredHeads: { mode: 'off' } }
+        engineOptions: { textDetector: 'none' }
       })
     );
   });
@@ -157,5 +188,52 @@ describe('ScannerOtsHomrProviderService', () => {
     ).resolves.toEqual(musicXml);
     expect(String(fetchSpy.mock.calls[0][0])).toBe('https://ots-homr.example/v1/regenerate');
     expect(fetchSpy.mock.calls[0][1]?.body).toBe(JSON.stringify({ staffs }));
+  });
+
+  it('materializes an independently selected family subset from stored proposals', async () => {
+    const response = {
+      schemaVersion: 'ots-ots-homr-provider.v2',
+      result: {
+        musicXmlBase64: musicXml.toString('base64'),
+        musicXmlSha256: sha256(musicXml),
+        families: ['beam', 'tie']
+      }
+    };
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(response), { status: 200 })
+    );
+    const proposals = Buffer.from(
+      JSON.stringify({
+        schemaVersion: 'ots-structured-proposals.v1',
+        title: 'Example',
+        staves: [[['note_4', 'C4', '_', '_', '_', 'upper']]],
+        structured: [[structured]]
+      })
+    );
+
+    await expect(
+      new ScannerOtsHomrProviderService(config).materializeStructured(proposals, [
+        'beam',
+        'tie'
+      ])
+    ).resolves.toEqual(musicXml);
+    expect(String(fetchSpy.mock.calls[0][0])).toBe(
+      'https://ots-homr.example/v1/materialize-structured'
+    );
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+      title: 'Example',
+      families: ['beam', 'tie']
+    });
+  });
+
+  it('refuses dynamics as an output family before calling the provider', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await expect(
+      new ScannerOtsHomrProviderService(config).materializeStructured(
+        Buffer.from('{}'),
+        ['dynamic']
+      )
+    ).rejects.toMatchObject({ code: 'provider_invalid_option', retryable: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

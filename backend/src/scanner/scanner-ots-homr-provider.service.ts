@@ -47,6 +47,53 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     return musicXml;
   }
 
+  async materializeStructured(proposals: Buffer, families: string[]): Promise<Buffer> {
+    const allowed = new Set(['beam', 'advance', 'stem', 'tie', 'slur']);
+    if (
+      families.length !== new Set(families).size ||
+      families.some((family) => !allowed.has(family))
+    ) {
+      throw new ScannerProviderError(
+        'OTS-HOMR structured output selection is invalid',
+        'provider_invalid_option',
+        false
+      );
+    }
+    let stored: any;
+    try {
+      stored = JSON.parse(proposals.toString('utf8'));
+    } catch {
+      throw this.invalid('Stored OTS-HOMR structured proposals are invalid');
+    }
+    if (!this.isStructuredProposalPayload(stored)) {
+      throw this.invalid('Stored OTS-HOMR structured proposals are invalid');
+    }
+    const result: any = await this.http.postJson({
+      connection: { ...this.connection(), timeoutMs: 60_000 },
+      path: '/v1/materialize-structured',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ ...stored, families }),
+      nonOkError: {
+        message: 'The selected OTS-HOMR head output could not be generated',
+        code: 'provider_generation_failed',
+        retryable: false
+      }
+    });
+    if (result?.schemaVersion !== 'ots-ots-homr-provider.v2') {
+      throw this.invalid('Scanner OTS-HOMR materialization contract verification failed');
+    }
+    const musicXml = this.decode(result?.result?.musicXmlBase64, 'MusicXML');
+    const digest = this.sha(result?.result?.musicXmlSha256);
+    if (
+      createHash('sha256').update(musicXml).digest('hex') !== digest ||
+      JSON.stringify(result?.result?.families) !== JSON.stringify(families)
+    ) {
+      throw this.invalid('Scanner OTS-HOMR materialized output verification failed');
+    }
+    assertValidMusicXml(musicXml);
+    return musicXml;
+  }
+
   createIdempotencyKey(input: {
     inputSha256: string;
     pageNumber: number;
@@ -60,7 +107,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       modelRevision: this.expectedRevision,
       modelArtifactSha256: this.text('SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256'),
       preprocessingRevision: 'ots-ots-homr-rare-num-v1',
-      decodingRevision: `detector=${options.textDetector};heads=${options.structuredHeads.mode}`,
+      decodingRevision: `detector=${options.textDetector};heads=always-v2`,
       engineOptions: options,
       ...input
     });
@@ -80,7 +127,6 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     );
     form.set('detectTitle', String(input.detectTitle));
     form.set('textDetector', options.textDetector);
-    form.set('structuredHeadsMode', options.structuredHeads.mode);
     const envelope: any = await this.http.postJson({
       connection: this.connection(),
       path: '/v1/scan-page',
@@ -88,7 +134,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       body: form
     });
     if (
-      envelope?.schemaVersion !== 'ots-ots-homr-provider.v1' ||
+      envelope?.schemaVersion !== 'ots-ots-homr-provider.v2' ||
       envelope?.engine?.name !== this.engine
     ) {
       throw this.invalid('Scanner OTS-HOMR provider contract verification failed');
@@ -130,17 +176,30 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       );
     }
     this.verifySelectedComponents(engine, options);
-    const musicXml = this.decode(envelope?.result?.musicXmlBase64, 'MusicXML');
-    const musicXmlSha256 = this.sha(envelope?.result?.musicXmlSha256);
-    if (createHash('sha256').update(musicXml).digest('hex') !== musicXmlSha256) {
-      throw this.invalid('Scanner OTS-HOMR MusicXML digest verification failed');
-    }
-    assertValidMusicXml(musicXml);
+    const candidates = envelope?.result?.candidates;
+    const coreCandidate = this.candidate(candidates?.core, 'core');
+    const headsCandidate = this.candidate(
+      candidates?.['additional-heads'],
+      'additional-heads'
+    );
+    const proposals = this.proposalPayload(headsCandidate.rawReview);
     return {
       engine: this.engine,
-      musicXml,
-      musicXmlSha256,
-      review: normaliseReview(envelope?.review),
+      musicXml: coreCandidate.musicXml,
+      musicXmlSha256: coreCandidate.musicXmlSha256,
+      review: coreCandidate.review,
+      nativeArtifacts: {
+        'additional-heads-musicxml': headsCandidate.musicXml,
+        'structured-heads': proposals
+      },
+      outputCandidates: {
+        core: { artifactKind: 'musicxml', review: coreCandidate.review },
+        'all-structured': {
+          artifactKind: 'additional-heads-musicxml',
+          review: headsCandidate.review
+        }
+      },
+      availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
       providerRevision: String(engine.serviceRevision),
       modelRevision: String(core.revision),
       requestId: typeof envelope.requestId === 'string' ? envelope.requestId : undefined,
@@ -182,33 +241,31 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         'provider_model_artifact_mismatch'
       );
     }
-    if (options.structuredHeads.mode !== 'off') {
-      const heads = engine?.structuredHeads;
-      if (
-        heads?.mode !== options.structuredHeads.mode ||
-        (Array.isArray(heads?.emittedHeadFamilies) &&
-          heads.emittedHeadFamilies.includes('dynamic.mark'))
-      ) {
-        throw this.invalid('Scanner OTS-HOMR structured-head verification failed');
-      }
-      this.expect(
-        heads.revision,
-        'SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION',
-        'provider_model_revision_mismatch'
-      );
-      this.expectSha(
-        heads.sha256,
-        'SCANNER_EXPECTED_OTS_HOMR_HEADS_SHA256',
-        'provider_model_artifact_mismatch'
-      );
-      this.expectSha(
-        heads.manifestSha256,
-        'SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256',
-        'provider_model_artifact_mismatch'
-      );
-      if (heads.compatibleCoreRevision !== engine.core.revision)
-        throw this.invalid('Scanner OTS-HOMR head/core compatibility failed');
+    const heads = engine?.structuredHeads;
+    if (
+      heads?.mode !== 'both' ||
+      !Array.isArray(heads?.emittedHeadFamilies) ||
+      heads.emittedHeadFamilies.includes('dynamic.mark')
+    ) {
+      throw this.invalid('Scanner OTS-HOMR structured-head verification failed');
     }
+    this.expect(
+      heads.revision,
+      'SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION',
+      'provider_model_revision_mismatch'
+    );
+    this.expectSha(
+      heads.sha256,
+      'SCANNER_EXPECTED_OTS_HOMR_HEADS_SHA256',
+      'provider_model_artifact_mismatch'
+    );
+    this.expectSha(
+      heads.manifestSha256,
+      'SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256',
+      'provider_model_artifact_mismatch'
+    );
+    if (heads.compatibleCoreRevision !== engine.core.revision)
+      throw this.invalid('Scanner OTS-HOMR head/core compatibility failed');
   }
 
   private connection(): ScannerProviderConnection {
@@ -238,12 +295,11 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         `SCANNER_EXPECTED_OTS_HOMR_${options.textDetector === 'lyrics' ? 'LYRICS' : 'NON_LYRIC_TEXT'}_REVISION`,
         `SCANNER_EXPECTED_OTS_HOMR_${options.textDetector === 'lyrics' ? 'LYRICS' : 'NON_LYRIC_TEXT'}_SHA256`
       );
-    if (options.structuredHeads.mode !== 'off')
-      keys.push(
-        'SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION',
-        'SCANNER_EXPECTED_OTS_HOMR_HEADS_SHA256',
-        'SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256'
-      );
+    keys.push(
+      'SCANNER_EXPECTED_OTS_HOMR_HEADS_REVISION',
+      'SCANNER_EXPECTED_OTS_HOMR_HEADS_SHA256',
+      'SCANNER_EXPECTED_OTS_HOMR_HEADS_MANIFEST_SHA256'
+    );
     if (keys.some((key) => !this.text(key)))
       throw new ScannerProviderError(
         'OTS-HOMR provenance pins are not configured',
@@ -283,6 +339,66 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     const decoded = Buffer.from(typeof value === 'string' ? value : '', 'base64');
     if (!decoded.length) throw this.invalid(`Scanner OTS-HOMR returned invalid ${label}`);
     return decoded;
+  }
+
+  private candidate(value: any, label: string) {
+    const musicXml = this.decode(value?.musicXmlBase64, `${label} MusicXML`);
+    const musicXmlSha256 = this.sha(value?.musicXmlSha256);
+    if (createHash('sha256').update(musicXml).digest('hex') !== musicXmlSha256) {
+      throw this.invalid(`Scanner OTS-HOMR ${label} MusicXML digest verification failed`);
+    }
+    assertValidMusicXml(musicXml);
+    return {
+      musicXml,
+      musicXmlSha256,
+      review: normaliseReview(value?.review),
+      rawReview: value?.review
+    };
+  }
+
+  private proposalPayload(review: any): Buffer {
+    const payload = {
+      schemaVersion: 'ots-structured-proposals.v1',
+      title: typeof review?.title === 'string' ? review.title : '',
+      staves: Array.isArray(review?.staves)
+        ? review.staves.map((staff: any) => staff?.tokens)
+        : [],
+      structured: Array.isArray(review?.staves)
+        ? review.staves.map((staff: any) => staff?.structured)
+        : []
+    };
+    if (!this.isStructuredProposalPayload(payload)) {
+      throw this.invalid('Scanner OTS-HOMR structured proposal verification failed');
+    }
+    return Buffer.from(JSON.stringify(payload));
+  }
+
+  private isStructuredProposalPayload(value: any): boolean {
+    if (
+      value?.schemaVersion !== 'ots-structured-proposals.v1' ||
+      typeof value.title !== 'string' ||
+      !Array.isArray(value.staves) ||
+      !Array.isArray(value.structured) ||
+      value.staves.length !== value.structured.length ||
+      value.staves.length > 256
+    )
+      return false;
+    return value.staves.every(
+      (staff: unknown, index: number) =>
+        Array.isArray(staff) &&
+        staff.length <= 20_000 &&
+        Array.isArray(value.structured[index]) &&
+        value.structured[index].length === staff.length &&
+        staff.every(
+          (token: unknown) =>
+            Array.isArray(token) &&
+            token.length === 6 &&
+            token.every((part) => typeof part === 'string' && part.length <= 256)
+        ) &&
+        value.structured[index].every(
+          (entry: unknown) => entry === null || (typeof entry === 'object' && !!entry)
+        )
+    );
   }
 
   private invalid(message: string): ScannerProviderError {

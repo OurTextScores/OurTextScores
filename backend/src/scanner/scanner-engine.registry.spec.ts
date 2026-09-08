@@ -132,10 +132,7 @@ describe('ScannerEngineRegistry', () => {
 
     expect(
       registry.newJobPlan(['ots-homr', 'homr'], {
-        'ots-homr': {
-          textDetector: 'lyrics',
-          structuredHeads: { mode: 'off' }
-        }
+        'ots-homr': { textDetector: 'lyrics' }
       })
     ).toMatchObject({
       engineIds: ['ots-homr', 'homr'],

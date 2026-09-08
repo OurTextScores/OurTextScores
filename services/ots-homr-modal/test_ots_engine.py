@@ -36,11 +36,16 @@ class FakeCore:
     def is_ready(self):
         return self.ready
 
-    def transcribe(self, page, content_type, detect_title, head_mode):
-        self.calls.append((page, content_type, detect_title, head_mode))
-        return {"musicxml": b"<score-partwise/>", "review": {"staves": []}}
+    def transcribe_both(self, page, content_type, detect_title):
+        self.calls.append((page, content_type, detect_title))
+        result = {"musicxml": b"<score-partwise/>", "review": {"staves": []}}
+        return {"core": result, "additional-heads": result}
 
     def regenerate(self, staffs, title=""):
+        return b"<score-partwise/>"
+
+    def materialize_structured(self, staffs, structured, families, title=""):
+        self.calls.append(("materialize", staffs, structured, families, title))
         return b"<score-partwise/>"
 
     def shutdown(self):
@@ -62,23 +67,19 @@ class OtsHomrEngineTest(unittest.TestCase):
         engine.warm_up()
         engine.warm_up()
         self.assertEqual(core.warm_calls, 1)
-        result = engine.transcribe(
-            b"lyrics-page", "image/png", True, "lyrics", "review-only"
-        )
-        self.assertEqual(result["musicxml"], b"<score-partwise/>")
+        result = engine.transcribe(b"lyrics-page", "image/png", True, "lyrics")
+        self.assertEqual(result["core"]["musicxml"], b"<score-partwise/>")
         self.assertEqual(detectors["lyrics"].calls, [b"lyrics-page"])
         self.assertEqual(detectors["non-lyric-text"].calls, [])
 
         self.assertEqual(engine.regenerate([[['note_4', 'C4', '_', '_', '_', 'upper']]]), b"<score-partwise/>")
-        self.assertEqual(core.calls[-1][-1], "review-only")
-
-        engine.transcribe(b"plain-page", "image/jpeg", False, "none", "off")
+        engine.transcribe(b"plain-page", "image/jpeg", False, "none")
         self.assertEqual(detectors["lyrics"].calls, [b"lyrics-page"])
         self.assertEqual(detectors["non-lyric-text"].calls, [])
 
     def test_identity_and_capabilities_use_release_checkpoint_pins(self):
         engine, _detectors, _core = self.make_engine()
-        identity = engine.identity("non-lyric-text", "experimental-output")
+        identity = engine.identity("non-lyric-text")
         self.assertEqual(identity["core"]["revision"], CORE_REVISION)
         self.assertEqual(identity["core"]["sha256"], CORE_ARTIFACT_SHA256)
         self.assertEqual(
@@ -98,6 +99,10 @@ class OtsHomrEngineTest(unittest.TestCase):
             ["lyrics", "non-lyric-text"],
         )
         self.assertEqual(capabilities["structuredHeads"]["revision"], HEADS_REVISION)
+        self.assertEqual(
+            capabilities["structuredHeads"]["emittedHeadFamilies"],
+            ["beam.level", "advance.delta", "stem.direction", "tie", "slur"],
+        )
 
     def test_rejects_cpu_execution_provider_during_warmup(self):
         engine, _detectors, _core = self.make_engine()

@@ -175,15 +175,12 @@ describe('dual-engine content identity', () => {
     expect(
       scannerProviderIdempotencyKey({
         ...input,
-        engineOptions: { textDetector: 'lyrics', structuredHeads: { mode: 'off' } }
+        engineOptions: { textDetector: 'lyrics' }
       })
     ).not.toBe(
       scannerProviderIdempotencyKey({
         ...input,
-        engineOptions: {
-          textDetector: 'non-lyric-text',
-          structuredHeads: { mode: 'experimental-output' }
-        }
+        engineOptions: { textDetector: 'non-lyric-text' }
       })
     );
   });

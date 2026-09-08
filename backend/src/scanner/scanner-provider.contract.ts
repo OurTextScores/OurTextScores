@@ -36,6 +36,13 @@ export interface ScannerProviderResult {
   musicXmlSha256: string;
   /** Capability-owned normalized review data; absent without decoded token geometry. */
   review?: { staves: ReviewStaff[] };
+  /** Named MusicXML readings produced by one inference request. */
+  outputCandidates?: Record<
+    string,
+    { artifactKind: string; review?: { staves: ReviewStaff[] } }
+  >;
+  /** Structured families that can be materialized later without inference. */
+  availableStructuredHeadFamilies?: string[];
 }
 
 /** Engine adapter consumed by orchestration; transport details stay behind it. */
@@ -52,6 +59,8 @@ export interface ScannerPageProvider {
   scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult>;
   /** Optional normalized regeneration contract for engines that support spot review. */
   regenerateReview?(staves: string[][][]): Promise<Buffer>;
+  /** Materialize a stored structured proposal subset; performs no model inference. */
+  materializeStructured?(proposals: Buffer, families: string[]): Promise<Buffer>;
 }
 
 export function scannerProviderIdempotencyKey(input: {

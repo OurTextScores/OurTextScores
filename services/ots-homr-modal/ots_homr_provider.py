@@ -17,14 +17,14 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import Any, Protocol
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from homr_review import prune_staves
 
-SCHEMA_VERSION = "ots-ots-homr-provider.v1"
+SCHEMA_VERSION = "ots-ots-homr-provider.v2"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
 TEXT_DETECTORS = {"lyrics", "non-lyric-text", "none"}
-HEAD_MODES = {"off", "review-only", "experimental-output"}
+STRUCTURED_FAMILIES = {"beam", "advance", "stem", "tie", "slur"}
 ERROR_STATUS = {
     "invalid_media_type": 415,
     "image_too_large": 413,
@@ -49,10 +49,16 @@ class Engine(Protocol):
         content_type: str,
         detect_title: bool,
         text_detector: str,
-        head_mode: str,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, dict[str, Any]]: ...
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes: ...
-    def identity(self, text_detector: str, head_mode: str) -> dict[str, Any]: ...
+    def identity(self, text_detector: str) -> dict[str, Any]: ...
+    def materialize_structured(
+        self,
+        staffs: list[list[list[str]]],
+        structured: list[list[dict[str, Any] | None]],
+        families: list[str],
+        title: str = "",
+    ) -> bytes: ...
 
 
 def _matches_content_type(content: bytes, content_type: str) -> bool:
@@ -145,15 +151,15 @@ def create_provider_app(
     @app.get("/v1/capabilities")
     async def capabilities() -> dict[str, Any]:
         details = getattr(engine, "capabilities_identity", None)
-        identity = details() if details else engine.identity("lyrics", "off")
+        identity = details() if details else engine.identity("lyrics")
         result = {
             "schemaVersion": SCHEMA_VERSION,
             "engine": "ots-homr",
             "serviceRevision": service_revision,
             "ready": engine.is_ready(),
             "textDetectorOptions": sorted(TEXT_DETECTORS),
-            "structuredHeadModes": sorted(HEAD_MODES),
-            "allowedEmittedHeadFamilies": ["beam.level", "advance.delta"],
+            "outputCandidates": ["core", "additional-heads"],
+            "allowedStructuredFamilies": sorted(STRUCTURED_FAMILIES),
             **identity,
         }
         if provider_source_commit:
@@ -180,7 +186,6 @@ def create_provider_app(
         page: UploadFile = File(...),
         detectTitle: bool = Form(False),
         textDetector: str = Form("lyrics"),
-        structuredHeadsMode: str = Form("off"),
         idempotency_key: str = Header(..., alias="Idempotency-Key"),
         authorization: str | None = Header(None, alias="Authorization"),
     ) -> Any:
@@ -197,7 +202,7 @@ def create_provider_app(
                 "Only PNG and JPEG pages are supported",
                 415,
             )
-        if textDetector not in TEXT_DETECTORS or structuredHeadsMode not in HEAD_MODES:
+        if textDetector not in TEXT_DETECTORS:
             return _error(request_id, "invalid_option", "Invalid OTS-HOMR policy")
         content = await page.read(max_page_bytes + 1)
         if len(content) > max_page_bytes:
@@ -218,7 +223,6 @@ def create_provider_app(
                     content,
                     str(detectTitle).lower().encode(),
                     textDetector.encode(),
-                    structuredHeadsMode.encode(),
                 )
             )
         ).hexdigest()
@@ -253,9 +257,9 @@ def create_provider_app(
                 page.content_type,
                 detectTitle,
                 textDetector,
-                structuredHeadsMode,
             )
-            xml = result["musicxml"]
+            core_result = result["core"]
+            heads_result = result["additional-heads"]
         except Exception as error:
             code = str(getattr(error, "code", "inference_failed"))
             if code not in ERROR_STATUS:
@@ -265,7 +269,7 @@ def create_provider_app(
                 code,
                 "OTS-HOMR could not process this page",
             )
-        identity = engine.identity(textDetector, structuredHeadsMode)
+        identity = engine.identity(textDetector)
         heads = identity.get("structuredHeads")
         if heads and "dynamic.mark" in heads.get("emittedHeadFamilies", []):
             return _error(
@@ -286,13 +290,23 @@ def create_provider_app(
                 **identity,
             },
             "result": {
-                "musicXmlBase64": base64.b64encode(xml).decode(),
-                "musicXmlSha256": hashlib.sha256(xml).hexdigest(),
-            },
-            "review": {
-                "staves": prune_staves(
-                    ((result.get("review") or {}).get("staves") or [])
-                )
+                "selectedCandidate": "core",
+                "candidates": {
+                    candidate_id: {
+                        "musicXmlBase64": base64.b64encode(candidate["musicxml"]).decode(),
+                        "musicXmlSha256": hashlib.sha256(candidate["musicxml"]).hexdigest(),
+                        "review": {
+                            "title": str((candidate.get("review") or {}).get("title") or ""),
+                            "staves": prune_staves(
+                                ((candidate.get("review") or {}).get("staves") or [])
+                            )
+                        },
+                    }
+                    for candidate_id, candidate in (
+                        ("core", core_result),
+                        ("additional-heads", heads_result),
+                    )
+                },
             },
             "timing": {"inferenceMs": int((time.monotonic() - started) * 1000)},
         }
@@ -304,6 +318,53 @@ def create_provider_app(
         while len(app.state.result_cache) > 16:
             app.state.result_cache.popitem(last=False)
         return response
+
+    @app.post("/v1/materialize-structured")
+    async def materialize_structured(
+        body: dict[str, Any] = Body(...),
+        authorization: str | None = Header(None, alias="Authorization"),
+    ) -> Any:
+        auth(authorization)
+        request_id = uuid.uuid4().hex
+        families = body.get("families")
+        staves = body.get("staves")
+        structured = body.get("structured")
+        title = body.get("title", "")
+        if (
+            not isinstance(families, list)
+            or len(families) != len(set(families))
+            or any(family not in STRUCTURED_FAMILIES for family in families)
+            or not isinstance(staves, list)
+            or not isinstance(structured, list)
+            or len(staves) != len(structured)
+            or not isinstance(title, str)
+            or len(title) > 1000
+        ):
+            return _error(request_id, "invalid_option", "Invalid structured output request")
+        try:
+            xml = await asyncio.to_thread(
+                engine.materialize_structured,
+                staves,
+                structured,
+                families,
+                title,
+            )
+        except Exception:
+            logger.exception("OTS-HOMR structured materialization failed")
+            return _error(
+                request_id,
+                "generation_failed",
+                "OTS-HOMR could not materialize structured output",
+            )
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "requestId": request_id,
+            "result": {
+                "musicXmlBase64": base64.b64encode(xml).decode(),
+                "musicXmlSha256": hashlib.sha256(xml).hexdigest(),
+                "families": families,
+            },
+        }
 
     @app.post("/v1/regenerate")
     async def regenerate(

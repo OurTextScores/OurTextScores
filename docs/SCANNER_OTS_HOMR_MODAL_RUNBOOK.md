@@ -7,9 +7,9 @@ credentials.
 
 Design reference: `docs/private/SCANNER_OTS_HOMR_PROVIDER_DESIGN_2026-08-31.md`.
 
-**Status:** application integration is committed in `41bd204`; the dedicated
-`services/ots-homr-modal/` provider is implemented locally. Complete the local
-verification and commit gate below before its first deployment.
+**Status:** the dedicated provider and Scanner integration live in this
+repository. Complete the local verification and commit gate below before each
+deployment.
 
 **Cost and safety:** use a distinct Modal App, a distinct proxy token, and a
 small staging budget. The provider gets a read-only Hugging Face token; neither
@@ -35,16 +35,22 @@ is `7f92b9b948e6a39daef1f8bcdb66c8ebdfed2c38024ad532f292e0b4d04781fa`;
 it declares `structured_heads_rareNumMixed.onnx` with SHA-256
 `75d313e091d060723cc6bcec3edd1c7aecbe7beb2b637a8f6f4e50afad8e4db2`.
 
-The UI exposes three stable policies:
+The creation UI exposes one text-detector policy. Additional-head inference is
+always run and produces a second retained MusicXML candidate:
 
 | Option | Meaning |
 | --- | --- |
 | Text detector: `lyrics` | E2 lyrics detector. |
 | Text detector: `non-lyric-text` | E4, comparison/experimental choice. |
 | Text detector: `none` | Diagnostic mode. |
-| Heads: `off` | No additional-head processing. |
-| Heads: `review-only` | Diagnostics only; no MusicXML change. |
-| Heads: `experimental-output` | Only provider-approved experimental output. `dynamic.mark` must never be emitted. |
+
+After recognition, the review page independently selects any combination of
+`beam`, `advance` (shown as rhythmic spacing), `stem`, `tie`, and `slur`.
+Selecting none uses core output. Selecting all reuses the retained
+additional-heads MusicXML. Any proper subset is regenerated from retained token
+proposals without rerunning detector, encoder, decoder, or head inference.
+Dynamic predictions remain diagnostic evidence and can never be selected or
+emitted.
 
 ---
 
@@ -100,6 +106,7 @@ uv run \
   --with fastapi==0.116.1 \
   --with httpx==0.28.1 \
   --with python-multipart==0.0.30 \
+  env PYTHONPATH=services/homr-provider:services/ots-homr-modal \
   python -m unittest discover -s services/ots-homr-modal -p 'test_*.py'
 ```
 
@@ -149,41 +156,47 @@ The OTS backend adapter calls an authenticated `POST /v1/scan-page` with:
 
 ```text
 multipart field: page
-multipart fields: detectTitle, textDetector, structuredHeadsMode
+multipart fields: detectTitle, textDetector
 header: Idempotency-Key
 ```
 
-The provider must return `ots-ots-homr-provider.v1` and a response shaped like:
+The provider must return `ots-ots-homr-provider.v2` and a response shaped like:
 
 ```json
 {
-  "schemaVersion": "ots-ots-homr-provider.v1",
+  "schemaVersion": "ots-ots-homr-provider.v2",
   "requestId": "...",
   "inputSha256": "<sha256 of page bytes>",
   "engine": {
     "name": "ots-homr",
-    "serviceRevision": "ots-ots-homr-provider-v1",
+    "serviceRevision": "ots-ots-homr-provider-v2",
     "core": { "repository": "jhlusko/OTS-homr", "revision": "...", "sha256": "..." },
     "textDetector": { "id": "lyrics", "revision": "...", "sha256": "..." },
     "structuredHeads": {
-      "mode": "review-only",
+      "mode": "both",
       "revision": "...",
       "sha256": "...",
       "manifestSha256": "...",
       "compatibleCoreRevision": "...",
-      "emittedHeadFamilies": []
+      "emittedHeadFamilies": ["beam.level", "advance.delta", "stem.direction", "tie", "slur"]
     },
     "executionProvider": "CUDAExecutionProvider"
   },
-  "result": { "musicXmlBase64": "...", "musicXmlSha256": "..." },
-  "review": { "staves": [] },
+  "result": {
+    "selectedCandidate": "core",
+    "candidates": {
+      "core": { "musicXmlBase64": "...", "musicXmlSha256": "...", "review": { "staves": [] } },
+      "additional-heads": { "musicXmlBase64": "...", "musicXmlSha256": "...", "review": { "staves": [] } }
+    }
+  },
   "timing": { "inferenceMs": 0 }
 }
 ```
 
 Required routes are `/healthz`, `/readyz`, `/v1/capabilities`, and
-`/v1/scan-page`, plus `/v1/regenerate` for reviewed token corrections, all
-behind Modal proxy auth. The first scan request must wait for the same guarded
+`/v1/scan-page`, `/v1/regenerate` for reviewed token corrections, and
+`/v1/materialize-structured` for a selected head-family subset, all behind
+Modal proxy auth. The first scan request must wait for the same guarded
 warm-up as `/readyz`; returning `model_not_ready` while a cold-start warm-up is
 still in progress exhausts the Scanner worker's retries before the model can
 become ready. `/readyz` must remain false until
@@ -192,7 +205,10 @@ their SHA-256 values match, the compatibility manifest matches the rareNum
 core, and a genuine GPU warm-up has succeeded. Set Hugging Face offline mode
 after this preparation; inference must not download a mutable release.
 
-The provider must reject invalid selections and must reject rather than omit a
+The materialization route accepts the retained `title`, six-field `staves`, a
+parallel `structured` proposal array, and a unique subset of the five allowed
+families. It performs MusicXML generation only; no model inference. The
+provider must reject invalid selections and must reject rather than omit a
 prohibited dynamic output. It may not report a CPU backend as CUDA.
 
 ---
@@ -214,8 +230,8 @@ up, validate the exact SHA-256 values in §0, then disable network model lookup.
 
 Use one L4 (or explicitly documented equivalent), `max_containers=1`,
 `max_inputs=1`, and `min_containers=0` for the initial beta. Keep the provider
-function timeout at 660 seconds. Each core decode has a 280-second hard limit;
-the two serial decodes in `review-only` therefore remain below
+function timeout at 660 seconds. Each decode has a 280-second hard limit;
+the two serial core/additional-head decodes therefore remain below
 `SCANNER_OTS_HOMR_PROVIDER_TIMEOUT_MS` (default 600 seconds), with 40 seconds
 reserved for detector and HTTP overhead.
 
@@ -286,7 +302,7 @@ import json, re
 from pathlib import Path
 
 c = json.loads(Path('/tmp/ots-homr-capabilities.json').read_text())
-assert c['schemaVersion'] == 'ots-ots-homr-provider.v1'
+assert c['schemaVersion'] == 'ots-ots-homr-provider.v2'
 assert c['engine'] == 'ots-homr'
 assert re.fullmatch(r'[a-f0-9]{40}', c['providerSourceCommit'])
 assert c['providerSource'].endswith('/services/ots-homr-modal')
@@ -296,7 +312,9 @@ assert c['core']['sha256'] == '1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1
 assert c['core']['runtimeArtifacts']['encoderOnnxSha256'] == 'f5b429929b17c375f2940739d00e04c62592f75afe4aeba6112859a6eb427aa1'
 assert c['core']['runtimeArtifacts']['decoderOnnxSha256'] == '7abc3ea71caac8f5a4fd9a96f0ce40c9f3b224ff83ed05899eae735c9917a1b4'
 assert c['executionProvider'] == 'CUDAExecutionProvider'
-assert 'dynamic.mark' not in c.get('allowedEmittedHeadFamilies', [])
+assert c['outputCandidates'] == ['core', 'additional-heads']
+assert set(c['allowedStructuredFamilies']) == {'beam', 'advance', 'stem', 'tie', 'slur'}
+assert 'dynamic' not in c['allowedStructuredFamilies']
 assert c['structuredHeads']['revision'] == 'c3d4bb0430f0516665897c618f2e971d197630cc'
 assert c['structuredHeads']['sha256'] == 'f6edb17ada2616b94330d8a20cff73e9e1e2a9cd77a8348b8543fde722552650'
 assert c['structuredHeads']['runtimeArtifacts']['onnxSha256'] == '75d313e091d060723cc6bcec3edd1c7aecbe7beb2b637a8f6f4e50afad8e4db2'
@@ -327,7 +345,6 @@ curl --fail-with-body -sS --max-time 590 "${OTS_HOMR_AUTH[@]}" \
   -F "page=@${smoke_page};type=image/png" \
   -F 'detectTitle=false' \
   -F 'textDetector=lyrics' \
-  -F 'structuredHeadsMode=review-only' \
   "$OTS_HOMR_MODAL_URL/v1/scan-page" > /tmp/ots-homr-smoke.json
 ```
 
@@ -340,24 +357,28 @@ from pathlib import Path
 
 page = Path('services/homr-provider/warmup-page.png').read_bytes()
 body = json.loads(Path('/tmp/ots-homr-smoke.json').read_text())
-assert body['schemaVersion'] == 'ots-ots-homr-provider.v1'
+assert body['schemaVersion'] == 'ots-ots-homr-provider.v2'
 assert body['inputSha256'] == hashlib.sha256(page).hexdigest()
 assert body['engine']['name'] == 'ots-homr'
 assert body['engine']['textDetector']['id'] == 'lyrics'
-assert body['engine']['structuredHeads']['mode'] == 'review-only'
+assert body['engine']['structuredHeads']['mode'] == 'both'
 assert 'dynamic.mark' not in body['engine']['structuredHeads']['emittedHeadFamilies']
-xml = base64.b64decode(body['result']['musicXmlBase64'], validate=True)
-assert hashlib.sha256(xml).hexdigest() == body['result']['musicXmlSha256']
-assert b'<!DOCTYPE' not in xml.upper() and b'<!ENTITY' not in xml.upper()
-assert b'<score-partwise' in xml or b'<score-timewise' in xml
-Path('/tmp/ots-homr-smoke.musicxml').write_bytes(xml)
+assert body['result']['selectedCandidate'] == 'core'
+for name in ('core', 'additional-heads'):
+    candidate = body['result']['candidates'][name]
+    xml = base64.b64decode(candidate['musicXmlBase64'], validate=True)
+    assert hashlib.sha256(xml).hexdigest() == candidate['musicXmlSha256']
+    assert b'<!DOCTYPE' not in xml.upper() and b'<!ENTITY' not in xml.upper()
+    assert b'<score-partwise' in xml or b'<score-timewise' in xml
+    Path(f'/tmp/ots-homr-smoke-{name}.musicxml').write_bytes(xml)
 print('requestId:', body.get('requestId'))
 print('inferenceMs:', body.get('timing', {}).get('inferenceMs'))
 PY
 ```
 
 A valid response only proves the contract. Before broadening access, inspect
-the MusicXML, compare it with HOMR, and test each non-default policy separately.
+both MusicXML candidates, compare them with HOMR, and test representative
+single-family and mixed-family selections through Scanner.
 
 ---
 
@@ -374,7 +395,7 @@ SCANNER_OTS_HOMR_MODAL_TOKEN_ID=<wk-...>
 SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET=<ws-...>
 SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED=false
 
-SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v1
+SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v2
 SCANNER_EXPECTED_OTS_HOMR_CORE_REPOSITORY=jhlusko/OTS-homr
 SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION=1dbc87399c70238136da0dfd412fff032d17b76c
 SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256=1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3
@@ -410,9 +431,13 @@ response that:
 
 - `enginePlan.engineIds` contains the one or two providers selected by the user;
 - `primaryEngineId` is the provider selected in the required dropdown;
-- `enginePlan.engineOptions["ots-homr"]` records the selected policy;
+- `enginePlan.engineOptions["ots-homr"]` records the selected text detector;
 - `pages[].engines["ots-homr"]` has independent status, provenance, and
   artifacts;
+- `pages[].engines["ots-homr"]` exposes the five available structured families
+  and defaults to an empty selected-family list;
+- selecting families invalidates the prior PDF, queues reassembly, and updates
+  the effective OTS-HOMR MusicXML without issuing another scan request;
 - both successful review-capable engines have their own uncertainty section;
 - a failed selected provider remains visible with its error and retry action;
 - a failure in OTS-HOMR does not discard a successful HOMR result.

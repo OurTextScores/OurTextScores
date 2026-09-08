@@ -236,9 +236,7 @@ describe("ScannerClient", () => {
     fireEvent.change(screen.getByLabelText("Text detector"), {
       target: { value: "non-lyric-text" },
     });
-    fireEvent.change(screen.getByLabelText("Additional heads"), {
-      target: { value: "review-only" },
-    });
+    expect(screen.queryByLabelText("Additional heads")).not.toBeInTheDocument();
 
     fireEvent.submit(
       screen.getByRole("button", { name: "Select pages" }).closest("form")!,
@@ -250,7 +248,6 @@ describe("ScannerClient", () => {
     ]);
     expect(JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")))).toEqual({
       textDetector: "non-lyric-text",
-      structuredHeads: { mode: "review-only" },
     });
   });
 

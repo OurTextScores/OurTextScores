@@ -3593,6 +3593,149 @@ describe('ScannerService merged score', () => {
   });
 });
 
+describe('Scanner structured output selection', () => {
+  const config = {
+    get: jest.fn((key: string, fallback?: string) =>
+      key === 'SCANNER_ENABLED' ? 'true' : key === 'SCANNER_BETA_USER_IDS' ? 'user-1' : fallback
+    )
+  } as any;
+  const telemetry = { emit: jest.fn(), userHash: jest.fn(() => 'user-hash') } as any;
+  const alerts = { evaluate: jest.fn() } as any;
+  const xml = Buffer.from(
+    '<score-partwise version="4.0"><part-list><score-part id="P1"/></part-list>' +
+      '<part id="P1"><measure number="1"/></part></score-partwise>'
+  );
+  const locator = (objectKey: string) => ({
+    bucket: 'scanner',
+    objectKey,
+    sizeBytes: xml.length,
+    contentType: 'application/vnd.recordare.musicxml+xml',
+    checksumSha256: createHash('sha256').update(xml).digest('hex')
+  });
+
+  function setup(options: { corrected?: boolean } = {}) {
+    const adapter = {
+      engine: 'ots-homr',
+      materializeStructured: jest.fn(async () => xml)
+    } as any;
+    const registry = new ScannerEngineRegistry(
+      config,
+      provider,
+      { engine: 'transcoda' } as any,
+      adapter
+    );
+    const run: any = {
+      engine: 'ots-homr',
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'key',
+      artifacts: {
+        musicXml: locator('core.musicxml'),
+        pdf: locator('old.pdf'),
+        'additional-heads-musicxml': locator('heads.musicxml'),
+        'structured-heads': { ...locator('heads.json'), contentType: 'application/json' }
+      },
+      outputCandidates: {
+        core: { musicXml: locator('core.musicxml'), review: { staves: [] } },
+        'all-structured': { musicXml: locator('heads.musicxml'), review: { staves: [] } }
+      },
+      availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
+      selectedStructuredHeadFamilies: [],
+      ...(options.corrected ? { corrections: [{ symbolIndex: 0 }] } : {})
+    };
+    const job: any = {
+      _id: 'mongo-id',
+      jobId: 'job-1',
+      userId: 'user-1',
+      status: 'succeeded',
+      statusVersion: 3,
+      pageCount: 1,
+      enginePlan: scannerEnginePlan(
+        ['ots-homr'],
+        'ots-homr',
+        { 'ots-homr': registry.get('ots-homr')!.capabilities },
+        { 'ots-homr': { textDetector: 'lyrics' } }
+      ),
+      pages: [{ pageNumber: 1, status: 'succeeded', attempts: 1, engines: { 'ots-homr': run } }]
+    };
+    const jobsModel = {
+      findOne: jest.fn(() => ({ exec: async () => job })),
+      findOneAndUpdate: jest.fn((_filter: any, update: any) => ({
+        exec: async () => {
+          job.pages = update.$set.pages;
+          job.reassembleRequestedAt = update.$set.reassembleRequestedAt;
+          job.statusVersion += 1;
+          return job;
+        }
+      }))
+    } as any;
+    const testStorage = {
+      getObjectBuffer: jest.fn(async () => Buffer.from('{"proposals":true}')),
+      putAuxiliaryObject: jest.fn(async (objectKey: string) => ({
+        bucket: 'scanner',
+        objectKey
+      })),
+      deleteObject: jest.fn(async () => undefined)
+    } as any;
+    const service = new ScannerService(
+      jobsModel,
+      corrections,
+      testStorage,
+      provider,
+      telemetry,
+      alerts,
+      config,
+      registry
+    );
+    return { adapter, job, jobsModel, service, storage: testStorage };
+  }
+
+  it('materializes a subset without rerunning recognition and queues reassembly', async () => {
+    const { adapter, job, service, storage } = setup();
+
+    await expect(
+      service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam', 'tie'])
+    ).resolves.toMatchObject({
+      pages: [
+        {
+          engines: {
+            'ots-homr': { selectedStructuredHeadFamilies: ['beam', 'tie'], hasPdf: false }
+          }
+        }
+      ]
+    });
+    expect(adapter.materializeStructured).toHaveBeenCalledWith(
+      Buffer.from('{"proposals":true}'),
+      ['beam', 'tie']
+    );
+    expect(storage.putAuxiliaryObject).toHaveBeenCalledTimes(1);
+    expect(storage.deleteObject).toHaveBeenCalledWith('scanner', 'old.pdf');
+    expect(job.reassembleRequestedAt).toBeInstanceOf(Date);
+  });
+
+  it('reuses the retained all-heads candidate and never permits dynamics', async () => {
+    const { adapter, job, service, storage } = setup();
+    const all = ['beam', 'advance', 'stem', 'tie', 'slur'];
+
+    await service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', all);
+    expect(job.pages[0].engines['ots-homr'].artifacts.musicXml.objectKey).toBe(
+      'heads.musicxml'
+    );
+    expect(adapter.materializeStructured).not.toHaveBeenCalled();
+    expect(storage.putAuxiliaryObject).not.toHaveBeenCalled();
+    await expect(
+      service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['dynamic'])
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('requires selection before human corrections', async () => {
+    const { service } = setup({ corrected: true });
+    await expect(
+      service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam'])
+    ).rejects.toThrow(/before correcting or reconciling/);
+  });
+});
+
 describe('scanner comparison relative URLs', () => {
   // Every URL in the regions document resolves against the document's own
   // URL, because the browser reaches this process through the host's proxy
