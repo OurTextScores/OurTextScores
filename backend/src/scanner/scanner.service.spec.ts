@@ -3613,7 +3613,7 @@ describe('Scanner structured output selection', () => {
     checksumSha256: createHash('sha256').update(xml).digest('hex')
   });
 
-  function setup(options: { corrected?: boolean } = {}) {
+  function setup(options: { corrected?: boolean; staleHomrRun?: boolean } = {}) {
     const adapter = {
       engine: 'ots-homr',
       materializeStructured: jest.fn(async () => xml)
@@ -3647,7 +3647,7 @@ describe('Scanner structured output selection', () => {
       _id: 'mongo-id',
       jobId: 'job-1',
       userId: 'user-1',
-      status: 'succeeded',
+      status: options.staleHomrRun ? 'failed' : 'succeeded',
       statusVersion: 3,
       pageCount: 1,
       enginePlan: scannerEnginePlan(
@@ -3656,7 +3656,30 @@ describe('Scanner structured output selection', () => {
         { 'ots-homr': registry.get('ots-homr')!.capabilities },
         { 'ots-homr': { textDetector: 'lyrics' } }
       ),
-      pages: [{ pageNumber: 1, status: 'succeeded', attempts: 1, engines: { 'ots-homr': run } }]
+      errorCode: options.staleHomrRun ? 'scan_failed' : undefined,
+      errorMessage: options.staleHomrRun ? 'No pages could be scanned' : undefined,
+      pages: [
+        {
+          pageNumber: 1,
+          included: true,
+          status: options.staleHomrRun ? 'pending' : 'succeeded',
+          attempts: 1,
+          engines: {
+            ...(options.staleHomrRun
+              ? {
+                  homr: {
+                    engine: 'homr',
+                    status: 'pending',
+                    attempts: 0,
+                    idempotencyKey: '',
+                    artifacts: {}
+                  }
+                }
+              : {}),
+            'ots-homr': run
+          }
+        }
+      ]
     };
     const jobsModel = {
       findOne: jest.fn(() => ({ exec: async () => job })),
@@ -3664,6 +3687,9 @@ describe('Scanner structured output selection', () => {
         exec: async () => {
           job.pages = update.$set.pages;
           job.reassembleRequestedAt = update.$set.reassembleRequestedAt;
+          if (update.$set.status) job.status = update.$set.status;
+          if (update.$unset?.errorCode) delete job.errorCode;
+          if (update.$unset?.errorMessage) delete job.errorMessage;
           job.statusVersion += 1;
           return job;
         }
@@ -3733,6 +3759,25 @@ describe('Scanner structured output selection', () => {
     await expect(
       service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam'])
     ).rejects.toThrow(/before correcting or reconciling/);
+  });
+
+  it('repairs an OTS-HOMR result hidden by an unplanned pending HOMR run', async () => {
+    const { job, jobsModel, service } = setup({ staleHomrRun: true });
+
+    await expect(
+      service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', [
+        'beam',
+        'advance',
+        'stem',
+        'tie',
+        'slur'
+      ])
+    ).resolves.toMatchObject({
+      status: 'succeeded',
+      pages: [{ status: 'succeeded' }]
+    });
+    expect(job.errorMessage).toBeUndefined();
+    expect(jobsModel.findOneAndUpdate).toHaveBeenCalledTimes(2);
   });
 });
 

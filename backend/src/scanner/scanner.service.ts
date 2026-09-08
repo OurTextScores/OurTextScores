@@ -94,6 +94,7 @@ import {
   SCANNER_ARTIFACT_BUILDERS,
   SCANNER_BLOCK_CONTENT_SIGNATURE_VERSION,
   SCANNER_COMPARE_REGIONS_VERSION,
+  scannerAggregatePageStatus,
   scannerArtifactInputSignature,
   scannerArtifactInputMatches,
   scannerEnginePlan,
@@ -308,8 +309,8 @@ export class ScannerService implements OnModuleInit {
         options: { detectTitle: Boolean(input.detectTitle) },
         generation: 1,
         enginePlan,
-        pages: Array.from({ length: pageCount }, (_value, index) =>
-          withScannerHomrRun({
+        pages: Array.from({ length: pageCount }, (_value, index) => {
+          const page: ScannerPageResult = {
             pageNumber: index + 1,
             ordinal: index + 1,
             rotationDegrees: 0,
@@ -318,8 +319,9 @@ export class ScannerService implements OnModuleInit {
             attempts: 0,
             manualRetries: 0,
             idempotencyKey: ''
-          })
-        ),
+          };
+          return enginePlan.engineIds.includes('homr') ? withScannerHomrRun(page) : page;
+        }),
         sourceExpiresAt: new Date(
           now + this.number('SCANNER_SOURCE_RETENTION_DAYS', 7) * 86_400_000
         ),
@@ -439,18 +441,22 @@ export class ScannerService implements OnModuleInit {
     if (ordinals.some((ordinal, index) => ordinal !== index + 1)) {
       throw new BadRequestException('Page order must contain each position exactly once');
     }
+    const enginePlan = this.enginePlanForJob(existing);
     const pages = existing.pages.map((page) => {
       const requested = byPageNumber.get(page.pageNumber);
       if (!requested || !rotations.has(requested.rotationDegrees)) {
         throw new BadRequestException('Page configuration is invalid');
       }
-      return withScannerHomrRun({
+      const configured: ScannerPageResult = {
         ...page,
         ordinal: requested.ordinal,
         rotationDegrees: requested.rotationDegrees as 0 | 90 | 180 | 270,
         included: Boolean(requested.included),
         status: requested.included ? 'pending' : 'skipped'
-      });
+      };
+      return enginePlan.engineIds.includes('homr')
+        ? withScannerHomrRun(configured)
+        : configured;
     });
     if (!pages.some((page) => page.included)) {
       throw new BadRequestException('At least one page must be included');
@@ -3315,26 +3321,105 @@ export class ScannerService implements OnModuleInit {
     const query = isPublicScannerJob(jobId) ? { jobId } : { userId, jobId };
     const job = await this.jobs.findOne(query).exec();
     if (!job) throw new NotFoundException('Scanner job not found');
+    const normalized = this.normalizedFinishedResult(job);
+    const needsRepair =
+      normalized.status !== job.status ||
+      normalized.pages.some((page, index) => page.status !== job.pages[index]?.status);
+    if (needsRepair && ['failed', 'partial', 'succeeded'].includes(job.status)) {
+      const repaired = await this.jobs
+        .findOneAndUpdate(
+          { _id: job._id, statusVersion: job.statusVersion || 1 },
+          {
+            $set: {
+              status: normalized.status,
+              pages: normalized.pages,
+              ...(['succeeded', 'partial'].includes(normalized.status)
+                ? { reassembleRequestedAt: new Date() }
+                : {})
+            },
+            $inc: { statusVersion: 1 },
+            ...(['succeeded', 'partial'].includes(normalized.status)
+              ? { $unset: { errorCode: 1, errorMessage: 1 } }
+              : {})
+          },
+          { new: true }
+        )
+        .exec();
+      if (repaired) return repaired;
+      const current = await this.jobs.findOne(query).exec();
+      if (current) return current;
+    }
     return job;
   }
 
+  /**
+   * Derive terminal page/job status only from engines in the immutable plan.
+   * Early third-provider jobs could retain an unplanned pending HOMR bridge;
+   * their OTS-HOMR artifact was sound, but that hidden run made the job failed.
+   */
+  private normalizedFinishedResult(job: ScannerJobDocument): {
+    status: ScannerJobDocument['status'];
+    pages: ScannerPageResult[];
+  } {
+    const plan = this.enginePlanForJob(job);
+    const pages = job.pages.map((page) => {
+      const engines = Object.fromEntries(
+        plan.engineIds.flatMap((engineId) => {
+          const run =
+            page.engines?.[engineId] ||
+            (engineId === 'homr'
+              ? scannerHomrRun(page, {
+                  providerRevision: job.providerRevision,
+                  modelRevision: job.modelRevision,
+                  provenance: job.engineProvenance
+                })
+              : undefined);
+          return run ? [[engineId, run]] : [];
+        })
+      );
+      return {
+        ...page,
+        status: scannerAggregatePageStatus(engines, page.included)
+      };
+    });
+    if (!['failed', 'partial', 'succeeded'].includes(job.status)) {
+      return { status: job.status, pages };
+    }
+    const included = pages.filter((page) => page.included !== false);
+    if (
+      included.length === 0 ||
+      included.some((page) => page.status === 'pending' || page.status === 'running')
+    ) {
+      return { status: job.status, pages };
+    }
+    const succeeded = included.filter((page) => page.status === 'succeeded').length;
+    return {
+      status:
+        succeeded === included.length ? 'succeeded' : succeeded > 0 ? 'partial' : 'failed',
+      pages
+    };
+  }
+
   private present(job: ScannerJobDocument): any {
-    const superseded = job.pages.some((page) => pageMusicXmlSuperseded(page));
+    const normalized = this.normalizedFinishedResult(job);
+    const pages = normalized.pages;
+    const status = normalized.status;
+    const superseded = pages.some((page) => pageMusicXmlSuperseded(page));
     const legacyJobInvalidated = superseded || Boolean(job.combinedStale);
     const enginePlan = this.enginePlanForJob(job);
     return {
       jobId: job.jobId,
       publicExample: isPublicScannerJob(job.jobId),
-      status: job.status,
+      status,
       statusVersion: job.statusVersion || 1,
       originalFilename: job.originalFilename,
       pageCount: job.pageCount,
-      includedPageCount: job.pages.filter((page) => page.included !== false).length,
+      includedPageCount: pages.filter((page) => page.included !== false).length,
       /** Only meaningful while `preparing`; absent once the pages exist. */
-      preparedPageCount: job.status === 'preparing' ? job.preparedPageCount || 0 : undefined,
+      preparedPageCount: status === 'preparing' ? job.preparedPageCount || 0 : undefined,
       options: job.options,
       enginePlan,
-      pages: [...job.pages]
+      pages: [...pages]
         .sort(
           (left, right) => (left.ordinal || left.pageNumber) - (right.ordinal || right.pageNumber)
         )
@@ -3351,7 +3436,7 @@ export class ScannerService implements OnModuleInit {
             rotationDegrees: page.rotationDegrees || 0,
             included: page.included !== false,
             status:
-              job.status === 'cancelled' && ['pending', 'running'].includes(page.status)
+              status === 'cancelled' && ['pending', 'running'].includes(page.status)
                 ? 'cancelled'
                 : page.status,
             attempts: page.attempts,
@@ -3380,42 +3465,42 @@ export class ScannerService implements OnModuleInit {
           };
         }),
       hasMusicXml: Boolean(
-        job.musicXmlBundle || job.pages.some((page) => effectivePageMusicXml(page, enginePlan))
+        job.musicXmlBundle || pages.some((page) => effectivePageMusicXml(page, enginePlan))
       ),
       hasPdf: this.materializedArtifactIsCurrent(
         job.previewPdf,
         SCANNER_ARTIFACT_BUILDERS.previewPdf,
-        job.pages,
+        pages,
         legacyJobInvalidated
       ),
       hasThumbnail: this.materializedArtifactIsCurrent(
         job.previewThumbnail,
         SCANNER_ARTIFACT_BUILDERS.previewThumbnail,
-        job.pages,
+        pages,
         legacyJobInvalidated
       ),
       hasZip: Boolean(
-        job.resultsZip || job.pages.some((page) => effectivePageMusicXml(page, enginePlan))
+        job.resultsZip || pages.some((page) => effectivePageMusicXml(page, enginePlan))
       ),
       mergeStatus: job.mergeStatus || 'not-requested',
       mergeReason: job.mergeReason,
       hasCombinedMusicXml: this.materializedArtifactIsCurrent(
         job.combinedMusicXml,
         SCANNER_ARTIFACT_BUILDERS.combinedMusicXml,
-        job.pages,
+        pages,
         legacyJobInvalidated
       ),
       hasCombinedPdf: this.materializedArtifactIsCurrent(
         job.combinedPdf,
         SCANNER_ARTIFACT_BUILDERS.combinedPdf,
-        job.pages,
+        pages,
         legacyJobInvalidated
       ),
       providerRevision: job.providerRevision,
       modelRevision: job.modelRevision,
       timings: job.timings || {},
-      errorCode: job.errorCode,
-      errorMessage: job.errorMessage,
+      errorCode: status === 'failed' ? job.errorCode : undefined,
+      errorMessage: status === 'failed' ? job.errorMessage : undefined,
       canRetry: this.retryEligibility(job).allowed,
       startedAt: job.startedAt,
       completedAt: job.completedAt,

@@ -45,6 +45,7 @@ import {
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
 import {
   SCANNER_ARTIFACT_BUILDERS,
+  scannerAggregatePageStatus,
   scannerArtifactInputMatches,
   scannerArtifactInputSignature,
   scannerEngineArtifactLocators,
@@ -705,8 +706,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     job: ScannerJobDocument,
     page: ScannerPageResult
   ): ScannerPageResult {
-    let current = page;
-    for (const engineId of this.engineRegistry().planForJob(job).engineIds) {
+    const plan = this.engineRegistry().planForJob(job);
+    // Job creation used to seed a HOMR compatibility run even when HOMR was
+    // not selected. Do not let that unplanned pending run keep an otherwise
+    // successful single-provider page pending forever.
+    const engines = Object.fromEntries(
+      plan.engineIds.flatMap((engineId) => {
+        const existing = page.engines?.[engineId];
+        return existing ? [[engineId, existing]] : [];
+      })
+    );
+    let current: ScannerPageResult = {
+      ...page,
+      engines,
+      status: scannerAggregatePageStatus(engines, page.included)
+    };
+    for (const engineId of plan.engineIds) {
       const existing = current.engines?.[engineId];
       if (existing) {
         // A page excluded after preparation already carries seeded runs. Left

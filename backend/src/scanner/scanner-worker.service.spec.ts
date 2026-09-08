@@ -88,6 +88,37 @@ describe('ScannerWorkerService', () => {
     ).toBeUndefined();
   });
 
+  it('drops an unplanned HOMR compatibility run before scanning OTS-HOMR alone', () => {
+    const scannerWorker = service() as any;
+    const plan = scannerEnginePlan(['ots-homr'], 'ots-homr');
+    scannerWorker.registeredEngines = {
+      planForJob: () => plan,
+      readable: (engineId: string) => (engineId === 'ots-homr' ? {} : undefined)
+    };
+    const initialized = scannerWorker.withInitialPlannedEngineRuns(
+      { enginePlan: plan, pages: [] },
+      {
+        pageNumber: 1,
+        included: true,
+        status: 'pending',
+        attempts: 0,
+        idempotencyKey: '',
+        engines: {
+          homr: {
+            engine: 'homr',
+            status: 'pending',
+            attempts: 0,
+            idempotencyKey: '',
+            artifacts: {}
+          }
+        }
+      }
+    );
+
+    expect(initialized.engines.homr).toBeUndefined();
+    expect(initialized.engines['ots-homr'].status).toBe('pending');
+  });
+
   it('recognizes planned engines concurrently rather than queuing one behind the other', async () => {
     // Two engines reading the same image are independent, so a page should cost
     // the slowest of them rather than their sum. This asserts real overlap, not
