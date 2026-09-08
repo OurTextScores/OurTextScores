@@ -167,6 +167,32 @@ describe("PageComparison", () => {
 
   afterEach(() => jest.resetAllMocks());
 
+  it("does not show comparison controls for a one-provider job", () => {
+    const singleProviderJob = {
+      ...job,
+      enginePlan: {
+        ...job.enginePlan!,
+        engineIds: ["homr"],
+        fallbackEngineIds: [],
+        capabilitySnapshots: {
+          homr: job.enginePlan!.capabilitySnapshots.homr,
+        },
+      },
+    } as ScannerJob;
+
+    const { container } = render(
+      <PageComparison
+        jobId="job-1"
+        job={singleProviderJob}
+        page={page}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("Compare recognition engines")).toBeNull();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it("is a doorway to its own page when it is not the page", async () => {
     // Comparing wants the whole window — three scores stacked over a scan — and
     // expanding it inside a card left it competing with the job page's own

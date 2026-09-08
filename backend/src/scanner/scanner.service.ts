@@ -3760,8 +3760,12 @@ export class ScannerService implements OnModuleInit {
         throw new BadRequestException('Requested scanner engine is not available for new jobs');
       }
     }
-    if (requestedEngineIds.length !== 2 || new Set(requestedEngineIds).size !== 2) {
-      throw new BadRequestException('Select exactly two different Scanner providers');
+    if (
+      requestedEngineIds.length < 1 ||
+      requestedEngineIds.length > 2 ||
+      new Set(requestedEngineIds).size !== requestedEngineIds.length
+    ) {
+      throw new BadRequestException('Select one provider, or two different Scanner providers');
     }
     try {
       return scannerEnginePlan(requestedEngineIds, requestedEngineIds[0], {}, engineOptions);

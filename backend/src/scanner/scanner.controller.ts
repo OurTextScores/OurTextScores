@@ -78,15 +78,16 @@ function parseEngineIds(value: string | undefined): ScannerEngineId[] {
     const parsed = JSON.parse(value || 'null');
     if (
       !Array.isArray(parsed) ||
-      parsed.length !== 2 ||
-      new Set(parsed).size !== 2 ||
+      parsed.length < 1 ||
+      parsed.length > 2 ||
+      new Set(parsed).size !== parsed.length ||
       !parsed.every(isScannerEngineId)
     ) {
-      throw new Error('invalid provider pair');
+      throw new Error('invalid provider selection');
     }
     return parsed;
   } catch {
-    throw new BadRequestException('Select exactly two different Scanner providers');
+    throw new BadRequestException('Select one provider, or two different Scanner providers');
   }
 }
 

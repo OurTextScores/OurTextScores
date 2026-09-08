@@ -72,10 +72,10 @@ const providers = ["homr", "transcoda", "ots-homr"].map((id) => ({
 }));
 
 function selectProviders(first = "homr", second = "transcoda") {
-  fireEvent.change(screen.getByLabelText("Provider 1"), {
+  fireEvent.change(screen.getByLabelText("Provider"), {
     target: { value: first },
   });
-  fireEvent.change(screen.getByLabelText("Provider 2"), {
+  fireEvent.change(screen.getByLabelText("Comparison provider (optional)"), {
     target: { value: second },
   });
 }
@@ -158,7 +158,7 @@ describe("ScannerClient", () => {
     },
   );
 
-  it("requires two different provider selections before upload", async () => {
+  it("requires one provider and makes a second provider optional", async () => {
     render(<ScannerClient />);
     expect(await screen.findAllByRole("option", { name: "OTS-HOMR" })).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("Score files"), {
@@ -169,14 +169,32 @@ describe("ScannerClient", () => {
 
     const submit = screen.getByRole("button", { name: "Select pages" });
     expect(submit).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Provider 1"), {
+    fireEvent.change(screen.getByLabelText("Provider"), {
       target: { value: "homr" },
     });
-    expect(submit).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Provider 2"), {
-      target: { value: "transcoda" },
-    });
     expect(submit).toBeEnabled();
+  });
+
+  it("submits a single provider without creating a comparison pair", async () => {
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: {
+        files: [new File(["score"], "page.png", { type: "image/png" })],
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Provider"), {
+      target: { value: "homr" },
+    });
+
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    expect(JSON.parse(String(FakeXhr.last!.body!.get("engineIds")))).toEqual([
+      "homr",
+    ]);
+    expect(FakeXhr.last!.body!.has("otsHomr")).toBe(false);
   });
 
   it("shows and submits multiple images in natural filename order", async () => {
@@ -207,7 +225,7 @@ describe("ScannerClient", () => {
     ]);
   });
 
-  it("submits exactly two providers and OTS-HOMR options when it is selected", async () => {
+  it("submits two providers and OTS-HOMR options when it is selected", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const file = new File(["score"], "page-1.png", { type: "image/png" });

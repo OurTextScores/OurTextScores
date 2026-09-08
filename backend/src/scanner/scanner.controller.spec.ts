@@ -27,13 +27,21 @@ describe('ScannerController provider selection', () => {
       otsHomr === undefined ? undefined : JSON.stringify(otsHomr)
     );
 
-  it.each([undefined, [], ['homr'], ['homr', 'homr'], ['homr', 'transcoda', 'ots-homr']])(
-    'rejects a job without exactly two distinct providers: %p',
+  it.each<unknown>([undefined, [], ['homr', 'homr'], ['homr', 'transcoda', 'ots-homr']])(
+    'rejects a job without one or two distinct providers: %p',
     async (engineIds) => {
       await expect(create(engineIds)).rejects.toBeInstanceOf(BadRequestException);
       expect(scanner.createJob).not.toHaveBeenCalled();
     }
   );
+
+  it('passes a single selected provider', async () => {
+    await create(['homr']);
+
+    expect(scanner.createJob).toHaveBeenCalledWith(
+      expect.objectContaining({ requestedEngineIds: ['homr'] })
+    );
+  });
 
   it('passes the selected pair in dropdown order', async () => {
     await create(['transcoda', 'homr']);
@@ -55,6 +63,14 @@ describe('ScannerController provider selection', () => {
     await expect(create(['homr', 'ots-homr'])).rejects.toBeInstanceOf(BadRequestException);
     await expect(create(['homr', 'transcoda'], options)).rejects.toBeInstanceOf(
       BadRequestException
+    );
+
+    await create(['ots-homr'], options);
+    expect(scanner.createJob).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        requestedEngineIds: ['ots-homr'],
+        engineOptions: { 'ots-homr': options }
+      })
     );
 
     await create(['ots-homr', 'transcoda'], options);

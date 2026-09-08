@@ -131,9 +131,9 @@ export default function ScannerClient() {
   const router = useRouter();
   const selectionError = uploadSelectionError(files);
   const providerSelectionError =
-    !firstProvider || !secondProvider
-      ? "Select two providers."
-      : firstProvider === secondProvider
+    !firstProvider
+      ? "Select a provider."
+      : secondProvider && firstProvider === secondProvider
         ? "Select two different providers."
         : null;
   const usesOtsHomr = [firstProvider, secondProvider].includes("ots-homr");
@@ -223,7 +223,12 @@ export default function ScannerClient() {
       const body = new FormData();
       for (const file of files) body.append("file", file);
       body.set("detectTitle", String(detectTitle));
-      body.set("engineIds", JSON.stringify([firstProvider, secondProvider]));
+      body.set(
+        "engineIds",
+        JSON.stringify(
+          secondProvider ? [firstProvider, secondProvider] : [firstProvider],
+        ),
+      );
       if (usesOtsHomr) {
         body.set(
           "otsHomr",
@@ -396,13 +401,18 @@ export default function ScannerClient() {
             Recognition providers
           </legend>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Choose exactly two providers. Both readings will be processed and
-            shown in the comparison.
+            Choose one provider, or add a second to process both readings and
+            compare them side by side.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {[
-              ["Provider 1", firstProvider, setFirstProvider, secondProvider],
-              ["Provider 2", secondProvider, setSecondProvider, firstProvider],
+              ["Provider", firstProvider, setFirstProvider, secondProvider],
+              [
+                "Comparison provider (optional)",
+                secondProvider,
+                setSecondProvider,
+                firstProvider,
+              ],
             ].map(([label, value, setter, other]) => (
               <label
                 key={String(label)}
@@ -417,7 +427,11 @@ export default function ScannerClient() {
                   }
                   className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
                 >
-                  <option value="">Select a provider</option>
+                  <option value="">
+                    {label === "Provider"
+                      ? "Select a provider"
+                      : "No comparison provider"}
+                  </option>
                   {providers.map((provider) => (
                     <option
                       key={provider.id}
@@ -431,20 +445,27 @@ export default function ScannerClient() {
               </label>
             ))}
           </div>
-          {!loading && providers.length < 2 && (
+          {!loading && providers.length === 0 && (
             <p className="mt-3 text-xs text-red-700 dark:text-red-300">
-              This deployment does not currently have two providers available.
+              This deployment does not currently have a provider available.
             </p>
           )}
         </fieldset>
-        <label className="mt-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-          <input
-            type="checkbox"
-            checked={detectTitle}
-            onChange={(event) => setDetectTitle(event.target.checked)}
-          />
-          Attempt title detection
-        </label>
+        <div className="mt-4">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+            <input
+              type="checkbox"
+              checked={detectTitle}
+              onChange={(event) => setDetectTitle(event.target.checked)}
+            />
+            Attempt title detection
+          </label>
+          <p className="ml-6 mt-1 text-xs text-slate-500 dark:text-slate-400">
+            For HOMR-based providers, OCR text above the first staff on page one
+            and use it as the score title. This is separate from OTS-HOMR text
+            detection.
+          </p>
+        </div>
         {usesOtsHomr && (
           <fieldset className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
             <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
@@ -454,6 +475,7 @@ export default function ScannerClient() {
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Text detector
                 <select
+                  aria-label="Text detector"
                   value={otsTextDetector}
                   onChange={(event) =>
                     setOtsTextDetector(
@@ -463,14 +485,19 @@ export default function ScannerClient() {
                   }
                   className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
                 >
-                  <option value="lyrics">Lyrics (recommended)</option>
+                  <option value="lyrics">Lyrics</option>
                   <option value="non-lyric-text">Non-lyric text</option>
                   <option value="none">No text detector</option>
                 </select>
+                <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+                  Runs one experimental detector for diagnostics and provenance;
+                  it does not yet change the returned MusicXML.
+                </span>
               </label>
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Additional heads
                 <select
+                  aria-label="Additional heads"
                   value={otsStructuredHeads}
                   onChange={(event) =>
                     setOtsStructuredHeads(
@@ -486,6 +513,11 @@ export default function ScannerClient() {
                     Experimental output (no dynamics)
                   </option>
                 </select>
+                <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+                  Review-only validates with the extra model but keeps the core
+                  score. Experimental output returns approved head output;
+                  dynamics remain excluded.
+                </span>
               </label>
             </div>
           </fieldset>

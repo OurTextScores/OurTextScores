@@ -264,7 +264,7 @@ export class ScannerEngineRegistry {
     return [...this.definitions.values()].filter((definition) => definition.enabledForNewJobs());
   }
 
-  /** Safe metadata for the two provider selectors; never includes connection details. */
+  /** Safe metadata for the provider selectors; never includes connection details. */
   selectableDefinitions(): Array<
     Pick<ScannerEngineDefinition, 'id' | 'displayName' | 'capabilities'>
   > {
@@ -281,8 +281,12 @@ export class ScannerEngineRegistry {
 
   newJobPlan(requestedEngineIds: ScannerEngineId[], engineOptions = {}): ScannerEnginePlan {
     const requested = [...new Set(requestedEngineIds)];
-    if (requestedEngineIds.length !== 2 || requested.length !== 2)
-      throw new Error('Exactly two distinct scanner engines are required');
+    if (
+      requestedEngineIds.length < 1 ||
+      requestedEngineIds.length > 2 ||
+      requested.length !== requestedEngineIds.length
+    )
+      throw new Error('One or two distinct scanner engines are required');
     for (const engineId of requested) {
       const definition = this.get(engineId);
       if (!definition?.enabledForNewJobs())

@@ -13,12 +13,17 @@ describe('ScannerEngineRegistry', () => {
     delete values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED;
   });
 
-  it('requires two explicitly selected enabled engines for every new job', () => {
+  it('requires one or two explicitly selected enabled engines for every new job', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda);
     expect(registry.selectableDefinitions().map(({ id }) => id)).toEqual(['homr']);
-    expect(() => registry.newJobPlan([])).toThrow('Exactly two distinct');
+    expect(() => registry.newJobPlan([])).toThrow('One or two distinct');
     expect(registry.get('homr')?.measureGeometryProducer).toEqual(expect.any(Function));
     expect(registry.get('transcoda')?.measureGeometryProducer).toBeUndefined();
+    expect(registry.newJobPlan(['homr'])).toMatchObject({
+      engineIds: ['homr'],
+      primaryEngineId: 'homr',
+      fallbackEngineIds: []
+    });
 
     values.SCANNER_TRANSCODA_ENABLED = 'true';
     expect(registry.newJobPlan(['homr', 'transcoda'])).toMatchObject({
@@ -31,7 +36,7 @@ describe('ScannerEngineRegistry', () => {
       primaryEngineId: 'transcoda',
       fallbackEngineIds: ['homr']
     });
-    expect(() => registry.newJobPlan(['homr', 'homr'])).toThrow('Exactly two distinct');
+    expect(() => registry.newJobPlan(['homr', 'homr'])).toThrow('One or two distinct');
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'true';
     expect(registry.newJobCapacityExhausted()).toBe(false);
     values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED = 'true';

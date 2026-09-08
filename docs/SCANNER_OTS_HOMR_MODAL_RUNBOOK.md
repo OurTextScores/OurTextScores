@@ -39,7 +39,7 @@ The UI exposes three stable policies:
 
 | Option | Meaning |
 | --- | --- |
-| Text detector: `lyrics` | E2, recommended for the first beta. |
+| Text detector: `lyrics` | E2 lyrics detector. |
 | Text detector: `non-lyric-text` | E4, comparison/experimental choice. |
 | Text detector: `none` | Diagnostic mode. |
 | Heads: `off` | No additional-head processing. |
@@ -404,12 +404,12 @@ Recreate the API and scanner worker after changing the flag:
 docker compose --profile scanner up -d --force-recreate backend scanner_worker
 ```
 
-Create a Scanner job and select OTS-HOMR in either provider dropdown, with one
-other provider in the remaining dropdown. Then verify in the authenticated job
+Create a Scanner job and select OTS-HOMR as the provider. Optionally choose one
+other provider in the comparison dropdown. Then verify in the authenticated job
 response that:
 
-- `enginePlan.engineIds` contains exactly the two providers selected by the user;
-- `primaryEngineId` is the provider selected in the first dropdown;
+- `enginePlan.engineIds` contains the one or two providers selected by the user;
+- `primaryEngineId` is the provider selected in the required dropdown;
 - `enginePlan.engineOptions["ots-homr"]` records the selected policy;
 - `pages[].engines["ots-homr"]` has independent status, provenance, and
   artifacts;
@@ -448,5 +448,6 @@ revoke its dedicated proxy token or stop only the OTS-HOMR Modal App.
 | `provider_timeout` / `provider_unavailable` | Check cold-start, Modal capacity, and timeout ladder before retrying. |
 | Scanner says engine unavailable | Confirm `SCANNER_OTS_HOMR_ENABLED=true` reaches the API process and OTS-HOMR appears in the provider dropdowns. |
 
-Every new Scanner job must select exactly two distinct enabled providers. OTS-HOMR
-incurs a provider call only when it is one of those two selections.
+Every new Scanner job must select one enabled provider and may select one distinct
+comparison provider. The comparison card appears only for two-provider jobs.
+OTS-HOMR incurs a provider call only when it is selected.

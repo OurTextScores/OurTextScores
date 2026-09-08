@@ -36,8 +36,8 @@ export default async function ScannerPage() {
           Scanner
         </h1>
         <p className="mt-2 max-w-3xl text-slate-600 dark:text-slate-400">
-          Convert printed sheet music to MusicXML by choosing two recognition
-          providers, then compare their readings side by side. Available
+          Convert printed sheet music to MusicXML with one recognition provider,
+          or choose two to compare their readings side by side. Available
           providers include{" "}
           <a
             href="https://github.com/liebharc/homr"
