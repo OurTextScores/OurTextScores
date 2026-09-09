@@ -74,6 +74,7 @@ describe('ScannerService', () => {
     values.SCANNER_PROVIDER_BUDGET_EXHAUSTED = 'false';
     delete values.SCANNER_TRANSCODA_ENABLED;
     delete values.SCANNER_TRANSCODA_PROVIDER_BUDGET_EXHAUSTED;
+    delete values.SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION;
     jobs.countDocuments.mockReturnValue({ exec: () => Promise.resolve(0) });
     jobs.aggregate.mockReturnValue({ exec: () => Promise.resolve([]) });
     jobs.create.mockImplementation((value: any) =>
@@ -3591,9 +3592,16 @@ describe('ScannerService merged score', () => {
 });
 
 describe('Scanner structured output selection', () => {
+  let expectedProviderRevision = '';
   const config = {
     get: jest.fn((key: string, fallback?: string) =>
-      key === 'SCANNER_ENABLED' ? 'true' : key === 'SCANNER_BETA_USER_IDS' ? 'user-1' : fallback
+      key === 'SCANNER_ENABLED'
+        ? 'true'
+        : key === 'SCANNER_BETA_USER_IDS'
+          ? 'user-1'
+          : key === 'SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION'
+            ? expectedProviderRevision
+            : fallback
     )
   } as any;
   const telemetry = { emit: jest.fn(), userHash: jest.fn(() => 'user-hash') } as any;
@@ -3608,6 +3616,10 @@ describe('Scanner structured output selection', () => {
     sizeBytes: xml.length,
     contentType: 'application/vnd.recordare.musicxml+xml',
     checksumSha256: createHash('sha256').update(xml).digest('hex')
+  });
+
+  beforeEach(() => {
+    expectedProviderRevision = '';
   });
 
   function setup(options: { corrected?: boolean; staleHomrRun?: boolean } = {}) {
@@ -3752,6 +3764,31 @@ describe('Scanner structured output selection', () => {
     await expect(
       service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['dynamic'])
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('queues the same selection when its review capture predates the pinned provider', async () => {
+    expectedProviderRevision = 'ots-ots-homr-provider-v4';
+    const { job, service } = setup();
+    const run = job.pages[0].engines['ots-homr'];
+    run.providerRevision = 'ots-ots-homr-provider-v2';
+    run.selectedStructuredHeadFamilies = ['beam'];
+
+    await expect(
+      service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam'])
+    ).resolves.toMatchObject({
+      pages: [
+        {
+          engines: {
+            'ots-homr': {
+              structuredOutputPending: true,
+              structuredReviewRefreshable: true
+            }
+          }
+        }
+      ]
+    });
+    expect(run.requestedStructuredHeadFamilies).toBeUndefined();
+    expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(['beam']);
   });
 
   it('edits a reviewed structured choice in the retained proposal and queues materialization', async () => {

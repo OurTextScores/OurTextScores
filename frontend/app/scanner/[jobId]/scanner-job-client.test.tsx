@@ -1002,4 +1002,74 @@ describe("ScannerJobClient", () => {
       screen.getByText(/Dynamics are shown only as diagnostic evidence/),
     ).toBeInTheDocument();
   });
+
+  it("offers review regeneration for a retained pre-review provider result", async () => {
+    const stale: ScannerJob = {
+      ...partialJob,
+      status: "succeeded",
+      pageCount: 1,
+      includedPageCount: 1,
+      enginePlan: {
+        version: "scanner-engine-plan-v1",
+        engineIds: ["ots-homr"],
+        primaryEngineId: "ots-homr",
+        fallbackEngineIds: [],
+        capabilitySnapshots: {},
+      },
+      pages: [
+        {
+          ...partialJob.pages[0],
+          engines: {
+            "ots-homr": {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: true,
+              hasReview: false,
+              availableStructuredHeadFamilies: ["beam", "stem"],
+              selectedStructuredHeadFamilies: ["beam"],
+              structuredReviewRefreshable: true,
+            },
+          },
+        },
+      ],
+    };
+    const fetchMock = jest.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => ({
+        ok: true,
+        json: async () =>
+          init?.method === "PUT"
+            ? {
+                ...stale,
+                pages: [
+                  {
+                    ...stale.pages[0],
+                    engines: {
+                      "ots-homr": {
+                        ...stale.pages[0].engines?.["ots-homr"],
+                        structuredOutputPending: true,
+                      },
+                    },
+                  },
+                ],
+              }
+            : stale,
+      }),
+    );
+    globalThis.fetch = fetchMock as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Generate review questions" }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ families: ["beam"] }),
+        }),
+      ),
+    );
+  });
 });

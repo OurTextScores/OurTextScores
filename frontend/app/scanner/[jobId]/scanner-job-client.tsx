@@ -1070,6 +1070,9 @@ export default function ScannerJobClient({
                 const structuredRetryable = Boolean(
                   run?.structuredOutputRetryable,
                 );
+                const structuredReviewRefreshable = Boolean(
+                  run?.structuredReviewRefreshable,
+                );
                 return (
                   <div key={`downloads-${engineId}`} className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1182,7 +1185,9 @@ export default function ScannerJobClient({
                           <button
                             type="button"
                             disabled={
-                              (!structuredDraftDirty && !structuredRetryable) ||
+                              (!structuredDraftDirty &&
+                                !structuredRetryable &&
+                                !structuredReviewRefreshable) ||
                               run?.structuredOutputPending ||
                               busyAction ===
                                 `structured-${selected.pageNumber}-${engineId}`
@@ -1202,7 +1207,9 @@ export default function ScannerJobClient({
                               ? "Applying selected heads…"
                               : structuredRetryable
                                 ? "Retry applying review choice"
-                                : "Apply and review selected heads"}
+                                : structuredReviewRefreshable
+                                  ? "Generate review questions"
+                                  : "Apply and review selected heads"}
                           </button>
                         )}
                         {run?.structuredOutputPending && (

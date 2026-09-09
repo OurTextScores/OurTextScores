@@ -353,7 +353,17 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               : core.review;
           let materialized: ScannerStorageLocator | undefined;
           let structuredProposals = run.artifacts['structured-heads'];
-          if (proposalDirty || families.length > 0) {
+          let refreshedResult: ScannerProviderResult | undefined;
+          const expectedProviderRevision = this.config.get<string>(
+            'SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION',
+            ''
+          );
+          const staleReviewCapture = Boolean(
+            engineId === 'ots-homr' &&
+              expectedProviderRevision &&
+              run.providerRevision !== expectedProviderRevision
+          );
+          if (proposalDirty || families.length > 0 || staleReviewCapture) {
             const adapter = this.engineRegistry().readable(engineId)?.adapter;
             if (!structuredProposals || !adapter?.materializeStructured) {
               throw new Error('Structured output materialization is unavailable');
@@ -363,7 +373,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               structuredProposals.bucket,
               structuredProposals.objectKey
             );
-            if (!this.structuredProposalHasVoices(proposalBody)) {
+            if (!this.structuredProposalHasVoices(proposalBody) || staleReviewCapture) {
               const raster = page.recognitionRaster;
               if (!raster || !adapter.scanPage || !adapter.createIdempotencyKey) {
                 throw new Error('The retained structured proposal is empty');
@@ -393,6 +403,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
                 idempotencyKey,
                 engineOptions
               });
+              refreshedResult = recovered;
               review =
                 recovered.outputCandidates?.['all-structured']?.review ||
                 recovered.review ||
@@ -428,6 +439,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             ...withScannerEngineRun(current, {
               ...run,
               review,
+              providerRequestId: refreshedResult?.requestId || run.providerRequestId,
+              inferenceMs: refreshedResult?.inferenceMs ?? run.inferenceMs,
+              providerRevision: refreshedResult?.providerRevision || run.providerRevision,
+              modelRevision: refreshedResult?.modelRevision || run.modelRevision,
+              provenance: refreshedResult?.provenance || run.provenance,
+              outputCandidates: refreshedResult?.outputCandidates
+                ? Object.fromEntries(
+                    Object.entries(run.outputCandidates || {}).map(([id, candidate]) => [
+                      id,
+                      {
+                        ...candidate,
+                        review: refreshedResult?.outputCandidates?.[id]?.review || candidate.review
+                      }
+                    ])
+                  )
+                : run.outputCandidates,
               selectedStructuredHeadFamilies: families,
               requestedStructuredHeadFamilies: undefined,
               structuredProposalDirty: undefined,

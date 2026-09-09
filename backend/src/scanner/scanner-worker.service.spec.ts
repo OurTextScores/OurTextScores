@@ -65,6 +65,7 @@ describe('ScannerWorkerService', () => {
     delete values.SCANNER_PROVIDER_KIND;
     delete values.SCANNER_TRANSCODA_ENABLED;
     delete values.SCANNER_TEST_WORKER_LEASE_MS;
+    delete values.SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION;
   });
 
   it('uses the persisted engine plan after the new-job flag changes', () => {
@@ -191,13 +192,131 @@ describe('ScannerWorkerService', () => {
       structuredOutputError: undefined,
       artifacts: { pdf: undefined }
     });
-    expect(updated.engines['ots-homr'].artifacts.musicXml.objectKey).toContain(
-      'selected-heads-'
-    );
+    expect(updated.engines['ots-homr'].artifacts.musicXml.objectKey).toContain('selected-heads-');
     expect(scannerWorker.storage.deleteObject).toHaveBeenCalledWith(
       oldPdf.bucket,
       oldPdf.objectKey
     );
+  });
+
+  it('rescans a voiced proposal when its review capture predates the pinned provider', async () => {
+    values.SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION = 'ots-ots-homr-provider-v4';
+    const scannerWorker = service() as any;
+    const musicXml = Buffer.from(
+      '<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list><part id="P1"><measure number="1"/></part></score-partwise>'
+    );
+    const locator = (objectKey: string, contentType = 'application/xml') => ({
+      bucket: 'scanner',
+      objectKey,
+      sizeBytes: 10,
+      contentType,
+      checksumSha256: createHash('sha256').update(objectKey).digest('hex')
+    });
+    const capturedReview = {
+      staves: [
+        {
+          index: 0,
+          symbols: [
+            {
+              index: 0,
+              heads: {
+                'beam.level.1': {
+                  chosen: 'begin',
+                  confidence: 0.6,
+                  alternatives: [{ value: 'continue', confidence: 0.35 }]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    };
+    const recoveredProposal = Buffer.from('{"staves":[["clef-G2"]],"structured":[[]]}');
+    const adapter = {
+      createIdempotencyKey: jest.fn(() => 'v4-key'),
+      scanPage: jest.fn(async () => ({
+        providerRevision: 'ots-ots-homr-provider-v4',
+        modelRevision: 'core-v1',
+        provenance: { executionProvider: 'CUDAExecutionProvider' },
+        requestId: 'request-v4',
+        review: capturedReview,
+        outputCandidates: {
+          core: { artifactKind: 'musicxml', review: capturedReview },
+          'all-structured': { artifactKind: 'additional-heads-musicxml', review: capturedReview }
+        },
+        nativeArtifacts: { 'structured-heads': recoveredProposal }
+      })),
+      materializeStructured: jest.fn(async () => musicXml)
+    };
+    scannerWorker.registeredEngines = { readable: () => ({ adapter }) };
+    scannerWorker.updateLease = jest.fn().mockResolvedValue(undefined);
+    scannerWorker.jobs = {
+      updateOne: jest.fn(() => ({ exec: async () => ({ matchedCount: 1 }) }))
+    };
+    scannerWorker.storage = {
+      getObjectBuffer: jest
+        .fn()
+        .mockResolvedValueOnce(Buffer.from('{"staves":[["clef-G2"]],"structured":[[]]}'))
+        .mockResolvedValueOnce(Buffer.from('image')),
+      putAuxiliaryObject: jest.fn(async (objectKey: string) => ({
+        bucket: 'scanner',
+        objectKey
+      })),
+      deleteObject: jest.fn(async () => undefined)
+    };
+    const page: any = {
+      pageNumber: 1,
+      ordinal: 1,
+      included: true,
+      status: 'succeeded',
+      recognitionRaster: {
+        checksumSha256: 'image-sha',
+        width: 100,
+        height: 100,
+        storage: locator('page.png', 'image/png')
+      },
+      engines: {
+        'ots-homr': {
+          engine: 'ots-homr',
+          status: 'succeeded',
+          attempts: 1,
+          idempotencyKey: 'old-key',
+          providerRevision: 'ots-ots-homr-provider-v2',
+          review: { staves: [] },
+          availableStructuredHeadFamilies: ['beam'],
+          selectedStructuredHeadFamilies: ['beam'],
+          requestedStructuredHeadFamilies: ['beam'],
+          outputCandidates: {
+            core: { musicXml: locator('core.musicxml'), review: { staves: [] } },
+            'all-structured': { musicXml: locator('all.musicxml'), review: { staves: [] } }
+          },
+          artifacts: {
+            musicXml: locator('old-selected.musicxml'),
+            'structured-heads': locator('heads.json', 'application/json')
+          }
+        }
+      }
+    };
+
+    const [updated] = await scannerWorker.materializeRequestedStructuredOutputs(
+      {
+        jobId: 'job-1',
+        userId: 'user-1',
+        generation: 1,
+        options: { detectTitle: false },
+        enginePlan: { engineOptions: { 'ots-homr': { textDetector: 'lyrics' } } }
+      },
+      [page]
+    );
+
+    expect(adapter.scanPage).toHaveBeenCalledTimes(1);
+    expect(adapter.materializeStructured).toHaveBeenCalledWith(recoveredProposal, ['beam']);
+    expect(updated.engines['ots-homr']).toMatchObject({
+      providerRevision: 'ots-ots-homr-provider-v4',
+      providerRequestId: 'request-v4',
+      review: capturedReview,
+      requestedStructuredHeadFamilies: undefined
+    });
   });
 
   it('recognizes planned engines concurrently rather than queuing one behind the other', async () => {
@@ -339,7 +458,13 @@ describe('ScannerWorkerService', () => {
         attempts: 0,
         idempotencyKey: '',
         engines: {
-          homr: { engine: 'homr', status: 'skipped', attempts: 0, idempotencyKey: '', artifacts: {} },
+          homr: {
+            engine: 'homr',
+            status: 'skipped',
+            attempts: 0,
+            idempotencyKey: '',
+            artifacts: {}
+          },
           transcoda: {
             engine: 'transcoda',
             status: 'pending',

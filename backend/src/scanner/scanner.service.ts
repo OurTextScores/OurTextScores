@@ -650,6 +650,7 @@ export class ScannerService implements OnModuleInit {
     const correctionRetry =
       Boolean(run.structuredProposalDirty && run.structuredOutputError) &&
       JSON.stringify(families) === JSON.stringify(run.selectedStructuredHeadFamilies || []);
+    const reviewRefresh = this.structuredReviewNeedsRefresh(run);
     if (
       run.reviewedMusicXml ||
       ((run.corrections?.length || 0) > 0 && !correctionRetry) ||
@@ -662,6 +663,7 @@ export class ScannerService implements OnModuleInit {
     }
     if (
       !correctionRetry &&
+      !reviewRefresh &&
       JSON.stringify(families) ===
         JSON.stringify(
           run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies || []
@@ -3675,11 +3677,24 @@ export class ScannerService implements OnModuleInit {
         run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies,
       structuredOutputPending: Boolean(run.requestedStructuredHeadFamilies),
       structuredOutputRetryable: Boolean(run.structuredProposalDirty && run.structuredOutputError),
+      structuredReviewRefreshable: this.structuredReviewNeedsRefresh(run),
       structuredOutputError: run.structuredOutputError,
       artifactKinds: Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
         locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
       )
     };
+  }
+
+  private structuredReviewNeedsRefresh(run: ScannerEngineRun): boolean {
+    const expected = String(
+      this.config.get<string>('SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION', '')
+    ).trim();
+    return Boolean(
+      expected &&
+        run.engine === 'ots-homr' &&
+        run.availableStructuredHeadFamilies?.length &&
+        run.providerRevision !== expected
+    );
   }
 
   /** Stop new work only when no enabled recognition engine has capacity. */
