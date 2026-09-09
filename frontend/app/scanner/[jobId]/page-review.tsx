@@ -29,6 +29,7 @@ interface Review {
   pageNumber: number;
   engineId: string;
   contentSignature: string;
+  structuredOutputPending?: boolean;
   spots: Spot[];
   remainingFloor: number | null;
   suitability: {
@@ -82,6 +83,16 @@ const SYMBOL_NAMES: Record<string, string> = {
  * clef is incoherent, so the question follows the options rather than the head.
  */
 function questionFor(head: string, options: string[]): string {
+  if (head.startsWith("beam.level.")) {
+    return `How should beam level ${head.split(".").pop()} continue here?`;
+  }
+  if (head === "advance.delta") return "When should the next note begin?";
+  if (head === "stem.direction") return "Which way should this stem point?";
+  if (head === "tie.state") return "How is this note tied?";
+  if (head.startsWith("slur.slot.") && head.endsWith(".event"))
+    return "What happens to the slur here?";
+  if (head.startsWith("slur.slot.") && head.endsWith(".side"))
+    return "Which side of the note should the slur use?";
   if (head === "rhythm") {
     const allDurations = options.every((value) => /^(note|rest)_/.test(value));
     return allDurations ? "Which duration is this?" : "What is this symbol?";
@@ -175,6 +186,20 @@ function readable(head: string, value: string): string {
   }
   if (value === "slurStart") return "a slur starts here";
   if (value === "slurEnd") return "a slur ends here";
+  if (head.startsWith("beam.level.")) {
+    return value === "none" ? "no beam" : value.replaceAll("_", " ");
+  }
+  if (head === "advance.delta") {
+    return value === "not_applicable"
+      ? "not applicable"
+      : value === "zero"
+        ? "at the same time"
+        : `after ${describeDuration(value)}`;
+  }
+  if (head === "stem.direction")
+    return value === "not_applicable" ? "no stem" : `${value} stem`;
+  if (head === "tie.state") return value.replaceAll("_", " ");
+  if (head.startsWith("slur.slot.")) return value.replaceAll("_", " ");
   if (SYMBOL_NAMES[value]) return SYMBOL_NAMES[value];
 
   const clef = value.match(/^clef_(.+)$/);
@@ -330,6 +355,27 @@ export default function PageReview({
         const result = await response.json();
         if (!result?.contentSignature)
           throw new Error("save response was incomplete");
+        if (result.pending) {
+          const query = new URLSearchParams({
+            engineId: review?.engineId || engineId || "",
+          }).toString();
+          for (let attempt = 0; attempt < 60; attempt += 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 2000));
+            const refreshed = await fetch(
+              `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review?${query}`,
+              { cache: "no-store" },
+            );
+            if (!refreshed.ok) continue;
+            const next: Review = await refreshed.json();
+            if (!next.structuredOutputPending) {
+              setReview(next);
+              setPosition(0);
+              setLevel("staff");
+              return;
+            }
+          }
+          throw new Error("materialization timed out");
+        }
         setReview((current) =>
           current
             ? { ...current, contentSignature: result.contentSignature }
@@ -342,7 +388,10 @@ export default function PageReview({
         setError(
           cause instanceof Error && cause.message === "review changed"
             ? "This page changed while you were reviewing it. The latest spots are shown; choose again."
-            : "That could not be saved. Try again, or skip this one.",
+            : cause instanceof Error &&
+                cause.message === "materialization timed out"
+              ? "Your choice was saved, but rebuilding the score is taking longer than expected. Refresh shortly to continue."
+              : "That could not be saved. Try again, or skip this one.",
         );
       } finally {
         setSaving(false);

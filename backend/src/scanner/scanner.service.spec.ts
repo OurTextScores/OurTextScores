@@ -23,10 +23,7 @@ import {
 } from './scanner-dual-engine';
 import { ScannerEngineDefinition, ScannerEngineRegistry } from './scanner-engine.registry';
 import * as scannerBeamNormalization from './scanner-beam-normalization';
-import {
-  PUBLIC_EXAMPLE_VIEWER_ID,
-  PUBLIC_SCANNER_JOB_ID
-} from '../auth/public-examples';
+import { PUBLIC_EXAMPLE_VIEWER_ID, PUBLIC_SCANNER_JOB_ID } from '../auth/public-examples';
 
 /** Durable training records; kept out of the job so they outlive it. */
 const corrections = { create: jest.fn(async (doc: any) => doc) } as any;
@@ -450,8 +447,8 @@ describe('ScannerService', () => {
         timings: {},
         resultExpiresAt: new Date('2026-09-08T00:00:00Z'),
         createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
+        updatedAt: new Date()
+      })
     });
     const service = new ScannerService(
       jobs,
@@ -3755,6 +3752,92 @@ describe('Scanner structured output selection', () => {
     await expect(
       service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['dynamic'])
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('edits a reviewed structured choice in the retained proposal and queues materialization', async () => {
+    const { job, jobsModel, service, storage } = setup();
+    const run = job.pages[0].engines['ots-homr'];
+    run.selectedStructuredHeadFamilies = ['beam'];
+    run.review = {
+      staves: [
+        {
+          index: 0,
+          tokens: [['note_8', 'C4', '_', '_', '_', 'upper']],
+          structured: [
+            { beamLevels: ['begin'], stem: 'up', tie: 'none', slurs: [], advance: 'normal' }
+          ],
+          symbols: [
+            {
+              index: 0,
+              proposalVoiceIndex: 0,
+              proposalSymbolIndex: 0,
+              heads: {
+                'beam.level.1': {
+                  chosen: 'begin',
+                  confidence: 0.55,
+                  alternatives: [{ value: 'continue', confidence: 0.4 }]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    };
+    storage.getObjectBuffer.mockResolvedValue(
+      Buffer.from(
+        JSON.stringify({
+          schemaVersion: 'ots-structured-proposals.v1',
+          title: '',
+          staves: [[['note_8', 'C4', '_', '_', '_', 'upper']]],
+          structured: [
+            [
+              {
+                beamLevels: ['begin'],
+                stem: 'up',
+                tie: 'none',
+                slurs: [],
+                advance: 'normal'
+              }
+            ]
+          ]
+        })
+      )
+    );
+    jobsModel.updateOne = jest.fn(() => ({ exec: async () => ({ matchedCount: 1 }) }));
+
+    await expect(
+      service.applyCorrection(
+        'user-1',
+        'job-1',
+        1,
+        0,
+        'continue',
+        'ots-homr',
+        scannerEngineReviewContentSignature(run)
+      )
+    ).resolves.toMatchObject({ ok: true, pending: true, outcome: 'corrected' });
+
+    const storedBody = storage.putAuxiliaryObject.mock.calls.at(-1)[1] as Buffer;
+    expect(JSON.parse(storedBody.toString()).structured[0][0].beamLevels).toEqual(['continue']);
+    expect(run.review.staves[0].symbols[0].heads['beam.level.1'].chosen).toBe('begin');
+    const writtenRun = jobsModel.updateOne.mock.calls[0][1].$set.pages[0].engines['ots-homr'];
+    expect(writtenRun).toMatchObject({
+      requestedStructuredHeadFamilies: ['beam'],
+      structuredProposalDirty: true
+    });
+    expect(writtenRun.review.staves[0].symbols[0].heads['beam.level.1']).toEqual({
+      chosen: 'continue',
+      confidence: 1,
+      alternatives: []
+    });
+
+    // A worker failure must be visible and retryable even though the page now
+    // has a correction (changing the selected family set remains forbidden).
+    job.pages = jobsModel.updateOne.mock.calls[0][1].$set.pages;
+    delete writtenRun.requestedStructuredHeadFamilies;
+    writtenRun.structuredOutputError = 'Unable to apply structured output: temporary failure';
+    await service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam']);
+    expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(['beam']);
   });
 
   it('requires selection before human corrections', async () => {

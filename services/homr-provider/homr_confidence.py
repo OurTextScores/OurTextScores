@@ -10,16 +10,18 @@ A softmax over those same logits is the confidence, and the top-k are the
 alternatives worth offering a user. Nothing here changes what HOMR predicts —
 the argmax it would have taken is still the value it reports.
 
-Three patch points, all restored on exit:
+The relevant patch points are all restored on exit:
 
 * `ScoreDecoder.io_binding.get_outputs` — tees each step's distributions. Patched
   on the instance rather than wrapping the object, because `run_with_iobinding`
   is handed the same binding and needs the real one.
-* `Staff2Score.predict` — the staff boundary. It returns the decoder's output
-  before any downstream filtering, so distributions pair with symbols 1:1 here
-  and nowhere later.
-* `staff_parsing.parse_staff_image` — supplies the staff index and the page
-  coordinates of its region.
+* `Staff2Score.predict` and `predict_greedy_with_margins` — capture both the
+  legacy and rareNum first-pass decoder paths.
+* `ScoreDecoder.rhythm_alternative` — captures a reranker fork and records the
+  probability of the value actually forced into that candidate.
+* `staff_parsing.parse_staff_image*` — supplies physical staff geometry.
+* `homr.main.parse_staffs` — replaces provisional greedy symbols with the final
+  reranked voice streams that MusicXML generation actually consumes.
 
 Confidence rides on the symbol objects themselves, so downstream filtering (for
 instance `predict_best` dropping `position == "lower"`) carries it along and
@@ -105,10 +107,21 @@ class PageCapture:
         self._steps = []
 
     def record_step(self, outputs: Any) -> None:
-        # outputs[0:6] are the head logits, [6] attention, [7:] the kv cache.
+        # outputs[0:6] are the core logits and [6] is attention. Patched HOMR
+        # adds the structured-head hidden representation at [7]; older HOMR
+        # builds move directly to the kv cache and have no attach method.
         if len(outputs) < 7:
             return
-        self._steps.append([outputs[i].numpy()[:, -1, :].copy() for i in range(6)])
+        hidden = (
+            outputs[7].numpy().copy()
+            if len(outputs) > 7
+            and getattr(self._decoder, "_attach_structured_notation", None) is not None
+            else None
+        )
+        self._steps.append(
+            [outputs[i].numpy()[:, -1, :].copy() for i in range(6)]
+            + [hidden]
+        )
 
     def attach_decoder(self, decoder: Any) -> None:
         self._decoder = decoder
@@ -149,17 +162,40 @@ class PageCapture:
             return
         vocabularies = self._vocabularies()
         for symbol, step in zip(symbols, self._steps):
+            # `rhythm_alternative` teacher-forces its prefix, so HOMR does not
+            # attach structured notation there even though the same hidden
+            # state is available. Attach it after the fact so a fork-selected
+            # symbol is not a hole in either materialization or spot review.
+            attach_structured = getattr(self._decoder, "_attach_structured_notation", None)
+            if (
+                getattr(symbol, "notation", None) is None
+                and attach_structured is not None
+                and step[6] is not None
+            ):
+                attach_structured(symbol, step[6])
             heads: dict[str, Any] = {}
             for position, name in enumerate(HEAD_NAMES):
                 logits = step[position].reshape(-1).tolist()
                 probabilities = _softmax(logits)
-                ranked = _top_k(probabilities, vocabularies[position], TOP_K)
-                if not ranked:
+                vocabulary = vocabularies[position]
+                selected = str(getattr(symbol, name, ""))
+                selected_id = next(
+                    (token_id for token_id, value in vocabulary.items() if value == selected),
+                    None,
+                )
+                if selected_id is None or selected_id >= len(probabilities):
                     continue
+                ranked = _top_k(probabilities, vocabulary, TOP_K)
                 heads[name] = {
-                    "chosen": ranked[0]["value"],
-                    "confidence": ranked[0]["confidence"],
-                    "alternatives": ranked[1:],
+                    # Usually this is the argmax. A cross-staff reranking fork,
+                    # however, deliberately selects a runner-up rhythm and
+                    # teacher-forces its prefix. Review must describe that final
+                    # selected symbol, not relabel the discarded argmax as chosen.
+                    "chosen": selected,
+                    "confidence": round(float(probabilities[selected_id]), 6),
+                    "alternatives": [
+                        candidate for candidate in ranked if candidate["value"] != selected
+                    ][: TOP_K - 1],
                 }
             setattr(symbol, CONFIDENCE_ATTR, heads)
 
@@ -269,11 +305,31 @@ class PageCapture:
         return selected
 
     def add_staff(
-        self, index: int, region: Any, symbols: list[Any], bar_lines: Any = None
+        self,
+        index: int,
+        region: Any,
+        symbols: list[Any],
+        bar_lines: Any = None,
+        part_index: int | None = None,
+        system_index: int | None = None,
+        proposal_offset: int = 0,
     ) -> None:
         entries: list[dict[str, Any]] = []
         for ordinal, symbol in enumerate(symbols):
-            heads = getattr(symbol, CONFIDENCE_ATTR, None)
+            heads = dict(getattr(symbol, CONFIDENCE_ATTR, None) or {})
+            for choice in getattr(symbol, "structured_choices", ()) or ():
+                heads[str(choice.head)] = {
+                    "chosen": str(choice.value),
+                    "confidence": round(float(choice.probability), 6),
+                    "alternatives": [
+                        {
+                            "value": str(alternative.value),
+                            "confidence": round(float(alternative.probability), 6),
+                        }
+                        for alternative in getattr(choice, "alternatives", ())
+                        if str(alternative.value) != str(choice.value)
+                    ],
+                }
             if not heads:
                 continue
             coordinates = getattr(symbol, "coordinates", None)
@@ -282,6 +338,8 @@ class PageCapture:
                     "index": ordinal,
                     "rhythm": symbol.rhythm,
                     "heads": heads,
+                    "proposalVoiceIndex": part_index,
+                    "proposalSymbolIndex": proposal_offset + ordinal,
                     # Attention-derived and unreliable (HOMR's own caveat); a
                     # highlight hint only, never the crop boundary.
                     "attention": _attention_point(coordinates),
@@ -290,6 +348,8 @@ class PageCapture:
         self.staves.append(
             {
                 "index": int(index),
+                **({"partIndex": part_index} if part_index is not None else {}),
+                **({"systemIndex": system_index} if system_index is not None else {}),
                 # The complete decoded sequence, six fields per symbol, in the
                 # compact array form. This is what a correction edits and what
                 # `/v1/regenerate` turns back into MusicXML, so it must survive
@@ -373,6 +433,40 @@ class PageCapture:
         for staff, part_index, system_index in assignments:
             staff["partIndex"] = part_index
             staff["systemIndex"] = system_index
+
+        final_systems: list[tuple[int, int, int, list[Any]]] = []
+        for part_index, voice in enumerate(voices):
+            current: list[Any] = []
+            offset = 0
+            system_index = 0
+            for symbol_index, symbol in enumerate(voice):
+                if str(getattr(symbol, "rhythm", "")) == "newline":
+                    final_systems.append((part_index, system_index, offset, current))
+                    current = []
+                    offset = symbol_index + 1
+                    system_index += 1
+                else:
+                    current.append(symbol)
+            if current:
+                final_systems.append((part_index, system_index, offset, current))
+        if len(final_systems) != len(self.staves):
+            return
+
+        physical = list(self.staves)
+        self.staves = []
+        for index, ((part_index, system_index, offset, symbols), prior) in enumerate(
+            zip(final_systems, physical, strict=True)
+        ):
+            region = prior.get("region")
+            self.add_staff(
+                index,
+                region,
+                symbols,
+                self.matched_bar_lines_for_staff(region, symbols),
+                part_index,
+                system_index,
+                offset,
+            )
 
     def as_dict(
         self, source_width: int | None = None, source_height: int | None = None
@@ -466,7 +560,7 @@ class capture_page:  # noqa: N801 - used as a context manager
     def __enter__(self) -> PageCapture:
         from homr import main as homr_main
         from homr import staff_parsing
-        from homr.transformer import staff2score
+        from homr.transformer import decoder_inference, staff2score
 
         page = self.page
         _ACTIVE[0] = page
@@ -483,6 +577,9 @@ class capture_page:  # noqa: N801 - used as a context manager
         )
 
         original_predict = staff2score.Staff2Score.predict
+        original_predict_greedy = getattr(
+            staff2score.Staff2Score, "predict_greedy_with_margins", None
+        )
 
         def predict(inner_self: Any, image: Any) -> Any:
             page.attach_decoder(inner_self.decoder)
@@ -493,6 +590,43 @@ class capture_page:  # noqa: N801 - used as a context manager
 
         staff2score.Staff2Score.predict = predict
         self._undo.append(lambda: setattr(staff2score.Staff2Score, "predict", original_predict))
+
+        if original_predict_greedy is not None:
+            def predict_greedy(inner_self: Any, image: Any, staff_context_emb: Any = None) -> Any:
+                page.attach_decoder(inner_self.decoder)
+                page.reset_steps()
+                result = original_predict_greedy(inner_self, image, staff_context_emb)
+                page.stamp(result[0])
+                return result
+
+            staff2score.Staff2Score.predict_greedy_with_margins = predict_greedy
+            self._undo.append(
+                lambda: setattr(
+                    staff2score.Staff2Score,
+                    "predict_greedy_with_margins",
+                    original_predict_greedy,
+                )
+            )
+
+        original_rhythm_alternative = getattr(
+            decoder_inference.ScoreDecoder, "rhythm_alternative", None
+        )
+        if original_rhythm_alternative is not None:
+            def rhythm_alternative(inner_self: Any, *args: Any, **kwargs: Any) -> Any:
+                page.attach_decoder(inner_self)
+                page.reset_steps()
+                symbols = original_rhythm_alternative(inner_self, *args, **kwargs)
+                page.stamp(symbols)
+                return symbols
+
+            decoder_inference.ScoreDecoder.rhythm_alternative = rhythm_alternative
+            self._undo.append(
+                lambda: setattr(
+                    decoder_inference.ScoreDecoder,
+                    "rhythm_alternative",
+                    original_rhythm_alternative,
+                )
+            )
 
         original_parse = staff_parsing.parse_staff_image
 
@@ -527,6 +661,41 @@ class capture_page:  # noqa: N801 - used as a context manager
         self._undo.append(
             lambda: setattr(staff_parsing, "parse_staff_image", original_parse)
         )
+
+        original_parse_greedy = getattr(
+            staff_parsing, "parse_staff_image_greedy_with_margins", None
+        )
+
+        def parse_staff_image_greedy(*args: Any, **kwargs: Any) -> Any:
+            result = original_parse_greedy(*args, **kwargs)
+            # A staff-context second pass revisits the same physical staff. Its
+            # final symbols are installed by assign_voice_systems; recording it
+            # here would duplicate geometry and destroy the voice/system map.
+            positional_context = args[6] if len(args) > 6 else None
+            if positional_context is None and kwargs.get("staff_context_emb") is None:
+                _debug, index, staff, image, regions, _config = args[:6]
+                page.record_page_canvas(image)
+                try:
+                    region = staff_parsing._calculate_region(staff, regions)
+                except Exception:  # pragma: no cover - geometry is best effort
+                    region = None
+                page.add_staff(
+                    index,
+                    region,
+                    result[0],
+                    page.matched_bar_lines_for_staff(region, result[0]),
+                )
+            return result
+
+        if original_parse_greedy is not None:
+            staff_parsing.parse_staff_image_greedy_with_margins = parse_staff_image_greedy
+            self._undo.append(
+                lambda: setattr(
+                    staff_parsing,
+                    "parse_staff_image_greedy_with_margins",
+                    original_parse_greedy,
+                )
+            )
 
         original_parse_staffs = homr_main.parse_staffs
 

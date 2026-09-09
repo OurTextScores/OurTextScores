@@ -36,6 +36,35 @@ class SoftmaxTest(unittest.TestCase):
         ranked = _top_k([0.1, 0.7, 0.2], {0: "a", 1: "b", 2: "c"}, 2)
         self.assertEqual([entry["value"] for entry in ranked], ["b", "c"])
 
+    def test_stamps_the_fork_selected_value_instead_of_the_argmax(self):
+        class Values:
+            def __init__(self, values):
+                self.values = values
+
+            def reshape(self, *_shape):
+                return self
+
+            def tolist(self):
+                return self.values
+
+        page = PageCapture()
+        page._decoder = SimpleNamespace(
+            inv_rhythm_vocab={0: "note_4", 1: "note_8"},
+            inv_pitch_vocab={0: "C4"},
+            inv_lift_vocab={0: "_"},
+            inv_position_vocab={0: "upper"},
+            inv_articulation_vocab={0: "_"},
+            inv_slur_vocab={0: "_"},
+        )
+        page._steps = [[Values([2.0, 1.0]), *[Values([1.0])] * 5]]
+        selected_fork = VoiceSystemMappingTest.decoded(rhythm="note_8")
+
+        page.stamp([selected_fork])
+
+        rhythm = selected_fork._ots_heads["rhythm"]
+        self.assertEqual(rhythm["chosen"], "note_8")
+        self.assertLess(rhythm["confidence"], rhythm["alternatives"][0]["confidence"])
+
 
 class PruneTest(unittest.TestCase):
     def test_drops_symbols_the_model_was_sure_about(self):
@@ -77,6 +106,47 @@ class PruneTest(unittest.TestCase):
 
 
 class VoiceSystemMappingTest(unittest.TestCase):
+    @staticmethod
+    def decoded(rhythm="note_8", pitch="C4", choices=()):
+        value = SimpleNamespace(
+            rhythm=rhythm,
+            pitch=pitch,
+            lift="_",
+            articulation="_",
+            slur="_",
+            position="upper",
+            notation=None,
+            structured_choices=choices,
+            coordinates=(40, 10),
+        )
+        value._ots_heads = {
+            "pitch": head(pitch, 0.55, [("D4", 0.4)])
+        }
+        return value
+
+    def test_final_reranked_symbols_replace_greedy_review_evidence(self):
+        page = PageCapture()
+        page.add_staff(0, [0, 0, 100, 20], [self.decoded(pitch="C4")])
+        choice = SimpleNamespace(
+            head="beam.level.1",
+            value="begin",
+            probability=0.52,
+            alternatives=(SimpleNamespace(value="continue", probability=0.43),),
+        )
+        final = self.decoded(pitch="E4", choices=(choice,))
+
+        page.assign_voice_systems([[final, self.decoded(rhythm="newline", pitch=".")]])
+
+        staff = page.staves[0]
+        self.assertEqual(staff["tokens"][0][1], "E4")
+        self.assertEqual(staff["symbols"][0]["proposalVoiceIndex"], 0)
+        self.assertEqual(staff["symbols"][0]["proposalSymbolIndex"], 0)
+        self.assertEqual(staff["symbols"][0]["heads"]["beam.level.1"], {
+            "chosen": "begin",
+            "confidence": 0.52,
+            "alternatives": [{"value": "continue", "confidence": 0.43}],
+        })
+
     def test_retains_structured_notation_parallel_to_tokens(self):
         page = PageCapture()
         notation = SimpleNamespace(

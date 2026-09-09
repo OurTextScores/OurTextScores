@@ -912,6 +912,7 @@ describe("ScannerJobClient", () => {
               attempts: 1,
               hasMusicXml: true,
               hasPdf: true,
+              hasReview: true,
               availableStructuredHeadFamilies: [
                 "beam",
                 "advance",
@@ -925,28 +926,48 @@ describe("ScannerJobClient", () => {
         },
       ],
     };
-    const fetchMock = jest.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "PUT") {
-        return {
-          ok: true,
-          json: async () => ({
-            ...updated,
-            pages: [
-              {
-                ...updated.pages[0],
-                engines: {
-                  "ots-homr": {
-                    ...updated.pages[0].engines?.["ots-homr"],
-                    selectedStructuredHeadFamilies: ["beam"],
+    const fetchMock = jest.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes("/review")) {
+          return {
+            ok: true,
+            json: async () => ({
+              pageNumber: 1,
+              engineId: "ots-homr",
+              contentSignature: "review-signature",
+              spots: [],
+              remainingFloor: null,
+              suitability: {
+                symbols: 0,
+                spots: 0,
+                askableRatio: 0,
+                unsuitable: false,
+              },
+            }),
+          };
+        }
+        if (init?.method === "PUT") {
+          return {
+            ok: true,
+            json: async () => ({
+              ...updated,
+              pages: [
+                {
+                  ...updated.pages[0],
+                  engines: {
+                    "ots-homr": {
+                      ...updated.pages[0].engines?.["ots-homr"],
+                      selectedStructuredHeadFamilies: ["beam"],
+                    },
                   },
                 },
-              },
-            ],
-          }),
-        };
-      }
-      return { ok: true, json: async () => updated };
-    });
+              ],
+            }),
+          };
+        }
+        return { ok: true, json: async () => updated };
+      },
+    );
     globalThis.fetch = fetchMock as jest.Mock;
     render(<ScannerJobClient jobId="job-1" />);
 
@@ -971,10 +992,14 @@ describe("ScannerJobClient", () => {
     await waitFor(() =>
       expect(screen.getByRole("checkbox", { name: "Beams" })).toBeChecked(),
     );
-    expect(screen.getByRole("checkbox", { name: "Rhythmic spacing" })).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Rhythmic spacing" }),
+    ).not.toBeChecked();
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Selected heads applied. Review the regenerated OTS-HOMR score against the scan below.",
+      "Selected heads applied. Review the uncertain multiple-choice questions below.",
     );
-    expect(screen.getByText(/Dynamics are shown only as diagnostic evidence/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Dynamics are shown only as diagnostic evidence/),
+    ).toBeInTheDocument();
   });
 });

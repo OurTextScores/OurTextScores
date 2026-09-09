@@ -70,6 +70,47 @@ import { locateSymbol } from './scanner-locate';
 
 /** Field order within a captured token; mirrors the provider's capture. */
 const TOKEN_FIELDS = ['rhythm', 'pitch', 'lift', 'articulation', 'slur', 'position'];
+
+function setStructuredProposalChoice(entry: any, head: string, chosen: string): boolean {
+  if (!entry || typeof entry !== 'object') return false;
+  const beam = head.match(/^beam\.level\.(\d+)$/);
+  if (beam) {
+    const index = Number(beam[1]) - 1;
+    if (!Array.isArray(entry.beamLevels) || index < 0 || index >= entry.beamLevels.length) {
+      return false;
+    }
+    entry.beamLevels[index] = chosen;
+    return true;
+  }
+  if (head === 'advance.delta') {
+    entry.advance = chosen;
+    return true;
+  }
+  if (head === 'stem.direction') {
+    entry.stem = chosen;
+    return true;
+  }
+  if (head === 'tie.state') {
+    entry.tie = chosen;
+    return true;
+  }
+  const slur = head.match(/^slur\.slot\.(\d+)\.(event|side)$/);
+  if (slur) {
+    const index = Number(slur[1]) - 1;
+    const field = slur[2] === 'event' ? 0 : 1;
+    if (
+      !Array.isArray(entry.slurs) ||
+      index < 0 ||
+      index >= entry.slurs.length ||
+      !Array.isArray(entry.slurs[index])
+    ) {
+      return false;
+    }
+    entry.slurs[index][field] = chosen;
+    return true;
+  }
+  return false;
+}
 import {
   DEFAULT_REVIEW_THRESHOLDS,
   homrReviewVoicesForRegeneration,
@@ -454,9 +495,7 @@ export class ScannerService implements OnModuleInit {
         included: Boolean(requested.included),
         status: requested.included ? 'pending' : 'skipped'
       };
-      return enginePlan.engineIds.includes('homr')
-        ? withScannerHomrRun(configured)
-        : configured;
+      return enginePlan.engineIds.includes('homr') ? withScannerHomrRun(configured) : configured;
     });
     if (!pages.some((page) => page.included)) {
       throw new BadRequestException('At least one page must be included');
@@ -594,16 +633,6 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('This engine has no completed output to select');
     }
     if (
-      run.reviewedMusicXml ||
-      (run.corrections?.length || 0) > 0 ||
-      page.mergedMusicXml ||
-      page.mergedScore
-    ) {
-      throw new ConflictException(
-        'Choose structured output before correcting or reconciling this page'
-      );
-    }
-    if (
       !Array.isArray(requestedFamilies) ||
       requestedFamilies.some((family) => typeof family !== 'string')
     ) {
@@ -618,11 +647,25 @@ export class ScannerService implements OnModuleInit {
       throw new BadRequestException('Structured output selection contains an unavailable family');
     }
     const families = available.filter((family) => unique.includes(family));
+    const correctionRetry =
+      Boolean(run.structuredProposalDirty && run.structuredOutputError) &&
+      JSON.stringify(families) === JSON.stringify(run.selectedStructuredHeadFamilies || []);
     if (
+      run.reviewedMusicXml ||
+      ((run.corrections?.length || 0) > 0 && !correctionRetry) ||
+      page.mergedMusicXml ||
+      page.mergedScore
+    ) {
+      throw new ConflictException(
+        'Choose structured output before correcting or reconciling this page'
+      );
+    }
+    if (
+      !correctionRetry &&
       JSON.stringify(families) ===
-      JSON.stringify(
-        run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies || []
-      )
+        JSON.stringify(
+          run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies || []
+        )
     ) {
       return this.present(job);
     }
@@ -966,7 +1009,11 @@ export class ScannerService implements OnModuleInit {
     const reviewEngine = this.reviewEngineForPage(job, page, engineId);
     const staves = reviewEngine.run.review?.staves || [];
     const thresholds = this.reviewThresholds();
-    const spots = selectSpots(staves, thresholds);
+    const spots = selectSpots(
+      staves,
+      thresholds,
+      reviewEngine.run.selectedStructuredHeadFamilies || []
+    );
     const suitability = pageSuitability(staves, spots);
 
     return {
@@ -974,6 +1021,7 @@ export class ScannerService implements OnModuleInit {
       status: page.status,
       engineId: reviewEngine.engineId,
       contentSignature: scannerEngineReviewContentSignature(reviewEngine.run),
+      structuredOutputPending: Boolean(reviewEngine.run.requestedStructuredHeadFamilies),
       // No cap and no truncation: the reviewer stops when the remainder is good
       // enough, which is what `remainingFloor` is for.
       spots: spots.map((spot, index) => {
@@ -1001,6 +1049,8 @@ export class ScannerService implements OnModuleInit {
           alternatives: spot.alternatives,
           staffIndex: spot.staffIndex,
           symbolIndex: spot.symbolIndex,
+          proposalVoiceIndex: spot.proposalVoiceIndex,
+          proposalSymbolIndex: spot.proposalSymbolIndex,
           // Where to point on the staff crop. Without this the reviewer is
           // asked "which duration is this?" over a line of thirty notes.
           band:
@@ -2942,7 +2992,11 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Scanner review content changed; refresh and try again');
     }
     const staves = reviewEngine.run.review?.staves || [];
-    const spots = selectSpots(staves, this.reviewThresholds());
+    const spots = selectSpots(
+      staves,
+      this.reviewThresholds(),
+      reviewEngine.run.selectedStructuredHeadFamilies || []
+    );
     const spot = spots[spotId];
     if (!spot) throw new NotFoundException('Scanner review spot not found');
 
@@ -2952,6 +3006,145 @@ export class ScannerService implements OnModuleInit {
       // different edit entirely and belongs in the Score Editor, where it can
       // be seen in context.
       throw new BadRequestException('That is not one of the offered alternatives');
+    }
+
+    const outcome: 'confirmed' | 'corrected' = chosen === spot.chosen ? 'confirmed' : 'corrected';
+    const correction = {
+      spotId,
+      head: spot.head,
+      predicted: spot.chosen,
+      predictedConfidence: spot.confidence,
+      offered: spot.alternatives,
+      chosen,
+      outcome,
+      contentSignature: expectedSignature,
+      correctedAt: new Date()
+    };
+
+    // OTS-HOMR's API process intentionally has no GPU-provider credentials.
+    // Edit its retained voice-major proposal here and let the worker materialize
+    // the corrected MusicXML. This applies equally to original six-token heads
+    // and to selected structured heads, so both review queues describe and edit
+    // the exact same final reranked stream.
+    if (reviewEngine.engineId === 'ots-homr') {
+      const proposalLocator = reviewEngine.run.artifacts['structured-heads'];
+      const voiceIndex = spot.proposalVoiceIndex;
+      const symbolIndex = spot.proposalSymbolIndex;
+      if (
+        !proposalLocator ||
+        !Number.isInteger(voiceIndex) ||
+        !Number.isInteger(symbolIndex) ||
+        voiceIndex! < 0 ||
+        symbolIndex! < 0
+      ) {
+        throw new ConflictException(
+          'This retained result cannot map the review choice to its final symbol; rescan and try again'
+        );
+      }
+      const proposal = JSON.parse(
+        (
+          await this.storage.getObjectBuffer(proposalLocator.bucket, proposalLocator.objectKey)
+        ).toString('utf8')
+      );
+      const proposalToken = proposal?.staves?.[voiceIndex!]?.[symbolIndex!];
+      const proposalStructured = proposal?.structured?.[voiceIndex!]?.[symbolIndex!];
+      const field = TOKEN_FIELDS.indexOf(spot.head);
+      const applied =
+        field >= 0 && Array.isArray(proposalToken) && proposalToken.length === TOKEN_FIELDS.length
+          ? ((proposalToken[field] = chosen), true)
+          : setStructuredProposalChoice(proposalStructured, spot.head, chosen);
+      if (!applied) {
+        throw new ConflictException(
+          'This review choice cannot be applied to the retained proposal'
+        );
+      }
+
+      const editedStaves = staves.map((entry: any) => {
+        if (entry.index !== spot.staffIndex) return entry;
+        const tokens = (entry.tokens || []).map((row: string[]) => [...row]);
+        const structured = (entry.structured || []).map((value: any) =>
+          value && typeof value === 'object' ? structuredClone(value) : value
+        );
+        if (field >= 0 && tokens[spot.symbolIndex]) tokens[spot.symbolIndex][field] = chosen;
+        if (field < 0 && structured[spot.symbolIndex]) {
+          setStructuredProposalChoice(structured[spot.symbolIndex], spot.head, chosen);
+        }
+        const symbols = (entry.symbols || []).map((symbol: any) =>
+          symbol.index === spot.symbolIndex
+            ? {
+                ...symbol,
+                heads: {
+                  ...symbol.heads,
+                  [spot.head]: { chosen, confidence: 1, alternatives: [] }
+                }
+              }
+            : symbol
+        );
+        return { ...entry, tokens, structured, symbols };
+      });
+      const proposalBody = Buffer.from(JSON.stringify(proposal));
+      const nextProposal = await this.storeAuxiliaryArtifact(
+        `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-${reviewEngine.engineId}-reviewed-heads-${randomUUID()}.json`,
+        proposalBody,
+        'application/json'
+      );
+      const updatedRun: ScannerEngineRun = {
+        ...reviewEngine.run,
+        review: { staves: editedStaves },
+        corrections: [...(reviewEngine.run.corrections || []), correction],
+        requestedStructuredHeadFamilies: reviewEngine.run.selectedStructuredHeadFamilies || [],
+        structuredProposalDirty: true,
+        structuredOutputError: undefined,
+        artifacts: { ...reviewEngine.run.artifacts, 'structured-heads': nextProposal }
+      };
+      const updatedPage = withScannerEngineRun(page, updatedRun);
+      const updatedPages = job.pages.map((entry) =>
+        entry.pageNumber === pageNumber ? updatedPage : entry
+      );
+      const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
+      const write = await this.jobs
+        .updateOne(
+          { _id: job._id, statusVersion: job.statusVersion || 1 },
+          {
+            $set: {
+              pages: updatedPages,
+              reassembleRequestedAt: new Date(),
+              ...(hadCombined ? { combinedStale: true } : {})
+            },
+            $inc: { statusVersion: 1 }
+          }
+        )
+        .exec();
+      if (write?.matchedCount === 0) {
+        await this.storage
+          .deleteObject(nextProposal.bucket, nextProposal.objectKey)
+          .catch(() => undefined);
+        throw new ConflictException('Scanner review content changed; refresh and try again');
+      }
+      await this.storage
+        .deleteObject(proposalLocator.bucket, proposalLocator.objectKey)
+        .catch((error) =>
+          this.logger.warn(
+            `Unable to retire superseded structured proposal: ${this.messageOf(error)}`
+          )
+        );
+      await this.recordCorrectionForTraining(
+        userId,
+        page,
+        reviewEngine.run,
+        reviewEngine.engineId,
+        spot,
+        correction,
+        expectedSignature
+      );
+      return {
+        ok: true,
+        outcome,
+        pending: true,
+        combinedStale: hadCombined,
+        engineId: reviewEngine.engineId,
+        contentSignature: scannerEngineReviewContentSignature(updatedRun)
+      };
     }
 
     const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
@@ -3003,20 +3196,6 @@ export class ScannerService implements OnModuleInit {
       checksumSha256: createHash('sha256').update(musicXmlBuffer).digest('hex')
     };
 
-    const outcome: 'confirmed' | 'corrected' = chosen === spot.chosen ? 'confirmed' : 'corrected';
-    const correction = {
-      spotId,
-      head: spot.head,
-      predicted: spot.chosen,
-      predictedConfidence: spot.confidence,
-      offered: spot.alternatives,
-      chosen,
-      // Both are signal: confirming a 61% prediction says the model was right
-      // but unsure, which is exactly what improves calibration.
-      outcome,
-      contentSignature: expectedSignature,
-      correctedAt: new Date()
-    };
     const updatedRun: ScannerEngineRun = {
       ...reviewEngine.run,
       review: { staves: editedStaves },
@@ -3216,7 +3395,11 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Scanner review content changed; refresh and try again');
     }
     const staves = reviewEngine.run.review?.staves || [];
-    const spots = selectSpots(staves, this.reviewThresholds());
+    const spots = selectSpots(
+      staves,
+      this.reviewThresholds(),
+      reviewEngine.run.selectedStructuredHeadFamilies || []
+    );
     const spot = spots[spotId];
     if (!spot) throw new NotFoundException('Scanner review spot not found');
     const staff = staves.find((entry: any) => entry.index === spot.staffIndex);
@@ -3353,8 +3536,7 @@ export class ScannerService implements OnModuleInit {
     }
     const succeeded = included.filter((page) => page.status === 'succeeded').length;
     return {
-      status:
-        succeeded === included.length ? 'succeeded' : succeeded > 0 ? 'partial' : 'failed',
+      status: succeeded === included.length ? 'succeeded' : succeeded > 0 ? 'partial' : 'failed',
       pages
     };
   }
@@ -3492,6 +3674,7 @@ export class ScannerService implements OnModuleInit {
       selectedStructuredHeadFamilies:
         run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies,
       structuredOutputPending: Boolean(run.requestedStructuredHeadFamilies),
+      structuredOutputRetryable: Boolean(run.structuredProposalDirty && run.structuredOutputError),
       structuredOutputError: run.structuredOutputError,
       artifactKinds: Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
         locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
@@ -4001,12 +4184,7 @@ export class ScannerService implements OnModuleInit {
     body: Buffer,
     contentType: string
   ): Promise<ScannerStorageLocator> {
-    const stored = await this.storage.putAuxiliaryObject(
-      objectKey,
-      body,
-      body.length,
-      contentType
-    );
+    const stored = await this.storage.putAuxiliaryObject(objectKey, body, body.length, contentType);
     return {
       bucket: stored.bucket,
       objectKey: stored.objectKey,
@@ -4014,6 +4192,42 @@ export class ScannerService implements OnModuleInit {
       contentType,
       checksumSha256: createHash('sha256').update(body).digest('hex')
     };
+  }
+
+  private async recordCorrectionForTraining(
+    userId: string,
+    page: ScannerPageResult,
+    run: ScannerEngineRun,
+    engineId: string,
+    spot: any,
+    correction: any,
+    contentSignature: string
+  ): Promise<void> {
+    try {
+      await this.corrections.create({
+        pageSha256:
+          run.recognitionRaster?.checksumSha256 ||
+          page.recognitionRaster?.checksumSha256 ||
+          page.sourceImage?.checksumSha256 ||
+          '',
+        userHash: this.userHash(userId),
+        engineId,
+        staffIndex: spot.staffIndex,
+        symbolIndex: spot.symbolIndex,
+        head: spot.head,
+        predicted: spot.chosen,
+        predictedConfidence: spot.confidence,
+        offered: spot.alternatives,
+        chosen: correction.chosen,
+        outcome: correction.outcome,
+        modelRevision: run.modelRevision || 'unknown',
+        providerRevision: run.providerRevision || 'unknown',
+        contentSignature,
+        policyVersion: this.config.get<string>('SCANNER_TRAINING_POLICY_VERSION', 'unset')
+      });
+    } catch (error) {
+      this.logger.warn(`Scanner correction not recorded for training: ${this.messageOf(error)}`);
+    }
   }
 
   private number(key: string, fallback: number): number {

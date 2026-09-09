@@ -101,6 +101,9 @@ printf '%s  %s\n' \
 printf '%s  %s\n' \
   4970d1eeaedce7a5444ff70764a8662b1f0a6d47c0f564073342628048245898 \
   services/ots-homr-modal/patches/homr-997-runtime.patch | sha256sum --check --strict
+printf '%s  %s\n' \
+  4fbcac3691c63c26a4b146458a7e4513ee5a90e450e734aa2a8c1836a4ed063d \
+  services/ots-homr-modal/patches/homr-structured-review.patch | sha256sum --check --strict
 
 uv run \
   --with fastapi==0.116.1 \
@@ -169,7 +172,7 @@ The provider must return `ots-ots-homr-provider.v2` and a response shaped like:
   "inputSha256": "<sha256 of page bytes>",
   "engine": {
     "name": "ots-homr",
-    "serviceRevision": "ots-ots-homr-provider-v3",
+    "serviceRevision": "ots-ots-homr-provider-v4",
     "core": { "repository": "jhlusko/OTS-homr", "revision": "...", "sha256": "..." },
     "textDetector": { "id": "lyrics", "revision": "...", "sha256": "..." },
     "structuredHeads": {
@@ -395,7 +398,7 @@ SCANNER_OTS_HOMR_MODAL_TOKEN_ID=<wk-...>
 SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET=<ws-...>
 SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED=false
 
-SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v3
+SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v4
 SCANNER_EXPECTED_OTS_HOMR_CORE_REPOSITORY=jhlusko/OTS-homr
 SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION=1dbc87399c70238136da0dfd412fff032d17b76c
 SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256=1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3

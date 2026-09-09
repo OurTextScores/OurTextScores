@@ -87,6 +87,8 @@ export interface ScannerEngineRun {
   selectedStructuredHeadFamilies?: string[];
   /** A worker-only materialization request waiting to become effective. */
   requestedStructuredHeadFamilies?: string[];
+  /** The retained proposal was edited by spot review and must be rematerialized. */
+  structuredProposalDirty?: boolean;
   /** Last asynchronous materialization failure, shown to the reviewer. */
   structuredOutputError?: string;
   artifacts: ScannerEngineArtifacts;
@@ -120,7 +122,9 @@ export interface ScannerEnginePlan {
   engineOptions?: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>;
 }
 
-export function isScannerOtsHomrEngineOptions(value: unknown): value is ScannerOtsHomrEngineOptions {
+export function isScannerOtsHomrEngineOptions(
+  value: unknown
+): value is ScannerOtsHomrEngineOptions {
   if (!value || typeof value !== 'object') return false;
   const options = value as ScannerOtsHomrEngineOptions;
   return (
@@ -178,7 +182,8 @@ export function scannerEnginePlan(
     Object.keys(engineOptions).some(
       (engineId) =>
         !uniqueEngineIds.includes(engineId) ||
-        (engineId !== 'ots-homr' || !isScannerOtsHomrEngineOptions(engineOptions[engineId]))
+        engineId !== 'ots-homr' ||
+        !isScannerOtsHomrEngineOptions(engineOptions[engineId])
     )
   ) {
     throw new Error('Invalid scanner engine plan');
@@ -428,9 +433,7 @@ export const SCANNER_MERGED_SCORE_BASIS_VERSION = 'scanner-merged-basis-v1';
  * Only succeeded runs contribute: a failed engine has no reading to disagree
  * with, so its retry does not by itself invalidate anything.
  */
-export function scannerMergedScoreBasis(page: {
-  engines?: ScannerPageEngines;
-}): string {
+export function scannerMergedScoreBasis(page: { engines?: ScannerPageEngines }): string {
   const readings = Object.entries(page.engines || {})
     .filter(([, run]) => run?.status === 'succeeded')
     .map(([engineId, run]) => [

@@ -1,0 +1,41 @@
+diff --git a/homr/transformer/structured_decode.py b/homr/transformer/structured_decode.py
+index ae53b8e..3cc0ff9 100644
+--- a/homr/transformer/structured_decode.py
++++ b/homr/transformer/structured_decode.py
+@@ -8,11 +8,10 @@ those numbers and they must not be conflated:
+ * **What to offer.** Where the model is genuinely uncertain, the ranked alternatives a
+   user can pick between.
+ 
+-A head can be good enough for the first and not the second. Stems predict at macro F1
+-0.7189 (micro 0.9483) - worth writing, but presenting a stem as a *choice* implies the
+-model has an opinion worth arbitrating, and at that level the interface would be
+-overclaiming. `OFFERED_HEADS` encodes that distinction; see
+-`ENSEMBLE_TRANSCRIPTION_NEXT_STEPS.md` for the per-head table it comes from.
++A head can be good enough for the first while still needing human review. Alternatives
++are retained for every selectable output family, allowing a downstream UI to apply its
++own calibrated confidence and runner-up filters. Dynamics remain excluded because that
++head is diagnostic-only, and beam level 4 remains excluded for inadequate support.
+ 
+ Deliberately free of torch. The generation loop hands in plain sequences of floats, which
+ keeps this module testable without a GPU stack and keeps the ONNX path - where logits
+@@ -61,10 +60,16 @@ HEAD_CLASSES: dict[str, tuple] = {
+ 
+ #: Heads whose alternatives may be shown to a user, decided 2026-08-25.
+ #:
+-#: Beams and slurs only. Stems (0.7189) and ties (0.8032) are written to MusicXML but not
+-#: offered - see the module docstring. Beam level 4 has support 8, so its distribution is
+-#: noise and must never be rendered as a set of choices, however confident it looks.
+-OFFERED_HEAD_PREFIXES = ("beam.level.", "slur.slot.")
++#: Every family a downstream user may independently select. Dynamics are intentionally
++#: absent. Beam level 4 has support 8, so its distribution is noise and must never be
++#: rendered as a set of choices, however confident it looks.
++OFFERED_HEAD_PREFIXES = (
++    "beam.level.",
++    "slur.slot.",
++    ADVANCE_HEAD,
++    STEM_HEAD,
++    TIE_HEAD,
++)
+ MAX_OFFERED_BEAM_LEVEL = 3
+ 
+ #: Below this, the top class is not treated as settled and alternatives are offered.

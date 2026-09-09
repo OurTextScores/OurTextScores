@@ -32,6 +32,8 @@ export interface ReviewSymbol {
   rhythm?: string;
   heads: Record<string, ReviewHead>;
   attention?: number[] | null;
+  proposalVoiceIndex?: number | null;
+  proposalSymbolIndex?: number | null;
 }
 
 export interface ReviewStaff {
@@ -120,6 +122,8 @@ export interface ReviewSpot {
   confidence: number;
   alternatives: Array<{ value: string; confidence: number }>;
   attention?: number[] | null;
+  proposalVoiceIndex?: number | null;
+  proposalSymbolIndex?: number | null;
 }
 
 export interface ReviewThresholds {
@@ -175,7 +179,16 @@ export function effectiveCeiling(thresholds: ReviewThresholds): number {
 }
 
 /** Heads a reviewer can actually judge from a crop of the score. */
-const ASKABLE_HEADS = ['pitch', 'rhythm', 'lift', 'articulation', 'slur'] as const;
+const CORE_ASKABLE_HEADS = new Set(['pitch', 'rhythm', 'lift', 'articulation', 'slur']);
+
+export function structuredFamilyForReviewHead(head: string): string | null {
+  if (head.startsWith('beam.level.')) return 'beam';
+  if (head === 'advance.delta') return 'advance';
+  if (head === 'stem.direction') return 'stem';
+  if (head === 'tie.state') return 'tie';
+  if (head.startsWith('slur.slot.')) return 'slur';
+  return null;
+}
 
 /** Decoration by comparison: these must be more doubtful to be worth asking. */
 const LOW_IMPACT_HEADS = new Set(['slur', 'articulation']);
@@ -201,13 +214,17 @@ export function floorFor(head: string, thresholds: ReviewThresholds): number {
 
 export function selectSpots(
   staves: ReviewStaff[],
-  thresholds: ReviewThresholds = DEFAULT_REVIEW_THRESHOLDS
+  thresholds: ReviewThresholds = DEFAULT_REVIEW_THRESHOLDS,
+  structuredFamilies: readonly string[] = []
 ): ReviewSpot[] {
   const spots: ReviewSpot[] = [];
   for (const staff of staves || []) {
     for (const symbol of staff.symbols || []) {
-      for (const head of ASKABLE_HEADS) {
-        const entry = symbol.heads?.[head];
+      for (const [head, entry] of Object.entries(symbol.heads || {})) {
+        const family = structuredFamilyForReviewHead(head);
+        if (!CORE_ASKABLE_HEADS.has(head) && (!family || !structuredFamilies.includes(family))) {
+          continue;
+        }
         if (!entry) continue;
         const confidence = Number(entry.confidence);
         if (!Number.isFinite(confidence)) continue;
@@ -227,7 +244,9 @@ export function selectSpots(
           chosen: entry.chosen,
           confidence,
           alternatives,
-          attention: symbol.attention ?? null
+          attention: symbol.attention ?? null,
+          proposalVoiceIndex: symbol.proposalVoiceIndex,
+          proposalSymbolIndex: symbol.proposalSymbolIndex
         });
       }
     }

@@ -8,14 +8,15 @@ HOMR must remain independently deployable.
 
 The rareNum core and structured-head sidecar were produced from upstream HOMR
 commit `997b70a88c9f945b632f4129b036b2cd0972b2a3` plus
-`patches/homr-997-runtime.patch`.
+`patches/homr-997-runtime.patch`, followed by the review-policy change from
+HOMR commit `48a2b35a2142689d3a8ad324d60162542dbd3ef7`.
 
 That commit was local to the training branch and is not reachable from upstream
 GitHub. `source/homr-997b70-source.tar.gz` is therefore the immutable clean-tree
 archive used by Modal. Its SHA-256 is
 `819eca26f26e977e2a376d03c8aa4ddaf1f631db69a87ccc9d1ad943f75b4de9`.
 
-The patch is restricted to the nine inference/runtime files required for the
+The main patch is restricted to the inference/runtime files required for the
 rareNum and structured-head paths. It deliberately excludes training and corpus
 changes from the source instance. Its SHA-256 is:
 
@@ -23,7 +24,15 @@ changes from the source instance. Its SHA-256 is:
 4970d1eeaedce7a5444ff70764a8662b1f0a6d47c0f564073342628048245898
 ```
 
-The Modal image verifies and extracts that archive, applies the patch with
+`patches/homr-structured-review.patch` retains uncertainty alternatives for all
+five selectable head families while continuing to exclude dynamics and
+under-supported beam level 4. Its SHA-256 is:
+
+```text
+4fbcac3691c63c26a4b146458a7e4513ee5a90e450e734aa2a8c1836a4ed063d
+```
+
+The Modal image verifies and extracts that archive, applies both patches with
 `git apply --check` followed by `git apply`, and fails the build on any mismatch.
 Because a clean archive has no `.git` metadata, the package install sets
 `POETRY_DYNAMIC_VERSIONING_BYPASS=0.0.0`, matching HOMR's declared static

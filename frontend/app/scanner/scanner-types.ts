@@ -24,6 +24,7 @@ export interface ScannerEngineRun {
   availableStructuredHeadFamilies?: string[];
   selectedStructuredHeadFamilies?: string[];
   structuredOutputPending?: boolean;
+  structuredOutputRetryable?: boolean;
   structuredOutputError?: string;
   completeness?: "complete" | "possibly-incomplete" | "incomplete" | "unknown";
   generation?: {

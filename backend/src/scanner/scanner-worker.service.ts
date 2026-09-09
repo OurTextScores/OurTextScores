@@ -338,21 +338,22 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         if (!run || families === undefined) continue;
         changed = true;
         try {
-          const available = run.availableStructuredHeadFamilies || [];
           const core = run.outputCandidates?.core;
           const allStructured = run.outputCandidates?.['all-structured'];
           if (!core || !allStructured) {
             throw new Error('The retained result has no selectable structured outputs');
           }
 
+          const proposalDirty = Boolean(run.structuredProposalDirty);
           let musicXml = core.musicXml;
-          let review = core.review;
+          let review = proposalDirty
+            ? run.review
+            : families.length > 0
+              ? allStructured.review
+              : core.review;
           let materialized: ScannerStorageLocator | undefined;
           let structuredProposals = run.artifacts['structured-heads'];
-          if (families.length === available.length) {
-            musicXml = allStructured.musicXml;
-            review = allStructured.review;
-          } else if (families.length > 0) {
+          if (proposalDirty || families.length > 0) {
             const adapter = this.engineRegistry().readable(engineId)?.adapter;
             if (!structuredProposals || !adapter?.materializeStructured) {
               throw new Error('Structured output materialization is unavailable');
@@ -376,8 +377,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               );
               const engineOptions = job.enginePlan?.engineOptions?.[engineId];
               const detectTitle =
-                Boolean(job.options?.detectTitle) &&
-                (page.ordinal || page.pageNumber) === 1;
+                Boolean(job.options?.detectTitle) && (page.ordinal || page.pageNumber) === 1;
               const idempotencyKey = adapter.createIdempotencyKey({
                 inputSha256: raster.checksumSha256,
                 pageNumber: page.pageNumber,
@@ -393,6 +393,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
                 idempotencyKey,
                 engineOptions
               });
+              review =
+                recovered.outputCandidates?.['all-structured']?.review ||
+                recovered.review ||
+                review;
               proposalBody = recovered.nativeArtifacts?.['structured-heads'] || Buffer.alloc(0);
               if (!this.structuredProposalHasVoices(proposalBody)) {
                 throw new Error('OTS-HOMR returned an empty structured proposal');
@@ -413,7 +417,6 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               'application/vnd.recordare.musicxml+xml'
             );
             musicXml = materialized;
-            review = allStructured.review;
           }
 
           if (run.artifacts.pdf) obsolete.push(run.artifacts.pdf);
@@ -427,6 +430,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               review,
               selectedStructuredHeadFamilies: families,
               requestedStructuredHeadFamilies: undefined,
+              structuredProposalDirty: undefined,
               structuredOutputError: undefined,
               artifacts: {
                 ...run.artifacts,
@@ -912,7 +916,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         // alone they stay 'pending', so an excluded page reports as still
         // awaiting an engine that will never be asked to read it.
         const abandoned =
-          page.included === false && (existing.status === 'pending' || existing.status === 'running');
+          page.included === false &&
+          (existing.status === 'pending' || existing.status === 'running');
         current = withScannerEngineRun(
           current,
           abandoned ? { ...existing, status: 'skipped' } : existing
@@ -2110,7 +2115,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         if (!run || !definition) continue;
         for (const [kind, locator] of Object.entries(run.artifacts || {})) {
           if (!locator) continue;
-          const extension = definition.artifacts[kind === 'musicXml' ? 'musicxml' : kind]?.extension;
+          const extension =
+            definition.artifacts[kind === 'musicXml' ? 'musicxml' : kind]?.extension;
           if (!extension) continue;
           zip.addFile(
             `engines/${engineId}/page-${pageSegment}.${extension}`,

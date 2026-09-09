@@ -79,6 +79,27 @@ describe('selectSpots', () => {
     expect(selectSpots(staves)).toEqual([]);
   });
 
+  it('offers structured uncertainty only for the families the reviewer selected', () => {
+    const staves = [
+      staff(0, [
+        {
+          ...symbol(1, {
+            pitch: head('C4', 0.6, [['D4', 0.35]]),
+            'beam.level.1': head('begin', 0.55, [['continue', 0.4]]),
+            'stem.direction': head('up', 0.52, [['down', 0.43]])
+          }),
+          proposalVoiceIndex: 2,
+          proposalSymbolIndex: 17
+        }
+      ])
+    ];
+
+    expect(selectSpots(staves).map((spot) => spot.head)).toEqual(['pitch']);
+    const selected = selectSpots(staves, DEFAULT_REVIEW_THRESHOLDS, ['beam']);
+    expect(selected.map((spot) => spot.head)).toEqual(['beam.level.1', 'pitch']);
+    expect(selected[0]).toMatchObject({ proposalVoiceIndex: 2, proposalSymbolIndex: 17 });
+  });
+
   it('is stable for equal confidence so a returning reviewer sees one order', () => {
     const staves = [
       staff(1, [symbol(9, { pitch: head('C4', 0.5, [['D4', 0.4]]) })]),
