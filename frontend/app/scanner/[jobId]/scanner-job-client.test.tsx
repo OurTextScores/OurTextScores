@@ -951,6 +951,14 @@ describe("ScannerJobClient", () => {
     render(<ScannerJobClient jobId="job-1" />);
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Beams" }));
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "PUT"),
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Apply and review selected heads",
+      }),
+    );
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
@@ -964,6 +972,9 @@ describe("ScannerJobClient", () => {
       expect(screen.getByRole("checkbox", { name: "Beams" })).toBeChecked(),
     );
     expect(screen.getByRole("checkbox", { name: "Rhythmic spacing" })).not.toBeChecked();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Selected heads applied. Review the regenerated OTS-HOMR score against the scan below.",
+    );
     expect(screen.getByText(/Dynamics are shown only as diagnostic evidence/)).toBeInTheDocument();
   });
 });

@@ -117,9 +117,23 @@ export default function ScannerJobClient({
   // engines side by side, which the fixed layout could never show.
   const [previewLeft, setPreviewLeft] = useState("scan");
   const [previewRight, setPreviewRight] = useState("");
+  const [structuredDrafts, setStructuredDrafts] = useState<
+    Record<string, string[]>
+  >({});
+  const [structuredReviewTarget, setStructuredReviewTarget] = useState<{
+    pageNumber: number;
+    engineId: string;
+    families: string[];
+  } | null>(null);
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [structuredReviewReady, setStructuredReviewReady] = useState<{
+    pageNumber: number;
+    engineId: string;
+  } | null>(null);
   // Advancing a page from the bottom of a long document otherwise leaves the
   // reader looking at the footer of a page they have already dealt with.
   const pageSectionRef = useRef<HTMLElement | null>(null);
+  const comparisonReviewRef = useRef<HTMLDivElement | null>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   const refresh = useCallback(async () => {
@@ -161,6 +175,39 @@ export default function ScannerJobClient({
       setSelectedPage(job.pages[0].pageNumber);
     }
   }, [job, selectedPage]);
+
+  useEffect(() => {
+    if (!job || !structuredReviewTarget) return;
+    const page = job.pages.find(
+      (candidate) => candidate.pageNumber === structuredReviewTarget.pageNumber,
+    );
+    const run = page?.engines?.[structuredReviewTarget.engineId];
+    if (!run || run.structuredOutputPending) return;
+    if (run.structuredOutputError) {
+      setStructuredReviewTarget(null);
+      return;
+    }
+    const selected = run.selectedStructuredHeadFamilies || [];
+    if (
+      JSON.stringify(selected) !==
+      JSON.stringify(structuredReviewTarget.families)
+    )
+      return;
+    setPreviewLeft("scan");
+    setPreviewRight(structuredReviewTarget.engineId);
+    setPreviewRevision((current) => current + 1);
+    setStructuredReviewReady({
+      pageNumber: structuredReviewTarget.pageNumber,
+      engineId: structuredReviewTarget.engineId,
+    });
+    setStructuredReviewTarget(null);
+    window.requestAnimationFrame(() =>
+      comparisonReviewRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      }),
+    );
+  }, [job, structuredReviewTarget]);
 
   useEffect(() => {
     if (job?.status !== "ready" || pageSetupDirty) return;
@@ -252,6 +299,7 @@ export default function ScannerJobClient({
           await responseError(response, "Unable to select structured output"),
         );
       setJob(await response.json());
+      setStructuredReviewTarget({ pageNumber, engineId, families });
       // Rendered derivatives rebuild asynchronously; refresh once after the
       // worker has had a chance to replace them.
       window.setTimeout(() => void refresh().catch(() => undefined), 2_000);
@@ -1003,6 +1051,12 @@ export default function ScannerJobClient({
                   run?.availableStructuredHeadFamilies || [];
                 const selectedFamilies =
                   run?.selectedStructuredHeadFamilies || [];
+                const structuredDraftKey = `${selected.pageNumber}:${engineId}`;
+                const draftFamilies =
+                  structuredDrafts[structuredDraftKey] || selectedFamilies;
+                const structuredDraftDirty =
+                  JSON.stringify(draftFamilies) !==
+                  JSON.stringify(selectedFamilies);
                 return (
                   <div
                     key={`downloads-${engineId}`}
@@ -1069,7 +1123,7 @@ export default function ScannerJobClient({
                         </legend>
                         <div className="flex flex-wrap gap-x-4 gap-y-2">
                           {availableFamilies.map((family) => {
-                            const checked = selectedFamilies.includes(family);
+                            const checked = draftFamilies.includes(family);
                             return (
                               <label
                                 key={family}
@@ -1085,15 +1139,18 @@ export default function ScannerJobClient({
                                       `structured-${selected.pageNumber}-${engineId}`
                                   }
                                   onChange={() =>
-                                    void selectStructuredOutput(
-                                      selected.pageNumber,
-                                      engineId,
-                                      checked
-                                        ? selectedFamilies.filter(
+                                    setStructuredDrafts((current) => ({
+                                      ...current,
+                                      [structuredDraftKey]: checked
+                                        ? draftFamilies.filter(
                                             (item) => item !== family,
                                           )
-                                        : [...selectedFamilies, family],
-                                    )
+                                        : availableFamilies.filter(
+                                            (item) =>
+                                              draftFamilies.includes(item) ||
+                                              item === family,
+                                          ),
+                                    }))
                                   }
                                 />
                                 {family === "beam"
@@ -1111,6 +1168,31 @@ export default function ScannerJobClient({
                           rerunning recognition. Dynamics are shown only as
                           diagnostic evidence and are never applied.
                         </p>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            disabled={
+                              !structuredDraftDirty ||
+                              run?.structuredOutputPending ||
+                              busyAction ===
+                                `structured-${selected.pageNumber}-${engineId}`
+                            }
+                            onClick={() =>
+                              void selectStructuredOutput(
+                                selected.pageNumber,
+                                engineId,
+                                draftFamilies,
+                              )
+                            }
+                            className="mt-3 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
+                          >
+                            {run?.structuredOutputPending ||
+                            busyAction ===
+                              `structured-${selected.pageNumber}-${engineId}`
+                              ? "Applying selected heads…"
+                              : "Apply and review selected heads"}
+                          </button>
+                        )}
                         {run?.structuredOutputPending && (
                           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                             Applying selected heads…
@@ -1211,7 +1293,20 @@ export default function ScannerJobClient({
             one comparison it could not show the interesting one: what the two
             engines did differently.
           */}
-          <div className="mt-5">
+          <div ref={comparisonReviewRef} className="mt-5 scroll-mt-4">
+            {structuredReviewReady?.pageNumber === selected.pageNumber &&
+              structuredReviewReady.engineId === rightPreviewKey && (
+                <p
+                  role="status"
+                  className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                >
+                  Selected heads applied. Review the regenerated {engineLabel(
+                    job,
+                    structuredReviewReady.engineId,
+                  )}{" "}
+                  score against the scan below.
+                </p>
+              )}
             <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
               <span className="font-medium uppercase tracking-wide text-slate-500">
                 Compare
@@ -1251,7 +1346,7 @@ export default function ScannerJobClient({
                   previewChoices[0];
                 return (
                   <div
-                    key={`${choiceKey}-${index}`}
+                    key={`${choiceKey}-${index}-${previewRevision}`}
                     className="min-h-[420px] overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
                   >
                     {choice.kind === "scan" ? (
