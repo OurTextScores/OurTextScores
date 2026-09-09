@@ -85,6 +85,10 @@ export interface ScannerEngineRun {
   availableStructuredHeadFamilies?: string[];
   /** The currently effective structured subset; empty means core output. */
   selectedStructuredHeadFamilies?: string[];
+  /** A worker-only materialization request waiting to become effective. */
+  requestedStructuredHeadFamilies?: string[];
+  /** Last asynchronous materialization failure, shown to the reviewer. */
+  structuredOutputError?: string;
   artifacts: ScannerEngineArtifacts;
 }
 

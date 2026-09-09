@@ -299,7 +299,10 @@ def create_provider_app(
                             "title": str((candidate.get("review") or {}).get("title") or ""),
                             "staves": prune_staves(
                                 ((candidate.get("review") or {}).get("staves") or [])
-                            )
+                            ),
+                            "regeneration": (
+                                (candidate.get("review") or {}).get("regeneration") or []
+                            ),
                         },
                     }
                     for candidate_id, candidate in (

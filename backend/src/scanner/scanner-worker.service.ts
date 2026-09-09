@@ -43,6 +43,7 @@ import {
   scannerUserHash
 } from './scanner.constants';
 import { isRetryableScannerErrorCode, ScannerProviderError } from './scanner.errors';
+import { assertValidMusicXml } from './scanner-musicxml';
 import {
   SCANNER_ARTIFACT_BUILDERS,
   scannerAggregatePageStatus,
@@ -237,7 +238,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const userHash = this.telemetry.userHash(job.userId);
     try {
       const enginePlan = this.engineRegistry().planForJob(job);
-      let pages = job.pages.map((page) => ({ ...page }) as ScannerPageResult);
+      let pages = job.pages.map((page) =>
+        this.withInitialPlannedEngineRuns(job, { ...page } as ScannerPageResult)
+      );
+      pages = await this.materializeRequestedStructuredOutputs(job, pages);
 
       // Page previews first: the combined and preview PDFs are built from them.
       let renderMs = 0;
@@ -254,6 +258,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       );
       if (successful.length === 0) {
         await this.clearReassembly(job);
+        await this.releaseReassemblyLease(job);
         return;
       }
       // Against the pages this job was asked to scan, not every page of the
@@ -307,8 +312,174 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       // one bad rebuild cannot loop, and let the reviewer ask again.
       this.logger.error(`Scanner reassembly failed for ${job.jobId}: ${this.message(error)}`);
       await this.clearReassembly(job);
+      await this.releaseReassemblyLease(job);
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Apply reviewer-selected OTS-HOMR heads in the credential-bearing worker.
+   * The public API deliberately has no provider URL or token; it records the
+   * desired subset and wakes this worker instead of making a GPU call itself.
+   */
+  private async materializeRequestedStructuredOutputs(
+    job: ScannerJobDocument,
+    pages: ScannerPageResult[]
+  ): Promise<ScannerPageResult[]> {
+    let changed = false;
+    const obsolete: ScannerStorageLocator[] = [];
+    const updated: ScannerPageResult[] = [];
+
+    for (const page of pages) {
+      let current = page;
+      for (const [engineId, run] of Object.entries(page.engines || {})) {
+        const families = run?.requestedStructuredHeadFamilies;
+        if (!run || families === undefined) continue;
+        changed = true;
+        try {
+          const available = run.availableStructuredHeadFamilies || [];
+          const core = run.outputCandidates?.core;
+          const allStructured = run.outputCandidates?.['all-structured'];
+          if (!core || !allStructured) {
+            throw new Error('The retained result has no selectable structured outputs');
+          }
+
+          let musicXml = core.musicXml;
+          let review = core.review;
+          let materialized: ScannerStorageLocator | undefined;
+          let structuredProposals = run.artifacts['structured-heads'];
+          if (families.length === available.length) {
+            musicXml = allStructured.musicXml;
+            review = allStructured.review;
+          } else if (families.length > 0) {
+            const adapter = this.engineRegistry().readable(engineId)?.adapter;
+            if (!structuredProposals || !adapter?.materializeStructured) {
+              throw new Error('Structured output materialization is unavailable');
+            }
+            await this.updateLease(job.jobId, 'rendering');
+            let proposalBody = await this.storage.getObjectBuffer(
+              structuredProposals.bucket,
+              structuredProposals.objectKey
+            );
+            if (!this.structuredProposalHasVoices(proposalBody)) {
+              const raster = page.recognitionRaster;
+              if (!raster || !adapter.scanPage || !adapter.createIdempotencyKey) {
+                throw new Error('The retained structured proposal is empty');
+              }
+              // Compatibility recovery for results produced before rareNum's
+              // final reranked voice streams were captured. This repeats only
+              // for those affected retained jobs; new scans store them once.
+              const image = await this.storage.getObjectBuffer(
+                raster.storage.bucket,
+                raster.storage.objectKey
+              );
+              const engineOptions = job.enginePlan?.engineOptions?.[engineId];
+              const detectTitle =
+                Boolean(job.options?.detectTitle) &&
+                (page.ordinal || page.pageNumber) === 1;
+              const idempotencyKey = adapter.createIdempotencyKey({
+                inputSha256: raster.checksumSha256,
+                pageNumber: page.pageNumber,
+                detectTitle,
+                generation: job.generation,
+                engineOptions
+              });
+              const recovered = await adapter.scanPage({
+                image,
+                filename: `page-${page.pageNumber}.png`,
+                contentType: raster.storage.contentType,
+                detectTitle,
+                idempotencyKey,
+                engineOptions
+              });
+              proposalBody = recovered.nativeArtifacts?.['structured-heads'] || Buffer.alloc(0);
+              if (!this.structuredProposalHasVoices(proposalBody)) {
+                throw new Error('OTS-HOMR returned an empty structured proposal');
+              }
+              const recoveredProposal = await this.store(
+                `${this.baseKey(job)}/page-${String(page.pageNumber).padStart(3, '0')}-${engineId}-structured-heads-${randomUUID()}.json`,
+                proposalBody,
+                'application/json'
+              );
+              obsolete.push(structuredProposals);
+              structuredProposals = recoveredProposal;
+            }
+            const body = await adapter.materializeStructured(proposalBody, families);
+            assertValidMusicXml(body);
+            materialized = await this.store(
+              `${this.baseKey(job)}/page-${String(page.pageNumber).padStart(3, '0')}-${engineId}-selected-heads-${randomUUID()}.musicxml`,
+              body,
+              'application/vnd.recordare.musicxml+xml'
+            );
+            musicXml = materialized;
+            review = allStructured.review;
+          }
+
+          if (run.artifacts.pdf) obsolete.push(run.artifacts.pdf);
+          const priorMaterialized = run.artifacts['selected-heads-musicxml'];
+          if (priorMaterialized && priorMaterialized.objectKey !== materialized?.objectKey) {
+            obsolete.push(priorMaterialized);
+          }
+          current = {
+            ...withScannerEngineRun(current, {
+              ...run,
+              review,
+              selectedStructuredHeadFamilies: families,
+              requestedStructuredHeadFamilies: undefined,
+              structuredOutputError: undefined,
+              artifacts: {
+                ...run.artifacts,
+                musicXml,
+                pdf: undefined,
+                'structured-heads': structuredProposals,
+                'selected-heads-musicxml': materialized
+              }
+            }),
+            pdf: undefined
+          };
+        } catch (error) {
+          current = withScannerEngineRun(current, {
+            ...run,
+            requestedStructuredHeadFamilies: undefined,
+            structuredOutputError: `Unable to apply structured output: ${this.message(error)}`
+          });
+          this.logger.error(
+            `Scanner structured output failed for ${job.jobId} page ${page.pageNumber} ${engineId}: ${this.message(error)}`
+          );
+        }
+      }
+      updated.push(current);
+    }
+
+    if (!changed) return pages;
+    const result = await this.jobs
+      .updateOne(
+        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
+        { $set: { pages: updated }, $inc: { statusVersion: 1 } }
+      )
+      .exec();
+    if (!result.matchedCount) {
+      throw new Error('Scanner job changed while applying structured output');
+    }
+    await Promise.all(
+      uniqueScannerStorageLocators(obsolete).map((locator) =>
+        this.storage.deleteObject(locator.bucket, locator.objectKey)
+      )
+    );
+    return updated;
+  }
+
+  private structuredProposalHasVoices(body: Buffer): boolean {
+    try {
+      const value = JSON.parse(body.toString('utf8'));
+      return (
+        Array.isArray(value?.staves) &&
+        value.staves.length > 0 &&
+        value.staves.every((voice: unknown) => Array.isArray(voice))
+      );
+    } catch {
+      return false;
     }
   }
 
@@ -331,6 +502,19 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
           reassembleRequestedAt: { $lte: job.reassembleRequestedAt ?? new Date() }
         },
         { $unset: { reassembleRequestedAt: 1 } }
+      )
+      .exec();
+  }
+
+  /** Restore the terminal scan state if derivative rebuilding cannot finish. */
+  private async releaseReassemblyLease(job: ScannerJobDocument): Promise<void> {
+    await this.jobs
+      .updateOne(
+        { jobId: job.jobId, leaseOwner: this.workerId },
+        {
+          $set: { status: job.status, leaseOwner: null, leaseExpiresAt: null },
+          $inc: { statusVersion: 1 }
+        }
       )
       .exec();
   }

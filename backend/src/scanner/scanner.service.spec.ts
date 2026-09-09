@@ -3716,7 +3716,7 @@ describe('Scanner structured output selection', () => {
     return { adapter, job, jobsModel, service, storage: testStorage };
   }
 
-  it('materializes a subset without rerunning recognition and queues reassembly', async () => {
+  it('queues a subset for the credential-bearing worker without rerunning recognition', async () => {
     const { adapter, job, service, storage } = setup();
 
     await expect(
@@ -3725,28 +3725,31 @@ describe('Scanner structured output selection', () => {
       pages: [
         {
           engines: {
-            'ots-homr': { selectedStructuredHeadFamilies: ['beam', 'tie'], hasPdf: false }
+            'ots-homr': {
+              selectedStructuredHeadFamilies: ['beam', 'tie'],
+              structuredOutputPending: true,
+              hasPdf: true
+            }
           }
         }
       ]
     });
-    expect(adapter.materializeStructured).toHaveBeenCalledWith(
-      Buffer.from('{"proposals":true}'),
-      ['beam', 'tie']
-    );
-    expect(storage.putAuxiliaryObject).toHaveBeenCalledTimes(1);
-    expect(storage.deleteObject).toHaveBeenCalledWith('scanner', 'old.pdf');
+    expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual([
+      'beam',
+      'tie'
+    ]);
+    expect(adapter.materializeStructured).not.toHaveBeenCalled();
+    expect(storage.putAuxiliaryObject).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
     expect(job.reassembleRequestedAt).toBeInstanceOf(Date);
   });
 
-  it('reuses the retained all-heads candidate and never permits dynamics', async () => {
+  it('queues the all-heads candidate and never permits dynamics', async () => {
     const { adapter, job, service, storage } = setup();
     const all = ['beam', 'advance', 'stem', 'tie', 'slur'];
 
     await service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', all);
-    expect(job.pages[0].engines['ots-homr'].artifacts.musicXml.objectKey).toBe(
-      'heads.musicxml'
-    );
+    expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(all);
     expect(adapter.materializeStructured).not.toHaveBeenCalled();
     expect(storage.putAuxiliaryObject).not.toHaveBeenCalled();
     await expect(

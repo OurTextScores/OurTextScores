@@ -39,6 +39,12 @@ describe('ScannerOtsHomrProviderService', () => {
   };
   const review = {
     title: 'Example',
+    regeneration: [
+      {
+        tokens: [['note_8', 'D4', '_', '_', '_', 'upper']],
+        structured: [{ ...structured, stem: 'down' }]
+      }
+    ],
     staves: [
       {
         index: 0,
@@ -114,7 +120,8 @@ describe('ScannerOtsHomrProviderService', () => {
       return new Response(JSON.stringify(envelope()), { status: 200 });
     });
 
-    await expect(scan()).resolves.toMatchObject({
+    const result = await scan();
+    expect(result).toMatchObject({
       engine: 'ots-homr',
       musicXml,
       providerRevision: 'ots-homr-provider-v2',
@@ -134,6 +141,12 @@ describe('ScannerOtsHomrProviderService', () => {
         'additional-heads-musicxml': musicXml,
         'structured-heads': expect.any(Buffer)
       }
+    });
+    expect(
+      JSON.parse(result.nativeArtifacts!['structured-heads'].toString('utf8'))
+    ).toMatchObject({
+      staves: [[['note_8', 'D4', '_', '_', '_', 'upper']]],
+      structured: [[expect.objectContaining({ stem: 'down' })]]
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });

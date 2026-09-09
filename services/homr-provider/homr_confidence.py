@@ -84,6 +84,7 @@ class PageCapture:
 
     def __init__(self) -> None:
         self.staves: list[dict[str, Any]] = []
+        self.regeneration: list[dict[str, Any]] = []
         self._steps: list[list[Any]] = []
         self._decoder: Any = None
         self._page_width = 0
@@ -297,12 +298,12 @@ class PageCapture:
                 # marker, so nothing else has to be carried.
                 "tokens": [
                     [
-                        symbol.rhythm,
-                        symbol.pitch,
-                        symbol.lift,
-                        symbol.articulation,
-                        symbol.slur,
-                        symbol.position,
+                        str(getattr(symbol, "rhythm", "")),
+                        str(getattr(symbol, "pitch", ".")),
+                        str(getattr(symbol, "lift", "_")),
+                        str(getattr(symbol, "articulation", "_")),
+                        str(getattr(symbol, "slur", "_")),
+                        str(getattr(symbol, "position", "upper")),
                     ]
                     for symbol in symbols
                 ],
@@ -330,6 +331,30 @@ class PageCapture:
         `newline` to each non-empty system before producing one MusicXML part
         per voice. Record that identity only when both views agree exactly.
         """
+        # The rareNum reranking path can replace the first-pass physical-staff
+        # symbols after the old capture hook ran. Retain the final voice-major
+        # streams returned by parse_staffs so later structured materialization
+        # always regenerates exactly what MusicXML generation consumed.
+        self.regeneration = [
+            {
+                "tokens": [
+                    [
+                        str(getattr(symbol, "rhythm", "")),
+                        str(getattr(symbol, "pitch", ".")),
+                        str(getattr(symbol, "lift", "_")),
+                        str(getattr(symbol, "articulation", "_")),
+                        str(getattr(symbol, "slur", "_")),
+                        str(getattr(symbol, "position", "upper")),
+                    ]
+                    for symbol in voice
+                ],
+                "structured": [
+                    _structured_notation(getattr(symbol, "notation", None))
+                    for symbol in voice
+                ],
+            }
+            for voice in voices
+        ]
         if not voices or len(self.staves) % len(voices) != 0:
             return
         systems_per_voice = len(self.staves) // len(voices)
@@ -365,7 +390,11 @@ class PageCapture:
             or self._page_width <= 0
             or self._page_height <= 0
         ):
-            return {"staves": self.staves, "title": self.title}
+            return {
+                "staves": self.staves,
+                "regeneration": self.regeneration,
+                "title": self.title,
+            }
         scale_x = source_width / self._page_width
         scale_y = source_height / self._page_height
         staves: list[dict[str, Any]] = []
@@ -390,7 +419,11 @@ class PageCapture:
                     ],
                 }
             )
-        return {"staves": staves, "title": self.title}
+        return {
+            "staves": staves,
+            "regeneration": self.regeneration,
+            "title": self.title,
+        }
 
 
 def _structured_notation(notation: Any) -> dict[str, Any] | None:

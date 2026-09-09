@@ -23,6 +23,8 @@ export interface ScannerEngineRun {
   artifactKinds?: string[];
   availableStructuredHeadFamilies?: string[];
   selectedStructuredHeadFamilies?: string[];
+  structuredOutputPending?: boolean;
+  structuredOutputError?: string;
   completeness?: "complete" | "possibly-incomplete" | "incomplete" | "unknown";
   generation?: {
     hitMaxLength: boolean;

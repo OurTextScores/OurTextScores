@@ -29,6 +29,10 @@ class FakeEngine:
             "musicxml": core["musicxml"].replace(b"Core", b"Heads"),
             "review": {
                 "title": "Heads",
+                "regeneration": [{
+                    "tokens": [["note_4", "C4", "_", "_", "_", "upper"]],
+                    "structured": [{"beamLevels": ["none"], "dynamic": "f"}],
+                }],
                 "staves": [{
                     "index": 0,
                     "tokens": [["note_4", "C4", "_", "_", "_", "upper"]],
@@ -140,6 +144,10 @@ class ProviderTest(unittest.TestCase):
             self.assertEqual(
                 body["result"]["candidates"]["additional-heads"]["review"]["staves"][0]["structured"][0]["dynamic"],
                 "f",
+            )
+            self.assertEqual(
+                body["result"]["candidates"]["additional-heads"]["review"]["regeneration"][0]["tokens"][0][1],
+                "C4",
             )
             self.assertEqual(engine.calls[0][2:], (True, "lyrics"))
             replay = client.post(

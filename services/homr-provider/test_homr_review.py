@@ -128,6 +128,9 @@ class VoiceSystemMappingTest(unittest.TestCase):
             [(staff["partIndex"], staff["systemIndex"]) for staff in page.staves],
             [(0, 0), (0, 1), (1, 0), (1, 1)],
         )
+        self.assertEqual(len(page.regeneration), 2)
+        self.assertEqual(page.regeneration[0]["tokens"][0][0], "note_4")
+        self.assertEqual(len(page.regeneration[0]["structured"]), len(voice))
 
     def test_leaves_mapping_absent_when_newline_counts_do_not_prove_it(self):
         page = PageCapture()

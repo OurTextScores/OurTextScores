@@ -138,7 +138,16 @@ export default function ScannerJobClient({
   }, [refresh]);
 
   useEffect(() => {
-    if (!job || !activeScannerStatuses.includes(job.status)) return;
+    if (
+      !job ||
+      (!activeScannerStatuses.includes(job.status) &&
+        !job.pages.some((page) =>
+          Object.values(page.engines || {}).some(
+            (run) => run?.structuredOutputPending,
+          ),
+        ))
+    )
+      return;
     const timer = window.setInterval(
       () => void refresh().catch(() => undefined),
       2_000,
@@ -1071,6 +1080,7 @@ export default function ScannerJobClient({
                                   checked={checked}
                                   disabled={
                                     readOnly ||
+                                    run?.structuredOutputPending ||
                                     busyAction ===
                                       `structured-${selected.pageNumber}-${engineId}`
                                   }
@@ -1101,6 +1111,16 @@ export default function ScannerJobClient({
                           rerunning recognition. Dynamics are shown only as
                           diagnostic evidence and are never applied.
                         </p>
+                        {run?.structuredOutputPending && (
+                          <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+                            Applying selected heads…
+                          </p>
+                        )}
+                        {run?.structuredOutputError && (
+                          <p className="mt-2 text-xs font-medium text-red-700 dark:text-red-300">
+                            {run.structuredOutputError}
+                          </p>
+                        )}
                       </fieldset>
                     )}
                   </div>

@@ -619,7 +619,10 @@ export class ScannerService implements OnModuleInit {
     }
     const families = available.filter((family) => unique.includes(family));
     if (
-      JSON.stringify(families) === JSON.stringify(run.selectedStructuredHeadFamilies || [])
+      JSON.stringify(families) ===
+      JSON.stringify(
+        run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies || []
+      )
     ) {
       return this.present(job);
     }
@@ -629,50 +632,12 @@ export class ScannerService implements OnModuleInit {
     if (!core || !allStructured) {
       throw new ConflictException('This retained result has no selectable structured outputs');
     }
-    let selected = core.musicXml;
-    let selectedReview = core.review;
-    let materialized: ScannerStorageLocator | undefined;
-    if (families.length === available.length) {
-      selected = allStructured.musicXml;
-      selectedReview = allStructured.review;
-    } else if (families.length > 0) {
-      const proposals = run.artifacts['structured-heads'];
-      const adapter = this.registeredEngines?.readable(engineId)?.adapter;
-      if (!proposals || !adapter?.materializeStructured) {
-        throw new ConflictException('Structured output materialization is unavailable');
-      }
-      const proposalBody = await this.storage.getObjectBuffer(
-        proposals.bucket,
-        proposals.objectKey
-      );
-      const body = await adapter.materializeStructured(proposalBody, families);
-      assertValidMusicXml(body);
-      materialized = await this.storeAuxiliaryArtifact(
-        `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-${engineId}-selected-heads-${randomUUID()}.musicxml`,
-        body,
-        'application/vnd.recordare.musicxml+xml'
-      );
-      selected = materialized;
-      selectedReview = allStructured.review;
-    }
-
-    const priorPdf = run.artifacts.pdf;
-    const priorMaterialized = run.artifacts['selected-heads-musicxml'];
     const updatedRun: ScannerEngineRun = {
       ...run,
-      review: selectedReview,
-      selectedStructuredHeadFamilies: families,
-      artifacts: {
-        ...run.artifacts,
-        musicXml: selected,
-        pdf: undefined,
-        'selected-heads-musicxml': materialized
-      }
+      requestedStructuredHeadFamilies: families,
+      structuredOutputError: undefined
     };
-    const updatedPage = {
-      ...withScannerEngineRun(page, updatedRun),
-      pdf: undefined
-    };
+    const updatedPage = withScannerEngineRun(page, updatedRun);
     const pages = job.pages.map((candidate) =>
       candidate.pageNumber === pageNumber ? updatedPage : candidate
     );
@@ -687,13 +652,7 @@ export class ScannerService implements OnModuleInit {
       )
       .exec();
     if (!updated) {
-      if (materialized)
-        await this.storage.deleteObject(materialized.bucket, materialized.objectKey);
       throw new ConflictException('Scanner job changed; refresh and try again');
-    }
-    if (priorPdf) await this.storage.deleteObject(priorPdf.bucket, priorPdf.objectKey);
-    if (priorMaterialized && priorMaterialized.objectKey !== materialized?.objectKey) {
-      await this.storage.deleteObject(priorMaterialized.bucket, priorMaterialized.objectKey);
     }
     return this.present(updated);
   }
@@ -3530,7 +3489,10 @@ export class ScannerService implements OnModuleInit {
       hasKern: Boolean(run.artifacts.kern),
       hasReview: Boolean(run.review?.staves?.length),
       availableStructuredHeadFamilies: run.availableStructuredHeadFamilies,
-      selectedStructuredHeadFamilies: run.selectedStructuredHeadFamilies,
+      selectedStructuredHeadFamilies:
+        run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies,
+      structuredOutputPending: Boolean(run.requestedStructuredHeadFamilies),
+      structuredOutputError: run.structuredOutputError,
       artifactKinds: Object.entries(run.artifacts || {}).flatMap(([kind, locator]) =>
         locator ? [kind === 'musicXml' ? 'musicxml' : kind] : []
       )

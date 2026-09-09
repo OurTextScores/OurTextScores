@@ -357,15 +357,21 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
   }
 
   private proposalPayload(review: any): Buffer {
+    const regeneration = Array.isArray(review?.regeneration) ? review.regeneration : [];
+    const hasRegeneration = regeneration.length > 0;
     const payload = {
       schemaVersion: 'ots-structured-proposals.v1',
       title: typeof review?.title === 'string' ? review.title : '',
-      staves: Array.isArray(review?.staves)
-        ? review.staves.map((staff: any) => staff?.tokens)
-        : [],
-      structured: Array.isArray(review?.staves)
-        ? review.staves.map((staff: any) => staff?.structured)
-        : []
+      staves: hasRegeneration
+        ? regeneration.map((voice: any) => voice?.tokens)
+        : Array.isArray(review?.staves)
+          ? review.staves.map((staff: any) => staff?.tokens)
+          : [],
+      structured: hasRegeneration
+        ? regeneration.map((voice: any) => voice?.structured)
+        : Array.isArray(review?.staves)
+          ? review.staves.map((staff: any) => staff?.structured)
+          : []
     };
     if (!this.isStructuredProposalPayload(payload)) {
       throw this.invalid('Scanner OTS-HOMR structured proposal verification failed');

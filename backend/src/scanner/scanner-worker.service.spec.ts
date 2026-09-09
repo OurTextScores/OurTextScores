@@ -119,6 +119,87 @@ describe('ScannerWorkerService', () => {
     expect(initialized.engines['ots-homr'].status).toBe('pending');
   });
 
+  it('materializes queued structured heads in the credential-bearing worker', async () => {
+    const scannerWorker = service() as any;
+    const musicXml = Buffer.from(
+      '<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list><part id="P1"><measure number="1"/></part></score-partwise>'
+    );
+    const locator = (objectKey: string, contentType = 'application/xml') => ({
+      bucket: 'scanner',
+      objectKey,
+      sizeBytes: 10,
+      contentType,
+      checksumSha256: createHash('sha256').update(objectKey).digest('hex')
+    });
+    const adapter = { materializeStructured: jest.fn(async () => musicXml) };
+    scannerWorker.registeredEngines = {
+      readable: () => ({ adapter })
+    };
+    scannerWorker.updateLease = jest.fn().mockResolvedValue(undefined);
+    scannerWorker.jobs = {
+      updateOne: jest.fn(() => ({ exec: async () => ({ matchedCount: 1 }) }))
+    };
+    scannerWorker.storage = {
+      getObjectBuffer: jest.fn(async () =>
+        Buffer.from('{"staves":[["clef-G2"]],"structured":[[]]}')
+      ),
+      putAuxiliaryObject: jest.fn(async (objectKey: string) => ({
+        bucket: 'scanner',
+        objectKey
+      })),
+      deleteObject: jest.fn(async () => undefined)
+    };
+    const oldPdf = locator('old.pdf', 'application/pdf');
+    const page: any = {
+      pageNumber: 1,
+      included: true,
+      status: 'succeeded',
+      engines: {
+        'ots-homr': {
+          engine: 'ots-homr',
+          status: 'succeeded',
+          attempts: 1,
+          idempotencyKey: 'key',
+          availableStructuredHeadFamilies: ['beam', 'advance'],
+          selectedStructuredHeadFamilies: [],
+          requestedStructuredHeadFamilies: ['beam'],
+          outputCandidates: {
+            core: { musicXml: locator('core.musicxml') },
+            'all-structured': { musicXml: locator('all.musicxml') }
+          },
+          artifacts: {
+            musicXml: locator('core.musicxml'),
+            pdf: oldPdf,
+            'structured-heads': locator('heads.json', 'application/json')
+          }
+        }
+      }
+    };
+
+    const [updated] = await scannerWorker.materializeRequestedStructuredOutputs(
+      { jobId: 'job-1', userId: 'user-1' },
+      [page]
+    );
+
+    expect(adapter.materializeStructured).toHaveBeenCalledWith(
+      Buffer.from('{"staves":[["clef-G2"]],"structured":[[]]}'),
+      ['beam']
+    );
+    expect(updated.engines['ots-homr']).toMatchObject({
+      selectedStructuredHeadFamilies: ['beam'],
+      requestedStructuredHeadFamilies: undefined,
+      structuredOutputError: undefined,
+      artifacts: { pdf: undefined }
+    });
+    expect(updated.engines['ots-homr'].artifacts.musicXml.objectKey).toContain(
+      'selected-heads-'
+    );
+    expect(scannerWorker.storage.deleteObject).toHaveBeenCalledWith(
+      oldPdf.bucket,
+      oldPdf.objectKey
+    );
+  });
+
   it('recognizes planned engines concurrently rather than queuing one behind the other', async () => {
     // Two engines reading the same image are independent, so a page should cost
     // the slowest of them rather than their sum. This asserts real overlap, not
@@ -334,7 +415,8 @@ describe('ScannerWorkerService', () => {
       findOneAndUpdate: (filter: any, update: any) => {
         cleared.push(update);
         return { exec: async () => ({}) };
-      }
+      },
+      updateOne: () => ({ exec: async () => ({ matchedCount: 1 }) })
     };
     scannerWorker.engineRegistry = () => {
       throw new Error('registry unavailable');
@@ -375,7 +457,15 @@ describe('ScannerWorkerService', () => {
     // Idempotent by construction: every builder compares its stored input
     // signature against the current effective pages before storing anything.
     const scannerWorker = service() as any;
-    scannerWorker.jobs = { findOneAndUpdate: () => ({ exec: async () => ({}) }) };
+    scannerWorker.registeredEngines = {
+      planForJob: (job: any) => job.enginePlan,
+      readable: () => ({ id: 'homr' }),
+      get: () => ({ id: 'homr', artifacts: {} })
+    };
+    scannerWorker.jobs = {
+      findOneAndUpdate: () => ({ exec: async () => ({}) }),
+      updateOne: () => ({ exec: async () => ({ matchedCount: 1 }) })
+    };
     scannerWorker.renderEffectivePage = jest.fn(async (_job: any, page: any) => ({
       page,
       renderMs: 0
@@ -401,7 +491,18 @@ describe('ScannerWorkerService', () => {
           pageNumber: 1,
           ordinal: 1,
           status: 'succeeded',
-          musicXml: { bucket: 'scanner', objectKey: 'p1.musicxml', checksumSha256: 'a' }
+          musicXml: { bucket: 'scanner', objectKey: 'p1.musicxml', checksumSha256: 'a' },
+          engines: {
+            homr: {
+              engine: 'homr',
+              status: 'succeeded',
+              attempts: 1,
+              idempotencyKey: 'homr-key',
+              artifacts: {
+                musicXml: { bucket: 'scanner', objectKey: 'p1.musicxml', checksumSha256: 'a' }
+              }
+            }
+          }
         }
       ]
     });
