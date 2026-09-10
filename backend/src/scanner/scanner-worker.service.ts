@@ -1351,7 +1351,12 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         providerMs,
         inferenceMs: scanned.result.inferenceMs,
         inputBytes: input.image.length,
-        outputBytes: Object.values(providerArtifacts).reduce((sum, body) => sum + body.length, 0)
+        outputBytes: Object.values(providerArtifacts).reduce((sum, body) => sum + body.length, 0),
+        // How many cross-staff findings this response carried. Recorded because a page
+        // whose findings vanish between the provider and the stored run is otherwise
+        // indistinguishable from a page that genuinely had none, and telling those two
+        // apart after the fact meant replaying the scan by hand.
+        crossStaffFindingCount: scanned.result.crossStaffFindings?.length ?? 0
       });
       if (definition.id === 'homr') {
         this.telemetry.emit('page_succeeded', {

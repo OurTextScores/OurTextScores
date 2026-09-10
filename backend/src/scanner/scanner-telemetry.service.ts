@@ -37,6 +37,9 @@ export interface ScannerTelemetryFields {
   totalMs?: number;
   inputBytes?: number;
   outputBytes?: number;
+  /** Cross-staff findings carried by a provider response; 0 is meaningfully different
+   *  from a page that never reported any, so it is always emitted. */
+  crossStaffFindingCount?: number;
   pageWidth?: number;
   pageHeight?: number;
   pageCount?: number;
@@ -81,6 +84,7 @@ const ALLOWED_FIELDS: ReadonlyArray<keyof ScannerTelemetryFields> = [
   'totalMs',
   'inputBytes',
   'outputBytes',
+  'crossStaffFindingCount',
   'pageWidth',
   'pageHeight',
   'pageCount',
