@@ -40,6 +40,27 @@ export interface ScannerProviderResult {
   outputCandidates?: Record<string, { artifactKind: string; review?: { staves: ReviewStaff[] } }>;
   /** Structured families that can be materialized later without inference. */
   availableStructuredHeadFamilies?: string[];
+  /** Cross-staff disagreements this page produced; evidence, never a correction. */
+  crossStaffFindings?: ScannerCrossStaffFinding[];
+}
+
+/**
+ * One deterministic cross-staff disagreement, for a reviewer to see and judge.
+ *
+ * Never gates anything. A page carrying findings is a complete page with annotations
+ * on it, not a failed one - several kinds fire on ordinary music (a cello reading in
+ * tenor against a profile expecting bass), which is only tolerable because a reviewer
+ * can dismiss them.
+ */
+export interface ScannerCrossStaffFinding {
+  kind: string;
+  message: string;
+  /** Index of the scanned system, when the finding concerns one. */
+  system?: number;
+  /** Positions within that system, top to bottom - never page-wide staff numbers. */
+  staffIndices?: number[];
+  /** The profile part the staff maps to, when a profile was supplied. */
+  part?: string;
 }
 
 /** Engine adapter consumed by orchestration; transport details stay behind it. */

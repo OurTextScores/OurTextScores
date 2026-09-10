@@ -11,6 +11,7 @@ import {
   scannerStatusLabel,
 } from "../scanner-types";
 import { ElapsedTime } from "../elapsed-time";
+import { CrossStaffFindings } from "../cross-staff-findings";
 
 async function responseError(
   response: Response,
@@ -1463,6 +1464,18 @@ export default function ScannerJobClient({
               })}
             </div>
           </div>
+
+          {/*
+            Evidence, at the end of the page it concerns. It gates nothing: the page
+            above is complete whether or not anything here is acted on, which is why
+            this sits after the readings rather than in front of them.
+          */}
+          <CrossStaffFindings
+            jobId={jobId}
+            findings={Object.values(selected.engines || {}).flatMap(
+              (run) => run?.crossStaffFindings || [],
+            )}
+          />
         </section>
       )}
 

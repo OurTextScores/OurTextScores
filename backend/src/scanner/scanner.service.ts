@@ -3817,6 +3817,7 @@ export class ScannerService implements OnModuleInit {
       providerRequestId: run.providerRequestId,
       startedAt: run.startedAt,
       durationMs: run.durationMs,
+      crossStaffFindings: run.crossStaffFindings,
       inferenceMs: run.inferenceMs,
       recognitionRaster: run.recognitionRaster,
       generation: run.generation,

@@ -26,6 +26,8 @@ SCHEMA_VERSION = "ots-ots-homr-provider.v2"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
 TEXT_DETECTORS = {"lyrics", "non-lyric-text", "none"}
 STRUCTURED_FAMILIES = {"beam", "advance", "stem", "tie", "slur"}
+#: A page with more disagreements than this has a bigger problem than a review queue.
+MAX_CROSS_STAFF_FINDINGS = 200
 ERROR_STATUS = {
     "invalid_media_type": 415,
     "image_too_large": 413,
@@ -311,6 +313,14 @@ def create_provider_app(
             },
             "result": {
                 "selectedCandidate": "core",
+                # Page-level, not per-candidate: both candidates read the same page
+                # through the same detector and geometry, so their findings are the
+                # same evidence twice. Taken from core, which is the authoritative
+                # decode. Bounded because a pathological page must not turn a
+                # supplementary diagnostic into an unbounded response.
+                "crossStaffFindings": (core_result.get("crossStaffFindings") or [])[
+                    :MAX_CROSS_STAFF_FINDINGS
+                ],
                 "candidates": {
                     candidate_id: {
                         "musicXmlBase64": base64.b64encode(candidate["musicxml"]).decode(),

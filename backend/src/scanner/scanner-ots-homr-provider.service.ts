@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { ScannerProviderError } from './scanner.errors';
 import { assertValidMusicXml } from './scanner-musicxml';
 import {
+  ScannerCrossStaffFinding,
   ScannerPageProvider,
   ScannerProviderResult,
   ScannerProviderScanInput,
@@ -206,6 +207,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         }
       },
       availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
+      crossStaffFindings: this.crossStaffFindings(envelope?.result?.crossStaffFindings),
       providerRevision: String(engine.serviceRevision),
       modelRevision: String(core.revision),
       requestId: typeof envelope.requestId === 'string' ? envelope.requestId : undefined,
@@ -234,6 +236,36 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     return createHash('sha256')
       .update(canonicalScoreProfileJson(options.scoreProfile))
       .digest('hex');
+  }
+
+  /**
+   * Findings from the response, kept only where they are well formed.
+   *
+   * Supplementary evidence: a malformed one is dropped rather than failing the page,
+   * which is the opposite of how the model artifacts are treated and deliberately so -
+   * losing an annotation costs a reviewer a prompt, losing provenance costs trust.
+   */
+  private crossStaffFindings(value: unknown): ScannerCrossStaffFinding[] | undefined {
+    if (!Array.isArray(value) || value.length === 0) return undefined;
+    const findings = value.flatMap((entry) => {
+      const finding = entry as Record<string, unknown>;
+      if (typeof finding?.kind !== 'string' || typeof finding?.message !== 'string') {
+        return [];
+      }
+      const staffIndices = Array.isArray(finding.staffIndices)
+        ? finding.staffIndices.filter((index): index is number => Number.isInteger(index))
+        : undefined;
+      return [
+        {
+          kind: finding.kind,
+          message: finding.message,
+          ...(Number.isInteger(finding.system) ? { system: finding.system as number } : {}),
+          ...(staffIndices?.length ? { staffIndices } : {}),
+          ...(typeof finding.part === 'string' && finding.part ? { part: finding.part } : {})
+        }
+      ];
+    });
+    return findings.length > 0 ? findings : undefined;
   }
 
   private options(value: unknown): ScannerOtsHomrEngineOptions {

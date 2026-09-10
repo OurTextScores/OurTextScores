@@ -141,3 +141,52 @@ describe('score profile and the idempotency fingerprint', () => {
     expect(keyFor()).toEqual(keyFor(undefined));
   });
 });
+
+describe('cross-staff findings from the provider', () => {
+  const service: any = new ScannerOtsHomrProviderService({
+    get: jest.fn((_key: string, fallback?: string) => fallback)
+  } as any);
+  const parse = (value: unknown) => service.crossStaffFindings(value);
+
+  it('keeps a well-formed finding with everything it carries', () => {
+    expect(
+      parse([
+        {
+          kind: 'clef_profile_mismatch',
+          message: "staff 3 decoded clef 'G2', profile part 'cello' expects one of ['F4']",
+          system: 2,
+          staffIndices: [3],
+          part: 'cello'
+        }
+      ])
+    ).toEqual([
+      {
+        kind: 'clef_profile_mismatch',
+        message: "staff 3 decoded clef 'G2', profile part 'cello' expects one of ['F4']",
+        system: 2,
+        staffIndices: [3],
+        part: 'cello'
+      }
+    ]);
+  });
+
+  it('drops a malformed finding rather than failing the page', () => {
+    // Supplementary evidence: losing an annotation costs a reviewer a prompt, and
+    // failing here would cost them the whole page.
+    expect(parse([{ kind: 'x' }, { message: 'y' }, null, 'nope'])).toBeUndefined();
+    expect(parse([{ kind: 'a', message: 'b' }, { kind: 'c' }])).toEqual([
+      { kind: 'a', message: 'b' }
+    ]);
+  });
+
+  it('omits optional fields rather than carrying junk', () => {
+    expect(
+      parse([{ kind: 'a', message: 'b', system: 'two', staffIndices: ['x'], part: '' }])
+    ).toEqual([{ kind: 'a', message: 'b' }]);
+  });
+
+  it('is absent, not empty, when there is nothing to say', () => {
+    expect(parse([])).toBeUndefined();
+    expect(parse(undefined)).toBeUndefined();
+  });
+});

@@ -375,8 +375,24 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                 # The capture only observes: it tees the decoder's per-step
                 # distributions and the staff geometry HOMR already computes,
                 # and changes nothing about what is predicted.
-                with capture_page() as captured:
-                    process_image(str(source), config, XmlGeneratorArguments())
+                # Cross-staff findings are evidence a reviewer has to see. HOMR
+                # writes them to stdout, which here is a container log nobody reads,
+                # so they are collected as data alongside the capture. Absent on a
+                # build without the collector, which is not an error: findings are
+                # supplementary and their absence must not fail a page.
+                try:
+                    from homr.cross_staff_findings import collect_findings
+                except ImportError:
+                    collect_findings = None
+                findings: list[Any] = []
+                if collect_findings is None:
+                    with capture_page() as captured:
+                        process_image(str(source), config, XmlGeneratorArguments())
+                else:
+                    with collect_findings() as collected:
+                        with capture_page() as captured:
+                            process_image(str(source), config, XmlGeneratorArguments())
+                    findings = list(collected)
                 review = captured.as_dict(int(source_width), int(source_height))
                 output = source.with_suffix(".musicxml")
                 if not output.is_file():
@@ -389,6 +405,7 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                     "ok": True,
                     "musicxml": result,
                     "review": review,
+                    "crossStaffFindings": findings,
                     "durationMs": int((time.monotonic() - started) * 1000),
                 }
             )

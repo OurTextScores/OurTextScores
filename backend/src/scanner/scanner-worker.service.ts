@@ -1325,7 +1325,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             )
           : undefined,
         availableStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies,
-        selectedStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies
+        selectedStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies,
+        crossStaffFindings: scanned.result.crossStaffFindings
           ? []
           : undefined,
         providerRevision: scanned.result.providerRevision,

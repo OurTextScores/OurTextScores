@@ -9,12 +9,28 @@ export type ScannerStatus =
   | "failed"
   | "cancelled";
 
+export interface ScannerCrossStaffFinding {
+  kind: string;
+  message: string;
+  /** Index of the scanned system, when the finding concerns one. */
+  system?: number;
+  /** Positions within that system, top to bottom - never page-wide staff numbers. */
+  staffIndices?: number[];
+  /** The profile part the staff maps to, when a profile was supplied. */
+  part?: string;
+}
+
 export interface ScannerEngineRun {
   status:
     "pending" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
   attempts: number;
   /** When this attempt reached the provider; absent on runs that never began. */
   startedAt?: string;
+  /**
+   * Cross-staff disagreements this run found. Evidence, never a correction, and it
+   * gates nothing: a page with findings is a complete page with annotations on it.
+   */
+  crossStaffFindings?: ScannerCrossStaffFinding[];
   providerAttempts?: number;
   errorCode?: string;
   errorMessage?: string;

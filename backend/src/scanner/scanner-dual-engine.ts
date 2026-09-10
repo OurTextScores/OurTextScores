@@ -5,6 +5,7 @@ import type {
   ScannerRasterIdentity,
   ScannerStorageLocator
 } from './schemas/scanner-job.schema';
+import type { ScannerCrossStaffFinding } from './scanner-provider.contract';
 
 export const BUILTIN_SCANNER_ENGINE_IDS = ['homr', 'transcoda', 'ots-homr'] as const;
 /** Logical readings of one OTS-HOMR run used to compare optional heads safely. */
@@ -105,6 +106,8 @@ export interface ScannerEngineRun {
   outputCandidates?: Record<string, ScannerEngineOutputCandidate | undefined>;
   /** Families the provider can materialize from its retained predictions. */
   availableStructuredHeadFamilies?: string[];
+  /** Cross-staff disagreements, surfaced to the reviewer rather than logged. */
+  crossStaffFindings?: ScannerCrossStaffFinding[];
   /** The currently effective structured subset; empty means core output. */
   selectedStructuredHeadFamilies?: string[];
   /** A worker-only materialization request waiting to become effective. */
