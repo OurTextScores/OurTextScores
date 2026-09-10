@@ -150,6 +150,7 @@ function geometryInput(
   parts: ScannerDescribedPart[]
 ): ScannerMeasureGeometryProducerInput {
   return {
+    engineId: side.engineId,
     artifactChecksumSha256: side.artifactChecksumSha256,
     sourceImage,
     producerRevision: side.modelRevision || '',

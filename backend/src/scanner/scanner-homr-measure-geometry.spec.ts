@@ -18,7 +18,7 @@ import type { ScannerPartMatch } from './scanner-dual-engine';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const homrChecksum = sha('homr-musicxml');
 const candidateChecksum = sha('candidate-musicxml');
-const sourceImage = { checksumSha256: sha('recognition-raster'), width: 800, height: 1000 };
+const sourceImage = { checksumSha256: sha('recognition-raster'), width: 800, height: 2000 };
 
 function token(rhythm: string): string[] {
   return [rhythm, '.', '_', '_', '_', 'upper'];
@@ -27,14 +27,22 @@ function token(rhythm: string): string[] {
 function staff(
   index: number,
   tokens: string[][],
-  options: { region?: number[]; barLines?: number[] } = {}
+  options: {
+    region?: number[];
+    barLines?: number[];
+    partIndex?: number;
+    systemIndex?: number;
+    symbols?: ReviewStaff['symbols'];
+  } = {}
 ): ReviewStaff {
   return {
     index,
     tokens,
     region: options.region || [100, 100 + index * 150, 500, 180 + index * 150],
     barLines: options.barLines || [100, 500],
-    symbols: []
+    symbols: options.symbols || [],
+    partIndex: options.partIndex,
+    systemIndex: options.systemIndex
   };
 }
 
@@ -220,14 +228,14 @@ describe('HOMR measure geometry producer', () => {
       parts: parts([2, 2]),
       // P1 system 0/1, then P2 system 0/1: this is the pinned parse_staffs order.
       staves: [
-        staff(0, oneMeasure),
-        staff(1, oneMeasure),
-        staff(2, oneMeasure),
-        staff(3, oneMeasure)
+        staff(0, oneMeasure, { region: [100, 100, 500, 180] }),
+        staff(1, oneMeasure, { region: [100, 300, 500, 380] }),
+        staff(2, oneMeasure, { region: [100, 120, 500, 200] }),
+        staff(3, oneMeasure, { region: [100, 320, 500, 400] })
       ]
     });
 
-    expect(result.status).toBe('succeeded');
+    expect(result).toMatchObject({ status: 'succeeded' });
     if (result.status !== 'succeeded') return;
     expect(
       result.geometry.measureRefs.map((ref) => [
@@ -241,6 +249,60 @@ describe('HOMR measure geometry producer', () => {
       ['P1', 1, 1, 1],
       ['P2', 0, 0, 2],
       ['P2', 1, 1, 3]
+    ]);
+  });
+
+  it('maps a late-entering part without requiring a rectangular staff grid', () => {
+    const staffWithMeasures = (index: number, top: number, measureCount: number): ReviewStaff => {
+      const left = 100;
+      const right = 500;
+      const step = (right - left) / measureCount;
+      return staff(
+        index,
+        Array.from({ length: measureCount }, () => [token('note_4'), token('barline')]).flat(),
+        {
+          region: [left, top, right, top + 150],
+          barLines: Array.from({ length: measureCount + 1 }, (_, boundary) =>
+            Math.round(left + boundary * step)
+          )
+        }
+      );
+    };
+    const result = build({
+      parts: parts([14, 14, 14, 12]),
+      // Voice-major order. P4 begins on physical system 1.
+      staves: [
+        staffWithMeasures(0, 60, 2),
+        staffWithMeasures(1, 520, 4),
+        staffWithMeasures(2, 960, 4),
+        staffWithMeasures(3, 1_400, 4),
+        staffWithMeasures(4, 170, 2),
+        staffWithMeasures(5, 630, 4),
+        staffWithMeasures(6, 1_070, 4),
+        staffWithMeasures(7, 1_510, 4),
+        staffWithMeasures(8, 280, 2),
+        staffWithMeasures(9, 740, 4),
+        staffWithMeasures(10, 1_180, 4),
+        staffWithMeasures(11, 1_620, 4),
+        staffWithMeasures(12, 850, 4),
+        staffWithMeasures(13, 1_290, 4),
+        staffWithMeasures(14, 1_730, 4)
+      ]
+    });
+
+    expect(result).toMatchObject({ status: 'succeeded' });
+    if (result.status !== 'succeeded') return;
+    const p1First = result.geometry.measureRefs.find(
+      (ref) => ref.documentPartId === 'P1' && ref.measureIndex === 0
+    );
+    const p4First = result.geometry.measureRefs.find(
+      (ref) => ref.documentPartId === 'P4' && ref.measureIndex === 0
+    );
+    expect(p1First?.cropRegions).toEqual([
+      { systemIndex: 0, staffIndices: [0], region: [100, 60, 300, 210] }
+    ]);
+    expect(p4First?.cropRegions).toEqual([
+      { systemIndex: 1, staffIndices: [12], region: [100, 850, 200, 1000] }
     ]);
   });
 
@@ -286,6 +348,46 @@ describe('HOMR measure geometry producer', () => {
     ).toMatchObject({
       status: 'refused',
       refusalReasons: [{ code: 'barline-count-mismatch', staffIndex: 0 }]
+    });
+  });
+
+  it('fills a missing detected barline from an exact monotonic decoder boundary sequence', () => {
+    const tokens = [
+      token('note_4'),
+      token('barline'),
+      token('note_4'),
+      token('barline'),
+      token('note_4'),
+      token('barline'),
+      token('note_4'),
+      token('barline')
+    ];
+    const result = build({
+      parts: parts([4]),
+      staves: [
+        staff(0, tokens, {
+          region: [100, 100, 500, 180],
+          barLines: [200, 400, 500],
+          symbols: [
+            { index: 1, rhythm: 'barline', heads: {}, attention: [320, 100] },
+            { index: 3, rhythm: 'barline', heads: {}, attention: [640, 100] },
+            { index: 5, rhythm: 'barline', heads: {}, attention: [960, 100] },
+            { index: 7, rhythm: 'barline', heads: {}, attention: [1280, 100] }
+          ]
+        })
+      ]
+    });
+
+    expect(result).toMatchObject({
+      status: 'succeeded',
+      geometry: {
+        measureRefs: [
+          { measureIndex: 0, cropRegions: [{ region: [100, 100, 200, 180] }] },
+          { measureIndex: 1, cropRegions: [{ region: [200, 100, 300, 180] }] },
+          { measureIndex: 2, cropRegions: [{ region: [300, 100, 400, 180] }] },
+          { measureIndex: 3, cropRegions: [{ region: [400, 100, 500, 180] }] }
+        ]
+      }
     });
   });
 
@@ -352,7 +454,7 @@ describe('HOMR measure geometry producer', () => {
       refusalReasons: [
         {
           code: 'review-geometry-unavailable',
-          detail: expect.stringContaining('Re-scan it with the current HOMR provider')
+          detail: expect.stringContaining('Re-scan it with the current provider')
         }
       ]
     });
@@ -369,7 +471,7 @@ describe('HOMR measure geometry producer', () => {
       refusalReasons: [
         {
           code: 'unsupported-part-layout',
-          detail: expect.stringContaining('1 staves for 2 MusicXML parts')
+          detail: expect.stringContaining('1 staves cannot be assigned safely to 2 MusicXML parts')
         }
       ]
     });

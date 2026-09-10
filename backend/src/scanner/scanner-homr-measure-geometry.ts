@@ -12,9 +12,10 @@ import type {
   ScannerMeasureRef,
   ScannerPartMatch
 } from './scanner-dual-engine';
+import { isScannerEngineId } from './scanner-dual-engine';
 
 export const SCANNER_HOMR_MEASURE_GEOMETRY_PRODUCER_ID = 'scanner-homr-measure-geometry';
-export const SCANNER_HOMR_MEASURE_GEOMETRY_PRODUCER_VERSION = 'scanner-homr-measure-geometry-v1';
+export const SCANNER_HOMR_MEASURE_GEOMETRY_PRODUCER_VERSION = 'scanner-homr-measure-geometry-v2';
 
 export type ScannerHomrGeometryRefusalCode =
   | 'part-match-unavailable'
@@ -45,6 +46,7 @@ interface MeasureSystems {
 }
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+const HOMR_STAFF_IMAGE_WIDTH = 1280;
 
 function endpointFor(
   match: MatchedPart,
@@ -73,9 +75,12 @@ function addsMeasureContent(rhythm: string): boolean {
 }
 
 /** Mirror the pinned HOMR generator's measure/newline lifecycle. */
-function mapMeasuresToSystems(staves: ReviewStaff[]): MeasureSystems[] {
+function mapMeasuresToSystems(
+  staves: ReviewStaff[],
+  physicalSystemByStaff = new Map(staves.map((staff, index) => [staff.index, index]))
+): MeasureSystems[] {
   const nonEmpty = staves
-    .map((staff, systemIndex) => ({ staff, systemIndex }))
+    .map((staff) => ({ staff, systemIndex: physicalSystemByStaff.get(staff.index)! }))
     .filter(({ staff }) => Array.isArray(staff.tokens) && staff.tokens.length > 0);
   if (nonEmpty.length === 0) return [];
 
@@ -129,6 +134,75 @@ function mapMeasuresToSystems(staves: ReviewStaff[]): MeasureSystems[] {
   return measures;
 }
 
+function staffGroupsByPart(
+  staves: ReviewStaff[],
+  partCount: number,
+  sourceImage: ScannerSourceImageIdentity
+): ReviewStaff[][] | undefined {
+  const explicit = staves.every(
+    (staff) => Number.isInteger(staff.partIndex) && Number.isInteger(staff.systemIndex)
+  );
+  if (explicit) {
+    const groups = Array.from({ length: partCount }, () => [] as ReviewStaff[]);
+    for (const staff of staves) {
+      if (staff.partIndex! < 0 || staff.partIndex! >= partCount) return undefined;
+      groups[staff.partIndex!].push(staff);
+    }
+    groups.forEach((group) => group.sort((left, right) => left.systemIndex! - right.systemIndex!));
+    return groups.every((group) => group.length > 0) ? groups : undefined;
+  }
+
+  // Older retained reviews predate explicit part/system indexes. HOMR emits
+  // physical staves voice-major: Y increases within a part and resets when the
+  // next part begins. This also permits a late-entering part to have fewer
+  // systems than the others.
+  const groups: ReviewStaff[][] = [];
+  let priorTop: number | undefined;
+  for (const staff of staves) {
+    const region = staffRegion(staff, sourceImage);
+    if (!region) return undefined;
+    if (priorTop !== undefined && region[1] <= priorTop) groups.push([]);
+    if (groups.length === 0) groups.push([]);
+    groups[groups.length - 1].push(staff);
+    priorTop = region[1];
+  }
+  return groups.length === partCount ? groups : undefined;
+}
+
+function physicalSystems(
+  staves: ReviewStaff[],
+  sourceImage: ScannerSourceImageIdentity,
+  staffGroups: ReviewStaff[][]
+): Map<number, number> | undefined {
+  if (staves.every((staff) => Number.isInteger(staff.systemIndex) && staff.systemIndex! >= 0)) {
+    return new Map(staves.map((staff) => [staff.index, staff.systemIndex!]));
+  }
+
+  const partIndexByStaff = new Map<number, number>();
+  staffGroups.forEach((group, partIndex) =>
+    group.forEach((staff) => partIndexByStaff.set(staff.index, partIndex))
+  );
+  const ordered = staves
+    .map((staff) => ({
+      staff,
+      partIndex: partIndexByStaff.get(staff.index),
+      region: staffRegion(staff, sourceImage)
+    }))
+    .sort((left, right) => (left.region?.[1] || 0) - (right.region?.[1] || 0));
+  if (ordered.some((entry) => !entry.region || entry.partIndex === undefined)) return undefined;
+  const result = new Map<number, number>();
+  let systemIndex = -1;
+  let priorPartIndex: number | undefined;
+  for (const entry of ordered) {
+    if (priorPartIndex === undefined || entry.partIndex! <= priorPartIndex) {
+      systemIndex += 1;
+    }
+    result.set(entry.staff.index, systemIndex);
+    priorPartIndex = entry.partIndex;
+  }
+  return result;
+}
+
 function staffRegion(
   staff: ReviewStaff,
   sourceImage: ScannerSourceImageIdentity
@@ -160,6 +234,55 @@ function clusterBarLines(values: number[], tolerance: number): number[] {
   );
 }
 
+function attentionMeasureBoundaries(
+  staff: ReviewStaff,
+  measureCount: number,
+  region: [number, number, number, number]
+): [number, number, number, number][] | undefined {
+  const [left, top, right, bottom] = region;
+  const width = right - left;
+  const closingIndices = (staff.tokens || []).flatMap((token, index) => {
+    const rhythm = String(token?.[0] || '');
+    return rhythm === 'repeatStart' || closesMeasureAfter(rhythm) ? [index] : [];
+  });
+  if (closingIndices.length !== measureCount && closingIndices.length !== measureCount - 1) {
+    return undefined;
+  }
+  const symbolByIndex = new Map((staff.symbols || []).map((symbol) => [symbol.index, symbol]));
+  const detected = clusterBarLines(
+    (staff.barLines || []).filter((value) => Number.isFinite(value)),
+    Math.max(4, Math.floor(width * 0.008))
+  );
+  const usedDetected = new Set<number>();
+  const snapTolerance = Math.max(16, Math.floor(width * 0.08));
+  const closingRights: number[] = [];
+  for (const tokenIndex of closingIndices) {
+    const attentionX = symbolByIndex.get(tokenIndex)?.attention?.[0];
+    if (!Number.isFinite(attentionX) || attentionX! < 0 || attentionX! > HOMR_STAFF_IMAGE_WIDTH) {
+      return undefined;
+    }
+    const projected = left + (attentionX! / HOMR_STAFF_IMAGE_WIDTH) * width;
+    let boundary = Math.round(Math.min(right, Math.max(left, projected)));
+    const nearest = detected
+      .filter((value) => !usedDetected.has(value))
+      .map((value) => ({ value, distance: Math.abs(value - boundary) }))
+      .filter(({ distance }) => distance <= snapTolerance)
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (nearest) {
+      boundary = Math.min(right, Math.max(left, nearest.value));
+      usedDetected.add(nearest.value);
+    }
+    if (boundary <= (closingRights[closingRights.length - 1] ?? left)) return undefined;
+    closingRights.push(boundary);
+  }
+  const boundaries = [left, ...closingRights];
+  if (closingIndices.length === measureCount - 1) boundaries.push(right);
+  if (boundaries.length !== measureCount + 1) return undefined;
+  return boundaries
+    .slice(0, -1)
+    .map((boundary, index) => [boundary, top, boundaries[index + 1], bottom]);
+}
+
 function measureBoundaries(
   staff: ReviewStaff,
   measureCount: number,
@@ -167,6 +290,8 @@ function measureBoundaries(
 ): [number, number, number, number][] | undefined {
   const region = staffRegion(staff, sourceImage);
   if (!region || measureCount <= 0) return undefined;
+  const attentionBoundaries = attentionMeasureBoundaries(staff, measureCount, region);
+  if (attentionBoundaries) return attentionBoundaries;
   const [left, top, right, bottom] = region;
   const width = right - left;
   const edgeTolerance = Math.max(12, Math.floor(width * 0.04));
@@ -214,7 +339,7 @@ export function buildScannerHomrMeasureGeometry(input: {
 }): ScannerHomrMeasureGeometryResult {
   const artifactChecksumSha256 = input.artifactChecksumSha256.toLowerCase();
   if (
-    input.engineId !== 'homr' ||
+    !isScannerEngineId(input.engineId) ||
     !SHA256_PATTERN.test(input.artifactChecksumSha256) ||
     !SHA256_PATTERN.test(input.sourceImage.checksumSha256) ||
     !Number.isInteger(input.sourceImage.width) ||
@@ -255,18 +380,18 @@ export function buildScannerHomrMeasureGeometry(input: {
         {
           code: 'review-geometry-unavailable',
           detail:
-            'HOMR returned no staff or symbol geometry for this page. Re-scan it with the current HOMR provider.'
+            'The recognition engine returned no staff or symbol geometry for this page. Re-scan it with the current provider.'
         }
       ]
     };
   }
-  if (input.parts.length === 0 || input.staves.length % input.parts.length !== 0) {
+  if (input.parts.length === 0) {
     return {
       status: 'refused',
       refusalReasons: [
         {
           code: 'unsupported-part-layout',
-          detail: `HOMR returned ${input.staves.length} staves for ${input.parts.length} MusicXML parts, so a complete voice/system grid cannot be proven`
+          detail: 'The HOMR-derived reading contains no MusicXML parts'
         }
       ]
     };
@@ -295,7 +420,21 @@ export function buildScannerHomrMeasureGeometry(input: {
     };
   }
 
-  const systemsPerPart = input.staves.length / input.parts.length;
+  const partStaves = staffGroupsByPart(input.staves, input.parts.length, input.sourceImage);
+  const physicalSystemByStaff = partStaves
+    ? physicalSystems(input.staves, input.sourceImage, partStaves)
+    : undefined;
+  if (!partStaves || !physicalSystemByStaff) {
+    return {
+      status: 'refused',
+      refusalReasons: [
+        {
+          code: 'unsupported-part-layout',
+          detail: `The HOMR-derived reading's ${input.staves.length} staves cannot be assigned safely to ${input.parts.length} MusicXML parts`
+        }
+      ]
+    };
+  }
   const measureRefs: ScannerMeasureRef[] = [];
   const refusalReasons: ScannerHomrGeometryRefusal[] = [];
   for (let partIndex = 0; partIndex < input.parts.length; partIndex += 1) {
@@ -325,11 +464,8 @@ export function buildScannerHomrMeasureGeometry(input: {
       continue;
     }
 
-    const partStaves = input.staves.slice(
-      partIndex * systemsPerPart,
-      (partIndex + 1) * systemsPerPart
-    );
-    const measures = mapMeasuresToSystems(partStaves);
+    const stavesForPart = partStaves[partIndex];
+    const measures = mapMeasuresToSystems(stavesForPart, physicalSystemByStaff);
     if (measures.length !== part.measures.length) {
       refusalReasons.push({
         code: 'measure-count-mismatch',
@@ -340,30 +476,31 @@ export function buildScannerHomrMeasureGeometry(input: {
     }
 
     const cropsByMeasure = new Map<number, ScannerMeasureCropRegion[]>();
-    for (let systemIndex = 0; systemIndex < partStaves.length; systemIndex += 1) {
+    for (let staffPosition = 0; staffPosition < stavesForPart.length; staffPosition += 1) {
+      const physicalSystemIndex = physicalSystemByStaff.get(stavesForPart[staffPosition].index)!;
       const measureIndices = measures.flatMap((measure, measureIndex) =>
-        measure.systems.has(systemIndex) ? [measureIndex] : []
+        measure.systems.has(physicalSystemIndex) ? [measureIndex] : []
       );
       if (measureIndices.length === 0) continue;
       const boundaries = measureBoundaries(
-        partStaves[systemIndex],
+        stavesForPart[staffPosition],
         measureIndices.length,
         input.sourceImage
       );
       if (!boundaries) {
         refusalReasons.push({
           code: 'barline-count-mismatch',
-          detail: `Staff ${partStaves[systemIndex].index} boundaries do not prove ${measureIndices.length} measure crops`,
+          detail: `Staff ${stavesForPart[staffPosition].index} boundaries do not prove ${measureIndices.length} measure crops`,
           documentPartId: part.documentPartId,
-          staffIndex: partStaves[systemIndex].index
+          staffIndex: stavesForPart[staffPosition].index
         });
         continue;
       }
       measureIndices.forEach((measureIndex, localIndex) => {
         const crops = cropsByMeasure.get(measureIndex) || [];
         crops.push({
-          systemIndex,
-          staffIndices: [partStaves[systemIndex].index],
+          systemIndex: physicalSystemIndex,
+          staffIndices: [stavesForPart[staffPosition].index],
           region: boundaries[localIndex]
         });
         cropsByMeasure.set(measureIndex, crops);

@@ -147,6 +147,8 @@ describe('ScannerEngineRegistry', () => {
     const registry = new ScannerEngineRegistry(config, homr, transcoda, {
       engine: 'ots-homr'
     } as any);
+    expect(registry.get('ots-homr')?.capabilities.supportsMeasureGeometry).toBe(true);
+    expect(registry.get('ots-homr')?.measureGeometryProducer).toEqual(expect.any(Function));
 
     expect(registry.selectableDefinitions()).toEqual([
       expect.objectContaining({ id: 'homr', displayName: 'HOMR' }),

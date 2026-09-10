@@ -31,6 +31,7 @@ export interface ScannerEngineArtifactDefinition {
 }
 
 export interface ScannerMeasureGeometryProducerInput {
+  engineId: ScannerEngineId;
   artifactChecksumSha256: string;
   sourceImage: ScannerRasterIdentity;
   producerRevision: string;
@@ -95,7 +96,7 @@ export class ScannerEngineRegistry {
       },
       measureGeometryProducer: (input) =>
         buildScannerHomrMeasureGeometry({
-          engineId: 'homr',
+          engineId: input.engineId,
           artifactChecksumSha256: input.artifactChecksumSha256,
           sourceImage: input.sourceImage,
           producerRevision: input.producerRevision,
@@ -180,9 +181,19 @@ export class ScannerEngineRegistry {
             'pdf'
           ],
           supportsSpotReview: true,
-          supportsMeasureGeometry: false,
+          supportsMeasureGeometry: true,
           unsupportedSemanticClasses: ['dynamics-from-additional-heads']
         },
+        measureGeometryProducer: (input) =>
+          buildScannerHomrMeasureGeometry({
+            engineId: input.engineId,
+            artifactChecksumSha256: input.artifactChecksumSha256,
+            sourceImage: input.sourceImage,
+            producerRevision: input.producerRevision,
+            partMatchResult: input.partMatchResult,
+            parts: input.parts,
+            staves: input.review?.staves || []
+          }),
         artifacts: {
           musicxml: {
             contentType: 'application/vnd.recordare.musicxml+xml',
