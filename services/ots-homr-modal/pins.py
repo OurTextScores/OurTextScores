@@ -30,4 +30,9 @@ HEADS_CHECKPOINT_SHA256 = (
 )
 HEADS_ONNX_SHA256 = "75d313e091d060723cc6bcec3edd1c7aecbe7beb2b637a8f6f4e50afad8e4db2"
 MANIFEST_SHA256 = "7f92b9b948e6a39daef1f8bcdb66c8ebdfed2c38024ad532f292e0b4d04781fa"
-TRAINING_REVISION = "c29cb63bfc9304def96870376e035feed0a4b461"
+# The revision the rareNum core and its structured heads were TRAINED at, not the
+# source revision the image is built from (that is HOMR_COMMIT in modal_app.py).
+# `runtime_identity.load_structured_manifest` asserts this equals the published
+# heads manifest's `trainingRevision`, so moving it with a source repin crash-loops
+# the container on "Structured heads are incompatible with the rareNum core".
+TRAINING_REVISION = "997b70a88c9f945b632f4129b036b2cd0972b2a3"

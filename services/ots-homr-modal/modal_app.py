@@ -8,15 +8,15 @@ from pathlib import Path
 
 import modal
 
-HOMR_COMMIT = "c29cb63bfc9304def96870376e035feed0a4b461"
-SERVICE_REVISION = "ots-ots-homr-provider-v5"
+HOMR_COMMIT = "f006e477baffe66667cb668a4d10ebad0f113d91"
+SERVICE_REVISION = "ots-ots-homr-provider-v6"
 HARD_TIMEOUT_SECONDS = 280
 CUDA_BASE = "nvidia/cuda@sha256:17e2934e1fa96152b14f78078bfbafd0f00f391df995dc6c641a720fce1202bb"
 HERE = Path(__file__).resolve().parent
 PATCH = HERE / "patches" / "homr-runtime-glue.patch"
-SOURCE_ARCHIVE = HERE / "source" / "homr-c29cb6-source.tar.gz"
+SOURCE_ARCHIVE = HERE / "source" / "homr-f006e4-source.tar.gz"
 SOURCE_ARCHIVE_SHA256 = (
-    "bc1d2884721a5433c24787a999197e0b1a7dae3db821400df08f3ae2ff9d8c57"
+    "a6ccb8a8416a44d1256c70acd53dd750cb95428005b07bfa900601e441c1845d"
 )
 HOMR_SHARED = HERE.parent / "homr-provider"
 
@@ -51,7 +51,7 @@ image = (
     .apt_install("git", "libgl1", "libglib2.0-0", "libgomp1", "ca-certificates")
     .add_local_file(PATCH, remote_path="/tmp/homr-runtime-glue.patch", copy=True)
     .add_local_file(
-        SOURCE_ARCHIVE, remote_path="/tmp/homr-c29cb6-source.tar.gz", copy=True
+        SOURCE_ARCHIVE, remote_path="/tmp/homr-f006e4-source.tar.gz", copy=True
     )
     .add_local_file(
         HOMR_SHARED / "security-overrides.txt",
@@ -59,8 +59,8 @@ image = (
         copy=True,
     )
     .run_commands(
-        f"echo '{SOURCE_ARCHIVE_SHA256}  /tmp/homr-c29cb6-source.tar.gz' | sha256sum --check --strict",
-        "mkdir -p /opt && tar -xzf /tmp/homr-c29cb6-source.tar.gz -C /opt",
+        f"echo '{SOURCE_ARCHIVE_SHA256}  /tmp/homr-f006e4-source.tar.gz' | sha256sum --check --strict",
+        "mkdir -p /opt && tar -xzf /tmp/homr-f006e4-source.tar.gz -C /opt",
         "cd /opt/homr && git apply --check /tmp/homr-runtime-glue.patch && git apply /tmp/homr-runtime-glue.patch",
         "python -m pip install --no-cache-dir 'poetry==2.3.2' 'poetry-plugin-export==1.9.0'",
         "cd /opt/homr && poetry export --only main --extras gpu -f requirements.txt -o /tmp/homr-requirements.txt",
