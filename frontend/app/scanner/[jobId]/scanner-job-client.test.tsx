@@ -951,7 +951,7 @@ describe("ScannerJobClient", () => {
     expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
   });
 
-  it("opens base and selected OTS-HOMR heads in the compare editor", async () => {
+  it("opens base and selected OTS-HOMR features in the compare editor", async () => {
     const updated: ScannerJob = {
       ...partialJob,
       status: "succeeded",
@@ -1047,7 +1047,7 @@ describe("ScannerJobClient", () => {
     ).toBe(false);
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review selected heads (compare)",
+        name: "Review selected features (compare)",
       }),
     );
     await waitFor(() =>
@@ -1087,7 +1087,7 @@ describe("ScannerJobClient", () => {
     expect(screen.queryByText(/Beams · no uncertain questions/)).toBeNull();
   });
 
-  it("opens base and selected OTS-HOMR heads in the merge editor", async () => {
+  it("opens base and selected OTS-HOMR features in the merge editor", async () => {
     const stale: ScannerJob = {
       ...partialJob,
       status: "succeeded",
@@ -1146,7 +1146,7 @@ describe("ScannerJobClient", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Review selected heads (merge)",
+        name: "Review selected features (merge)",
       }),
     );
     await waitFor(() =>

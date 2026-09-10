@@ -206,7 +206,7 @@ function sideCaveats(side: ComparisonSide): string[] {
   return caveats;
 }
 
-function structuredHeadLabel(family: string): string {
+function structuredFeatureLabel(family: string): string {
   return (
     {
       beam: "Beams",
@@ -373,7 +373,7 @@ export default function PageComparison({
     if (engineId === "ots-homr-selected-heads") {
       const families =
         page.engines?.["ots-homr"]?.selectedStructuredHeadFamilies || [];
-      return `OTS-HOMR + ${families.map(structuredHeadLabel).join(", ")}`;
+      return `OTS-HOMR + ${families.map(structuredFeatureLabel).join(", ")}`;
     }
     return (
       job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId

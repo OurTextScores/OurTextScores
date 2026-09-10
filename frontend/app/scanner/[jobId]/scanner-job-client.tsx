@@ -31,7 +31,7 @@ function engineLabel(job: ScannerJob, engineId?: string): string {
   return job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId;
 }
 
-function structuredHeadLabel(family: string): string {
+function structuredFeatureLabel(family: string): string {
   return (
     {
       beam: "Beams",
@@ -225,7 +225,7 @@ export default function ScannerJobClient({
             compareLeft: `${base}/pages/${pageNumber}/engines/ots-homr/structured-output/core`,
             compareRight: `${base}/pages/${pageNumber}/engines/ots-homr/structured-output/selected-heads`,
             leftLabel: "OTS-HOMR base",
-            rightLabel: `OTS-HOMR + ${selected.map(structuredHeadLabel).join(", ")}`,
+            rightLabel: `OTS-HOMR + ${selected.map(structuredFeatureLabel).join(", ")}`,
           }).toString()}`;
     setStructuredLaunchTarget(null);
     if (structuredLaunchTarget.mode === "compare") {
@@ -233,7 +233,7 @@ export default function ScannerJobClient({
       structuredCompareWindowRef.current = null;
       if (!reviewWindow || reviewWindow.closed) {
         setError(
-          "The comparison is ready, but its new tab was closed. Select Review selected heads (compare) to open it again.",
+          "The comparison is ready, but its new tab was closed. Select Review selected features (compare) to open it again.",
         );
         return;
       }
@@ -1232,16 +1232,16 @@ export default function ScannerJobClient({
                                     }))
                                   }
                                 />
-                                {structuredHeadLabel(family)}
+                                {structuredFeatureLabel(family)}
                               </label>
                             );
                           })}
                         </div>
                         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                           Compare the base recognition with a version that uses
-                          these optional heads. Detailed uncertainty questions
-                          for optional heads are hidden for now. Dynamics remain
-                          diagnostic only.
+                          these optional features. Detailed uncertainty
+                          questions for optional features are hidden for now.
+                          Dynamics remain diagnostic only.
                         </p>
                         {!readOnly && (
                           <div className="mt-3 flex flex-wrap gap-2">
@@ -1272,15 +1272,15 @@ export default function ScannerJobClient({
                                 {run?.structuredOutputPending ||
                                 busyAction ===
                                   `structured-${selected.pageNumber}-${engineId}`
-                                  ? "Preparing selected heads…"
-                                  : `Review selected heads (${mode})`}
+                                  ? "Preparing selected features…"
+                                  : `Review selected features (${mode})`}
                               </button>
                             ))}
                           </div>
                         )}
                         {run?.structuredOutputPending && (
                           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-                            Preparing base and selected-heads scores…
+                            Preparing base and selected-feature scores…
                           </p>
                         )}
                         {run?.structuredOutputError && (
