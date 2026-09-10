@@ -43,6 +43,32 @@ export default async function ComparePage({
         initialBaseEngine={searchParams.base}
         initialCandidateEngine={searchParams.candidate}
       />
+      {/*
+        The way out, again, at the end.
+
+        Three scores stacked over a scan run to several screens, and a reviewer
+        who has walked to the last line of a page is thousands of pixels from
+        the link at the top — so leaving meant scrolling back past everything
+        they had just decided.
+
+        It says the same thing as the link above rather than offering to save:
+        every decision and hand correction is already written as it is made, and
+        the scan is rebuilt from the merged score on the way. A button here
+        promising to sync would invent a step that does not exist, and imply
+        that the work is not safe until it is pressed.
+      */}
+      <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
+        <Link
+          href={`/scanner/${params.jobId}`}
+          className="text-sm text-slate-600 hover:underline dark:text-slate-400"
+        >
+          ← Back to the scan
+        </Link>
+        <span className="text-xs text-slate-500 dark:text-slate-500">
+          Merged changes are saved as you make them, and the scan is rebuilt
+          from them.
+        </span>
+      </div>
     </main>
   );
 }

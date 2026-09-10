@@ -259,9 +259,7 @@ describe("PageComparison", () => {
     // fixed-height frame gives a reader two scrollbars and the shorter of two
     // viewports. The page's own scrollbar is the point.
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
-    const frame = await screen.findByTitle(
-      /Reconciling difference 1 of page 1/,
-    );
+    const frame = await screen.findByTitle(/Reconciling differences on page 1/);
     expect(frame).not.toHaveStyle({ height: "2400px" });
 
     fireEvent(
@@ -277,9 +275,7 @@ describe("PageComparison", () => {
 
   it("ignores a height from anywhere but this site", async () => {
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
-    const frame = await screen.findByTitle(
-      /Reconciling difference 1 of page 1/,
-    );
+    const frame = await screen.findByTitle(/Reconciling differences on page 1/);
 
     fireEvent(
       window,
@@ -299,9 +295,7 @@ describe("PageComparison", () => {
     // thing the reader came for.
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
 
-    const frame = await screen.findByTitle(
-      /Reconciling difference 1 of page 1/,
-    );
+    const frame = await screen.findByTitle(/Reconciling differences on page 1/);
     const url = new URL(frame.getAttribute("src")!, "http://localhost");
     expect(url.searchParams.get("compareBlock")).toBe("0");
   });
@@ -317,7 +311,7 @@ describe("PageComparison", () => {
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
 
     expect(
-      await screen.findByTitle(/Reconciling difference 1 of page 1/),
+      await screen.findByTitle(/Reconciling differences on page 1/),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Transcoda does not recognize lyrics."),
@@ -403,7 +397,7 @@ describe("PageComparison", () => {
     expect(screen.getByLabelText("Candidate reading")).toHaveValue(
       "ots-homr-selected-heads",
     );
-    const frame = await screen.findByTitle(/Reconciling difference 1/);
+    const frame = await screen.findByTitle(/Reconciling differences on page 1/);
     const editor = new URL(frame.getAttribute("src")!, "http://localhost");
     expect(editor.searchParams.get("leftLabel")).toBe("OTS-HOMR base");
     expect(editor.searchParams.get("rightLabel")).toBe(
@@ -432,7 +426,7 @@ describe("PageComparison", () => {
     // As the comparison's own page renders it.
 
     await waitFor(() =>
-      expect(screen.getByTitle(/Reconciling difference/)).toBeInTheDocument(),
+      expect(screen.getByTitle(/Reconciling differences/)).toBeInTheDocument(),
     );
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/comparison/readings/"),
@@ -443,7 +437,7 @@ describe("PageComparison", () => {
   it("supports a third provider without provider-specific UI branches", async () => {
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
     // As the comparison's own page renders it.
-    await screen.findByTitle(/Reconciling difference 1 of page 1/);
+    await screen.findByTitle(/Reconciling differences on page 1/);
 
     fireEvent.change(screen.getByLabelText("Candidate reading"), {
       target: { value: "kraken" },
@@ -592,7 +586,7 @@ describe("PageComparison", () => {
     // As the comparison's own page renders it.
 
     const frame = (await screen.findByTitle(
-      /Reconciling difference 1 of page 1/,
+      /Reconciling differences on page 1/,
     )) as HTMLIFrameElement;
     const url = new URL(frame.src, "http://localhost");
     expect(url.pathname).toBe("/score-editor/index.html");
@@ -663,7 +657,7 @@ describe("PageComparison", () => {
       await screen.findByText(/Showing 1 of 2 differing blocks/),
     ).toBeInTheDocument();
     expect(
-      screen.getByTitle(/Reconciling difference 1 of page 1/),
+      screen.getByTitle(/Reconciling differences on page 1/),
     ).toBeInTheDocument();
   });
 });

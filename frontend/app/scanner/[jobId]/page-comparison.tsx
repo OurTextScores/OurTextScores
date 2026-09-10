@@ -415,16 +415,6 @@ export default function PageComparison({
     comparison?.analysis?.blocks ||
     comparison?.geometry?.blocks.map((entry) => entry.block) ||
     [];
-  /**
-   * The whole page goes to the score editor's compare mode — the same embed
-   * change review uses. Measure highlighting there comes from MuseScore's own
-   * layout (`measurePositions()` plus the engine's staff bands), which is the
-   * one source of that geometry in the product; rendering the page a second way
-   * here would put the scanner's compare in a different engine from every other
-   * comparator, with different line breaks for the same score.
-   */
-  const geometrySignature = comparison?.geometry?.geometrySignature;
-
   // `baseEngine` is not redundant with the pair in the path: a reading whose
   // parts were folded onto the other reading's staves has to be served folded,
   // or this pane would number its bars differently from the blocks drawn on it.
@@ -437,6 +427,14 @@ export default function PageComparison({
       },
     ).toString()}`;
 
+  /**
+   * The whole page goes to the score editor's compare mode — the same embed
+   * change review uses. Measure highlighting there comes from MuseScore's own
+   * layout (`measurePositions()` plus the engine's staff bands), which is the
+   * one source of that geometry in the product; rendering the page a second way
+   * here would put the scanner's compare in a different engine from every other
+   * comparator, with different line breaks for the same score.
+   */
   const embeddedCompareUrl = comparison
     ? `/score-editor/index.html?${new URLSearchParams({
         compareLeft: readingUrl(comparison.base),
@@ -463,19 +461,6 @@ export default function PageComparison({
           : { compareBlock: String(selectedBlock.blockIndex) }),
       }).toString()}`
     : undefined;
-
-  const cropUrl =
-    comparison && selectedBlock && geometrySignature
-      ? `${base}/pages/${page.pageNumber}/comparison/blocks/${selectedBlock.blockIndex}/crop?${new URLSearchParams(
-          {
-            baseEngine: comparison.base.engineId,
-            candidateEngine: comparison.candidate.engineId,
-            statusVersion: String(comparison.statusVersion),
-            contentSignature: selectedBlock.contentSignature,
-            geometrySignature,
-          },
-        ).toString()}`
-      : undefined;
 
   return (
     <section
@@ -718,7 +703,15 @@ export default function PageComparison({
                     <iframe
                       key={embeddedCompareUrl}
                       src={embeddedCompareUrl}
-                      title={`Reconciling difference ${selectedBlock.blockIndex + 1} of page ${page.pageNumber}`}
+                      /*
+                        Named for the page, not for a difference. The frame
+                        opens on one, but its own arrows move between them from
+                        there — so a title naming the entry point is wrong the
+                        moment a reviewer walks to the next line, and a screen
+                        reader goes on announcing a difference that is no longer
+                        on screen.
+                      */
+                      title={`Reconciling differences on page ${page.pageNumber}`}
                       style={
                         embeddedHeight ? { height: embeddedHeight } : undefined
                       }
