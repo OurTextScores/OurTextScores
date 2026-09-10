@@ -1639,6 +1639,10 @@ except Exception:
       .lean()
       .exec();
 
+    if (!updated) {
+      throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
+    }
+
     return { ok: true };
   }
 

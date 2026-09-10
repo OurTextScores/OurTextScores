@@ -1576,6 +1576,31 @@ describe('WorksService (unit, mocked models)', () => {
       expect(result).toEqual({ ok: true });
     });
 
+    it('should reject an update when the source disappears after authorization', async () => {
+      const workId = 'work-1';
+      const sourceId = 'source-1';
+
+      sourceModel.findOne = jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ workId, sourceId })
+        })
+      });
+      sourceModel.findOneAndUpdate = jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null)
+        })
+      });
+
+      await expect(
+        service.updateSource(
+          workId,
+          sourceId,
+          { label: 'Updated label' },
+          { userId: 'admin-1', roles: ['admin'] }
+        )
+      ).rejects.toThrow('Source source-1 not found in work work-1');
+    });
+
     it('should throw NotFoundException if source not found', async () => {
       const workId = 'work-1';
       const sourceId = 'nonexistent';
