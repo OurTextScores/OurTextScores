@@ -1377,6 +1377,18 @@ export default function ScannerJobClient({
             one comparison it could not show the interesting one: what the two
             engines did differently.
           */}
+          {/*
+            Above the comparison, not after it. These are the questions worth holding
+            in mind while reading the two engines against each other -- a staff count
+            that disagrees with the profile changes how you read everything below it.
+            It still gates nothing: the page is complete either way.
+          */}
+          <CrossStaffFindings
+            findings={Object.values(selected.engines || {}).flatMap(
+              (run) => run?.crossStaffFindings || [],
+            )}
+          />
+
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
               <span className="font-medium uppercase tracking-wide text-slate-500">
@@ -1465,17 +1477,6 @@ export default function ScannerJobClient({
             </div>
           </div>
 
-          {/*
-            Evidence, at the end of the page it concerns. It gates nothing: the page
-            above is complete whether or not anything here is acted on, which is why
-            this sits after the readings rather than in front of them.
-          */}
-          <CrossStaffFindings
-            jobId={jobId}
-            findings={Object.values(selected.engines || {}).flatMap(
-              (run) => run?.crossStaffFindings || [],
-            )}
-          />
         </section>
       )}
 
