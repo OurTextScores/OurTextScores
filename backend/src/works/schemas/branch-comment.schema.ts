@@ -58,5 +58,12 @@ export class BranchComment {
 export type BranchCommentDocument = HydratedDocument<BranchComment>;
 export const BranchCommentSchema = SchemaFactory.createForClass(BranchComment);
 
-BranchCommentSchema.index({ workId: 1, sourceId: 1, branchName: 1, parentCommentId: 1, voteScore: -1, createdAt: -1 });
+BranchCommentSchema.index({
+  workId: 1,
+  sourceId: 1,
+  branchName: 1,
+  parentCommentId: 1,
+  voteScore: -1,
+  createdAt: -1
+});
 BranchCommentSchema.index({ userId: 1, createdAt: -1 });

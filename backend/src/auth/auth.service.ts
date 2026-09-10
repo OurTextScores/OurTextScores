@@ -4,11 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthUserClaims, RequestUser } from './types/auth-user';
 
 function base64UrlEncode(input: Buffer): string {
-  return input
-    .toString('base64')
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+  return input.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 function base64UrlDecode(input: string): Buffer {

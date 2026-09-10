@@ -62,7 +62,12 @@ export class Source {
   @Prop({ required: true, default: false })
   hasReferencePdf!: boolean;
 
-  @Prop({ trim: true, enum: ['public', 'withheld_dmca', 'under_review'], default: 'public', index: true })
+  @Prop({
+    trim: true,
+    enum: ['public', 'withheld_dmca', 'under_review'],
+    default: 'public',
+    index: true
+  })
   visibility!: 'public' | 'withheld_dmca' | 'under_review';
 
   @Prop({ trim: true })

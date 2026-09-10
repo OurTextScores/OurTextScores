@@ -36,10 +36,10 @@ describe('AuthService', () => {
             get: jest.fn((key: string, defaultValue?: string) => {
               if (key === 'NEXTAUTH_SECRET') return testSecret;
               return defaultValue;
-            }),
-          },
-        },
-      ],
+            })
+          }
+        }
+      ]
     }).compile();
 
     service = module.get<AuthService>(AuthService);
@@ -76,15 +76,11 @@ describe('AuthService', () => {
   function createValidToken(
     payload: any,
     secret: string = testSecret,
-    header: any = { alg: 'HS256', typ: 'JWT' },
+    header: any = { alg: 'HS256', typ: 'JWT' }
   ): string {
     const base64UrlEncode = (input: Buffer | string): string => {
       const buffer = typeof input === 'string' ? Buffer.from(input) : input;
-      return buffer
-        .toString('base64')
-        .replace(/=/g, '')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_');
+      return buffer.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
     };
 
     const encodedHeader = base64UrlEncode(JSON.stringify(header));
@@ -159,7 +155,7 @@ describe('AuthService', () => {
         email: 'test@example.com',
         name: 'Test User',
         iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 3600,
+        exp: Math.floor(Date.now() / 1000) + 3600
       };
       const token = createValidToken(payload);
 
@@ -171,7 +167,7 @@ describe('AuthService', () => {
     it('should verify token without expiration', () => {
       const payload = {
         sub: 'user123',
-        email: 'test@example.com',
+        email: 'test@example.com'
       };
       const token = createValidToken(payload);
 
@@ -193,7 +189,7 @@ describe('AuthService', () => {
     it('should return null for expired token', () => {
       const payload = {
         sub: 'user123',
-        exp: Math.floor(Date.now() / 1000) - 3600, // expired 1 hour ago
+        exp: Math.floor(Date.now() / 1000) - 3600 // expired 1 hour ago
       };
       const token = createValidToken(payload);
 
@@ -249,7 +245,9 @@ describe('AuthService', () => {
       const signature = createHmac('sha256', testSecret).update(data).digest();
       const encodedSignature = base64UrlEncode(signature.toString('base64'));
 
-      const result = service.verifyJwtHs256(`${encodedHeader}.${encodedPayload}.${encodedSignature}`);
+      const result = service.verifyJwtHs256(
+        `${encodedHeader}.${encodedPayload}.${encodedSignature}`
+      );
 
       expect(result).toBeNull();
     });
@@ -269,7 +267,9 @@ describe('AuthService', () => {
       const signature = createHmac('sha256', testSecret).update(data).digest();
       const encodedSignature = base64UrlEncode(signature.toString('base64'));
 
-      const result = service.verifyJwtHs256(`${encodedHeader}.${encodedPayload}.${encodedSignature}`);
+      const result = service.verifyJwtHs256(
+        `${encodedHeader}.${encodedPayload}.${encodedSignature}`
+      );
 
       expect(result).toBeNull();
     });
@@ -279,7 +279,7 @@ describe('AuthService', () => {
         sub: 'user123',
         email: 'test@example.com',
         roles: ['admin', 'user'],
-        customField: 'custom-value',
+        customField: 'custom-value'
       };
       const token = createValidToken(payload);
 
@@ -294,7 +294,7 @@ describe('AuthService', () => {
       const nowSec = Math.floor(Date.now() / 1000);
       const payload = {
         sub: 'user123',
-        exp: nowSec, // expires right now
+        exp: nowSec // expires right now
       };
       const token = createValidToken(payload);
 
@@ -323,7 +323,7 @@ describe('AuthService', () => {
         sub: 'user123',
         email: 'test@example.com',
         name: 'Test User',
-        exp: Math.floor(Date.now() / 1000) + 3600,
+        exp: Math.floor(Date.now() / 1000) + 3600
       };
       const token = createValidToken(payload);
 
@@ -332,7 +332,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         userId: 'user123',
         email: 'test@example.com',
-        name: 'Test User',
+        name: 'Test User'
       });
     });
 
@@ -348,7 +348,7 @@ describe('AuthService', () => {
     it('should throw UnauthorizedException when token has no sub claim', () => {
       const payload = {
         email: 'test@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
       const token = createValidToken(payload);
 
@@ -358,7 +358,7 @@ describe('AuthService', () => {
     it('should throw UnauthorizedException when token is expired', () => {
       const payload = {
         sub: 'user123',
-        exp: Math.floor(Date.now() / 1000) - 3600,
+        exp: Math.floor(Date.now() / 1000) - 3600
       };
       const token = createValidToken(payload);
 
@@ -375,7 +375,7 @@ describe('AuthService', () => {
     it('should convert sub to string when it is a number', () => {
       const payload = {
         sub: 12345,
-        email: 'test@example.com',
+        email: 'test@example.com'
       };
       const token = createValidToken(payload);
 
@@ -388,7 +388,7 @@ describe('AuthService', () => {
     it('should handle user without email', () => {
       const payload = {
         sub: 'user123',
-        name: 'Test User',
+        name: 'Test User'
       };
       const token = createValidToken(payload);
 
@@ -397,14 +397,14 @@ describe('AuthService', () => {
       expect(result).toEqual({
         userId: 'user123',
         email: undefined,
-        name: 'Test User',
+        name: 'Test User'
       });
     });
 
     it('should handle user without name', () => {
       const payload = {
         sub: 'user123',
-        email: 'test@example.com',
+        email: 'test@example.com'
       };
       const token = createValidToken(payload);
 
@@ -413,7 +413,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         userId: 'user123',
         email: 'test@example.com',
-        name: undefined,
+        name: undefined
       });
     });
   });
@@ -424,7 +424,7 @@ describe('AuthService', () => {
         sub: 'user123',
         email: 'test@example.com',
         name: 'Test User',
-        exp: Math.floor(Date.now() / 1000) + 3600,
+        exp: Math.floor(Date.now() / 1000) + 3600
       };
       const token = createValidToken(payload);
 
@@ -433,7 +433,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         userId: 'user123',
         email: 'test@example.com',
-        name: 'Test User',
+        name: 'Test User'
       });
     });
 
@@ -450,7 +450,7 @@ describe('AuthService', () => {
     it('should return null when token has no sub claim', () => {
       const payload = {
         email: 'test@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
       const token = createValidToken(payload);
 
@@ -462,7 +462,7 @@ describe('AuthService', () => {
     it('should return null when token is expired', () => {
       const payload = {
         sub: 'user123',
-        exp: Math.floor(Date.now() / 1000) - 3600,
+        exp: Math.floor(Date.now() / 1000) - 3600
       };
       const token = createValidToken(payload);
 
@@ -483,7 +483,7 @@ describe('AuthService', () => {
     it('should convert sub to string when it is a number', () => {
       const payload = {
         sub: 54321,
-        email: 'test@example.com',
+        email: 'test@example.com'
       };
       const token = createValidToken(payload);
 
@@ -495,7 +495,7 @@ describe('AuthService', () => {
 
     it('should handle user without email or name', () => {
       const payload = {
-        sub: 'user123',
+        sub: 'user123'
       };
       const token = createValidToken(payload);
 
@@ -504,7 +504,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         userId: 'user123',
         email: undefined,
-        name: undefined,
+        name: undefined
       });
     });
 
@@ -547,7 +547,7 @@ describe('AuthService', () => {
     it('should handle various base64url special characters', () => {
       const payload = {
         sub: 'user123',
-        data: 'test+with/special=chars', // Contains chars that need encoding
+        data: 'test+with/special=chars' // Contains chars that need encoding
       };
       const token = createValidToken(payload);
 
@@ -564,7 +564,7 @@ describe('AuthService', () => {
       const payload = {
         sub: 'user123',
         email: '',
-        name: '',
+        name: ''
       };
       const token = createValidToken(payload);
 
@@ -573,7 +573,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         userId: 'user123',
         email: '',
-        name: '',
+        name: ''
       });
     });
   });

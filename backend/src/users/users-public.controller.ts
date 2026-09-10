@@ -119,24 +119,25 @@ export class UsersPublicController {
 
     const sourceFilter = { 'provenance.uploadedByUserId': userId };
 
-    const [sourceCount, sources, revisionCount, recentRevisionsAll, distinctWorkIds] = await Promise.all([
-      this.sourceModel.countDocuments(sourceFilter).exec(),
-      this.sourceModel
-        .find(sourceFilter)
-        .sort({ 'provenance.uploadedAt': -1, workId: 1 })
-        .skip(parsedOffset)
-        .limit(parsedLimit)
-        .lean()
-        .exec(),
-      this.sourceRevisionModel.countDocuments({ createdBy: userId }).exec(),
-      this.sourceRevisionModel
-        .find({ createdBy: userId })
-        .sort({ createdAt: -1 })
-        .limit(20)
-        .lean()
-        .exec(),
-      this.sourceModel.distinct('workId', sourceFilter).exec()
-    ]);
+    const [sourceCount, sources, revisionCount, recentRevisionsAll, distinctWorkIds] =
+      await Promise.all([
+        this.sourceModel.countDocuments(sourceFilter).exec(),
+        this.sourceModel
+          .find(sourceFilter)
+          .sort({ 'provenance.uploadedAt': -1, workId: 1 })
+          .skip(parsedOffset)
+          .limit(parsedLimit)
+          .lean()
+          .exec(),
+        this.sourceRevisionModel.countDocuments({ createdBy: userId }).exec(),
+        this.sourceRevisionModel
+          .find({ createdBy: userId })
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean()
+          .exec(),
+        this.sourceModel.distinct('workId', sourceFilter).exec()
+      ]);
 
     const workIds = new Set<string>();
     for (const w of distinctWorkIds as string[]) {
@@ -147,7 +148,10 @@ export class UsersPublicController {
     }
 
     const workDocs = workIds.size
-      ? await this.workModel.find({ workId: { $in: Array.from(workIds) } }).lean().exec()
+      ? await this.workModel
+          .find({ workId: { $in: Array.from(workIds) } })
+          .lean()
+          .exec()
       : [];
     const workById = new Map<string, WorkDocument>();
     for (const w of workDocs) {
@@ -204,7 +208,8 @@ export class UsersPublicController {
   @Get(':userId/contributions')
   @ApiOperation({
     summary: 'Get contributed sources for a user',
-    description: 'Return sources the user has contributed revisions to (distinct by workId/sourceId).'
+    description:
+      'Return sources the user has contributed revisions to (distinct by workId/sourceId).'
   })
   @ApiParam({ name: 'userId', description: 'User identifier', example: '507f1f77bcf86cd799439011' })
   @ApiQuery({
@@ -254,26 +259,25 @@ export class UsersPublicController {
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : 50;
     const parsedOffset = offset ? Math.max(parseInt(offset, 10), 0) : 0;
 
-    const [result] = await this.sourceRevisionModel.aggregate([
-      { $match: { createdBy: userId } },
-      {
-        $group: {
-          _id: { workId: '$workId', sourceId: '$sourceId' },
-          lastContributionAt: { $max: '$createdAt' },
-          revisionCount: { $sum: 1 }
+    const [result] = await this.sourceRevisionModel
+      .aggregate([
+        { $match: { createdBy: userId } },
+        {
+          $group: {
+            _id: { workId: '$workId', sourceId: '$sourceId' },
+            lastContributionAt: { $max: '$createdAt' },
+            revisionCount: { $sum: 1 }
+          }
+        },
+        { $sort: { lastContributionAt: -1 } },
+        {
+          $facet: {
+            total: [{ $count: 'count' }],
+            items: [{ $skip: parsedOffset }, { $limit: parsedLimit }]
+          }
         }
-      },
-      { $sort: { lastContributionAt: -1 } },
-      {
-        $facet: {
-          total: [{ $count: 'count' }],
-          items: [
-            { $skip: parsedOffset },
-            { $limit: parsedLimit }
-          ]
-        }
-      }
-    ]).exec();
+      ])
+      .exec();
 
     const total = result?.total?.[0]?.count ?? 0;
     const items: Array<{
@@ -288,10 +292,7 @@ export class UsersPublicController {
     }));
 
     const sources = sourceOr.length
-      ? await this.sourceModel
-          .find({ $or: sourceOr })
-          .lean()
-          .exec()
+      ? await this.sourceModel.find({ $or: sourceOr }).lean().exec()
       : [];
 
     const workIds = new Set<string>();
@@ -300,7 +301,10 @@ export class UsersPublicController {
     }
 
     const workDocs = workIds.size
-      ? await this.workModel.find({ workId: { $in: Array.from(workIds) } }).lean().exec()
+      ? await this.workModel
+          .find({ workId: { $in: Array.from(workIds) } })
+          .lean()
+          .exec()
       : [];
     const workById = new Map<string, WorkDocument>();
     for (const w of workDocs) {

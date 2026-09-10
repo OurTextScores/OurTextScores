@@ -1,6 +1,12 @@
-import { Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { execFile } from 'node:child_process';
+import * as https from 'node:https';
 import { promisify } from 'node:util';
 import { Model } from 'mongoose';
 import { EnsureWorkResult, ImslpWorkDto } from './dto/imslp-work.dto';
@@ -67,13 +73,12 @@ export class ImslpService {
     const normalized = this.normalizePermalink(permalink);
 
     // Try a lightweight MediaWiki API scrape first to obtain numeric page_id and persist it
-    let direct = await this.fetchFromMediaWiki(normalized).catch(() => null);
+    const direct = await this.fetchFromMediaWiki(normalized).catch(() => null);
 
     // If direct fetch failed, check if we already have a record by permalink
-    let doc = (await this.imslpModel
-      .findOne({ permalink: normalized })
-      .lean()
-      .exec()) as (ImslpWork & { metadata?: Record<string, unknown> }) | null;
+    let doc = (await this.imslpModel.findOne({ permalink: normalized }).lean().exec()) as
+      | (ImslpWork & { metadata?: Record<string, unknown> })
+      | null;
 
     // If we didn't have a doc, try MWClient enrichment (may be richer but slower)
     if (!direct) {
@@ -128,7 +133,7 @@ export class ImslpService {
     // If files are missing, try MWClient enrichment once more to populate them
     try {
       const curMeta = (doc.metadata as Record<string, unknown>) ?? {};
-      const files = (curMeta['files'] as unknown) as Array<unknown> | undefined;
+      const files = curMeta['files'] as unknown as Array<unknown> | undefined;
       if (!Array.isArray(files) || files.length === 0) {
         let enriched = await this.fetchViaMwClient(normalized).catch(() => null);
         if (enriched) {
@@ -136,9 +141,11 @@ export class ImslpService {
         }
 
         const nextMeta = (doc.metadata as Record<string, unknown>) ?? {};
-        const nextFiles = (nextMeta['files'] as unknown) as Array<unknown> | undefined;
+        const nextFiles = nextMeta['files'] as unknown as Array<unknown> | undefined;
         if (!Array.isArray(nextFiles) || nextFiles.length === 0) {
-          const canonicalPermalink = await this.resolveCanonicalPermalink(normalized).catch(() => null);
+          const canonicalPermalink = await this.resolveCanonicalPermalink(normalized).catch(
+            () => null
+          );
           if (canonicalPermalink && canonicalPermalink !== normalized) {
             this.logger.warn(
               `[IMSLP] Empty files from enrichment; retrying via canonical permalink ${canonicalPermalink}`
@@ -183,17 +190,16 @@ export class ImslpService {
     }
 
     const permalink =
-      doc.permalink ??
-      (metadata['permalink'] as string) ??
-      (metadata['url'] as string) ??
-      '';
+      doc.permalink ?? (metadata['permalink'] as string) ?? (metadata['url'] as string) ?? '';
 
     // Ensure basic_info is present at minimum so the UI can render useful fields
     const mergedMeta: Record<string, unknown> = { ...metadata };
     if (!mergedMeta['basic_info']) {
       const pageIdValue = workId ? Number.parseInt(workId, 10) : undefined;
       mergedMeta['basic_info'] = {
-        page_id: Number.isFinite(pageIdValue as number) ? (pageIdValue as number) : workId || undefined,
+        page_id: Number.isFinite(pageIdValue as number)
+          ? (pageIdValue as number)
+          : workId || undefined,
         page_title: title != null ? title : workId || undefined,
         composer
       };
@@ -415,7 +421,9 @@ print(json.dumps(payload))
     }
   }
 
-  async enrichByWorkId(workId: string): Promise<(ImslpWork & { metadata?: Record<string, unknown> }) | null> {
+  async enrichByWorkId(
+    workId: string
+  ): Promise<(ImslpWork & { metadata?: Record<string, unknown> }) | null> {
     const existing = (await this.imslpModel.findOne({ workId }).lean().exec()) as
       | (ImslpWork & { metadata?: Record<string, unknown> })
       | null;
@@ -438,8 +446,12 @@ print(json.dumps(payload))
 
     const meta = (doc.metadata as Record<string, unknown>) ?? {};
     const hasRich = !!(meta['basic_info'] || meta['files'] || meta['enhanced_metadata']);
-    const enhanced = (meta['enhanced_metadata'] as unknown) as Array<Record<string, unknown>> | undefined;
-    const hasDownloadCounts = Array.isArray(enhanced) && enhanced.some((e) => e && typeof e === 'object' && 'download_count' in e);
+    const enhanced = meta['enhanced_metadata'] as unknown as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const hasDownloadCounts =
+      Array.isArray(enhanced) &&
+      enhanced.some((e) => e && typeof e === 'object' && 'download_count' in e);
 
     if (!hasRich || !hasDownloadCounts) {
       const target = doc.permalink
@@ -594,19 +606,21 @@ print(json.dumps(meta))
       }
       const title = String(basic['page_title'] ?? pageId);
       const permalink = String(basic['url'] ?? '');
-      await this.imslpModel.updateOne(
-        { workId: pageId },
-        {
-          $set: {
-            workId: pageId,
-            title,
-            permalink,
-            metadata: meta
+      await this.imslpModel
+        .updateOne(
+          { workId: pageId },
+          {
+            $set: {
+              workId: pageId,
+              title,
+              permalink,
+              metadata: meta
+            },
+            $currentDate: { updatedAt: true }
           },
-          $currentDate: { updatedAt: true }
-        },
-        { upsert: true }
-      ).exec();
+          { upsert: true }
+        )
+        .exec();
       const updated = (await this.imslpModel.findOne({ workId: pageId }).lean().exec()) as
         | (ImslpWork & { metadata?: Record<string, unknown> })
         | null;
@@ -621,11 +635,17 @@ print(json.dumps(meta))
   ): Promise<(ImslpWork & { metadata?: Record<string, unknown> }) | null> {
     try {
       const urlOrSlug = permalink;
-      const { stdout, stderr } = await execFileAsync('python3', ['/app/python/imslp_enrich.py', urlOrSlug], {
-        maxBuffer: 16 * 1024 * 1024,
-        timeout: 90_000
-      });
-      this.logger.log(`[IMSLP] MWClient script done (stdout=${stdout.length} bytes, stderr=${(stderr||'').length} bytes)`);
+      const { stdout, stderr } = await execFileAsync(
+        'python3',
+        ['/app/python/imslp_enrich.py', urlOrSlug],
+        {
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: 90_000
+        }
+      );
+      this.logger.log(
+        `[IMSLP] MWClient script done (stdout=${stdout.length} bytes, stderr=${(stderr || '').length} bytes)`
+      );
       const meta = JSON.parse(stdout) as Record<string, unknown>;
       const basicInfo = (meta['basic_info'] as Record<string, unknown>) ?? {};
 
@@ -642,19 +662,21 @@ print(json.dumps(meta))
       const title = String(basicInfo['page_title'] ?? slug);
       const canonicalPermalink = `https://imslp.org/wiki/${encodeURIComponent(String(meta['page_title'] ?? slug)).replace(/%20/g, '_')}`;
 
-      await this.imslpModel.updateOne(
-        { $or: [ { workId }, { permalink: canonicalPermalink } ] },
-        {
-          $set: {
-            workId,
-            title,
-            permalink: canonicalPermalink,
-            metadata: meta
+      await this.imslpModel
+        .updateOne(
+          { $or: [{ workId }, { permalink: canonicalPermalink }] },
+          {
+            $set: {
+              workId,
+              title,
+              permalink: canonicalPermalink,
+              metadata: meta
+            },
+            $currentDate: { updatedAt: true }
           },
-          $currentDate: { updatedAt: true }
-        },
-        { upsert: true }
-      ).exec();
+          { upsert: true }
+        )
+        .exec();
 
       const updated = (await this.imslpModel.findOne({ workId }).lean().exec()) as
         | (ImslpWork & { metadata?: Record<string, unknown> })
@@ -735,8 +757,6 @@ except Exception:
         };
         const url = buildUrl(permalinkOrSlug);
         const html: string = await new Promise((resolve, reject) => {
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const https = require('node:https');
           const req = https.get(url, (res: any) => {
             let data = '';
             res.setEncoding('utf8');

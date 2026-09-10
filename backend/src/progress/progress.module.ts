@@ -6,4 +6,3 @@ import { ProgressService } from './progress.service';
   exports: [ProgressService]
 })
 export class ProgressModule {}
-

@@ -1,4 +1,9 @@
-import { comparisonCropRects, cropForLevel, padAndClamp, staffBandWithinContext } from './scanner-crop';
+import {
+  comparisonCropRects,
+  cropForLevel,
+  padAndClamp,
+  staffBandWithinContext
+} from './scanner-crop';
 
 const IMAGE = { width: 1000, height: 800 };
 

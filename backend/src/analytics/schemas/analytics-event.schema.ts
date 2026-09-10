@@ -13,7 +13,12 @@ export class AnalyticsEvent {
   @Prop({ required: true, index: true })
   eventTime!: Date;
 
-  @Prop({ type: String, enum: ['frontend', 'backend', 'score_editor_api'], required: true, index: true })
+  @Prop({
+    type: String,
+    enum: ['frontend', 'backend', 'score_editor_api'],
+    required: true,
+    index: true
+  })
   sourceApp!: AnalyticsSourceApp;
 
   @Prop({ type: String, default: null, index: true })

@@ -41,10 +41,7 @@ const CATALOG_EVENTS = new Set<AnalyticsEventName>([
   'revision_rated',
   'score_downloaded'
 ]);
-const ENGAGEMENT_EVENTS = new Set<AnalyticsEventName>([
-  ...EDITOR_EVENTS,
-  ...CATALOG_EVENTS
-]);
+const ENGAGEMENT_EVENTS = new Set<AnalyticsEventName>([...EDITOR_EVENTS, ...CATALOG_EVENTS]);
 
 const FUNNEL_EVENT_NAMES: AnalyticsEventName[] = [
   'signup_completed',
@@ -321,7 +318,8 @@ export interface AnalyticsEditorMetrics {
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
-  private readonly verboseTrace = (process.env.ANALYTICS_TRACE_VERBOSE || '').trim().toLowerCase() === 'true';
+  private readonly verboseTrace =
+    (process.env.ANALYTICS_TRACE_VERBOSE || '').trim().toLowerCase() === 'true';
 
   constructor(
     @InjectModel(AnalyticsEvent.name)
@@ -340,7 +338,10 @@ export class AnalyticsService {
     private readonly analyticsDailyRollupModel?: Model<AnalyticsDailyRollupDocument>
   ) {}
 
-  getRequestContext(req?: Request | RequestWithId, overrides?: Partial<AnalyticsRequestContext>): AnalyticsRequestContext {
+  getRequestContext(
+    req?: Request | RequestWithId,
+    overrides?: Partial<AnalyticsRequestContext>
+  ): AnalyticsRequestContext {
     const requestWithId = req as (RequestWithId & { traceId?: string }) | undefined;
     const header = (name: string): string | undefined => {
       const value = req?.headers?.[name];
@@ -472,7 +473,9 @@ export class AnalyticsService {
     try {
       await this.track(event);
     } catch (error) {
-      this.logger.warn(`Analytics track failed for ${event.eventName}: ${this.readableError(error)}`);
+      this.logger.warn(
+        `Analytics track failed for ${event.eventName}: ${this.readableError(error)}`
+      );
     }
   }
 
@@ -573,11 +576,7 @@ export class AnalyticsService {
     const timezone = this.validateTimezone(params?.timezone ?? 'America/New_York');
     const bucket = params?.bucket ?? 'day';
 
-    if (
-      bucket === 'day' &&
-      excludeAdmins &&
-      this.analyticsDailyRollupModel
-    ) {
+    if (bucket === 'day' && excludeAdmins && this.analyticsDailyRollupModel) {
       return this.getTimeseriesFromRollups({ from, to, excludeAdmins, timezone, bucket });
     }
 
@@ -904,7 +903,8 @@ export class AnalyticsService {
       firstLoadCount += 1;
 
       const firstRevision = userEvents.find(
-        (event) => event.eventName === 'editor_revision_saved' && event.eventTime >= firstLoad.eventTime
+        (event) =>
+          event.eventName === 'editor_revision_saved' && event.eventTime >= firstLoad.eventTime
       );
       if (!firstRevision) continue;
       firstRevisionCount += 1;
@@ -936,7 +936,8 @@ export class AnalyticsService {
       {
         key: 'returned_next_week',
         count: returnedNextWeekCount,
-        conversionFromPrevious: firstRevisionCount > 0 ? returnedNextWeekCount / firstRevisionCount : 0
+        conversionFromPrevious:
+          firstRevisionCount > 0 ? returnedNextWeekCount / firstRevisionCount : 0
       }
     ];
 
@@ -1025,11 +1026,14 @@ export class AnalyticsService {
       values.sort((a, b) => a - b);
     }
 
-    const cohorts = new Map<string, {
-      cohortStart: Date;
-      activatedUsers: number;
-      retained: Record<RetentionWindow, number>;
-    }>();
+    const cohorts = new Map<
+      string,
+      {
+        cohortStart: Date;
+        activatedUsers: number;
+        retained: Record<RetentionWindow, number>;
+      }
+    >();
 
     for (const [userId, activationDate] of activationByUser.entries()) {
       const cohortStart = this.floorToBucket(activationDate, 'week', timezone);
@@ -1086,10 +1090,7 @@ export class AnalyticsService {
     };
   }
 
-  async getCatalogStats(params?: {
-    from?: Date;
-    to?: Date;
-  }): Promise<AnalyticsCatalogStats> {
+  async getCatalogStats(params?: { from?: Date; to?: Date }): Promise<AnalyticsCatalogStats> {
     const to = params?.to ?? new Date();
     const from = params?.from ?? new Date(to.getTime() - 28 * DAY_MS);
 
@@ -1102,14 +1103,15 @@ export class AnalyticsService {
       };
     }
 
-    const [worksTotal, sourcesTotal, revisionsTotal, worksNew, sourcesNew, revisionsNew] = await Promise.all([
-      this.workModel.countDocuments({}).exec(),
-      this.sourceModel.countDocuments({}).exec(),
-      this.sourceRevisionModel.countDocuments({}).exec(),
-      this.workModel.countDocuments({ createdAt: { $gte: from, $lt: to } }).exec(),
-      this.sourceModel.countDocuments({ createdAt: { $gte: from, $lt: to } }).exec(),
-      this.sourceRevisionModel.countDocuments({ createdAt: { $gte: from, $lt: to } }).exec()
-    ]);
+    const [worksTotal, sourcesTotal, revisionsTotal, worksNew, sourcesNew, revisionsNew] =
+      await Promise.all([
+        this.workModel.countDocuments({}).exec(),
+        this.sourceModel.countDocuments({}).exec(),
+        this.sourceRevisionModel.countDocuments({}).exec(),
+        this.workModel.countDocuments({ createdAt: { $gte: from, $lt: to } }).exec(),
+        this.sourceModel.countDocuments({ createdAt: { $gte: from, $lt: to } }).exec(),
+        this.sourceRevisionModel.countDocuments({ createdAt: { $gte: from, $lt: to } }).exec()
+      ]);
 
     return {
       from: from.toISOString(),
@@ -1209,7 +1211,11 @@ export class AnalyticsService {
     };
 
     const normalizeOutcome = (value: unknown): 'success' | 'failure' => {
-      return String(value || '').trim().toLowerCase() === 'success' ? 'success' : 'failure';
+      return String(value || '')
+        .trim()
+        .toLowerCase() === 'success'
+        ? 'success'
+        : 'failure';
     };
 
     const ensurePoint = (key: string): MutablePoint => {
@@ -1349,14 +1355,17 @@ export class AnalyticsService {
         sessions: summary.sessions,
         documentsLoaded: summary.documentsLoaded,
         documentLoadFailures: summary.documentLoadFailures,
-        documentLoadFailureRate: documentLoadAttempts > 0 ? summary.documentLoadFailures / documentLoadAttempts : 0,
+        documentLoadFailureRate:
+          documentLoadAttempts > 0 ? summary.documentLoadFailures / documentLoadAttempts : 0,
         aiRequests: summary.aiRequests,
         aiFailures: summary.aiFailures,
         aiFailureRate: summary.aiRequests > 0 ? summary.aiFailures / summary.aiRequests : 0,
         patchApplyAttempts: summary.patchApplyAttempts,
         patchApplyFailures: summary.patchApplyFailures,
         patchApplyFailureRate:
-          summary.patchApplyAttempts > 0 ? summary.patchApplyFailures / summary.patchApplyAttempts : 0,
+          summary.patchApplyAttempts > 0
+            ? summary.patchApplyFailures / summary.patchApplyAttempts
+            : 0,
         aiDurationAvgMs: this.computeAverage(summary.aiDurations),
         aiDurationP95Ms: this.computePercentile(summary.aiDurations, 0.95)
       },
@@ -1537,29 +1546,17 @@ export class AnalyticsService {
               _id: '$userId',
               wae: {
                 $max: {
-                  $cond: [
-                    { $in: ['$eventName', Array.from(EDITOR_EVENTS)] },
-                    1,
-                    0
-                  ]
+                  $cond: [{ $in: ['$eventName', Array.from(EDITOR_EVENTS)] }, 1, 0]
                 }
               },
               wacu: {
                 $max: {
-                  $cond: [
-                    { $in: ['$eventName', Array.from(CATALOG_EVENTS)] },
-                    1,
-                    0
-                  ]
+                  $cond: [{ $in: ['$eventName', Array.from(CATALOG_EVENTS)] }, 1, 0]
                 }
               },
               weu: {
                 $max: {
-                  $cond: [
-                    { $in: ['$eventName', Array.from(ENGAGEMENT_EVENTS)] },
-                    1,
-                    0
-                  ]
+                  $cond: [{ $in: ['$eventName', Array.from(ENGAGEMENT_EVENTS)] }, 1, 0]
                 }
               }
             }
@@ -1658,18 +1655,14 @@ export class AnalyticsService {
       projection.properties = 1;
     }
 
-    const docs = await this.analyticsEventModel
-      .find(match, projection)
-      .lean()
-      .exec();
+    const docs = await this.analyticsEventModel.find(match, projection).lean().exec();
 
     return docs.map((doc) => ({
       eventName: doc.eventName as AnalyticsEventName,
       eventTime: new Date(doc.eventTime),
       userId: typeof doc.userId === 'string' ? doc.userId : null,
       properties: params.includeProperties
-        ?
-        doc.properties && typeof doc.properties === 'object' && !Array.isArray(doc.properties)
+        ? doc.properties && typeof doc.properties === 'object' && !Array.isArray(doc.properties)
           ? (doc.properties as Record<string, unknown>)
           : undefined
         : undefined
@@ -1735,11 +1728,17 @@ export class AnalyticsService {
     }
     const sorted = [...values].sort((a, b) => a - b);
     const normalized = Math.min(1, Math.max(0, percentile));
-    const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(normalized * sorted.length) - 1));
+    const index = Math.min(
+      sorted.length - 1,
+      Math.max(0, Math.ceil(normalized * sorted.length) - 1)
+    );
     return Math.round(sorted[index]);
   }
 
-  private getZonedDateComponents(date: Date, timezone: string): { year: number; month: number; day: number } {
+  private getZonedDateComponents(
+    date: Date,
+    timezone: string
+  ): { year: number; month: number; day: number } {
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
       year: 'numeric',
@@ -1767,12 +1766,14 @@ export class AnalyticsService {
     }
   }
 
-  private async aggregateCountsByEvent(match: Record<string, unknown>): Promise<Record<string, number>> {
+  private async aggregateCountsByEvent(
+    match: Record<string, unknown>
+  ): Promise<Record<string, number>> {
     const rows = await this.analyticsEventModel
-      .aggregate<{ _id: string; count: number }>([
-        { $match: match },
-        { $group: { _id: '$eventName', count: { $sum: 1 } } }
-      ])
+      .aggregate<{
+        _id: string;
+        count: number;
+      }>([{ $match: match }, { $group: { _id: '$eventName', count: { $sum: 1 } } }])
       .exec();
 
     const result: Record<string, number> = {};
@@ -1782,7 +1783,10 @@ export class AnalyticsService {
     return result;
   }
 
-  private async aggregateUniqueUsers(match: Record<string, unknown>, eventNames: string[]): Promise<number> {
+  private async aggregateUniqueUsers(
+    match: Record<string, unknown>,
+    eventNames: string[]
+  ): Promise<number> {
     const rows = await this.analyticsEventModel
       .aggregate<{ count: number }>([
         {
@@ -1800,7 +1804,9 @@ export class AnalyticsService {
     return rows[0]?.count ?? 0;
   }
 
-  private async aggregateDownloadsByFormat(match: Record<string, unknown>): Promise<Record<string, number>> {
+  private async aggregateDownloadsByFormat(
+    match: Record<string, unknown>
+  ): Promise<Record<string, number>> {
     const rows = await this.analyticsEventModel
       .aggregate<{ _id: string; count: number }>([
         {
@@ -1884,9 +1890,7 @@ export class AnalyticsService {
     const eventTime = this.coerceEventTime(input.eventTime, isTrustedIngest);
     const actor = input.actor ?? {};
     const userRole = this.resolveUserRole(actor);
-    const sourceApp =
-      this.coerceSourceApp(input.requestContext?.sourceApp) ??
-      'backend';
+    const sourceApp = this.coerceSourceApp(input.requestContext?.sourceApp) ?? 'backend';
 
     return {
       eventName,
@@ -1990,13 +1994,20 @@ export class AnalyticsService {
     return JSON.parse(serialized) as Record<string, unknown>;
   }
 
-  private sanitizePropertiesForEvent(eventName: AnalyticsEventName, value: unknown): Record<string, unknown> {
+  private sanitizePropertiesForEvent(
+    eventName: AnalyticsEventName,
+    value: unknown
+  ): Record<string, unknown> {
     const source = this.sanitizePropertiesObject(value);
 
     switch (eventName) {
       case 'signup_completed':
         return {
-          signup_method: this.pickEnum(source.signup_method, ['email', 'google', 'github', 'other'], 'other')
+          signup_method: this.pickEnum(
+            source.signup_method,
+            ['email', 'google', 'github', 'other'],
+            'other'
+          )
         };
       case 'first_score_loaded':
         return {
@@ -2018,7 +2029,11 @@ export class AnalyticsService {
           work_id: this.pickOptionalId(source.work_id),
           source_id: this.pickOptionalId(source.source_id),
           revision_id: this.pickOptionalId(source.revision_id),
-          save_mode: this.pickEnum(source.save_mode, ['manual', 'autosave', 'ai_patch_apply'], 'manual')
+          save_mode: this.pickEnum(
+            source.save_mode,
+            ['manual', 'autosave', 'ai_patch_apply'],
+            'manual'
+          )
         };
       case 'catalog_search_performed':
         return {
@@ -2144,7 +2159,11 @@ export class AnalyticsService {
           editor_session_id: this.pickOptionalId(source.editor_session_id),
           duration_ms: this.pickOptionalInteger(source.duration_ms, 0, 86_400_000),
           documents_loaded: this.pickOptionalInteger(source.documents_loaded, 0, 10_000),
-          document_load_failures: this.pickOptionalInteger(source.document_load_failures, 0, 10_000),
+          document_load_failures: this.pickOptionalInteger(
+            source.document_load_failures,
+            0,
+            10_000
+          ),
           ai_requests: this.pickOptionalInteger(source.ai_requests, 0, 50_000),
           ai_failures: this.pickOptionalInteger(source.ai_failures, 0, 50_000),
           patch_applies: this.pickOptionalInteger(source.patch_applies, 0, 50_000),

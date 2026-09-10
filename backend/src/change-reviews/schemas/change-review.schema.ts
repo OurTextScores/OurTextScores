@@ -44,7 +44,12 @@ export class ChangeReview {
   @Prop({ trim: true })
   summary?: string;
 
-  @Prop({ required: true, enum: ['draft', 'open', 'closed', 'withdrawn'], default: 'draft', index: true })
+  @Prop({
+    required: true,
+    enum: ['draft', 'open', 'closed', 'withdrawn'],
+    default: 'draft',
+    index: true
+  })
   status!: ChangeReviewStatus;
 
   @Prop({ required: true, min: 0, default: 0 })
@@ -84,9 +89,9 @@ ChangeReviewSchema.index(
     unique: true,
     partialFilterExpression: {
       branchName: { $exists: true, $ne: null },
-      status: { $in: ['open', 'closed'] },
-    },
-  },
+      status: { $in: ['open', 'closed'] }
+    }
+  }
 );
 ChangeReviewSchema.index(
   {
@@ -95,12 +100,12 @@ ChangeReviewSchema.index(
     sourceId: 1,
     baseRevisionId: 1,
     headRevisionId: 1,
-    status: 1,
+    status: 1
   },
   {
     unique: true,
     partialFilterExpression: {
-      status: { $in: ['draft', 'open'] },
-    },
-  },
+      status: { $in: ['draft', 'open'] }
+    }
+  }
 );

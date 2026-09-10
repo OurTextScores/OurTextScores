@@ -1,8 +1,4 @@
-import {
-  ExecutionContext,
-  ForbiddenException,
-  UnauthorizedException
-} from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import {
   PUBLIC_CHANGE_REVIEW_ID,
   PUBLIC_EXAMPLE_VIEWER_ID,
@@ -13,11 +9,10 @@ import { PublicExampleAccessGuard } from './public-example-access.guard';
 describe('PublicExampleAccessGuard', () => {
   const guard = new PublicExampleAccessGuard();
 
-  function context(input: {
-    method?: string;
-    params?: Record<string, string>;
-    userId?: string;
-  }): { execution: ExecutionContext; request: any } {
+  function context(input: { method?: string; params?: Record<string, string>; userId?: string }): {
+    execution: ExecutionContext;
+    request: any;
+  } {
     const request = {
       method: input.method || 'GET',
       params: input.params || {},
@@ -31,15 +26,15 @@ describe('PublicExampleAccessGuard', () => {
     };
   }
 
-  it.each([
-    { reviewId: PUBLIC_CHANGE_REVIEW_ID },
-    { jobId: PUBLIC_SCANNER_JOB_ID }
-  ])('allows anonymous reads of a curated example', (params) => {
-    const { execution, request } = context({ params });
+  it.each([{ reviewId: PUBLIC_CHANGE_REVIEW_ID }, { jobId: PUBLIC_SCANNER_JOB_ID }])(
+    'allows anonymous reads of a curated example',
+    (params) => {
+      const { execution, request } = context({ params });
 
-    expect(guard.canActivate(execution)).toBe(true);
-    expect(request.user).toEqual({ userId: PUBLIC_EXAMPLE_VIEWER_ID });
-  });
+      expect(guard.canActivate(execution)).toBe(true);
+      expect(request.user).toEqual({ userId: PUBLIC_EXAMPLE_VIEWER_ID });
+    }
+  );
 
   it('keeps non-example resources private', () => {
     const { execution } = context({ params: { jobId: 'private-job' } });

@@ -28,10 +28,7 @@ import { ScannerModule } from './scanner/scanner.module';
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const uri = config.get<string>(
-          'MONGO_URI',
-          'mongodb://localhost:27017/ourtextscores'
-        );
+        const uri = config.get<string>('MONGO_URI', 'mongodb://localhost:27017/ourtextscores');
 
         return {
           uri,

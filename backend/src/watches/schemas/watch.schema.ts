@@ -16,4 +16,3 @@ export class WatchSubscription {
 export type WatchSubscriptionDocument = HydratedDocument<WatchSubscription>;
 export const WatchSubscriptionSchema = SchemaFactory.createForClass(WatchSubscription);
 WatchSubscriptionSchema.index({ userId: 1, workId: 1, sourceId: 1 }, { unique: true });
-

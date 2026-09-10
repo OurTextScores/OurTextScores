@@ -42,7 +42,12 @@ class PdmxSubsets {
 
 @Schema({ _id: false })
 class PdmxReview {
-  @Prop({ trim: true, enum: ['unknown', 'acceptable', 'unacceptable'], default: 'unknown', index: true })
+  @Prop({
+    trim: true,
+    enum: ['unknown', 'acceptable', 'unacceptable'],
+    default: 'unknown',
+    index: true
+  })
   qualityStatus!: 'unknown' | 'acceptable' | 'unacceptable';
 
   @Prop({ default: false, index: true })
@@ -63,7 +68,12 @@ class PdmxReview {
 
 @Schema({ _id: false })
 class PdmxImport {
-  @Prop({ trim: true, enum: ['not_imported', 'importing', 'imported', 'failed'], default: 'not_imported', index: true })
+  @Prop({
+    trim: true,
+    enum: ['not_imported', 'importing', 'imported', 'failed'],
+    default: 'not_imported',
+    index: true
+  })
   status!: 'not_imported' | 'importing' | 'imported' | 'failed';
 
   @Prop({ trim: true })
@@ -176,7 +186,10 @@ export class PdmxRecord {
   @Prop({ type: PdmxSubsetsSchema, default: {} })
   subsets!: PdmxSubsets;
 
-  @Prop({ type: PdmxReviewSchema, default: { qualityStatus: 'unknown', excludedFromSearch: false } })
+  @Prop({
+    type: PdmxReviewSchema,
+    default: { qualityStatus: 'unknown', excludedFromSearch: false }
+  })
   review!: PdmxReview;
 
   @Prop({ type: PdmxImportSchema, default: { status: 'not_imported' } })
@@ -188,4 +201,9 @@ export const PdmxRecordSchema = SchemaFactory.createForClass(PdmxRecord);
 
 PdmxRecordSchema.index({ 'review.excludedFromSearch': 1, 'review.qualityStatus': 1 });
 PdmxRecordSchema.index({ 'subsets.noLicenseConflict': 1, 'subsets.allValid': 1 });
-PdmxRecordSchema.index({ title: 'text', songName: 'text', composerName: 'text', artistName: 'text' });
+PdmxRecordSchema.index({
+  title: 'text',
+  songName: 'text',
+  composerName: 'text',
+  artistName: 'text'
+});

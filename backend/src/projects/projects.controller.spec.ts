@@ -29,7 +29,10 @@ describe('ProjectsController (unit)', () => {
   it('list forwards query and optional user', async () => {
     service.listProjects.mockResolvedValue({ projects: [], total: 0, limit: 20, offset: 0 } as any);
 
-    const result = await controller.list('10', '5', 'active', 'bach', { userId: 'u1', roles: ['user'] } as any);
+    const result = await controller.list('10', '5', 'active', 'bach', {
+      userId: 'u1',
+      roles: ['user']
+    } as any);
 
     expect(service.listProjects).toHaveBeenCalledWith(
       { limit: 10, offset: 5, status: 'active', q: 'bach' },
@@ -41,7 +44,18 @@ describe('ProjectsController (unit)', () => {
   it('create passes actor and payload', async () => {
     service.createProject.mockResolvedValue({ projectId: 'prj_1' } as any);
 
-    const out = await controller.create('My Project', undefined, 'desc', undefined, ['u2'], 'public', 'google', 'https://docs.google.com/spreadsheets/d/e/abc/pubhtml', 'https://docs.google.com/spreadsheets/d/abc/edit', { userId: 'u1', roles: [] } as any);
+    const out = await controller.create(
+      'My Project',
+      undefined,
+      'desc',
+      undefined,
+      ['u2'],
+      'public',
+      'google',
+      'https://docs.google.com/spreadsheets/d/e/abc/pubhtml',
+      'https://docs.google.com/spreadsheets/d/abc/edit',
+      { userId: 'u1', roles: [] } as any
+    );
 
     expect(service.createProject).toHaveBeenCalledWith(
       {
@@ -70,19 +84,26 @@ describe('ProjectsController (unit)', () => {
   it('updateRow passes values', async () => {
     service.updateRow.mockResolvedValue({ rowId: 'row_1', rowVersion: 2 } as any);
 
-    const out = await controller.updateRow(
+    const out = await controller.updateRow('prj_1', 'row_1', { rowVersion: 1, notes: 'updated' }, {
+      userId: 'u1',
+      roles: ['admin']
+    } as any);
+
+    expect(service.updateRow).toHaveBeenCalledWith(
       'prj_1',
       'row_1',
       { rowVersion: 1, notes: 'updated' },
-      { userId: 'u1', roles: ['admin'] } as any
+      { userId: 'u1', roles: ['admin'] }
     );
-
-    expect(service.updateRow).toHaveBeenCalledWith('prj_1', 'row_1', { rowVersion: 1, notes: 'updated' }, { userId: 'u1', roles: ['admin'] });
     expect(out).toEqual({ rowId: 'row_1', rowVersion: 2 });
   });
 
   it('createSource forwards payload', async () => {
-    service.createInternalSource.mockResolvedValue({ ok: true, workId: '100', sourceId: 'src_1' } as any);
+    service.createInternalSource.mockResolvedValue({
+      ok: true,
+      workId: '100',
+      sourceId: 'src_1'
+    } as any);
 
     const out = await controller.createSource(
       'prj_1',

@@ -94,11 +94,9 @@ describe('API Smoke Tests (running server)', () => {
     });
 
     it('GET /api/works/:workId should show license metadata', async () => {
-      const response = await request(API_BASE)
-        .get(`/api/works/${createdWorkId}`)
-        .expect(200);
+      const response = await request(API_BASE).get(`/api/works/${createdWorkId}`).expect(200);
 
-      const source = response.body.sources.find(s => s.sourceId === createdSourceId);
+      const source = response.body.sources.find((s) => s.sourceId === createdSourceId);
       expect(source).toBeDefined();
       expect(source.license).toBe('CC-BY-4.0');
       expect(source.licenseAttribution).toBe('Test Author');
@@ -119,7 +117,7 @@ describe('API Smoke Tests (running server)', () => {
   describe('Revisions & Derivatives', () => {
     it('GET /api/works/:workId/sources/:sourceId/revisions should list revisions', async () => {
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const response = await request(API_BASE)
         .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/revisions`)

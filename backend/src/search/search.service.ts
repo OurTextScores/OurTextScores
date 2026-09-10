@@ -47,7 +47,9 @@ export class SearchService implements OnModuleInit {
     const apiKey = this.config.get<string>('MEILI_MASTER_KEY');
 
     if (!host || !apiKey) {
-      this.logger.warn('MeiliSearch not configured (MEILI_HOST or MEILI_MASTER_KEY missing). Search disabled.');
+      this.logger.warn(
+        'MeiliSearch not configured (MEILI_HOST or MEILI_MASTER_KEY missing). Search disabled.'
+      );
       return;
     }
 
@@ -77,12 +79,7 @@ export class SearchService implements OnModuleInit {
 
     try {
       await this.worksIndex.updateSettings({
-        searchableAttributes: [
-          'title',
-          'composer',
-          'catalogNumber',
-          'workId'
-        ],
+        searchableAttributes: ['title', 'composer', 'catalogNumber', 'workId'],
         filterableAttributes: [
           'sourceCount',
           'availableFormats',
@@ -90,10 +87,7 @@ export class SearchService implements OnModuleInit {
           'hasVerifiedSources',
           'hasFlaggedSources'
         ],
-        sortableAttributes: [
-          'latestRevisionAt',
-          'sourceCount'
-        ],
+        sortableAttributes: ['latestRevisionAt', 'sourceCount'],
         displayedAttributes: [
           'workId',
           'title',
@@ -105,14 +99,7 @@ export class SearchService implements OnModuleInit {
           'hasVerifiedSources',
           'latestRevisionAt'
         ],
-        rankingRules: [
-          'words',
-          'typo',
-          'proximity',
-          'attribute',
-          'sort',
-          'exactness'
-        ]
+        rankingRules: ['words', 'typo', 'proximity', 'attribute', 'sort', 'exactness']
       });
     } catch (err: any) {
       this.logger.error(`Failed to configure index settings: ${err.message}`);
@@ -148,7 +135,7 @@ export class SearchService implements OnModuleInit {
     }
 
     try {
-      const documents = works.map(w => ({ ...w, id: w.workId }));
+      const documents = works.map((w) => ({ ...w, id: w.workId }));
       await this.worksIndex.addDocuments(documents, { primaryKey: 'id' });
       this.logger.log(`Batch indexed ${works.length} works`);
     } catch (err: any) {
@@ -175,12 +162,15 @@ export class SearchService implements OnModuleInit {
   /**
    * Search for works
    */
-  async searchWorks(query: string, options?: {
-    limit?: number;
-    offset?: number;
-    filter?: string;
-    sort?: string[];
-  }): Promise<{
+  async searchWorks(
+    query: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      filter?: string;
+      sort?: string[];
+    }
+  ): Promise<{
     hits: WorkSearchDocument[];
     estimatedTotalHits: number;
     processingTimeMs: number;

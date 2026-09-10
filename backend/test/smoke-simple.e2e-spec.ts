@@ -29,18 +29,14 @@ describe('Simple Smoke Tests', () => {
 
   describe('Core API Endpoints', () => {
     it('GET /api/health - health check should return ok', async () => {
-      const response = await request(API_BASE)
-        .get('/api/health')
-        .expect(200);
+      const response = await request(API_BASE).get('/api/health').expect(200);
 
       expect(response.body.status).toBe('ok');
       console.log(`  ✓ Health check OK at ${response.body.time}`);
     });
 
     it('GET /api/works - works list should be accessible', async () => {
-      const response = await request(API_BASE)
-        .get('/api/works')
-        .expect(200);
+      const response = await request(API_BASE).get('/api/works').expect(200);
 
       expect(Array.isArray(response.body)).toBe(true);
       console.log(`  ✓ Works list accessible (${response.body.length} works)`);
@@ -60,16 +56,10 @@ describe('Simple Smoke Tests', () => {
 
     it('POST /api/works - work creation should validate input', async () => {
       // Missing workId should return 400
-      await request(API_BASE)
-        .post('/api/works')
-        .send({})
-        .expect(400);
+      await request(API_BASE).post('/api/works').send({}).expect(400);
 
       // Invalid workId should return 400
-      await request(API_BASE)
-        .post('/api/works')
-        .send({ workId: 'invalid' })
-        .expect(400);
+      await request(API_BASE).post('/api/works').send({ workId: 'invalid' }).expect(400);
 
       console.log('  ✓ Work creation validates input correctly');
     });

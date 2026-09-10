@@ -16,16 +16,16 @@ describe('AuthRequiredGuard', () => {
         {
           provide: AuthService,
           useValue: {
-            requireUser: jest.fn(),
-          },
+            requireUser: jest.fn()
+          }
         },
         {
           provide: UsersService,
           useValue: {
-            getOrCreateByEmail: jest.fn(),
-          },
-        },
-      ],
+            getOrCreateByEmail: jest.fn()
+          }
+        }
+      ]
     }).compile();
 
     guard = module.get<AuthRequiredGuard>(AuthRequiredGuard);
@@ -35,13 +35,13 @@ describe('AuthRequiredGuard', () => {
 
   const createMockExecutionContext = (authHeader?: string): ExecutionContext => {
     const request = {
-      headers: authHeader ? { authorization: authHeader } : {},
+      headers: authHeader ? { authorization: authHeader } : {}
     };
 
     return {
       switchToHttp: () => ({
-        getRequest: () => request,
-      }),
+        getRequest: () => request
+      })
     } as ExecutionContext;
   };
 
@@ -70,16 +70,16 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       };
 
       authService.requireUser.mockReturnValue(principal);
@@ -94,7 +94,7 @@ describe('AuthRequiredGuard', () => {
         userId: 'user123',
         email: 'user@example.com',
         name: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       });
     });
 
@@ -103,16 +103,16 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Token Name',
+        name: 'Token Name'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Database Name',
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.requireUser.mockReturnValue(principal);
@@ -128,16 +128,16 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Principal Name',
+        name: 'Principal Name'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: null,
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.requireUser.mockReturnValue(principal);
@@ -153,16 +153,16 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: [],
+        roles: []
       };
 
       authService.requireUser.mockReturnValue(principal);
@@ -178,16 +178,16 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: null, // Invalid roles
+        roles: null // Invalid roles
       };
 
       authService.requireUser.mockReturnValue(principal);
@@ -203,8 +203,8 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
-        name: 'Service Account',
+        userId: 'test-user-id',
+        name: 'Service Account'
         // No email
       };
 
@@ -222,16 +222,16 @@ describe('AuthRequiredGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: { toString: () => 'objectid456' }, // ObjectId-like object
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.requireUser.mockReturnValue(principal);
@@ -256,16 +256,16 @@ describe('AuthRequiredGuard', () => {
       const context = createMockExecutionContext('Bearer test-token-123');
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'User',
+        name: 'User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'User',
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.requireUser.mockReturnValue(principal);

@@ -143,7 +143,7 @@ describe('ProjectsService (unit, mocked models)', () => {
         status: 'active',
         rowCount: 0,
         linkedSourceCount: 0,
-        createdBy: 'u1',
+        createdBy: 'u1'
       })
     } as any);
 
@@ -161,19 +161,23 @@ describe('ProjectsService (unit, mocked models)', () => {
   });
 
   it('updateRow blocks verified toggle when actor is not source owner/lead/admin', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active'
-    }));
-    rowModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      rowId: 'row_1',
-      verified: false,
-      rowVersion: 1
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active'
+      })
+    );
+    rowModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        rowId: 'row_1',
+        verified: false,
+        rowVersion: 1
+      })
+    );
 
     await expect(
       service.updateRow(
@@ -186,20 +190,24 @@ describe('ProjectsService (unit, mocked models)', () => {
   });
 
   it('updateRow throws conflict when rowVersion does not match', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active'
-    }));
-    rowModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      rowId: 'row_1',
-      notes: 'before',
-      rowVersion: 1,
-      verified: false
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active'
+      })
+    );
+    rowModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        rowId: 'row_1',
+        notes: 'before',
+        rowVersion: 1,
+        verified: false
+      })
+    );
     rowModel.findOneAndUpdate.mockReturnValueOnce(leanExec(null));
 
     await expect(
@@ -213,20 +221,24 @@ describe('ProjectsService (unit, mocked models)', () => {
   });
 
   it('createInternalSource returns existing linked source without creating new source', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      title: 'Proj',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active'
-    }));
-    rowModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      rowId: 'row_1',
-      linkedWorkId: '100',
-      linkedSourceId: 'src_1'
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        title: 'Proj',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active'
+      })
+    );
+    rowModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        rowId: 'row_1',
+        linkedWorkId: '100',
+        linkedSourceId: 'src_1'
+      })
+    );
 
     const out = await service.createInternalSource(
       'prj_1',
@@ -235,29 +247,32 @@ describe('ProjectsService (unit, mocked models)', () => {
       { userId: 'member_1', roles: ['user'] }
     );
 
-    expect(out).toEqual(
-      expect.objectContaining({ ok: true, workId: '100', sourceId: 'src_1' })
-    );
+    expect(out).toEqual(expect.objectContaining({ ok: true, workId: '100', sourceId: 'src_1' }));
     expect(sourceModel.create).not.toHaveBeenCalled();
   });
 
   it('createInternalSource uses external filename as label and includes URLs in description', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      title: 'Proj',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active'
-    }));
-    rowModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      rowId: 'row_1',
-      externalScoreUrl: 'https://github.com/DCMLab/schema_annotation_data/blob/master/data/mozart_sonatas/mscore/K279-1.mscx',
-      imslpUrl: 'https://imslp.org/wiki/Piano_Sonata_No.1',
-      notes: 'curation note',
-      hasReferencePdf: false
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        title: 'Proj',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active'
+      })
+    );
+    rowModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        rowId: 'row_1',
+        externalScoreUrl:
+          'https://github.com/DCMLab/schema_annotation_data/blob/master/data/mozart_sonatas/mscore/K279-1.mscx',
+        imslpUrl: 'https://imslp.org/wiki/Piano_Sonata_No.1',
+        notes: 'curation note',
+        hasReferencePdf: false
+      })
+    );
 
     sourceModel.exists.mockResolvedValue(false);
     sourceModel.create.mockResolvedValue({} as any);
@@ -283,7 +298,9 @@ describe('ProjectsService (unit, mocked models)', () => {
     expect(sourceModel.create).toHaveBeenCalledWith(
       expect.objectContaining({
         label: 'K279-1.mscx',
-        description: expect.stringContaining('External source: https://github.com/DCMLab/schema_annotation_data/blob/master/data/mozart_sonatas/mscore/K279-1.mscx')
+        description: expect.stringContaining(
+          'External source: https://github.com/DCMLab/schema_annotation_data/blob/master/data/mozart_sonatas/mscore/K279-1.mscx'
+        )
       })
     );
     expect(sourceModel.create).toHaveBeenCalledWith(
@@ -295,22 +312,26 @@ describe('ProjectsService (unit, mocked models)', () => {
   });
 
   it('createInternalSource resolves workId via IMSLP URL using saveWorkByImslpUrl', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      title: 'Proj',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active'
-    }));
-    rowModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      rowId: 'row_1',
-      externalScoreUrl: 'https://example.org/source.mscx',
-      imslpUrl: 'https://imslp.org/wiki/Example_Work',
-      notes: '',
-      hasReferencePdf: false
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        title: 'Proj',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active'
+      })
+    );
+    rowModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        rowId: 'row_1',
+        externalScoreUrl: 'https://example.org/source.mscx',
+        imslpUrl: 'https://imslp.org/wiki/Example_Work',
+        notes: '',
+        hasReferencePdf: false
+      })
+    );
 
     worksService.saveWorkByImslpUrl.mockResolvedValueOnce({ work: { workId: '81234' } });
     sourceModel.exists.mockResolvedValue(false);
@@ -333,37 +354,43 @@ describe('ProjectsService (unit, mocked models)', () => {
       { userId: 'member_1', roles: ['user'] }
     );
 
-    expect(worksService.saveWorkByImslpUrl).toHaveBeenCalledWith('https://imslp.org/wiki/Example_Work');
+    expect(worksService.saveWorkByImslpUrl).toHaveBeenCalledWith(
+      'https://imslp.org/wiki/Example_Work'
+    );
     expect(out).toEqual(expect.objectContaining({ ok: true, workId: '81234' }));
   });
 
   it('joinProject adds user to members when eligible', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active',
-      title: 'Project',
-      slug: 'project',
-      description: '',
-      rowCount: 0,
-      linkedSourceCount: 0,
-      createdBy: 'lead_1'
-    }));
-    projectModel.findOneAndUpdate.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1', 'member_2'],
-      visibility: 'public',
-      status: 'active',
-      title: 'Project',
-      slug: 'project',
-      description: '',
-      rowCount: 0,
-      linkedSourceCount: 0,
-      createdBy: 'lead_1'
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active',
+        title: 'Project',
+        slug: 'project',
+        description: '',
+        rowCount: 0,
+        linkedSourceCount: 0,
+        createdBy: 'lead_1'
+      })
+    );
+    projectModel.findOneAndUpdate.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1', 'member_2'],
+        visibility: 'public',
+        status: 'active',
+        title: 'Project',
+        slug: 'project',
+        description: '',
+        rowCount: 0,
+        linkedSourceCount: 0,
+        createdBy: 'lead_1'
+      })
+    );
 
     const out = await service.joinProject('prj_1', { userId: 'member_2', roles: ['user'] });
     expect(projectModel.findOneAndUpdate).toHaveBeenCalledWith(
@@ -375,13 +402,15 @@ describe('ProjectsService (unit, mocked models)', () => {
   });
 
   it('removeSource requires project lead', async () => {
-    projectModel.findOne.mockReturnValueOnce(leanExec({
-      projectId: 'prj_1',
-      leadUserId: 'lead_1',
-      memberUserIds: ['member_1'],
-      visibility: 'public',
-      status: 'active'
-    }));
+    projectModel.findOne.mockReturnValueOnce(
+      leanExec({
+        projectId: 'prj_1',
+        leadUserId: 'lead_1',
+        memberUserIds: ['member_1'],
+        visibility: 'public',
+        status: 'active'
+      })
+    );
 
     await expect(
       service.removeSource('prj_1', 'src_1', { userId: 'member_1', roles: ['user'] })

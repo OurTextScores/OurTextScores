@@ -12,8 +12,8 @@ describe('AdminRequiredGuard', () => {
     const request = { user };
     return {
       switchToHttp: () => ({
-        getRequest: () => request,
-      }),
+        getRequest: () => request
+      })
     } as unknown as ExecutionContext;
   };
 
@@ -44,4 +44,3 @@ describe('AdminRequiredGuard', () => {
     await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
   });
 });
-

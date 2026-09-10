@@ -128,12 +128,8 @@ describe('scanner measure analysis', () => {
 
     expect(candidate.coarseKey).not.toBe(base.coarseKey);
     expect(classifyScannerMeasureDifference(base, candidate)).toEqual(['notation']);
-    expect(base.componentDetails?.notation).toEqual([
-      'C4 at quarter 0, duration 1 quarter'
-    ]);
-    expect(candidate.componentDetails?.notation).toEqual([
-      'D4 at quarter 0, duration 2 quarters'
-    ]);
+    expect(base.componentDetails?.notation).toEqual(['C4 at quarter 0, duration 1 quarter']);
+    expect(candidate.componentDetails?.notation).toEqual(['D4 at quarter 0, duration 2 quarters']);
   });
 
   it('uses ordered backup/forward cursor movement to retain semantic onset', () => {
@@ -267,8 +263,8 @@ describe('scanner measure analysis', () => {
           '<key><fifths>1</fifths></key>' +
           '<time><beats>4</beats><beat-type>4</beat-type></time></attributes>' +
           note({ step: 'C', duration: 16 }) +
-          '</measure>',
-      ),
+          '</measure>'
+      )
     );
     const transcoda = firstDescriptor(
       score(
@@ -278,8 +274,8 @@ describe('scanner measure analysis', () => {
           '<time><beats>4</beats><beat-type>4</beat-type></time>' +
           '<clef><sign>F</sign><line>4</line></clef></attributes>' +
           note({ step: 'C', duration: 40320 }) +
-          '</measure>',
-      ),
+          '</measure>'
+      )
     );
 
     expect(homr.componentHashes.attributes).toBe(transcoda.componentHashes.attributes);
@@ -294,8 +290,8 @@ describe('scanner measure analysis', () => {
           '<attributes><divisions>4</divisions><clef><sign>C</sign><line>3</line></clef></attributes>' +
           note({ step: 'C', duration: 8 }) +
           note({ step: 'D', duration: 8 }) +
-          '</measure>',
-      ),
+          '</measure>'
+      )
     );
     const midBar = firstDescriptor(
       score(
@@ -304,8 +300,8 @@ describe('scanner measure analysis', () => {
           note({ step: 'C', duration: 8 }) +
           '<attributes><clef><sign>C</sign><line>3</line></clef></attributes>' +
           note({ step: 'D', duration: 8 }) +
-          '</measure>',
-      ),
+          '</measure>'
+      )
     );
 
     expect(atStart.componentHashes.attributes).not.toBe(midBar.componentHashes.attributes);

@@ -7,4 +7,3 @@ export const CurrentUser = createParamDecorator(
     return (req as any).user as RequestUser | undefined;
   }
 );
-

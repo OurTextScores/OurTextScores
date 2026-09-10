@@ -69,16 +69,14 @@ const rules: RateLimitRule[] = [
     maxAnonymous: 40,
     maxAuthenticated: 120,
     match: (req) =>
-      req.method === 'GET' &&
-      (/\/textdiff$/.test(req.path) || /\/fossil\/diff$/.test(req.path))
+      req.method === 'GET' && (/\/textdiff$/.test(req.path) || /\/fossil\/diff$/.test(req.path))
   },
   {
     name: 'imslp-refresh',
     windowMs: 15 * 60 * 1000,
     maxAnonymous: 5,
     maxAuthenticated: 20,
-    match: (req) =>
-      req.method === 'POST' && /^\/api\/imslp\/works\/[^/]+\/refresh$/.test(req.path)
+    match: (req) => req.method === 'POST' && /^\/api\/imslp\/works\/[^/]+\/refresh$/.test(req.path)
   }
 ];
 

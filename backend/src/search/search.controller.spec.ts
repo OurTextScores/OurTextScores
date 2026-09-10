@@ -49,10 +49,17 @@ describe('SearchController', () => {
 
       searchService.searchWorks.mockResolvedValue(mockResults);
 
-      const result = await controller.searchWorks('test', undefined, undefined, undefined, undefined, {
-        originalUrl: '/api/search/works',
-        url: '/api/search/works'
-      } as any);
+      const result = await controller.searchWorks(
+        'test',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          originalUrl: '/api/search/works',
+          url: '/api/search/works'
+        } as any
+      );
 
       expect(searchService.searchWorks).toHaveBeenCalledWith('test', {
         limit: 20,

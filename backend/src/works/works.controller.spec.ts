@@ -39,22 +39,22 @@ describe('WorksController (unit)', () => {
     prunePendingSources: jest.fn(),
     deleteAllSources: jest.fn(),
     deleteSource: jest.fn(),
-    textDiffOnDemand: jest.fn(),
+    textDiffOnDemand: jest.fn()
   } as any as jest.Mocked<WorksService>;
   const uploadSourceService = {
     upload: jest.fn(),
-    uploadRevision: jest.fn(),
+    uploadRevision: jest.fn()
   } as any as jest.Mocked<UploadSourceService>;
   const storageService = { getObjectBuffer: jest.fn() } as any as jest.Mocked<StorageService>;
   const fossilService = {} as any as jest.Mocked<FossilService>;
   const progressService = {
-    stream: jest.fn(),
+    stream: jest.fn()
   } as any as jest.Mocked<ProgressService>;
   const analyticsService = {
     toActor: jest.fn(),
     getRequestContext: jest.fn(),
     trackBestEffort: jest.fn(),
-    trackFirstScoreLoadedIfNeeded: jest.fn(),
+    trackFirstScoreLoadedIfNeeded: jest.fn()
   } as any as jest.Mocked<AnalyticsService>;
 
   const controller = new WorksController(
@@ -69,10 +69,7 @@ describe('WorksController (unit)', () => {
     fossilService,
     analyticsService
   );
-  const engagementController = new WorksEngagementController(
-    worksService,
-    analyticsService
-  );
+  const engagementController = new WorksEngagementController(worksService, analyticsService);
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -161,7 +158,10 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1', roles: ['admin'] };
       const result = await controller.deleteSource(workId, sourceId, user as any);
 
-      expect(worksService.deleteSource).toHaveBeenCalledWith(workId, sourceId, { userId: user.userId, roles: user.roles });
+      expect(worksService.deleteSource).toHaveBeenCalledWith(workId, sourceId, {
+        userId: user.userId,
+        roles: user.roles
+      });
       expect(result).toEqual({ removed: true });
     });
   });
@@ -175,21 +175,18 @@ describe('WorksController (unit)', () => {
         sizeBytes: 1,
         checksum: { algorithm: 'sha256', hexDigest: 'x' },
         contentType: 'application/vnd.recordare.musicxml',
-        lastModifiedAt: new Date(),
-      },
+        lastModifiedAt: new Date()
+      }
     });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('data'));
     analyticsService.toActor.mockReturnValue({});
     analyticsService.getRequestContext.mockReturnValue({ sourceApp: 'backend' });
     const { res, headers } = createMockResponse();
-    await downloadsController.downloadNormalized(
-      '1',
-      's',
-      undefined,
-      res as any,
-      undefined,
-      { originalUrl: '/api/works/1/sources/s/normalized.mxl', url: '/api/works/1/sources/s/normalized.mxl', headers: {} } as any
-    );
+    await downloadsController.downloadNormalized('1', 's', undefined, res as any, undefined, {
+      originalUrl: '/api/works/1/sources/s/normalized.mxl',
+      url: '/api/works/1/sources/s/normalized.mxl',
+      headers: {}
+    } as any);
     expect(headers['Content-Type']).toMatch('application/vnd.recordare.musicxml');
     expect(headers['Content-Disposition']).toMatch('attachment; filename=');
     expect(headers['Cache-Control']).toBe('no-cache');
@@ -200,7 +197,9 @@ describe('WorksController (unit)', () => {
   it('download throws not found if derivative is not available', async () => {
     worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
     const { res } = createMockResponse();
-    await expect(downloadsController.downloadNormalized('1', 's', undefined, res as any, undefined)).rejects.toThrow('Normalized MXL not found for this source');
+    await expect(
+      downloadsController.downloadNormalized('1', 's', undefined, res as any, undefined)
+    ).rejects.toThrow('Normalized MXL not found for this source');
   });
 
   describe('uploadSource', () => {
@@ -236,7 +235,14 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1' };
       uploadSourceService.uploadRevision.mockResolvedValue({} as any);
 
-      await controller.uploadRevision(workId, sourceId, body, { file: [file] }, progressId, user as any);
+      await controller.uploadRevision(
+        workId,
+        sourceId,
+        body,
+        { file: [file] },
+        progressId,
+        user as any
+      );
 
       expect(uploadSourceService.uploadRevision).toHaveBeenCalledWith(
         workId,
@@ -264,14 +270,10 @@ describe('WorksController (unit)', () => {
       const payload = { source: { workId: '123', sourceId: 's1' } };
       worksService.getSourceHistory.mockResolvedValue(payload as any);
 
-      const result = await controller.getSourceHistory(
-        '123',
-        's1',
-        'feature-a',
-        '25',
-        'abc',
-        { userId: 'user-1', roles: ['user'] } as any
-      );
+      const result = await controller.getSourceHistory('123', 's1', 'feature-a', '25', 'abc', {
+        userId: 'user-1',
+        roles: ['user']
+      } as any);
 
       expect(worksService.getSourceHistory).toHaveBeenCalledWith({
         workId: '123',
@@ -293,9 +295,17 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1', roles: ['admin'] };
       worksService.approveRevision.mockResolvedValue({ status: 'approved' });
 
-      const result = await engagementController.approveRevision(workId, sourceId, revisionId, user as any);
+      const result = await engagementController.approveRevision(
+        workId,
+        sourceId,
+        revisionId,
+        user as any
+      );
 
-      expect(worksService.approveRevision).toHaveBeenCalledWith(workId, sourceId, revisionId, { userId: user.userId, roles: user.roles });
+      expect(worksService.approveRevision).toHaveBeenCalledWith(workId, sourceId, revisionId, {
+        userId: user.userId,
+        roles: user.roles
+      });
       expect(result).toEqual({ status: 'approved' });
     });
   });
@@ -308,9 +318,17 @@ describe('WorksController (unit)', () => {
       const user = { userId: 'user-1', roles: ['admin'] };
       worksService.rejectRevision.mockResolvedValue({ status: 'rejected' });
 
-      const result = await engagementController.rejectRevision(workId, sourceId, revisionId, user as any);
+      const result = await engagementController.rejectRevision(
+        workId,
+        sourceId,
+        revisionId,
+        user as any
+      );
 
-      expect(worksService.rejectRevision).toHaveBeenCalledWith(workId, sourceId, revisionId, { userId: user.userId, roles: user.roles });
+      expect(worksService.rejectRevision).toHaveBeenCalledWith(workId, sourceId, revisionId, {
+        userId: user.userId,
+        roles: user.roles
+      });
       expect(result).toEqual({ status: 'rejected' });
     });
   });
@@ -339,7 +357,12 @@ describe('WorksController (unit)', () => {
 
       const result = await controller.findAll(undefined, undefined);
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 20, offset: 0, filter: undefined, onlyWithSources: false });
+      expect(worksService.findAll).toHaveBeenCalledWith({
+        limit: 20,
+        offset: 0,
+        filter: undefined,
+        onlyWithSources: false
+      });
       expect(result).toEqual(mockResponse);
     });
 
@@ -349,7 +372,12 @@ describe('WorksController (unit)', () => {
 
       const result = await controller.findAll('50', '10');
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 50, offset: 10, filter: undefined, onlyWithSources: false });
+      expect(worksService.findAll).toHaveBeenCalledWith({
+        limit: 50,
+        offset: 10,
+        filter: undefined,
+        onlyWithSources: false
+      });
       expect(result).toEqual(mockResponse);
     });
 
@@ -358,7 +386,12 @@ describe('WorksController (unit)', () => {
 
       await controller.findAll('500', '0');
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 100, offset: 0, filter: undefined, onlyWithSources: false });
+      expect(worksService.findAll).toHaveBeenCalledWith({
+        limit: 100,
+        offset: 0,
+        filter: undefined,
+        onlyWithSources: false
+      });
     });
 
     it('should ensure offset is not negative', async () => {
@@ -366,7 +399,12 @@ describe('WorksController (unit)', () => {
 
       await controller.findAll('20', '-5');
 
-      expect(worksService.findAll).toHaveBeenCalledWith({ limit: 20, offset: 0, filter: undefined, onlyWithSources: false });
+      expect(worksService.findAll).toHaveBeenCalledWith({
+        limit: 20,
+        offset: 0,
+        filter: undefined,
+        onlyWithSources: false
+      });
     });
   });
 
@@ -470,7 +508,10 @@ describe('WorksController (unit)', () => {
 
       const result = await controller.findOne('123', user as any);
 
-      expect(worksService.getWorkDetail).toHaveBeenCalledWith('123', { userId: 'user-1', roles: ['user'] });
+      expect(worksService.getWorkDetail).toHaveBeenCalledWith('123', {
+        userId: 'user-1',
+        roles: ['user']
+      });
       expect(result).toEqual(work);
     });
 
@@ -487,7 +528,12 @@ describe('WorksController (unit)', () => {
 
   describe('updateMetadata with all fields', () => {
     it('should update title, composer, and catalogNumber', async () => {
-      const work = { workId: '123', title: 'New Title', composer: 'New Composer', catalogNumber: 'Op. 1' };
+      const work = {
+        workId: '123',
+        title: 'New Title',
+        composer: 'New Composer',
+        catalogNumber: 'Op. 1'
+      };
       worksService.updateWorkMetadata.mockResolvedValue(work as any);
 
       const result = await controller.updateMetadata('123', 'New Title', 'New Composer', 'Op. 1');
@@ -524,8 +570,8 @@ describe('WorksController (unit)', () => {
           sizeBytes: 100,
           checksum: { algorithm: 'sha256', hexDigest: 'x' },
           contentType: 'application/xml',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<score/>'));
       const { res, headers } = createMockResponse();
@@ -542,8 +588,9 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(downloadsController.downloadCanonical('1', 's', undefined, res as any, undefined))
-        .rejects.toThrow('Canonical XML not found for this source');
+      await expect(
+        downloadsController.downloadCanonical('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('Canonical XML not found for this source');
     });
   });
 
@@ -557,8 +604,8 @@ describe('WorksController (unit)', () => {
           sizeBytes: 100,
           checksum: { algorithm: 'sha256', hexDigest: 'x' },
           contentType: 'application/pdf',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('pdf'));
       const { res, headers } = createMockResponse();
@@ -576,8 +623,9 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(downloadsController.downloadPdf('1', 's', undefined, res as any, undefined))
-        .rejects.toThrow('PDF not found for this source');
+      await expect(
+        downloadsController.downloadPdf('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('PDF not found for this source');
     });
   });
 
@@ -591,8 +639,8 @@ describe('WorksController (unit)', () => {
           sizeBytes: 5000,
           checksum: { algorithm: 'sha256', hexDigest: 'x' },
           contentType: 'application/vnd.musescore.mscz',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-data'));
       const { res, headers } = createMockResponse();
@@ -610,8 +658,9 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(downloadsController.downloadMscz('1', 's', undefined, res as any, undefined))
-        .rejects.toThrow('MuseScore file not found for this source');
+      await expect(
+        downloadsController.downloadMscz('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('MuseScore file not found for this source');
     });
 
     it('should download MSCZ for a specific revision when revisionId is provided', async () => {
@@ -623,8 +672,8 @@ describe('WorksController (unit)', () => {
           sizeBytes: 4500,
           checksum: { algorithm: 'sha256', hexDigest: 'y' },
           contentType: 'application/vnd.musescore.mscz',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('mscz-rev-data'));
       const { res, headers } = createMockResponse();
@@ -648,8 +697,8 @@ describe('WorksController (unit)', () => {
           sizeBytes: 2048,
           checksum: { algorithm: 'sha256', hexDigest: 'x' },
           contentType: 'application/x-kern',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('**kern\n*-\n'));
       const { res, headers } = createMockResponse();
@@ -667,8 +716,9 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(downloadsController.downloadKern('1', 's', undefined, res as any, undefined))
-        .rejects.toThrow('Kern file not found for this source');
+      await expect(
+        downloadsController.downloadKern('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('Kern file not found for this source');
     });
   });
 
@@ -682,10 +732,12 @@ describe('WorksController (unit)', () => {
           sizeBytes: 1024,
           checksum: { algorithm: 'sha256', hexDigest: 'x' },
           contentType: 'text/vnd.abc',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
-      storageService.getObjectBuffer.mockResolvedValue(Buffer.from('X:1\nT:Example\nK:C\nC D E F|\n'));
+      storageService.getObjectBuffer.mockResolvedValue(
+        Buffer.from('X:1\nT:Example\nK:C\nC D E F|\n')
+      );
       const { res, headers } = createMockResponse();
 
       await downloadsController.downloadAbc('1', 's', undefined, res as any, undefined);
@@ -701,8 +753,9 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(downloadsController.downloadAbc('1', 's', undefined, res as any, undefined))
-        .rejects.toThrow('ABC file not found for this source');
+      await expect(
+        downloadsController.downloadAbc('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('ABC file not found for this source');
     });
   });
 
@@ -716,8 +769,8 @@ describe('WorksController (unit)', () => {
           sizeBytes: 100,
           checksum: { algorithm: 'sha256', hexDigest: 'x' },
           contentType: 'application/json',
-          lastModifiedAt: new Date(),
-        },
+          lastModifiedAt: new Date()
+        }
       });
       storageService.getObjectBuffer.mockResolvedValue(Buffer.from('{}'));
       const { res, headers } = createMockResponse();
@@ -734,8 +787,9 @@ describe('WorksController (unit)', () => {
       worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
       const { res } = createMockResponse();
 
-      await expect(downloadsController.downloadManifest('1', 's', undefined, res as any, undefined))
-        .rejects.toThrow('Manifest not found for this source');
+      await expect(
+        downloadsController.downloadManifest('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('Manifest not found for this source');
     });
   });
 
@@ -795,15 +849,26 @@ describe('WorksController (unit)', () => {
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, label, description, user as any);
-
-      expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
+      const result = await controller.updateSource(
+        workId,
+        sourceId,
         label,
-        description
-      }, {
-        userId: user.userId,
-        roles: user.roles
-      });
+        description,
+        user as any
+      );
+
+      expect(worksService.updateSource).toHaveBeenCalledWith(
+        workId,
+        sourceId,
+        {
+          label,
+          description
+        },
+        {
+          userId: user.userId,
+          roles: user.roles
+        }
+      );
       expect(result).toEqual({ ok: true });
     });
 
@@ -817,13 +882,18 @@ describe('WorksController (unit)', () => {
 
       const result = await controller.updateSource(workId, sourceId, label, undefined, user as any);
 
-      expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
-        label,
-        description: undefined
-      }, {
-        userId: user.userId,
-        roles: user.roles
-      });
+      expect(worksService.updateSource).toHaveBeenCalledWith(
+        workId,
+        sourceId,
+        {
+          label,
+          description: undefined
+        },
+        {
+          userId: user.userId,
+          roles: user.roles
+        }
+      );
       expect(result).toEqual({ ok: true });
     });
 
@@ -835,15 +905,26 @@ describe('WorksController (unit)', () => {
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, undefined, description, user as any);
+      const result = await controller.updateSource(
+        workId,
+        sourceId,
+        undefined,
+        description,
+        user as any
+      );
 
-      expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
-        label: undefined,
-        description
-      }, {
-        userId: user.userId,
-        roles: user.roles
-      });
+      expect(worksService.updateSource).toHaveBeenCalledWith(
+        workId,
+        sourceId,
+        {
+          label: undefined,
+          description
+        },
+        {
+          userId: user.userId,
+          roles: user.roles
+        }
+      );
       expect(result).toEqual({ ok: true });
     });
 
@@ -854,15 +935,26 @@ describe('WorksController (unit)', () => {
 
       worksService.updateSource.mockResolvedValue({ ok: true });
 
-      const result = await controller.updateSource(workId, sourceId, undefined, undefined, user as any);
+      const result = await controller.updateSource(
+        workId,
+        sourceId,
+        undefined,
+        undefined,
+        user as any
+      );
 
-      expect(worksService.updateSource).toHaveBeenCalledWith(workId, sourceId, {
-        label: undefined,
-        description: undefined
-      }, {
-        userId: user.userId,
-        roles: user.roles
-      });
+      expect(worksService.updateSource).toHaveBeenCalledWith(
+        workId,
+        sourceId,
+        {
+          label: undefined,
+          description: undefined
+        },
+        {
+          userId: user.userId,
+          roles: user.roles
+        }
+      );
       expect(result).toEqual({ ok: true });
     });
   });

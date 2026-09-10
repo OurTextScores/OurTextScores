@@ -1,5 +1,26 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors
+} from '@nestjs/common';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { RequestUser } from '../auth/types/auth-user';
 import { AuthOptionalGuard } from '../auth/guards/auth-optional.guard';
@@ -91,7 +112,8 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Update project metadata' })
   update(
     @Param('projectId') projectId: string,
-    @Body() body: {
+    @Body()
+    body: {
       title?: string;
       description?: string;
       leadUserId?: string;
@@ -103,7 +125,10 @@ export class ProjectsController {
     },
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.updateProject(projectId, body, { userId: user.userId, roles: user.roles });
+    return this.projectsService.updateProject(projectId, body, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Patch(':projectId/members')
@@ -114,14 +139,20 @@ export class ProjectsController {
     @Body() body: { addUserIds?: string[]; removeUserIds?: string[] },
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.updateMembers(projectId, body, { userId: user.userId, roles: user.roles });
+    return this.projectsService.updateMembers(projectId, body, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Delete(':projectId')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({ summary: 'Archive project' })
   archive(@Param('projectId') projectId: string, @CurrentUser() user: RequestUser): Promise<any> {
-    return this.projectsService.archiveProject(projectId, { userId: user.userId, roles: user.roles });
+    return this.projectsService.archiveProject(projectId, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Get(':projectId/sources')
@@ -137,7 +168,10 @@ export class ProjectsController {
   ): Promise<any> {
     return this.projectsService.listSources(
       projectId,
-      { limit: limit ? parseInt(limit, 10) : undefined, offset: offset ? parseInt(offset, 10) : undefined },
+      {
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined
+      },
       user ? { userId: user.userId, roles: user.roles } : undefined
     );
   }
@@ -150,7 +184,10 @@ export class ProjectsController {
     @Param('sourceId') sourceId: string,
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.removeSource(projectId, sourceId, { userId: user.userId, roles: user.roles });
+    return this.projectsService.removeSource(projectId, sourceId, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Post(':projectId/sources/link')
@@ -224,7 +261,8 @@ export class ProjectsController {
   })
   async uploadSource(
     @Param('projectId') projectId: string,
-    @Body() body: {
+    @Body()
+    body: {
       workId?: string;
       imslpUrl?: string;
       label?: string;
@@ -240,7 +278,12 @@ export class ProjectsController {
       createBranch?: boolean | string;
       branchName?: string;
     },
-    @UploadedFiles() files: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
+    @UploadedFiles()
+    files: {
+      file?: Express.Multer.File[];
+      referencePdf?: Express.Multer.File[];
+      originalMscz?: Express.Multer.File[];
+    },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ): Promise<any> {
@@ -287,7 +330,10 @@ export class ProjectsController {
   ): Promise<any> {
     return this.projectsService.listRows(
       projectId,
-      { limit: limit ? parseInt(limit, 10) : undefined, offset: offset ? parseInt(offset, 10) : undefined },
+      {
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined
+      },
       user ? { userId: user.userId, roles: user.roles } : undefined
     );
   }
@@ -297,10 +343,19 @@ export class ProjectsController {
   @ApiOperation({ summary: 'Create project row' })
   createRow(
     @Param('projectId') projectId: string,
-    @Body() body: { externalScoreUrl?: string; imslpUrl?: string; hasReferencePdf?: boolean; notes?: string },
+    @Body()
+    body: {
+      externalScoreUrl?: string;
+      imslpUrl?: string;
+      hasReferencePdf?: boolean;
+      notes?: string;
+    },
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.createRow(projectId, body, { userId: user.userId, roles: user.roles });
+    return this.projectsService.createRow(projectId, body, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Patch(':projectId/rows/:rowId')
@@ -309,10 +364,21 @@ export class ProjectsController {
   updateRow(
     @Param('projectId') projectId: string,
     @Param('rowId') rowId: string,
-    @Body() body: { rowVersion?: number; externalScoreUrl?: string | null; imslpUrl?: string | null; hasReferencePdf?: boolean; verified?: boolean; notes?: string | null },
+    @Body()
+    body: {
+      rowVersion?: number;
+      externalScoreUrl?: string | null;
+      imslpUrl?: string | null;
+      hasReferencePdf?: boolean;
+      verified?: boolean;
+      notes?: string | null;
+    },
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.updateRow(projectId, rowId, body, { userId: user.userId, roles: user.roles });
+    return this.projectsService.updateRow(projectId, rowId, body, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Delete(':projectId/rows/:rowId')
@@ -324,7 +390,10 @@ export class ProjectsController {
     @Param('rowId') rowId: string,
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.deleteRow(projectId, rowId, { userId: user.userId, roles: user.roles });
+    return this.projectsService.deleteRow(projectId, rowId, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   @Post(':projectId/rows/:rowId/create-source')
@@ -333,10 +402,20 @@ export class ProjectsController {
   createSource(
     @Param('projectId') projectId: string,
     @Param('rowId') rowId: string,
-    @Body() body: { workId?: string; imslpUrl?: string; sourceId?: string; sourceLabel?: string; sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other' },
+    @Body()
+    body: {
+      workId?: string;
+      imslpUrl?: string;
+      sourceId?: string;
+      sourceLabel?: string;
+      sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
+    },
     @CurrentUser() user: RequestUser
   ): Promise<any> {
-    return this.projectsService.createInternalSource(projectId, rowId, body, { userId: user.userId, roles: user.roles });
+    return this.projectsService.createInternalSource(projectId, rowId, body, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
   private toBoolean(value: unknown): boolean | undefined {

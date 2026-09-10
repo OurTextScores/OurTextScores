@@ -12,10 +12,7 @@ describe('SearchService', () => {
     } as any;
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SearchService,
-        { provide: ConfigService, useValue: configService }
-      ]
+      providers: [SearchService, { provide: ConfigService, useValue: configService }]
     }).compile();
 
     service = module.get<SearchService>(SearchService);
@@ -43,12 +40,14 @@ describe('SearchService', () => {
     it('should skip indexing when not configured', async () => {
       await service.onModuleInit();
       // Should not throw
-      await expect(service.indexWork({
-        id: '123',
-        workId: '123',
-        sourceCount: 0,
-        availableFormats: []
-      })).resolves.not.toThrow();
+      await expect(
+        service.indexWork({
+          id: '123',
+          workId: '123',
+          sourceCount: 0,
+          availableFormats: []
+        })
+      ).resolves.not.toThrow();
     });
   });
 
@@ -189,10 +188,9 @@ describe('SearchService', () => {
 
       await service.indexWork(work);
 
-      expect(mockIndex.addDocuments).toHaveBeenCalledWith(
-        [{ ...work, id: '123' }],
-        { primaryKey: 'id' }
-      );
+      expect(mockIndex.addDocuments).toHaveBeenCalledWith([{ ...work, id: '123' }], {
+        primaryKey: 'id'
+      });
     });
 
     it('should index multiple works in batch', async () => {
@@ -206,7 +204,7 @@ describe('SearchService', () => {
       await service.indexWorks(works);
 
       expect(mockIndex.addDocuments).toHaveBeenCalledWith(
-        works.map(w => ({ ...w, id: w.workId })),
+        works.map((w) => ({ ...w, id: w.workId })),
         { primaryKey: 'id' }
       );
     });

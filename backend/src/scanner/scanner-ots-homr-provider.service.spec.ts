@@ -142,9 +142,7 @@ describe('ScannerOtsHomrProviderService', () => {
         'structured-heads': expect.any(Buffer)
       }
     });
-    expect(
-      JSON.parse(result.nativeArtifacts!['structured-heads'].toString('utf8'))
-    ).toMatchObject({
+    expect(JSON.parse(result.nativeArtifacts!['structured-heads'].toString('utf8'))).toMatchObject({
       staves: [[['note_8', 'D4', '_', '_', '_', 'upper']]],
       structured: [[expect.objectContaining({ stem: 'down' })]]
     });
@@ -187,13 +185,11 @@ describe('ScannerOtsHomrProviderService', () => {
   });
 
   it('regenerates reviewed OTS-HOMR tokens through its own provider', async () => {
-    const fetchSpy = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ result: { musicXmlBase64: musicXml.toString('base64') } }), {
-          status: 200
-        })
-      );
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ result: { musicXmlBase64: musicXml.toString('base64') } }), {
+        status: 200
+      })
+    );
     const staffs = [[['note_4', 'C4', '_', '_', '_', 'upper']]];
 
     await expect(
@@ -212,9 +208,9 @@ describe('ScannerOtsHomrProviderService', () => {
         families: ['beam', 'tie']
       }
     };
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(response), { status: 200 })
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
     const proposals = Buffer.from(
       JSON.stringify({
         schemaVersion: 'ots-structured-proposals.v1',
@@ -225,10 +221,7 @@ describe('ScannerOtsHomrProviderService', () => {
     );
 
     await expect(
-      new ScannerOtsHomrProviderService(config).materializeStructured(proposals, [
-        'beam',
-        'tie'
-      ])
+      new ScannerOtsHomrProviderService(config).materializeStructured(proposals, ['beam', 'tie'])
     ).resolves.toEqual(musicXml);
     expect(String(fetchSpy.mock.calls[0][0])).toBe(
       'https://ots-homr.example/v1/materialize-structured'
@@ -242,10 +235,9 @@ describe('ScannerOtsHomrProviderService', () => {
   it('refuses dynamics as an output family before calling the provider', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch');
     await expect(
-      new ScannerOtsHomrProviderService(config).materializeStructured(
-        Buffer.from('{}'),
-        ['dynamic']
-      )
+      new ScannerOtsHomrProviderService(config).materializeStructured(Buffer.from('{}'), [
+        'dynamic'
+      ])
     ).rejects.toMatchObject({ code: 'provider_invalid_option', retryable: false });
     expect(fetchSpy).not.toHaveBeenCalled();
   });

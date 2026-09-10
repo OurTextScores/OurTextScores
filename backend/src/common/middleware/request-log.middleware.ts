@@ -28,14 +28,10 @@ export function requestLogMiddleware(req: Request, res: Response, next: NextFunc
       timestamp: new Date().toISOString(),
       requestId:
         enrichedReq.requestId ||
-        (typeof req.headers['x-request-id'] === 'string'
-          ? req.headers['x-request-id']
-          : undefined),
+        (typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined),
       traceId:
         enrichedReq.traceId ||
-        (typeof req.headers['x-trace-id'] === 'string'
-          ? req.headers['x-trace-id']
-          : undefined),
+        (typeof req.headers['x-trace-id'] === 'string' ? req.headers['x-trace-id'] : undefined),
       method: req.method,
       path: req.originalUrl || req.url,
       status: res.statusCode,

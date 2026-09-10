@@ -6,7 +6,8 @@ import { assessScannerSplice, readScannerSpliceFacts } from './scanner-splice-sa
  * they are well-formed MusicXML that says something impossible.
  */
 
-const part = (measures: string) => Buffer.from(`<?xml version="1.0"?>
+const part = (measures: string) =>
+  Buffer.from(`<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Cello</part-name></score-part></part-list>
   <part id="P1">${measures}</part>
@@ -19,24 +20,19 @@ const bar = (
   <measure number="${options.number || '1'}"${options.implicit ? ' implicit="yes"' : ''}>
     ${
       options.divisions || options.time
-        ? `<attributes>${
-              options.divisions ? `<divisions>${options.divisions}</divisions>` : ''
-          }${
-              options.time
-                ? `<time><beats>${options.time.split('/')[0]}</beats><beat-type>${
-                      options.time.split('/')[1]
-                  }</beat-type></time>`
-                : ''
+        ? `<attributes>${options.divisions ? `<divisions>${options.divisions}</divisions>` : ''}${
+            options.time
+              ? `<time><beats>${options.time.split('/')[0]}</beats><beat-type>${
+                  options.time.split('/')[1]
+                }</beat-type></time>`
+              : ''
           }</attributes>`
         : ''
     }
     ${contents}
   </measure>`;
 
-const note = (
-  duration: number,
-  options: { step?: string; voice?: string; tie?: string } = {}
-) => `
+const note = (duration: number, options: { step?: string; voice?: string; tie?: string } = {}) => `
   <note>
     <pitch><step>${options.step || 'C'}</step><octave>4</octave></pitch>
     <duration>${duration}</duration>

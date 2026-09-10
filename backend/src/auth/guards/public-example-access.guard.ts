@@ -21,8 +21,7 @@ export class PublicExampleAccessGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const isPublicExample =
-      isPublicChangeReview(request.params?.reviewId) ||
-      isPublicScannerJob(request.params?.jobId);
+      isPublicChangeReview(request.params?.reviewId) || isPublicScannerJob(request.params?.jobId);
     const isRead = request.method === 'GET' || request.method === 'HEAD';
 
     if (isPublicExample) {

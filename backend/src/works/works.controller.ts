@@ -30,7 +30,15 @@ import { ProgressService } from '../progress/progress.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import type { Observable } from 'rxjs';
 import type { MessageEvent } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiConsumes, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiConsumes,
+  ApiQuery
+} from '@nestjs/swagger';
 
 @ApiTags('works')
 @Controller('works')
@@ -40,7 +48,7 @@ export class WorksController {
     private readonly uploadSourceService: UploadSourceService,
     private readonly progressService: ProgressService,
     private readonly analyticsService: AnalyticsService
-  ) { }
+  ) {}
 
   private trackScoreViewed(
     req: Request,
@@ -65,14 +73,16 @@ export class WorksController {
       }
     });
 
-    void this.analyticsService.trackFirstScoreLoadedIfNeeded({
-      actor,
-      requestContext,
-      entryType: 'existing',
-      workId: payload.workId,
-      sourceId: payload.sourceId,
-      revisionId: payload.revisionId
-    }).catch(() => undefined);
+    void this.analyticsService
+      .trackFirstScoreLoadedIfNeeded({
+        actor,
+        requestContext,
+        entryType: 'existing',
+        workId: payload.workId,
+        sourceId: payload.sourceId,
+        revisionId: payload.revisionId
+      })
+      .catch(() => undefined);
   }
 
   @Get()
@@ -156,7 +166,8 @@ export class WorksController {
   @Post()
   @ApiOperation({
     summary: 'Ensure work exists',
-    description: 'Creates or retrieves a work by IMSLP page_id. Fetches metadata from IMSLP if the work doesn\'t exist.'
+    description:
+      "Creates or retrieves a work by IMSLP page_id. Fetches metadata from IMSLP if the work doesn't exist."
   })
   @ApiBody({
     schema: {
@@ -241,9 +252,23 @@ export class WorksController {
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'branch', required: false, description: 'Selected branch name', example: 'trunk' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Maximum number of revisions to return', example: 50 })
-  @ApiQuery({ name: 'cursor', required: false, description: 'Pagination cursor for older revisions' })
+  @ApiQuery({
+    name: 'branch',
+    required: false,
+    description: 'Selected branch name',
+    example: 'trunk'
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Maximum number of revisions to return',
+    example: 50
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Pagination cursor for older revisions'
+  })
   async getSourceHistory(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
@@ -263,7 +288,7 @@ export class WorksController {
     });
   }
 
-  @Post(":workId/metadata")
+  @Post(':workId/metadata')
   @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
   updateMetadata(
     @Param('workId') workId: string,
@@ -274,11 +299,12 @@ export class WorksController {
     return this.worksService.updateWorkMetadata(workId, { title, composer, catalogNumber });
   }
 
-  @Post(":workId/sources/prune-pending")
+  @Post(':workId/sources/prune-pending')
   @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
   @ApiOperation({
     summary: 'Prune pending sources',
-    description: 'Delete sources for a work that have not completed the derivative pipeline. Requires admin role.'
+    description:
+      'Delete sources for a work that have not completed the derivative pipeline. Requires admin role.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiResponse({ status: 200, description: 'Pending sources pruned successfully' })
@@ -288,7 +314,7 @@ export class WorksController {
     return this.worksService.prunePendingSources(workId);
   }
 
-  @Post(":workId/sources/delete-all")
+  @Post(':workId/sources/delete-all')
   @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
   @ApiOperation({
     summary: 'Delete all sources for a work',
@@ -302,7 +328,7 @@ export class WorksController {
     return this.worksService.deleteAllSources(workId);
   }
 
-  @Delete(":workId/sources/:sourceId")
+  @Delete(':workId/sources/:sourceId')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Delete a source',
@@ -310,23 +336,34 @@ export class WorksController {
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiResponse({ status: 200, description: 'Source deleted successfully', schema: { type: 'object', properties: { removed: { type: 'boolean', example: true } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Source deleted successfully',
+    schema: { type: 'object', properties: { removed: { type: 'boolean', example: true } } }
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized - authentication required' })
-  @ApiResponse({ status: 403, description: 'Forbidden - only source owner or admin can delete source' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - only source owner or admin can delete source'
+  })
   @ApiResponse({ status: 404, description: 'Source not found' })
   deleteSource(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @CurrentUser() user: RequestUser
   ) {
-    return this.worksService.deleteSource(workId, sourceId, { userId: user.userId, roles: user.roles });
+    return this.worksService.deleteSource(workId, sourceId, {
+      userId: user.userId,
+      roles: user.roles
+    });
   }
 
-  @Patch(":workId/sources/:sourceId")
+  @Patch(':workId/sources/:sourceId')
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Update source metadata',
-    description: 'Update the label and/or description of a source. Requires source owner or admin role.'
+    description:
+      'Update the label and/or description of a source. Requires source owner or admin role.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -335,13 +372,24 @@ export class WorksController {
       type: 'object',
       properties: {
         label: { type: 'string', example: 'Piano Score', description: 'Source title/label' },
-        description: { type: 'string', example: 'Original manuscript', description: 'Source description' }
+        description: {
+          type: 'string',
+          example: 'Original manuscript',
+          description: 'Source description'
+        }
       }
     }
   })
-  @ApiResponse({ status: 200, description: 'Source updated successfully', schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Source updated successfully',
+    schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } }
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - only source owner or admin can update source' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - only source owner or admin can update source'
+  })
   @ApiResponse({ status: 404, description: 'Source not found' })
   updateSource(
     @Param('workId') workId: string,
@@ -350,27 +398,36 @@ export class WorksController {
     @Body('description') description?: string,
     @CurrentUser() user?: RequestUser
   ) {
-    return this.worksService.updateSource(workId, sourceId, { label, description }, { userId: user?.userId, roles: user?.roles });
+    return this.worksService.updateSource(
+      workId,
+      sourceId,
+      { label, description },
+      { userId: user?.userId, roles: user?.roles }
+    );
   }
 
   @Post(':workId/sources')
   @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'file', maxCount: 1 },
-      { name: 'referencePdf', maxCount: 1 },
-      { name: 'originalMscz', maxCount: 1 }
-    ], {
-      storage: memoryStorage(),
-      limits: {
-        fileSize: 100 * 1024 * 1024 // 100 MB safeguard
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'referencePdf', maxCount: 1 },
+        { name: 'originalMscz', maxCount: 1 }
+      ],
+      {
+        storage: memoryStorage(),
+        limits: {
+          fileSize: 100 * 1024 * 1024 // 100 MB safeguard
+        }
       }
-    })
+    )
   )
   @UseGuards(AuthOptionalGuard)
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload a new source',
-    description: 'Upload a score file as a new source for a work. Optionally include a reference PDF. Generates derivatives (PDF, canonical XML, etc.) asynchronously.'
+    description:
+      'Upload a score file as a new source for a work. Optionally include a reference PDF. Generates derivatives (PDF, canonical XML, etc.) asynchronously.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
@@ -378,24 +435,60 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, or .abc)' },
-        referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
-        originalMscz: { type: 'string', format: 'binary', description: 'Optional original .mscz file when score file is pre-converted to .mxl client-side' },
-        isPrimary: { type: 'boolean', description: 'Whether this is the primary source', example: true },
-        formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, or .abc)'
+        },
+        referencePdf: {
+          type: 'string',
+          format: 'binary',
+          description: 'Optional reference PDF file'
+        },
+        originalMscz: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'Optional original .mscz file when score file is pre-converted to .mxl client-side'
+        },
+        isPrimary: {
+          type: 'boolean',
+          description: 'Whether this is the primary source',
+          example: true
+        },
+        formatHint: {
+          type: 'string',
+          description: 'Format hint (e.g., "musicxml")',
+          example: 'musicxml'
+        },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
-        license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' },
-        rightsDeclarationAccepted: { type: 'boolean', description: 'Whether uploader confirms they have legal rights to upload this content' }
+        license: {
+          type: 'string',
+          description: 'License for the uploaded content',
+          example: 'CC-BY-4.0'
+        },
+        rightsDeclarationAccepted: {
+          type: 'boolean',
+          description: 'Whether uploader confirms they have legal rights to upload this content'
+        }
       },
       required: ['file']
     }
   })
-  @ApiResponse({ status: 201, description: 'Source uploaded successfully, derivatives being generated' })
+  @ApiResponse({
+    status: 201,
+    description: 'Source uploaded successfully, derivatives being generated'
+  })
   @ApiResponse({ status: 400, description: 'Invalid file or parameters' })
   async uploadSource(
     @Param('workId') workId: string,
     @Body() body: UploadSourceRequest,
-    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
+    @UploadedFiles()
+    files?: {
+      file?: Express.Multer.File[];
+      referencePdf?: Express.Multer.File[];
+      originalMscz?: Express.Multer.File[];
+    },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
@@ -453,22 +546,26 @@ export class WorksController {
 
   @Post(':workId/sources/:sourceId/revisions')
   @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'file', maxCount: 1 },
-      { name: 'referencePdf', maxCount: 1 },
-      { name: 'originalMscz', maxCount: 1 }
-    ], {
-      storage: memoryStorage(),
-      limits: {
-        fileSize: 100 * 1024 * 1024
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'referencePdf', maxCount: 1 },
+        { name: 'originalMscz', maxCount: 1 }
+      ],
+      {
+        storage: memoryStorage(),
+        limits: {
+          fileSize: 100 * 1024 * 1024
+        }
       }
-    })
+    )
   )
   @UseGuards(AuthOptionalGuard)
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload a revision to an existing source',
-    description: 'Upload a new revision of an existing source. Optionally include a reference PDF. Generates derivatives.'
+    description:
+      'Upload a new revision of an existing source. Optionally include a reference PDF. Generates derivatives.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
@@ -477,31 +574,73 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary', description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, or .abc)' },
-        referencePdf: { type: 'string', format: 'binary', description: 'Optional reference PDF file' },
-        originalMscz: { type: 'string', format: 'binary', description: 'Optional original .mscz file when score file is pre-converted to .mxl client-side' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, or .abc)'
+        },
+        referencePdf: {
+          type: 'string',
+          format: 'binary',
+          description: 'Optional reference PDF file'
+        },
+        originalMscz: {
+          type: 'string',
+          format: 'binary',
+          description:
+            'Optional original .mscz file when score file is pre-converted to .mxl client-side'
+        },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary source' },
-        formatHint: { type: 'string', description: 'Format hint (e.g., "musicxml")', example: 'musicxml' },
+        formatHint: {
+          type: 'string',
+          description: 'Format hint (e.g., "musicxml")',
+          example: 'musicxml'
+        },
         branch: { type: 'string', description: 'Target branch name', example: 'trunk' },
         createBranch: { type: 'boolean', description: 'Create a new branch for this revision' },
         branchName: { type: 'string', description: 'Name of new branch if createBranch is true' },
-        baseRevisionId: { type: 'string', description: 'Base revision for detached or empty-branch commits' },
-        expectedHeadRevisionId: { type: 'string', description: 'Expected current branch head revision for optimistic concurrency' },
-        changeSummary: { type: 'string', description: 'Summary of changes in this revision', example: 'Fixed measure 42 dynamics' },
-        license: { type: 'string', description: 'License for the uploaded content', example: 'CC-BY-4.0' },
-        rightsDeclarationAccepted: { type: 'boolean', description: 'Whether uploader confirms they have legal rights to upload this content' }
+        baseRevisionId: {
+          type: 'string',
+          description: 'Base revision for detached or empty-branch commits'
+        },
+        expectedHeadRevisionId: {
+          type: 'string',
+          description: 'Expected current branch head revision for optimistic concurrency'
+        },
+        changeSummary: {
+          type: 'string',
+          description: 'Summary of changes in this revision',
+          example: 'Fixed measure 42 dynamics'
+        },
+        license: {
+          type: 'string',
+          description: 'License for the uploaded content',
+          example: 'CC-BY-4.0'
+        },
+        rightsDeclarationAccepted: {
+          type: 'boolean',
+          description: 'Whether uploader confirms they have legal rights to upload this content'
+        }
       },
       required: ['file']
     }
   })
-  @ApiResponse({ status: 201, description: 'Revision uploaded successfully, derivatives and diff being generated' })
+  @ApiResponse({
+    status: 201,
+    description: 'Revision uploaded successfully, derivatives and diff being generated'
+  })
   @ApiResponse({ status: 400, description: 'Invalid file or parameters' })
   @ApiResponse({ status: 404, description: 'Source not found' })
   async uploadRevision(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body() body: UploadSourceRequest,
-    @UploadedFiles() files?: { file?: Express.Multer.File[]; referencePdf?: Express.Multer.File[]; originalMscz?: Express.Multer.File[] },
+    @UploadedFiles()
+    files?: {
+      file?: Express.Multer.File[];
+      referencePdf?: Express.Multer.File[];
+      originalMscz?: Express.Multer.File[];
+    },
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser,
     @Req() req?: Request
@@ -575,7 +714,8 @@ export class WorksController {
   @ApiTags('uploads')
   @ApiOperation({
     summary: 'Upload reference PDF for an existing source',
-    description: 'Upload a reference PDF for a source that does not already have one. Requires source owner or admin.'
+    description:
+      'Upload a reference PDF for a source that does not already have one. Requires source owner or admin.'
   })
   @ApiConsumes('multipart/form-data')
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
@@ -584,7 +724,11 @@ export class WorksController {
     schema: {
       type: 'object',
       properties: {
-        referencePdf: { type: 'string', format: 'binary', description: 'Reference PDF file (must match IMSLP hash)' }
+        referencePdf: {
+          type: 'string',
+          format: 'binary',
+          description: 'Reference PDF file (must match IMSLP hash)'
+        }
       },
       required: ['referencePdf']
     }
@@ -592,7 +736,10 @@ export class WorksController {
   @ApiResponse({ status: 200, description: 'Reference PDF uploaded successfully' })
   @ApiResponse({ status: 400, description: 'Invalid file or reference PDF already exists' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - only source owner or admin can upload reference PDF' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - only source owner or admin can upload reference PDF'
+  })
   uploadReferencePdf(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
@@ -600,7 +747,13 @@ export class WorksController {
     @Headers('x-progress-id') progressId?: string,
     @CurrentUser() user?: RequestUser
   ) {
-    return this.uploadSourceService.uploadReferencePdf(workId, sourceId, referencePdfFile, progressId, user);
+    return this.uploadSourceService.uploadReferencePdf(
+      workId,
+      sourceId,
+      referencePdfFile,
+      progressId,
+      user
+    );
   }
 
   // Server-Sent Events stream for progress updates

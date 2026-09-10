@@ -64,7 +64,10 @@ export class UsersService {
   async searchUsersByUsername(
     query: string,
     options?: { limit?: number; offset?: number }
-  ): Promise<{ users: Array<{ id: string; username: string; displayName?: string }>; total: number }> {
+  ): Promise<{
+    users: Array<{ id: string; username: string; displayName?: string }>;
+    total: number;
+  }> {
     const normalized = (query || '').trim().toLowerCase();
     if (!normalized) {
       return { users: [], total: 0 };
@@ -77,13 +80,7 @@ export class UsersService {
 
     const [total, docs] = await Promise.all([
       this.userModel.countDocuments(filter).exec(),
-      this.userModel
-        .find(filter)
-        .sort({ username: 1 })
-        .skip(offset)
-        .limit(limit)
-        .lean()
-        .exec()
+      this.userModel.find(filter).sort({ username: 1 }).skip(offset).limit(limit).lean().exec()
     ]);
 
     const users = docs

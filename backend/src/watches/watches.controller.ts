@@ -19,7 +19,11 @@ export class WatchesController {
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiResponse({ status: 200, description: 'Successfully subscribed', schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully subscribed',
+    schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } }
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized - authentication required' })
   async watch(
     @Param('workId') workId: string,
@@ -38,7 +42,11 @@ export class WatchesController {
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiResponse({ status: 200, description: 'Successfully unsubscribed', schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Successfully unsubscribed',
+    schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } }
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized - authentication required' })
   async unwatch(
     @Param('workId') workId: string,
@@ -53,7 +61,8 @@ export class WatchesController {
   @UseGuards(AuthOptionalGuard)
   @ApiOperation({
     summary: 'Get watch count and status',
-    description: 'Returns the number of users watching this source and whether the current user is subscribed'
+    description:
+      'Returns the number of users watching this source and whether the current user is subscribed'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -64,7 +73,11 @@ export class WatchesController {
       type: 'object',
       properties: {
         count: { type: 'number', example: 5, description: 'Number of watchers' },
-        subscribed: { type: 'boolean', example: true, description: 'Whether current user is subscribed' }
+        subscribed: {
+          type: 'boolean',
+          example: true,
+          description: 'Whether current user is subscribed'
+        }
       }
     }
   })
@@ -75,9 +88,10 @@ export class WatchesController {
   ) {
     const [count, subscribed] = await Promise.all([
       this.watches.count(workId, sourceId),
-      user?.userId ? this.watches.isSubscribed(user.userId, workId, sourceId) : Promise.resolve(false)
+      user?.userId
+        ? this.watches.isSubscribed(user.userId, workId, sourceId)
+        : Promise.resolve(false)
     ]);
     return { count, subscribed };
   }
 }
-

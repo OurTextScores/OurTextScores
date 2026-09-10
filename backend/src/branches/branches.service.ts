@@ -1,7 +1,12 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { SourceBranch, SourceBranchDocument, BranchPolicy, BranchLifecycle } from './schemas/source-branch.schema';
+import {
+  SourceBranch,
+  SourceBranchDocument,
+  BranchPolicy,
+  BranchLifecycle
+} from './schemas/source-branch.schema';
 
 export interface BranchView {
   name: string;
@@ -24,7 +29,10 @@ export class BranchesService {
   sanitizeName(name?: string): string {
     const raw = (name ?? '').trim();
     if (!raw) return BranchesService.DEFAULT_BRANCH;
-    const normalized = raw.replace(/\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '').slice(0, 64);
+    const normalized = raw
+      .replace(/\s+/g, '-')
+      .replace(/[^A-Za-z0-9._-]/g, '')
+      .slice(0, 64);
     if (!normalized) return BranchesService.DEFAULT_BRANCH;
     return normalized.toLowerCase() === BranchesService.LEGACY_DEFAULT_BRANCH
       ? BranchesService.DEFAULT_BRANCH
@@ -45,7 +53,10 @@ export class BranchesService {
     baseRevisionId?: string | null;
   }): BranchView {
     return {
-      name: doc.name === BranchesService.LEGACY_DEFAULT_BRANCH ? BranchesService.DEFAULT_BRANCH : doc.name,
+      name:
+        doc.name === BranchesService.LEGACY_DEFAULT_BRANCH
+          ? BranchesService.DEFAULT_BRANCH
+          : doc.name,
       policy: doc.policy,
       lifecycle: doc.lifecycle ?? 'open',
       ownerUserId: doc.ownerUserId ?? undefined,
@@ -84,21 +95,46 @@ export class BranchesService {
 
   async ensureDefaultTrunk(workId: string, sourceId: string): Promise<void> {
     const existing = await this.branchModel
-      .findOne({ workId, sourceId, name: { $in: this.branchAliases(BranchesService.DEFAULT_BRANCH) } })
+      .findOne({
+        workId,
+        sourceId,
+        name: { $in: this.branchAliases(BranchesService.DEFAULT_BRANCH) }
+      })
       .lean()
       .exec();
     if (!existing) {
-      await this.branchModel.create({ workId, sourceId, name: BranchesService.DEFAULT_BRANCH, policy: 'public', lifecycle: 'open' });
+      await this.branchModel.create({
+        workId,
+        sourceId,
+        name: BranchesService.DEFAULT_BRANCH,
+        policy: 'public',
+        lifecycle: 'open'
+      });
     }
   }
 
-  async createBranch(params: { workId: string; sourceId: string; name: string; policy: BranchPolicy; ownerUserId?: string; baseRevisionId?: string }): Promise<BranchView> {
+  async createBranch(params: {
+    workId: string;
+    sourceId: string;
+    name: string;
+    policy: BranchPolicy;
+    ownerUserId?: string;
+    baseRevisionId?: string;
+  }): Promise<BranchView> {
     const name = this.sanitizeName(params.name);
     const existing = await this.findCanonicalBranch(params.workId, params.sourceId, name);
     if (existing) {
       return this.toBranchView(existing);
     }
-    const doc = await this.branchModel.create({ workId: params.workId, sourceId: params.sourceId, name, policy: params.policy, ownerUserId: params.ownerUserId, baseRevisionId: params.baseRevisionId, lifecycle: 'open' });
+    const doc = await this.branchModel.create({
+      workId: params.workId,
+      sourceId: params.sourceId,
+      name,
+      policy: params.policy,
+      ownerUserId: params.ownerUserId,
+      baseRevisionId: params.baseRevisionId,
+      lifecycle: 'open'
+    });
     return this.toBranchView(doc);
   }
 
@@ -133,7 +169,11 @@ export class BranchesService {
     return doc?.policy ?? 'public';
   }
 
-  async getBranchOwnerUserId(workId: string, sourceId: string, name?: string): Promise<string | undefined> {
+  async getBranchOwnerUserId(
+    workId: string,
+    sourceId: string,
+    name?: string
+  ): Promise<string | undefined> {
     const branchName = this.sanitizeName(name);
     const doc = await this.branchModel
       .findOne({ workId, sourceId, name: { $in: this.branchAliases(branchName) } })
@@ -142,7 +182,11 @@ export class BranchesService {
     return doc?.ownerUserId ?? undefined;
   }
 
-  async getBranchLifecycle(workId: string, sourceId: string, name?: string): Promise<BranchLifecycle> {
+  async getBranchLifecycle(
+    workId: string,
+    sourceId: string,
+    name?: string
+  ): Promise<BranchLifecycle> {
     const branchName = this.sanitizeName(name);
     const doc = await this.branchModel
       .findOne({ workId, sourceId, name: { $in: this.branchAliases(branchName) } })
@@ -151,14 +195,19 @@ export class BranchesService {
     return doc?.lifecycle ?? 'open';
   }
 
-  async setBranchLifecycle(workId: string, sourceId: string, name: string, lifecycle: BranchLifecycle): Promise<BranchView> {
+  async setBranchLifecycle(
+    workId: string,
+    sourceId: string,
+    name: string,
+    lifecycle: BranchLifecycle
+  ): Promise<BranchView> {
     const branchName = this.sanitizeName(name);
     await this.ensureDefaultTrunk(workId, sourceId);
     const doc = await this.branchModel
       .findOneAndUpdate(
         { workId, sourceId, name: { $in: this.branchAliases(branchName) } },
         { $set: { lifecycle } },
-        { new: true },
+        { new: true }
       )
       .lean()
       .exec();
@@ -197,7 +246,8 @@ export class BranchesService {
       throw new ForbiddenException('Only owner or admin can delete branch');
     }
     // Do not allow deleting default trunk branch
-    if (this.toBranchView(branch).name === BranchesService.DEFAULT_BRANCH) return { deleted: false };
+    if (this.toBranchView(branch).name === BranchesService.DEFAULT_BRANCH)
+      return { deleted: false };
     await this.branchModel.deleteOne({ _id: branch._id }).exec();
     return { deleted: true };
   }

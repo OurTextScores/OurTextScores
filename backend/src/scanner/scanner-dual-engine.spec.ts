@@ -550,7 +550,9 @@ describe('merged score basis', () => {
   it('does not move when a failed engine retries', () => {
     // A failed engine contributed no reading, so nothing the merge answers has
     // changed and the reviewer should not be asked to re-examine it.
-    const before = { engines: { homr: run('homr', 'a'), transcoda: run('transcoda', '', 'failed') } };
+    const before = {
+      engines: { homr: run('homr', 'a'), transcoda: run('transcoda', '', 'failed') }
+    };
     const after = {
       engines: { homr: run('homr', 'a'), transcoda: run('transcoda', '', 'running') }
     };

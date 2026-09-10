@@ -7,7 +7,7 @@ import {
   Query,
   Req,
   Res,
-  UseGuards,
+  UseGuards
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
@@ -26,7 +26,7 @@ export class WorksDownloadsController {
     private readonly worksService: WorksService,
     private readonly storageService: StorageService,
     private readonly fossilService: FossilService,
-    private readonly analyticsService: AnalyticsService,
+    private readonly analyticsService: AnalyticsService
   ) {}
 
   private sendBuffer(
@@ -35,12 +35,15 @@ export class WorksDownloadsController {
     filename: string,
     contentType: string,
     immutable: boolean,
-    disposition: 'inline' | 'attachment' = 'attachment',
+    disposition: 'inline' | 'attachment' = 'attachment'
   ) {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache');
     if (filename) {
-      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `${disposition}; filename="${encodeURIComponent(filename)}"`
+      );
     }
     res.send(buffer);
   }
@@ -54,22 +57,22 @@ export class WorksDownloadsController {
       revisionId?: string;
       fileFormat: string;
       routePath: string;
-    },
+    }
   ): void {
     void this.analyticsService.trackBestEffort({
       eventName: 'score_downloaded',
       actor: this.analyticsService.toActor(user),
       requestContext: this.analyticsService.getRequestContext(req, {
         sourceApp: 'backend',
-        route: payload.routePath,
+        route: payload.routePath
       }),
       properties: {
         work_id: payload.workId,
         source_id: payload.sourceId,
         revision_id: payload.revisionId ?? null,
         file_format: payload.fileFormat,
-        download_surface: 'api',
-      },
+        download_surface: 'api'
+      }
     });
   }
 
@@ -80,13 +83,15 @@ export class WorksDownloadsController {
     user?: RequestUser;
     kind: DownloadAssetKind;
   }) {
-    const viewer = params.user ? { userId: params.user.userId, roles: params.user.roles } : undefined;
+    const viewer = params.user
+      ? { userId: params.user.userId, roles: params.user.roles }
+      : undefined;
     return this.worksService.resolveDownloadAsset({
       workId: params.workId,
       sourceId: params.sourceId,
       revisionId: params.revisionId,
       viewer,
-      kind: params.kind,
+      kind: params.kind
     });
   }
 
@@ -98,7 +103,7 @@ export class WorksDownloadsController {
       user?: RequestUser;
       kind: DownloadAssetKind;
     },
-    notFoundMessage: string,
+    notFoundMessage: string
   ) {
     try {
       return await this.resolveDownloadAsset(params);
@@ -115,15 +120,20 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download normalized MXL',
-    description: 'Get the normalized compressed MusicXML (.mxl) file for a source or specific revision',
+    description:
+      'Get the normalized compressed MusicXML (.mxl) file for a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
   @ApiResponse({
     status: 200,
     description: 'Normalized MXL file returned',
-    content: { 'application/vnd.recordare.musicxml': {} },
+    content: { 'application/vnd.recordare.musicxml': {} }
   })
   @ApiResponse({ status: 404, description: 'Normalized MXL not found for this source' })
   async downloadNormalized(
@@ -132,7 +142,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -140,9 +150,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'normalizedMxl',
+        kind: 'normalizedMxl'
       },
-      'Normalized MXL not found for this source',
+      'Normalized MXL not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.mxl';
@@ -152,7 +162,7 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'mxl',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
     this.sendBuffer(
@@ -161,7 +171,7 @@ export class WorksDownloadsController {
       baseName,
       locator.contentType || 'application/vnd.recordare.musicxml',
       !!revisionId,
-      'attachment',
+      'attachment'
     );
   }
 
@@ -170,12 +180,20 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download canonical XML',
-    description: 'Get the canonical MusicXML representation of a source or specific revision',
+    description: 'Get the canonical MusicXML representation of a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'Canonical XML file returned', content: { 'application/xml': {} } })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Canonical XML file returned',
+    content: { 'application/xml': {} }
+  })
   @ApiResponse({ status: 404, description: 'Canonical XML not found for this source' })
   async downloadCanonical(
     @Param('workId') workId: string,
@@ -183,7 +201,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -191,9 +209,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'canonicalXml',
+        kind: 'canonicalXml'
       },
-      'Canonical XML not found for this source',
+      'Canonical XML not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.xml';
@@ -203,10 +221,17 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'musicxml',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
-    this.sendBuffer(res, buffer, baseName, 'application/xml; charset=utf-8', !!revisionId, 'attachment');
+    this.sendBuffer(
+      res,
+      buffer,
+      baseName,
+      'application/xml; charset=utf-8',
+      !!revisionId,
+      'attachment'
+    );
   }
 
   @Get(':workId/sources/:sourceId/score.pdf')
@@ -214,12 +239,20 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download PDF score',
-    description: 'Get the PDF rendering of a source or specific revision',
+    description: 'Get the PDF rendering of a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'PDF file returned', content: { 'application/pdf': {} } })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'PDF file returned',
+    content: { 'application/pdf': {} }
+  })
   @ApiResponse({ status: 404, description: 'PDF not found for this source' })
   async downloadPdf(
     @Param('workId') workId: string,
@@ -227,7 +260,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -235,9 +268,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'pdf',
+        kind: 'pdf'
       },
-      'PDF not found for this source',
+      'PDF not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.pdf';
@@ -247,7 +280,7 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'pdf',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
     this.sendBuffer(res, buffer, baseName, 'application/pdf', !!revisionId, 'inline');
@@ -258,15 +291,19 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download MuseScore file',
-    description: 'Get the original MuseScore (.mscz) file for a source or specific revision',
+    description: 'Get the original MuseScore (.mscz) file for a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
   @ApiResponse({
     status: 200,
     description: 'MuseScore file returned',
-    content: { 'application/vnd.musescore.mscz': {} },
+    content: { 'application/vnd.musescore.mscz': {} }
   })
   @ApiResponse({ status: 404, description: 'MuseScore file not found for this source' })
   async downloadMscz(
@@ -275,7 +312,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -283,9 +320,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'mscz',
+        kind: 'mscz'
       },
-      'MuseScore file not found for this source',
+      'MuseScore file not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.mscz';
@@ -295,10 +332,17 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'mscz',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
-    this.sendBuffer(res, buffer, baseName, 'application/vnd.musescore.mscz', !!revisionId, 'attachment');
+    this.sendBuffer(
+      res,
+      buffer,
+      baseName,
+      'application/vnd.musescore.mscz',
+      !!revisionId,
+      'attachment'
+    );
   }
 
   @Get(':workId/sources/:sourceId/score.krn')
@@ -306,12 +350,20 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download Kern file',
-    description: 'Get the original Kern (.krn) file for a source or specific revision',
+    description: 'Get the original Kern (.krn) file for a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'Kern file returned', content: { 'application/x-kern': {} } })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kern file returned',
+    content: { 'application/x-kern': {} }
+  })
   @ApiResponse({ status: 404, description: 'Kern file not found for this source' })
   async downloadKern(
     @Param('workId') workId: string,
@@ -319,7 +371,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -327,9 +379,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'krn',
+        kind: 'krn'
       },
-      'Kern file not found for this source',
+      'Kern file not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.krn';
@@ -339,7 +391,7 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'other',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
     this.sendBuffer(
@@ -348,7 +400,7 @@ export class WorksDownloadsController {
       baseName,
       locator.contentType || 'application/x-kern; charset=utf-8',
       !!revisionId,
-      'attachment',
+      'attachment'
     );
   }
 
@@ -357,11 +409,15 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download ABC file',
-    description: 'Get the original ABC (.abc) file for a source or specific revision',
+    description: 'Get the original ABC (.abc) file for a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
   @ApiResponse({ status: 200, description: 'ABC file returned', content: { 'text/vnd.abc': {} } })
   @ApiResponse({ status: 404, description: 'ABC file not found for this source' })
   async downloadAbc(
@@ -370,7 +426,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -378,9 +434,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'abc',
+        kind: 'abc'
       },
-      'ABC file not found for this source',
+      'ABC file not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.abc';
@@ -390,7 +446,7 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'other',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
     this.sendBuffer(
@@ -399,7 +455,7 @@ export class WorksDownloadsController {
       baseName,
       locator.contentType || 'text/vnd.abc; charset=utf-8',
       !!revisionId,
-      'attachment',
+      'attachment'
     );
   }
 
@@ -408,12 +464,20 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download reference PDF',
-    description: 'Get the reference PDF file for a source or specific revision',
+    description: 'Get the reference PDF file for a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'Reference PDF file returned', content: { 'application/pdf': {} } })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reference PDF file returned',
+    content: { 'application/pdf': {} }
+  })
   @ApiResponse({ status: 404, description: 'Reference PDF not found for this source' })
   async downloadReferencePdf(
     @Param('workId') workId: string,
@@ -421,7 +485,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -429,9 +493,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'referencePdf',
+        kind: 'referencePdf'
       },
-      'Reference PDF not found for this source',
+      'Reference PDF not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     if (req) {
@@ -440,7 +504,7 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'pdf',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
     this.sendBuffer(res, buffer, 'reference.pdf', 'application/pdf', !!revisionId, 'inline');
@@ -451,11 +515,15 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download thumbnail',
-    description: 'Get the PNG thumbnail of a source or specific revision',
+    description: 'Get the PNG thumbnail of a source or specific revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
   @ApiResponse({ status: 200, description: 'Thumbnail returned', content: { 'image/png': {} } })
   @ApiResponse({ status: 404, description: 'Thumbnail not found for this source' })
   async downloadThumbnail(
@@ -464,7 +532,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -472,9 +540,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'thumbnail',
+        kind: 'thumbnail'
       },
-      'Thumbnail not found for this source',
+      'Thumbnail not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     if (req) {
@@ -483,7 +551,7 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'png',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
     this.sendBuffer(res, buffer, '', 'image/png', !!revisionId, 'inline');
@@ -494,12 +562,20 @@ export class WorksDownloadsController {
   @ApiTags('derivatives')
   @ApiOperation({
     summary: 'Download manifest',
-    description: 'Get the manifest file containing metadata about the source and its derivatives',
+    description: 'Get the manifest file containing metadata about the source and its derivatives'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
-  @ApiQuery({ name: 'r', required: false, description: 'Revision ID (optional, defaults to latest)' })
-  @ApiResponse({ status: 200, description: 'Manifest JSON returned', content: { 'application/json': {} } })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Manifest JSON returned',
+    content: { 'application/json': {} }
+  })
   @ApiResponse({ status: 404, description: 'Manifest not found for this source' })
   async downloadManifest(
     @Param('workId') workId: string,
@@ -507,7 +583,7 @@ export class WorksDownloadsController {
     @Query('r') revisionId: string | undefined,
     @Res() res: Response,
     @CurrentUser() user?: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const { locator } = await this.resolveDownloadAssetOrThrow(
       {
@@ -515,9 +591,9 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         user,
-        kind: 'manifest',
+        kind: 'manifest'
       },
-      'Manifest not found for this source',
+      'Manifest not found for this source'
     );
     const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
     if (req) {
@@ -526,10 +602,17 @@ export class WorksDownloadsController {
         sourceId,
         revisionId,
         fileFormat: 'other',
-        routePath: req.originalUrl ?? req.url,
+        routePath: req.originalUrl ?? req.url
       });
     }
-    this.sendBuffer(res, buffer, 'manifest.json', 'application/json; charset=utf-8', !!revisionId, 'attachment');
+    this.sendBuffer(
+      res,
+      buffer,
+      'manifest.json',
+      'application/json; charset=utf-8',
+      !!revisionId,
+      'attachment'
+    );
   }
 
   @Get(':workId/sources/:sourceId/textdiff')
@@ -541,7 +624,7 @@ export class WorksDownloadsController {
     @Query('revB') revB: string,
     @Query('file') file: string,
     @Res() res: Response,
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     if (!revA || !revB) {
       throw new BadRequestException('revA and revB are required');
@@ -578,7 +661,7 @@ export class WorksDownloadsController {
 
     const [bufA, bufB] = await Promise.all([
       this.storageService.getObjectBuffer(aLoc.bucket, aLoc.objectKey),
-      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey),
+      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey)
     ]);
     const { exec } = await import('node:child_process');
     const { promisify } = await import('node:util');
@@ -616,7 +699,7 @@ export class WorksDownloadsController {
     @Query('a') artifactA: string,
     @Query('b') artifactB: string,
     @Query('file') file = 'canonical.xml',
-    @Res() res: Response,
+    @Res() res: Response
   ) {
     if (!artifactA || !artifactB) {
       throw new BadRequestException('a and b (artifact ids) are required');

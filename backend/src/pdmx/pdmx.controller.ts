@@ -13,7 +13,14 @@ import {
   UseGuards
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags
+} from '@nestjs/swagger';
 import { AuthRequiredGuard } from '../auth/guards/auth-required.guard';
 import { AdminRequiredGuard } from '../auth/guards/admin-required.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -174,17 +181,16 @@ export class PdmxController {
 
   @Post('records/:pdmxId/associate-source')
   @UseInterceptors(
-    FileFieldsInterceptor(
-      [{ name: 'referencePdf', maxCount: 1 }],
-      {
-        storage: memoryStorage(),
-        limits: {
-          fileSize: 100 * 1024 * 1024
-        }
+    FileFieldsInterceptor([{ name: 'referencePdf', maxCount: 1 }], {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 100 * 1024 * 1024
       }
-    )
+    })
   )
-  @ApiOperation({ summary: 'Associate PDMX record with IMSLP and project by importing actual MXL (admin only)' })
+  @ApiOperation({
+    summary: 'Associate PDMX record with IMSLP and project by importing actual MXL (admin only)'
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

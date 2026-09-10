@@ -61,10 +61,7 @@ export interface ScannerMeasureComponentHashes {
  * deliberately contain normalized musical facts rather than source XML, so
  * exporter spelling and layout attributes cannot leak back into the review UI.
  */
-export type ScannerMeasureComponentDetails = Record<
-  keyof ScannerMeasureComponentHashes,
-  string[]
->;
+export type ScannerMeasureComponentDetails = Record<keyof ScannerMeasureComponentHashes, string[]>;
 
 export interface ScannerMeasureDescriptor {
   measureIndex: number;
@@ -174,7 +171,6 @@ const parseInteger = (value: string, label: string): bigint => {
   return BigInt(value);
 };
 
-
 const canonicalNumber = (value: string): string => {
   if (!value) return '';
   const parsed = Number(value);
@@ -253,13 +249,7 @@ function displayPitch(pitch: string): string {
   const match = /^([A-G]):([^:]+):(.+)$/.exec(pitch);
   if (!match) return pitch;
   const accidental =
-    match[2] === '0'
-      ? ''
-      : match[2] === '1'
-        ? '♯'
-        : match[2] === '-1'
-          ? '♭'
-          : `(${match[2]})`;
+    match[2] === '0' ? '' : match[2] === '1' ? '♯' : match[2] === '-1' ? '♭' : `(${match[2]})`;
   return `${match[1]}${accidental}${match[3]}`;
 }
 

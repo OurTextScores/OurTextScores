@@ -24,10 +24,8 @@ export const contents = (entry: OrderedEntry, tag: string): OrderedEntry[] =>
 export const directEntries = (children: OrderedEntry[], tag: string): OrderedEntry[] =>
   children.filter((entry) => Object.prototype.hasOwnProperty.call(entry, tag));
 
-export const firstEntry = (
-  children: OrderedEntry[],
-  tag: string
-): OrderedEntry | undefined => directEntries(children, tag)[0];
+export const firstEntry = (children: OrderedEntry[], tag: string): OrderedEntry | undefined =>
+  directEntries(children, tag)[0];
 
 /** The text of `entry`'s `tag` child, trimmed; empty when absent. */
 export const entryText = (entry: OrderedEntry | undefined, tag: string): string => {

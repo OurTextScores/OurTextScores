@@ -24,11 +24,18 @@ describe('AnalyticsController', () => {
 
   it('ingestEvents delegates to AnalyticsService', async () => {
     analyticsService.toActor.mockReturnValue({ userId: 'u1', roles: ['user'] });
-    analyticsService.getRequestContext.mockReturnValue({ sourceApp: 'frontend', route: '/api/analytics/events' });
+    analyticsService.getRequestContext.mockReturnValue({
+      sourceApp: 'frontend',
+      route: '/api/analytics/events'
+    });
     analyticsService.ingest.mockResolvedValue({ accepted: 1 });
 
     const req = { originalUrl: '/api/analytics/events', headers: {} } as any;
-    const result = await controller.ingestEvents({ eventName: 'score_viewed' }, { userId: 'u1' } as any, req);
+    const result = await controller.ingestEvents(
+      { eventName: 'score_viewed' },
+      { userId: 'u1' } as any,
+      req
+    );
 
     expect(analyticsService.ingest).toHaveBeenCalled();
     expect(result).toEqual({ ok: true, accepted: 1 });
@@ -36,9 +43,15 @@ describe('AnalyticsController', () => {
 
   it('ingestEvents applies anonymous rate limiting by event count', async () => {
     analyticsService.toActor.mockReturnValue({});
-    analyticsService.getRequestContext.mockReturnValue({ sourceApp: 'frontend', route: '/api/analytics/events' });
+    analyticsService.getRequestContext.mockReturnValue({
+      sourceApp: 'frontend',
+      route: '/api/analytics/events'
+    });
 
-    const req = { originalUrl: '/api/analytics/events', headers: { 'x-forwarded-for': '203.0.113.9' } } as any;
+    const req = {
+      originalUrl: '/api/analytics/events',
+      headers: { 'x-forwarded-for': '203.0.113.9' }
+    } as any;
     const events = Array.from({ length: 121 }, () => ({ eventName: 'score_viewed' }));
 
     try {
@@ -70,7 +83,13 @@ describe('AnalyticsController', () => {
   it('getEditorMetrics normalizes bucket', async () => {
     analyticsService.getScoreEditorMetrics.mockResolvedValue({ ok: true } as any);
 
-    await controller.getEditorMetrics(undefined, undefined, undefined, 'America/New_York', 'invalid');
+    await controller.getEditorMetrics(
+      undefined,
+      undefined,
+      undefined,
+      'America/New_York',
+      'invalid'
+    );
 
     expect(analyticsService.getScoreEditorMetrics).toHaveBeenCalledWith(
       expect.objectContaining({ bucket: 'day', timezone: 'America/New_York' })

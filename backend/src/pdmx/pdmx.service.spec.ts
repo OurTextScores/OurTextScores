@@ -71,7 +71,12 @@ describe('PdmxService (unit, mocked model)', () => {
     pdmxModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
     pdmxModel.find.mockReturnValue(leanExec([]));
 
-    await service.listRecords({ q: 'mozart', hasPdf: false, excludeUnacceptable: false, requireNoLicenseConflict: false });
+    await service.listRecords({
+      q: 'mozart',
+      hasPdf: false,
+      excludeUnacceptable: false,
+      requireNoLicenseConflict: false
+    });
 
     const query = pdmxModel.countDocuments.mock.calls[0][0];
     expect(Array.isArray(query.$or)).toBe(true);
@@ -106,11 +111,10 @@ describe('PdmxService (unit, mocked model)', () => {
       })
     );
 
-    await service.updateReview(
-      'A1',
-      { qualityStatus: 'acceptable', reason: '   ', notes: '' },
-      { userId: 'admin_1', roles: ['admin'] } as any
-    );
+    await service.updateReview('A1', { qualityStatus: 'acceptable', reason: '   ', notes: '' }, {
+      userId: 'admin_1',
+      roles: ['admin']
+    } as any);
 
     expect(pdmxModel.findOneAndUpdate).toHaveBeenCalledWith(
       { pdmxId: 'A1' },
@@ -176,11 +180,10 @@ describe('PdmxService (unit, mocked model)', () => {
       })
     );
 
-    await service.updateImportState(
-      'A1',
-      { status: 'not_imported' },
-      { userId: 'admin_3', roles: ['admin'] } as any
-    );
+    await service.updateImportState('A1', { status: 'not_imported' }, {
+      userId: 'admin_3',
+      roles: ['admin']
+    } as any);
 
     expect(pdmxModel.findOneAndUpdate).toHaveBeenCalledWith(
       { pdmxId: 'A1' },

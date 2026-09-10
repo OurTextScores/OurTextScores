@@ -11,10 +11,16 @@ export class ImslpController {
   @ApiTags('search', 'imslp')
   @ApiOperation({
     summary: 'Search IMSLP',
-    description: 'Search for musical works in the IMSLP (International Music Score Library Project) database'
+    description:
+      'Search for musical works in the IMSLP (International Music Score Library Project) database'
   })
   @ApiQuery({ name: 'q', required: true, description: 'Search query', example: 'Bach Prelude' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Maximum results (1-25, default: 10)', example: 10 })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Maximum results (1-25, default: 10)',
+    example: 10
+  })
   @ApiResponse({ status: 200, description: 'Search results returned' })
   search(@Query('q') query = '', @Query('limit') limit?: string) {
     const numericLimit = limit ? Number.parseInt(limit, 10) || 10 : 10;
@@ -31,7 +37,11 @@ export class ImslpController {
       type: 'object',
       required: ['url'],
       properties: {
-        url: { type: 'string', example: 'https://imslp.org/wiki/Special:ReverseLookup/164349', description: 'IMSLP permalink URL' }
+        url: {
+          type: 'string',
+          example: 'https://imslp.org/wiki/Special:ReverseLookup/164349',
+          description: 'IMSLP permalink URL'
+        }
       }
     }
   })

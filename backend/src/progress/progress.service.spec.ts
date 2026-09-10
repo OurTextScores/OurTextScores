@@ -13,7 +13,7 @@ describe('ProgressService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ProgressService],
+      providers: [ProgressService]
     }).compile();
 
     service = module.get<ProgressService>(ProgressService);
@@ -61,7 +61,7 @@ describe('ProgressService', () => {
         expect(event.type).toBe('progress');
         expect(event.data).toMatchObject({
           message: 'Processing...',
-          timestamp: expect.any(String),
+          timestamp: expect.any(String)
         });
         done();
       });
@@ -77,7 +77,7 @@ describe('ProgressService', () => {
         expect(event.data).toMatchObject({
           message: 'Step 1',
           stage: 'initialization',
-          timestamp: expect.any(String),
+          timestamp: expect.any(String)
         });
         done();
       });
@@ -190,7 +190,7 @@ describe('ProgressService', () => {
           expect(event.type).toBe('done');
           expect(event.data).toMatchObject({
             message: 'done',
-            timestamp: expect.any(String),
+            timestamp: expect.any(String)
           });
         },
         complete: () => {
@@ -200,7 +200,7 @@ describe('ProgressService', () => {
             expect((service as any).channels.has('complete-test')).toBe(false);
             done();
           });
-        },
+        }
       });
 
       expect((service as any).channels.has('complete-test')).toBe(true);
@@ -246,7 +246,7 @@ describe('ProgressService', () => {
           expect(events[0].type).toBe('done');
           expect((events[0].data as ProgressEventData).message).toBe('done');
           done();
-        },
+        }
       });
 
       service.complete('done-event-test');
@@ -271,7 +271,7 @@ describe('ProgressService', () => {
 
             service.publish('reuse-test', 'New message');
           });
-        },
+        }
       });
 
       service.complete('reuse-test');
@@ -290,7 +290,7 @@ describe('ProgressService', () => {
         },
         complete: () => {
           done();
-        },
+        }
       });
 
       service.complete('timestamp-done-test');
@@ -318,7 +318,7 @@ describe('ProgressService', () => {
             expect((service as any).channels.has(channelId)).toBe(false);
             done();
           });
-        },
+        }
       });
 
       service.publish(channelId, 'Starting', 'init');

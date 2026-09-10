@@ -6,7 +6,8 @@ import { promisify } from 'node:util';
 import { assertValidMusicXml } from './scanner-musicxml';
 
 const execFileAsync = promisify(execFile);
-const BEAMABLE_NOTE_TYPE = /<type(?:\s[^>]*)?>\s*(?:eighth|16th|32nd|64th|128th|256th|512th|1024th)\s*<\/type>/i;
+const BEAMABLE_NOTE_TYPE =
+  /<type(?:\s[^>]*)?>\s*(?:eighth|16th|32nd|64th|128th|256th|512th|1024th)\s*<\/type>/i;
 const MUSESCORE_MUSICXML_DOCTYPE =
   /<!DOCTYPE\s+score-(?:partwise|timewise)\s+(?:PUBLIC\s+(?:"[^"]*"|'[^']*')\s+(?:"[^"]*"|'[^']*')|SYSTEM\s+(?:"[^"]*"|'[^']*'))\s*>/i;
 
@@ -37,7 +38,11 @@ export function scannerMusicXmlNeedsBeamMaterialization(
 ): boolean {
   const target = musicXml.toString('utf8');
   const companion = companionMusicXml.toString('utf8');
-  return !/<beam(?:\s|>)/i.test(target) && /<beam(?:\s|>)/i.test(companion) && BEAMABLE_NOTE_TYPE.test(target);
+  return (
+    !/<beam(?:\s|>)/i.test(target) &&
+    /<beam(?:\s|>)/i.test(companion) &&
+    BEAMABLE_NOTE_TYPE.test(target)
+  );
 }
 
 export type ScannerMuseScoreRunner = (

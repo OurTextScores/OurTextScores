@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UseGuards
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -19,7 +30,7 @@ export class ChangeReviewsController {
   @ApiOperation({
     summary: 'Create or open the branch change review',
     description:
-      'Creates the shared change review for a reviewable branch, or returns the existing branch review if one already exists.',
+      'Creates the shared change review for a reviewable branch, or returns the existing branch review if one already exists.'
   })
   @ApiParam({ name: 'workId', example: '164349' })
   @ApiParam({ name: 'sourceId', example: 'src-1' })
@@ -29,8 +40,14 @@ export class ChangeReviewsController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Param('branchName') branchName: string,
-    @Body() body: { ownerUserId?: string; title?: string; baseRevisionId?: string; headRevisionId?: string },
-    @CurrentUser() viewer: RequestUser,
+    @Body()
+    body: {
+      ownerUserId?: string;
+      title?: string;
+      baseRevisionId?: string;
+      headRevisionId?: string;
+    },
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.createOrOpenBranchReview({
       workId,
@@ -38,10 +55,11 @@ export class ChangeReviewsController {
       branchName,
       ownerUserId: body.ownerUserId,
       title: body.title,
-      initialPair: body.baseRevisionId && body.headRevisionId
-        ? { baseRevisionId: body.baseRevisionId, headRevisionId: body.headRevisionId }
-        : undefined,
-      opener: viewer,
+      initialPair:
+        body.baseRevisionId && body.headRevisionId
+          ? { baseRevisionId: body.baseRevisionId, headRevisionId: body.headRevisionId }
+          : undefined,
+      opener: viewer
     });
   }
 
@@ -49,29 +67,34 @@ export class ChangeReviewsController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'List change reviews for current user',
-    description: 'Lists change reviews where the current user is the reviewer, owner, or a participant.',
+    description:
+      'Lists change reviews where the current user is the reviewer, owner, or a participant.'
   })
   @ApiQuery({ name: 'role', required: false, enum: ['reviewer', 'owner', 'all'] })
-  @ApiQuery({ name: 'status', required: false, enum: ['draft', 'open', 'closed', 'withdrawn', 'all'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['draft', 'open', 'closed', 'withdrawn', 'all']
+  })
   @ApiQuery({ name: 'limit', required: false, example: 50 })
   listReviews(
     @CurrentUser() viewer: RequestUser,
     @Query('role') role?: 'reviewer' | 'owner' | 'all',
     @Query('status') status?: 'draft' | 'open' | 'closed' | 'withdrawn' | 'all',
-    @Query('limit') limit?: string,
+    @Query('limit') limit?: string
   ) {
     return this.changeReviewsService.listReviews({
       viewer,
       role,
       status,
-      limit: limit ? Number(limit) : undefined,
+      limit: limit ? Number(limit) : undefined
     });
   }
 
   @Get('change-reviews/:reviewId')
   @ApiOperation({
     summary: 'Get change review detail',
-    description: 'Returns review metadata and permissions for the current user.',
+    description: 'Returns review metadata and permissions for the current user.'
   })
   @ApiParam({ name: 'reviewId', example: 'a245d562-7f9d-4b1c-8269-23ccfcab4e1b' })
   @ApiResponse({ status: 200, description: 'Change review detail returned' })
@@ -82,14 +105,18 @@ export class ChangeReviewsController {
   @Get('change-reviews/:reviewId/diff')
   @ApiOperation({
     summary: 'Get structured diff for a change review',
-    description: 'Returns structured canonical XML diff hunks and attached review threads.',
+    description: 'Returns structured canonical XML diff hunks and attached review threads.'
   })
   @ApiParam({ name: 'reviewId', example: 'a245d562-7f9d-4b1c-8269-23ccfcab4e1b' })
-  @ApiQuery({ name: 'patchset', required: false, description: 'Patchset number to diff (defaults to latest)' })
+  @ApiQuery({
+    name: 'patchset',
+    required: false,
+    description: 'Patchset number to diff (defaults to latest)'
+  })
   getReviewDiff(
     @Param('reviewId') reviewId: string,
     @Query('patchset') patchset: string | undefined,
-    @CurrentUser() viewer?: RequestUser,
+    @CurrentUser() viewer?: RequestUser
   ) {
     const patchsetNumber = patchset ? Number(patchset) : undefined;
     return this.changeReviewsService.getReviewDiff(reviewId, viewer, patchsetNumber);
@@ -98,14 +125,19 @@ export class ChangeReviewsController {
   @Get('change-reviews/:reviewId/score-view')
   @ApiOperation({
     summary: 'Get the single-score change review view',
-    description: 'Returns all commentable bars in the head score, changed-bar metadata, removed regions, and threads.',
+    description:
+      'Returns all commentable bars in the head score, changed-bar metadata, removed regions, and threads.'
   })
   @ApiParam({ name: 'reviewId', example: 'a245d562-7f9d-4b1c-8269-23ccfcab4e1b' })
-  @ApiQuery({ name: 'patchset', required: false, description: 'Patchset number to review (defaults to latest)' })
+  @ApiQuery({
+    name: 'patchset',
+    required: false,
+    description: 'Patchset number to review (defaults to latest)'
+  })
   getReviewScoreView(
     @Param('reviewId') reviewId: string,
     @Query('patchset') patchset: string | undefined,
-    @CurrentUser() viewer?: RequestUser,
+    @CurrentUser() viewer?: RequestUser
   ) {
     const patchsetNumber = patchset ? Number(patchset) : undefined;
     return this.changeReviewsService.getReviewScoreView(reviewId, viewer, patchsetNumber);
@@ -117,12 +149,12 @@ export class ChangeReviewsController {
     @Param('reviewId') reviewId: string,
     @Param('revisionId') revisionId: string,
     @CurrentUser() viewer: RequestUser | undefined,
-    @Res() response: Response,
+    @Res() response: Response
   ) {
     const score = await this.changeReviewsService.getReviewCanonicalScore(
       reviewId,
       revisionId,
-      viewer,
+      viewer
     );
     response.setHeader('Content-Type', 'application/xml; charset=utf-8');
     response.setHeader('Cache-Control', 'private, no-cache');
@@ -134,14 +166,14 @@ export class ChangeReviewsController {
   createThread(
     @Param('reviewId') reviewId: string,
     @Body() body: { anchorId: string; content: string; patchsetNumber?: number },
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.createThread({
       reviewId,
       anchorId: body.anchorId,
       content: body.content,
       patchsetNumber: body.patchsetNumber,
-      viewer,
+      viewer
     });
   }
 
@@ -151,13 +183,13 @@ export class ChangeReviewsController {
     @Param('reviewId') reviewId: string,
     @Param('threadId') threadId: string,
     @Body() body: { content: string },
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.addThreadComment({
       reviewId,
       threadId,
       content: body.content,
-      viewer,
+      viewer
     });
   }
 
@@ -167,13 +199,13 @@ export class ChangeReviewsController {
     @Param('reviewId') reviewId: string,
     @Param('commentId') commentId: string,
     @Body() body: { content: string },
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.updateComment({
       reviewId,
       commentId,
       content: body.content,
-      viewer,
+      viewer
     });
   }
 
@@ -182,12 +214,12 @@ export class ChangeReviewsController {
   deleteComment(
     @Param('reviewId') reviewId: string,
     @Param('commentId') commentId: string,
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.deleteComment({
       reviewId,
       commentId,
-      viewer,
+      viewer
     });
   }
 
@@ -197,13 +229,13 @@ export class ChangeReviewsController {
     @Param('reviewId') reviewId: string,
     @Param('threadId') threadId: string,
     @Body() body: { status: 'open' | 'resolved' },
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.updateThreadStatus({
       reviewId,
       threadId,
       status: body.status,
-      viewer,
+      viewer
     });
   }
 
@@ -212,12 +244,12 @@ export class ChangeReviewsController {
   submitReview(
     @Param('reviewId') reviewId: string,
     @Body() body: { summary?: string },
-    @CurrentUser() viewer: RequestUser,
+    @CurrentUser() viewer: RequestUser
   ) {
     return this.changeReviewsService.submitReview({
       reviewId,
       summary: body.summary,
-      viewer,
+      viewer
     });
   }
 

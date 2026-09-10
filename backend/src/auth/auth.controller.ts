@@ -39,4 +39,3 @@ export class AuthController {
     return { user: user ?? null };
   }
 }
-

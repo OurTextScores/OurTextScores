@@ -16,16 +16,16 @@ describe('AuthOptionalGuard', () => {
         {
           provide: AuthService,
           useValue: {
-            optionalUser: jest.fn(),
-          },
+            optionalUser: jest.fn()
+          }
         },
         {
           provide: UsersService,
           useValue: {
-            getOrCreateByEmail: jest.fn(),
-          },
-        },
-      ],
+            getOrCreateByEmail: jest.fn()
+          }
+        }
+      ]
     }).compile();
 
     guard = module.get<AuthOptionalGuard>(AuthOptionalGuard);
@@ -35,13 +35,13 @@ describe('AuthOptionalGuard', () => {
 
   const createMockExecutionContext = (authHeader?: string): ExecutionContext => {
     const request = {
-      headers: authHeader ? { authorization: authHeader } : {},
+      headers: authHeader ? { authorization: authHeader } : {}
     };
 
     return {
       switchToHttp: () => ({
-        getRequest: () => request,
-      }),
+        getRequest: () => request
+      })
     } as ExecutionContext;
   };
 
@@ -71,16 +71,16 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       };
 
       authService.optionalUser.mockReturnValue(principal);
@@ -95,7 +95,7 @@ describe('AuthOptionalGuard', () => {
         userId: 'user123',
         email: 'user@example.com',
         name: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       });
     });
 
@@ -104,16 +104,16 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Token Name',
+        name: 'Token Name'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Database Name',
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.optionalUser.mockReturnValue(principal);
@@ -129,16 +129,16 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Principal Name',
+        name: 'Principal Name'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: null,
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.optionalUser.mockReturnValue(principal);
@@ -154,16 +154,16 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: [],
+        roles: []
       };
 
       authService.optionalUser.mockReturnValue(principal);
@@ -179,16 +179,16 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: 'user123',
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: null, // Invalid roles
+        roles: null // Invalid roles
       };
 
       authService.optionalUser.mockReturnValue(principal);
@@ -204,8 +204,8 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
-        name: 'Anonymous User',
+        userId: 'test-user-id',
+        name: 'Anonymous User'
         // No email
       };
 
@@ -244,16 +244,16 @@ describe('AuthOptionalGuard', () => {
       const request = context.switchToHttp().getRequest();
 
       const principal = {
-        userId: "test-user-id",
+        userId: 'test-user-id',
         email: 'user@example.com',
-        name: 'Test User',
+        name: 'Test User'
       };
 
       const userDoc = {
         _id: { toString: () => 'objectid123' }, // ObjectId-like object
         email: 'user@example.com',
         displayName: 'Test User',
-        roles: ['user'],
+        roles: ['user']
       };
 
       authService.optionalUser.mockReturnValue(principal);

@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createHash } from 'node:crypto';
@@ -78,7 +85,7 @@ export class UploadSourceService {
     private readonly sourceModel: Model<SourceDocument>,
     @InjectModel(SourceRevision.name)
     private readonly sourceRevisionModel: Model<SourceRevisionDocument>
-  ) { }
+  ) {}
 
   private isEnabled(envKey: string, defaultValue: boolean): boolean {
     const raw = this.config.get<string>(envKey);
@@ -98,10 +105,11 @@ export class UploadSourceService {
 
     const requireRightsDeclaration = this.isEnabled('REQUIRE_RIGHTS_DECLARATION', false);
     const rightsAccepted = request.rightsDeclarationAccepted === true;
-    if ((requireRightsDeclaration || request.license === 'All Rights Reserved') && !rightsAccepted) {
-      throw new BadRequestException(
-        'Rights declaration is required for this upload'
-      );
+    if (
+      (requireRightsDeclaration || request.license === 'All Rights Reserved') &&
+      !rightsAccepted
+    ) {
+      throw new BadRequestException('Rights declaration is required for this upload');
     }
   }
 
@@ -124,11 +132,14 @@ export class UploadSourceService {
       .lean()
       .exec();
 
-    const headRevision = branchRevisions.find((revision) =>
-      (this.sanitizeBranchName(revision.branchName || revision.fossilBranch) || 'trunk') === branchName,
+    const headRevision = branchRevisions.find(
+      (revision) =>
+        (this.sanitizeBranchName(revision.branchName || revision.fossilBranch) || 'trunk') ===
+        branchName
     );
-    const declaredBranch = (await this.branchesService.listBranches(input.workId, input.sourceId))
-      .find((branch) => branch.name === branchName);
+    const declaredBranch = (
+      await this.branchesService.listBranches(input.workId, input.sourceId)
+    ).find((branch) => branch.name === branchName);
     const actualHeadRevisionId = headRevision?.revisionId ?? declaredBranch?.baseRevisionId;
 
     if (actualHeadRevisionId === expectedRevisionId) {
@@ -144,14 +155,18 @@ export class UploadSourceService {
     });
   }
 
-  private async assertBranchWritable(workId: string, sourceId: string, branchName: string): Promise<void> {
+  private async assertBranchWritable(
+    workId: string,
+    sourceId: string,
+    branchName: string
+  ): Promise<void> {
     const lifecycle = await this.branchesService.getBranchLifecycle(workId, sourceId, branchName);
     if (lifecycle === 'open') {
       return;
     }
     throw new ConflictException({
       error: 'branch_closed_for_review',
-      branchName,
+      branchName
     });
   }
 
@@ -174,7 +189,9 @@ export class UploadSourceService {
 
     const trimmedWorkId = workId.trim();
     const trimmedSourceId = sourceId.trim();
-    const existing = await this.sourceModel.findOne({ workId: trimmedWorkId, sourceId: trimmedSourceId }).lean();
+    const existing = await this.sourceModel
+      .findOne({ workId: trimmedWorkId, sourceId: trimmedSourceId })
+      .lean();
     if (!existing) {
       throw new BadRequestException('Source not found for this work');
     }
@@ -255,8 +272,8 @@ export class UploadSourceService {
     const revisionId = uuidv4();
     const notes = [...derivativeOutcome.notes];
     let pendingStatus = derivativeOutcome.pending;
-    let manifest = derivativeOutcome.manifest;
-    let manifestData = derivativeOutcome.manifestData;
+    const manifest = derivativeOutcome.manifest;
+    const manifestData = derivativeOutcome.manifestData;
     let fossilArtifactId: string | undefined;
     let committedBranchName: string | undefined;
     const currentCanonical = derivativeOutcome.derivatives.canonicalXml;
@@ -268,7 +285,11 @@ export class UploadSourceService {
       validationState.performedAt = new Date();
     }
 
-    if (!pendingStatus && derivativeOutcome.derivatives.canonicalXml && derivativeOutcome.manifest) {
+    if (
+      !pendingStatus &&
+      derivativeOutcome.derivatives.canonicalXml &&
+      derivativeOutcome.manifest
+    ) {
       try {
         this.progress.publish(progressId, 'Committing to Fossil', 'fossil.start');
         const fossilFiles = await this.collectFossilFiles(derivativeOutcome);
@@ -279,7 +300,7 @@ export class UploadSourceService {
             sourceId: trimmedSourceId,
             revisionId,
             sequenceNumber,
-            message: (request.commitMessage?.trim() || label),
+            message: request.commitMessage?.trim() || label,
             files: fossilFiles,
             branchName: branch
           });
@@ -287,10 +308,18 @@ export class UploadSourceService {
           committedBranchName = commit.branchName || branch || undefined;
           if (fossilArtifactId) {
             notes.push(`Fossil commit recorded (${fossilArtifactId}).`);
-            this.progress.publish(progressId, `Fossil commit recorded (${fossilArtifactId})`, 'fossil.done');
+            this.progress.publish(
+              progressId,
+              `Fossil commit recorded (${fossilArtifactId})`,
+              'fossil.done'
+            );
           } else {
             notes.push('Fossil commit completed but artifact identifier was not returned.');
-            this.progress.publish(progressId, 'Fossil commit completed; id not returned', 'fossil.noid');
+            this.progress.publish(
+              progressId,
+              'Fossil commit completed; id not returned',
+              'fossil.noid'
+            );
           }
           if (commit.branchName) {
             notes.push(`Committed on branch ${commit.branchName}.`);
@@ -326,8 +355,8 @@ export class UploadSourceService {
     // Handle reference PDF if provided. If a source already has a reference PDF,
     // preserve that locator across revisions unless a new reference is uploaded.
     let hasReferencePdf = (existing as any).hasReferencePdf ?? false;
-    let preservedReferencePdf: StorageLocator | undefined =
-      (existing as any).derivatives?.referencePdf;
+    let preservedReferencePdf: StorageLocator | undefined = (existing as any).derivatives
+      ?.referencePdf;
     if (!preservedReferencePdf && hasReferencePdf) {
       const latestRevisionWithReference = await this.sourceRevisionModel
         .findOne({
@@ -367,19 +396,29 @@ export class UploadSourceService {
     const provenance: Provenance = {
       ingestType: existingProvenance?.ingestType ?? 'manual',
       uploadedAt: receivedAt,
-      sourceSystem: existingProvenance?.sourceSystem ?? (request.formatHint ? `hint:${request.formatHint}` : undefined),
+      sourceSystem:
+        existingProvenance?.sourceSystem ??
+        (request.formatHint ? `hint:${request.formatHint}` : undefined),
       sourceIdentifier: existingProvenance?.sourceIdentifier,
       uploadedByUserId: existingProvenance?.uploadedByUserId ?? user?.userId,
       uploadedByName: existingProvenance?.uploadedByName ?? user?.name,
-      notes: Array.isArray(existingProvenance?.notes) ? [...existingProvenance.notes, ...notes] : notes
+      notes: Array.isArray(existingProvenance?.notes)
+        ? [...existingProvenance.notes, ...notes]
+        : notes
     };
     const rightsAccepted = request.rightsDeclarationAccepted === true;
     const rightsAcceptedAt = rightsAccepted ? receivedAt : undefined;
 
     // Determine branch policy gating
     const committedLogicalBranch =
-      this.sanitizeBranchName(committedBranchName ?? this.commitBranchFromNotes(notes) ?? requestedBranchName) || 'trunk';
-    const policy = await this.branchesService.getBranchPolicy(trimmedWorkId, trimmedSourceId, committedLogicalBranch);
+      this.sanitizeBranchName(
+        committedBranchName ?? this.commitBranchFromNotes(notes) ?? requestedBranchName
+      ) || 'trunk';
+    const policy = await this.branchesService.getBranchPolicy(
+      trimmedWorkId,
+      trimmedSourceId,
+      committedLogicalBranch
+    );
     let status: 'approved' | 'pending_approval' = 'approved';
     let approval: any = undefined;
     if (policy === 'owner_approval') {
@@ -387,7 +426,11 @@ export class UploadSourceService {
         throw new BadRequestException('Authentication required to submit to an owned branch');
       }
       status = 'pending_approval';
-      const ownerUserId = await this.branchesService.getBranchOwnerUserId(trimmedWorkId, trimmedSourceId, committedLogicalBranch);
+      const ownerUserId = await this.branchesService.getBranchOwnerUserId(
+        trimmedWorkId,
+        trimmedSourceId,
+        committedLogicalBranch
+      );
       approval = { ownerUserId, requestedAt: receivedAt };
     }
 
@@ -454,14 +497,24 @@ export class UploadSourceService {
     }
 
     const formatsForWork = new Set<string>([format]);
-    if (derivativeOutcome.derivatives.normalizedMxl) formatsForWork.add('application/vnd.recordare.musicxml');
+    if (derivativeOutcome.derivatives.normalizedMxl)
+      formatsForWork.add('application/vnd.recordare.musicxml');
     if (derivativeOutcome.derivatives.canonicalXml) formatsForWork.add('application/xml');
 
     if (setLatest) {
-      await this.worksService.recordSourceRevision(trimmedWorkId, Array.from(formatsForWork), receivedAt);
+      await this.worksService.recordSourceRevision(
+        trimmedWorkId,
+        Array.from(formatsForWork),
+        receivedAt
+      );
     }
     if (status === 'pending_approval') {
-      await this.notifications.queuePushRequest({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId, ownerUserId: approval?.ownerUserId });
+      await this.notifications.queuePushRequest({
+        workId: trimmedWorkId,
+        sourceId: trimmedSourceId,
+        revisionId,
+        ownerUserId: approval?.ownerUserId
+      });
     }
     if (status === 'approved') {
       await this.changeReviewsService.syncOpenReviewPatchsetForRevision({
@@ -470,7 +523,7 @@ export class UploadSourceService {
         branchName: committedLogicalBranch,
         headRevisionId: revisionId,
         headSequenceNumber: sequenceNumber,
-        actorUserId: user?.userId,
+        actorUserId: user?.userId
       });
     }
     if (setLatest) {
@@ -495,7 +548,9 @@ export class UploadSourceService {
       sourceId: trimmedSourceId,
       revisionId,
       status: pendingStatus ? 'pending' : 'accepted',
-      message: pendingStatus ? 'Upload stored; additional processing pending.' : 'Upload stored; derivatives generated.',
+      message: pendingStatus
+        ? 'Upload stored; additional processing pending.'
+        : 'Upload stored; derivatives generated.',
       receivedBytes: file.size,
       originalFilename: file.originalname,
       mimeType: file.mimetype || 'application/octet-stream',
@@ -548,7 +603,11 @@ export class UploadSourceService {
     let latestRevision = null as any;
     if ((source as any).latestRevisionId) {
       latestRevision = await this.sourceRevisionModel
-        .findOne({ workId: trimmedWorkId, sourceId: trimmedSourceId, revisionId: (source as any).latestRevisionId })
+        .findOne({
+          workId: trimmedWorkId,
+          sourceId: trimmedSourceId,
+          revisionId: (source as any).latestRevisionId
+        })
         .lean()
         .exec();
     }
@@ -675,8 +734,8 @@ export class UploadSourceService {
     const revisionId = uuidv4();
     const notes = [...derivativeOutcome.notes];
     let pendingStatus = derivativeOutcome.pending;
-    let manifest = derivativeOutcome.manifest;
-    let manifestData = derivativeOutcome.manifestData;
+    const manifest = derivativeOutcome.manifest;
+    const manifestData = derivativeOutcome.manifestData;
     let fossilArtifactId: string | undefined;
     const currentCanonical = derivativeOutcome.derivatives.canonicalXml;
     const previousCanonical = previousRevision?.derivatives?.canonicalXml;
@@ -703,7 +762,7 @@ export class UploadSourceService {
             sourceId,
             revisionId,
             sequenceNumber,
-            message: (request.commitMessage?.trim() || label),
+            message: request.commitMessage?.trim() || label,
             files: fossilFiles,
             branchName: branch
           });
@@ -711,10 +770,18 @@ export class UploadSourceService {
 
           if (fossilArtifactId) {
             notes.push(`Fossil commit recorded (${fossilArtifactId}).`);
-            this.progress.publish(progressId, `Fossil commit recorded (${fossilArtifactId})`, 'fossil.done');
+            this.progress.publish(
+              progressId,
+              `Fossil commit recorded (${fossilArtifactId})`,
+              'fossil.done'
+            );
           } else {
             notes.push('Fossil commit completed but artifact identifier was not returned.');
-            this.progress.publish(progressId, 'Fossil commit completed; id not returned', 'fossil.noid');
+            this.progress.publish(
+              progressId,
+              'Fossil commit completed; id not returned',
+              'fossil.noid'
+            );
           }
         } else {
           pendingStatus = true;
@@ -778,9 +845,14 @@ export class UploadSourceService {
     const rightsAcceptedAt = rightsAccepted ? receivedAt : undefined;
 
     // Determine branch policy gating for new source (default to trunk)
-    const sanitizedBranch = this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
+    const sanitizedBranch =
+      this.sanitizeBranchName(request.branchName) || this.commitBranchFromNotes(notes) || 'trunk';
     await this.branchesService.ensureDefaultTrunk(work.workId, sourceId);
-    const policy = await this.branchesService.getBranchPolicy(work.workId, sourceId, sanitizedBranch);
+    const policy = await this.branchesService.getBranchPolicy(
+      work.workId,
+      sourceId,
+      sanitizedBranch
+    );
     let status: 'approved' | 'pending_approval' = 'approved';
     let approval: any = undefined;
     if (policy === 'owner_approval') {
@@ -788,7 +860,11 @@ export class UploadSourceService {
         throw new BadRequestException('Authentication required to submit to an owned branch');
       }
       status = 'pending_approval';
-      const ownerUserId = await this.branchesService.getBranchOwnerUserId(work.workId, sourceId, sanitizedBranch);
+      const ownerUserId = await this.branchesService.getBranchOwnerUserId(
+        work.workId,
+        sourceId,
+        sanitizedBranch
+      );
       approval = { ownerUserId, requestedAt: receivedAt };
     }
 
@@ -800,9 +876,7 @@ export class UploadSourceService {
       sequenceNumber,
       fossilArtifactId,
       fossilParentArtifactIds:
-        previousRevision?.fossilArtifactId != null
-          ? [previousRevision.fossilArtifactId]
-          : [],
+        previousRevision?.fossilArtifactId != null ? [previousRevision.fossilArtifactId] : [],
       fossilBranch: sanitizedBranch,
       branchName: sanitizedBranch,
       rawStorage: storageLocator,
@@ -813,7 +887,8 @@ export class UploadSourceService {
       validationSnapshot: validationState,
       derivatives: derivativeOutcome.derivatives,
       manifest,
-      changeSummary: request.commitMessage?.trim() || (sequenceNumber === 1 ? 'Initial upload' : 'New revision'),
+      changeSummary:
+        request.commitMessage?.trim() || (sequenceNumber === 1 ? 'Initial upload' : 'New revision'),
       license: request.license,
       licenseUrl: request.licenseUrl,
       licenseAttribution: request.licenseAttribution,
@@ -874,7 +949,12 @@ export class UploadSourceService {
       });
     }
     if (status === 'pending_approval') {
-      await this.notifications.queuePushRequest({ workId: work.workId, sourceId, revisionId, ownerUserId: approval?.ownerUserId });
+      await this.notifications.queuePushRequest({
+        workId: work.workId,
+        sourceId,
+        revisionId,
+        ownerUserId: approval?.ownerUserId
+      });
     }
     // No previous on brand-new sources; nothing to diff
     this.progress.publish(progressId, 'Done', 'done');
@@ -901,9 +981,7 @@ export class UploadSourceService {
     };
   }
 
-  private async collectFossilFiles(
-    outcome: DerivativePipelineResult
-  ): Promise<FossilCommitFile[]> {
+  private async collectFossilFiles(outcome: DerivativePipelineResult): Promise<FossilCommitFile[]> {
     const files: FossilCommitFile[] = [];
 
     const addFile = async (relativePath: string, locator?: StorageLocator) => {
@@ -911,10 +989,7 @@ export class UploadSourceService {
         return;
       }
 
-      const buffer = await this.storageService.getObjectBuffer(
-        locator.bucket,
-        locator.objectKey
-      );
+      const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
       files.push({ relativePath, content: buffer });
     };
 
@@ -1015,12 +1090,14 @@ export class UploadSourceService {
     outcome: DerivativePipelineResult,
     progressId?: string
   ): void {
-    if (format !== 'application/vnd.musescore.mscz' && format !== 'application/vnd.musescore.mscx') {
+    if (
+      format !== 'application/vnd.musescore.mscz' &&
+      format !== 'application/vnd.musescore.mscx'
+    ) {
       return;
     }
 
-    const missingCore =
-      !outcome.derivatives?.canonicalXml;
+    const missingCore = !outcome.derivatives?.canonicalXml;
     if (!outcome.pending && !missingCore) {
       return;
     }
@@ -1059,11 +1136,7 @@ export class UploadSourceService {
       return;
     }
 
-    this.progress.publish(
-      progressId,
-      'Derivative pipeline failed for ABC file',
-      'pipeline.error'
-    );
+    this.progress.publish(progressId, 'Derivative pipeline failed for ABC file', 'pipeline.error');
     this.progress.publish(progressId, 'Done', 'done');
     this.progress.complete(progressId);
 
@@ -1093,14 +1166,14 @@ export class UploadSourceService {
     const raw = (name ?? '').trim();
     if (!raw) return undefined;
     // replace spaces with dashes and drop invalid characters
-    const cleaned = raw.replace(/\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '').slice(0, 64);
+    const cleaned = raw
+      .replace(/\s+/g, '-')
+      .replace(/[^A-Za-z0-9._-]/g, '')
+      .slice(0, 64);
     return cleaned || undefined;
   }
 
-  private resolveFormat(
-    file: Express.Multer.File,
-    formatHint?: string
-  ): string {
+  private resolveFormat(file: Express.Multer.File, formatHint?: string): string {
     const normalizedHint = formatHint?.toLowerCase();
     if (normalizedHint) {
       if (normalizedHint.includes('abc')) {
@@ -1263,7 +1336,21 @@ export class UploadSourceService {
   private async validateReferencePdfAgainstImslp(
     file: Express.Multer.File,
     workId: string
-  ): Promise<{ valid: true; imslpFile: { name: string; title: string; url: string; sha1: string; size: number; timestamp: string; user: string } } | { valid: false; reason: string }> {
+  ): Promise<
+    | {
+        valid: true;
+        imslpFile: {
+          name: string;
+          title: string;
+          url: string;
+          sha1: string;
+          size: number;
+          timestamp: string;
+          user: string;
+        };
+      }
+    | { valid: false; reason: string }
+  > {
     const hash = createHash('sha1').update(file.buffer).digest('hex');
     const imslpData = await this.imslpService.getRawByWorkId(workId).catch(() => null);
     if (!imslpData) {

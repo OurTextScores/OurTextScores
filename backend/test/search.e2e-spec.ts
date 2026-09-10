@@ -29,9 +29,7 @@ describe('Search API (e2e)', () => {
 
   describe('GET /api/search/health', () => {
     it('should return search health status', async () => {
-      const response = await request(API_BASE)
-        .get('/api/search/health')
-        .expect(200);
+      const response = await request(API_BASE).get('/api/search/health').expect(200);
 
       expect(response.body).toHaveProperty('status');
       expect(response.body).toHaveProperty('isHealthy');
@@ -43,9 +41,7 @@ describe('Search API (e2e)', () => {
 
   describe('GET /api/search/stats', () => {
     it('should return search index statistics', async () => {
-      const response = await request(API_BASE)
-        .get('/api/search/stats')
-        .expect(200);
+      const response = await request(API_BASE).get('/api/search/stats').expect(200);
 
       // Stats can be null if not configured, or an object with stats
       if (response.body !== null) {
@@ -63,9 +59,7 @@ describe('Search API (e2e)', () => {
 
   describe('GET /api/search/works', () => {
     it('should require query parameter', async () => {
-      await request(API_BASE)
-        .get('/api/search/works')
-        .expect(400);
+      await request(API_BASE).get('/api/search/works').expect(400);
 
       console.log('  ✓ Query parameter validation working');
     });
@@ -83,7 +77,9 @@ describe('Search API (e2e)', () => {
       expect(Array.isArray(response.body.hits)).toBe(true);
       expect(response.body.query).toBe('Bach');
 
-      console.log(`  ✓ Search returned ${response.body.hits.length} results in ${response.body.processingTimeMs}ms`);
+      console.log(
+        `  ✓ Search returned ${response.body.hits.length} results in ${response.body.processingTimeMs}ms`
+      );
     });
 
     it('should handle pagination parameters', async () => {
@@ -172,7 +168,7 @@ describe('Search API (e2e)', () => {
         .expect(200);
 
       // Wait a moment for indexing
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Search for the work
       const searchResponse = await request(API_BASE)

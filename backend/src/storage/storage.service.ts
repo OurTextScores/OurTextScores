@@ -53,15 +53,9 @@ export class StorageService {
     contentType: string
   ): Promise<PutObjectResult> {
     await this.ensureBucket(this.rawBucket);
-    const response = await this.client.putObject(
-      this.rawBucket,
-      objectKey,
-      body,
-      size,
-      {
-        'Content-Type': contentType
-      }
-    );
+    const response = await this.client.putObject(this.rawBucket, objectKey, body, size, {
+      'Content-Type': contentType
+    });
 
     return {
       bucket: this.rawBucket,
@@ -78,15 +72,9 @@ export class StorageService {
     contentType: string
   ): Promise<PutObjectResult> {
     await this.ensureBucket(this.derivativesBucket);
-    const response = await this.client.putObject(
-      this.derivativesBucket,
-      objectKey,
-      body,
-      size,
-      {
-        'Content-Type': contentType
-      }
-    );
+    const response = await this.client.putObject(this.derivativesBucket, objectKey, body, size, {
+      'Content-Type': contentType
+    });
 
     return {
       bucket: this.derivativesBucket,
@@ -103,15 +91,9 @@ export class StorageService {
     contentType: string
   ): Promise<PutObjectResult> {
     await this.ensureBucket(this.auxBucket);
-    const response = await this.client.putObject(
-      this.auxBucket,
-      objectKey,
-      body,
-      size,
-      {
-        'Content-Type': contentType
-      }
-    );
+    const response = await this.client.putObject(this.auxBucket, objectKey, body, size, {
+      'Content-Type': contentType
+    });
 
     return {
       bucket: this.auxBucket,
@@ -167,15 +149,9 @@ export class StorageService {
   ): Promise<void> {
     await this.ensureBucket(bucket);
     const buffer = await this.getObjectBuffer(bucket, sourceKey);
-    await this.client.putObject(
-      bucket,
-      destKey,
-      buffer,
-      buffer.length,
-      {
-        'Content-Type': contentType
-      }
-    );
+    await this.client.putObject(bucket, destKey, buffer, buffer.length, {
+      'Content-Type': contentType
+    });
     await this.deleteObject(bucket, sourceKey);
   }
 }

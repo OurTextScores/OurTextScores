@@ -36,7 +36,11 @@ export class UsersController {
             displayName: { type: 'string', example: 'John Doe' },
             username: { type: 'string', example: 'johndoe' },
             roles: { type: 'array', items: { type: 'string' }, example: ['user'] },
-            status: { type: 'string', enum: ['active', 'suspended', 'terminated'], example: 'active' },
+            status: {
+              type: 'string',
+              enum: ['active', 'suspended', 'terminated'],
+              example: 'active'
+            },
             notify: {
               type: 'object',
               properties: {
@@ -49,10 +53,7 @@ export class UsersController {
                 emailCategories: {
                   type: 'object',
                   properties: Object.fromEntries(
-                    NOTIFICATION_EMAIL_CATEGORIES.map((category) => [
-                      category,
-                      { type: 'boolean' }
-                    ])
+                    NOTIFICATION_EMAIL_CATEGORIES.map((category) => [category, { type: 'boolean' }])
                   )
                 }
               }
@@ -83,13 +84,19 @@ export class UsersController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Update user profile',
-    description: 'Update profile information (username) for the authenticated user. Requires authentication.'
+    description:
+      'Update profile information (username) for the authenticated user. Requires authentication.'
   })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        username: { type: 'string', example: 'johndoe', description: 'Unique username (lowercase, alphanumeric + underscores, 3-20 chars)', pattern: '^[a-z0-9_]{3,20}$' }
+        username: {
+          type: 'string',
+          example: 'johndoe',
+          description: 'Unique username (lowercase, alphanumeric + underscores, 3-20 chars)',
+          pattern: '^[a-z0-9_]{3,20}$'
+        }
       }
     }
   })
@@ -105,10 +112,7 @@ export class UsersController {
     }
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async updateProfile(
-    @CurrentUser() user: RequestUser,
-    @Body('username') username?: string
-  ) {
+  async updateProfile(@CurrentUser() user: RequestUser, @Body('username') username?: string) {
     const doc = await this.users.findById(user.userId);
     if (!doc) return { ok: false, error: 'User not found' };
 
@@ -116,7 +120,10 @@ export class UsersController {
     if (username !== undefined) {
       const normalized = username.trim().toLowerCase();
       if (normalized && !/^[a-z0-9_]{3,20}$/.test(normalized)) {
-        return { ok: false, error: 'Username must be 3-20 characters (lowercase letters, numbers, underscores only)' };
+        return {
+          ok: false,
+          error: 'Username must be 3-20 characters (lowercase letters, numbers, underscores only)'
+        };
       }
       // Check if username is already taken by another user
       if (normalized && normalized !== doc.username) {
@@ -136,7 +143,8 @@ export class UsersController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Update user preferences',
-    description: 'Update notification preferences for the authenticated user. Requires authentication.'
+    description:
+      'Update notification preferences for the authenticated user. Requires authentication.'
   })
   @ApiBody({
     schema: {
@@ -163,7 +171,11 @@ export class UsersController {
       }
     }
   })
-  @ApiResponse({ status: 200, description: 'Preferences updated successfully', schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Preferences updated successfully',
+    schema: { type: 'object', properties: { ok: { type: 'boolean', example: true } } }
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async updatePreferences(
     @CurrentUser() user: RequestUser,
@@ -199,9 +211,7 @@ export class UsersController {
         throw new BadRequestException('emailCategories must be an object');
       }
       for (const [category, enabled] of Object.entries(body.emailCategories)) {
-        if (
-          !isNotificationEmailCategory(category) || typeof enabled !== 'boolean'
-        ) {
+        if (!isNotificationEmailCategory(category) || typeof enabled !== 'boolean') {
           throw new BadRequestException(`Invalid notification email category: ${category}`);
         }
         preferences.emailCategories[category] = enabled;

@@ -178,10 +178,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     this.verifySelectedComponents(engine, options);
     const candidates = envelope?.result?.candidates;
     const coreCandidate = this.candidate(candidates?.core, 'core');
-    const headsCandidate = this.candidate(
-      candidates?.['additional-heads'],
-      'additional-heads'
-    );
+    const headsCandidate = this.candidate(candidates?.['additional-heads'], 'additional-heads');
     const proposals = this.proposalPayload(headsCandidate.rawReview);
     return {
       engine: this.engine,

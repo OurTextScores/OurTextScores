@@ -17,7 +17,7 @@ function chain<T>(result: T) {
     sort: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     lean: jest.fn().mockReturnThis(),
-    exec: jest.fn().mockResolvedValue(result),
+    exec: jest.fn().mockResolvedValue(result)
   } as any;
 }
 
@@ -43,7 +43,7 @@ describe('ChangeReviewsService', () => {
     sourceId: 'src-1',
     label: 'Primary Score',
     sourceType: 'score',
-    provenance: { uploadedByUserId: 'uploader-1' },
+    provenance: { uploadedByUserId: 'uploader-1' }
   };
   const baseRevision = {
     workId: '164349',
@@ -54,7 +54,7 @@ describe('ChangeReviewsService', () => {
     status: 'approved',
     visibility: 'public',
     branchName: 'trunk',
-    derivatives: { canonicalXml: { bucket: 'der', objectKey: 'base.xml' } },
+    derivatives: { canonicalXml: { bucket: 'der', objectKey: 'base.xml' } }
   };
   const headRevision = {
     workId: '164349',
@@ -65,7 +65,7 @@ describe('ChangeReviewsService', () => {
     status: 'approved',
     visibility: 'public',
     branchName: 'trunk',
-    derivatives: { canonicalXml: { bucket: 'der', objectKey: 'head.xml' } },
+    derivatives: { canonicalXml: { bucket: 'der', objectKey: 'head.xml' } }
   };
 
   beforeEach(() => {
@@ -74,50 +74,58 @@ describe('ChangeReviewsService', () => {
       findOne: jest.fn(),
       find: jest.fn(),
       create: jest.fn(),
-      updateOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) }),
+      updateOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) })
     } as any;
     patchsetModel = {
       create: jest.fn().mockResolvedValue(undefined),
       find: jest.fn().mockReturnValue(chain([])),
       findOne: jest.fn().mockReturnValue(chain(null)),
-      countDocuments: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) }),
+      countDocuments: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) })
     } as any;
     threadModel = {
-      aggregate: jest.fn().mockResolvedValue([]),
+      aggregate: jest.fn().mockResolvedValue([])
     } as any;
     commentModel = {} as any;
     workModel = {
       findOne: jest.fn(),
-      find: jest.fn(),
+      find: jest.fn()
     } as any;
     sourceModel = {
       findOne: jest.fn(),
-      find: jest.fn(),
+      find: jest.fn()
     } as any;
     sourceRevisionModel = {
-      findOne: jest.fn(),
+      findOne: jest.fn()
     } as any;
     sourceBranchModel = {
-      findOne: jest.fn(),
+      findOne: jest.fn()
     } as any;
     notificationsService = {
       queueChangeReviewSubmitted: jest.fn().mockResolvedValue(undefined),
-      queueChangeReviewActivity: jest.fn().mockResolvedValue(undefined),
+      queueChangeReviewActivity: jest.fn().mockResolvedValue(undefined)
     } as any;
     storageService = {
-      getObjectBuffer: jest.fn(),
+      getObjectBuffer: jest.fn()
     } as any;
     usersService = {
-      findById: jest.fn(async (id: string) => ({ _id: id, username: `${id}-name`, email: `${id}@example.com` })),
+      findById: jest.fn(async (id: string) => ({
+        _id: id,
+        username: `${id}-name`,
+        email: `${id}@example.com`
+      }))
     };
     watchesService = {
-      getSubscribersUserIds: jest.fn().mockResolvedValue([]),
+      getSubscribersUserIds: jest.fn().mockResolvedValue([])
     };
     branchesService = {
       sanitizeName: jest.fn((name?: string) => (name || 'trunk').trim() || 'trunk'),
       getBranchPolicy: jest.fn().mockResolvedValue('public'),
-      listBranches: jest.fn().mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]),
-      setBranchLifecycle: jest.fn().mockResolvedValue({ name: 'trunk', policy: 'public', lifecycle: 'open' }),
+      listBranches: jest
+        .fn()
+        .mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]),
+      setBranchLifecycle: jest
+        .fn()
+        .mockResolvedValue({ name: 'trunk', policy: 'public', lifecycle: 'open' })
     };
 
     workModel.findOne.mockImplementation((query: any) => {
@@ -137,15 +145,21 @@ describe('ChangeReviewsService', () => {
     reviewModel.findOne.mockReturnValue(chain(null));
     reviewModel.find.mockReturnValue(chain([]));
     reviewModel.create.mockImplementation(async (doc: any) => ({
-      toObject: () => doc,
+      toObject: () => doc
     }));
     threadModel.find = jest.fn().mockReturnValue(chain([]));
-    threadModel.countDocuments = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
+    threadModel.countDocuments = jest
+      .fn()
+      .mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
     threadModel.create = jest.fn().mockResolvedValue(undefined);
-    threadModel.deleteOne = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) });
+    threadModel.deleteOne = jest
+      .fn()
+      .mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) });
     commentModel.find = jest.fn().mockReturnValue(chain([]));
     commentModel.create = jest.fn().mockResolvedValue(undefined);
-    commentModel.countDocuments = jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
+    commentModel.countDocuments = jest
+      .fn()
+      .mockReturnValue({ exec: jest.fn().mockResolvedValue(0) });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<score-partwise/>\n'));
 
     service = new ChangeReviewsService(
@@ -161,21 +175,19 @@ describe('ChangeReviewsService', () => {
       notificationsService as any,
       storageService as any,
       usersService as any,
-      watchesService as any,
+      watchesService as any
     );
   });
 
   it('creates an open branch review, seeds patchset 1, and adds uploader as participant', async () => {
     reviewModel.findOne.mockReturnValueOnce(chain(null));
-    sourceRevisionModel.find = jest.fn().mockReturnValue(
-      chain([headRevision, baseRevision]),
-    );
+    sourceRevisionModel.find = jest.fn().mockReturnValue(chain([headRevision, baseRevision]));
 
     const result = await service.createOrOpenBranchReview({
       workId: '164349',
       sourceId: 'src-1',
       branchName: 'trunk',
-      opener: { userId: 'reviewer-1', roles: ['user'] },
+      opener: { userId: 'reviewer-1', roles: ['user'] }
     });
 
     expect(reviewModel.create).toHaveBeenCalled();
@@ -184,14 +196,16 @@ describe('ChangeReviewsService', () => {
     expect(payload.branchName).toBe('trunk');
     expect(payload.ownerUserId).toBe('author-2');
     expect(payload.participantUserIds).toEqual(
-      expect.arrayContaining(['reviewer-1', 'author-2', 'uploader-1']),
+      expect.arrayContaining(['reviewer-1', 'author-2', 'uploader-1'])
     );
-    expect(patchsetModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      reviewId: payload.reviewId,
-      patchsetNumber: 1,
-      baseRevisionId: 'rev-1',
-      headRevisionId: 'rev-2',
-    }));
+    expect(patchsetModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: payload.reviewId,
+        patchsetNumber: 1,
+        baseRevisionId: 'rev-1',
+        headRevisionId: 'rev-2'
+      })
+    );
     expect(result.work.title).toBe('Test Work');
     expect(result.source.label).toBe('Primary Score');
   });
@@ -204,20 +218,24 @@ describe('ChangeReviewsService', () => {
       workId: '164349',
       sourceId: 'src-1',
       branchName: 'trunk',
-      opener: { userId: 'reviewer-1', roles: ['user'] },
+      opener: { userId: 'reviewer-1', roles: ['user'] }
     });
 
-    expect(reviewModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      baseRevisionId: 'rev-2',
-      headRevisionId: 'rev-2',
-      baseSequenceNumber: 2,
-      headSequenceNumber: 2,
-    }));
-    expect(patchsetModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      patchsetNumber: 1,
-      baseRevisionId: 'rev-2',
-      headRevisionId: 'rev-2',
-    }));
+    expect(reviewModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseRevisionId: 'rev-2',
+        headRevisionId: 'rev-2',
+        baseSequenceNumber: 2,
+        headSequenceNumber: 2
+      })
+    );
+    expect(patchsetModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patchsetNumber: 1,
+        baseRevisionId: 'rev-2',
+        headRevisionId: 'rev-2'
+      })
+    );
     expect(result.reviewId).toBeDefined();
   });
 
@@ -229,13 +247,15 @@ describe('ChangeReviewsService', () => {
       sourceId: 'src-1',
       branchName: 'trunk',
       initialPair: { baseRevisionId: 'rev-2', headRevisionId: 'rev-2' },
-      opener: { userId: 'reviewer-1', roles: ['user'] },
+      opener: { userId: 'reviewer-1', roles: ['user'] }
     });
 
-    expect(reviewModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      baseRevisionId: 'rev-2',
-      headRevisionId: 'rev-2',
-    }));
+    expect(reviewModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseRevisionId: 'rev-2',
+        headRevisionId: 'rev-2'
+      })
+    );
   });
 
   it('returns an existing active branch review instead of creating another one', async () => {
@@ -256,15 +276,15 @@ describe('ChangeReviewsService', () => {
         unresolvedThreadCount: 0,
         lastActivityAt: new Date(),
         createdAt: new Date(),
-        updatedAt: new Date(),
-      }),
+        updatedAt: new Date()
+      })
     );
 
     const result = await service.createOrOpenBranchReview({
       workId: '164349',
       sourceId: 'src-1',
       branchName: 'trunk',
-      opener: { userId: 'reviewer-1', roles: ['user'] },
+      opener: { userId: 'reviewer-1', roles: ['user'] }
     });
 
     expect(reviewModel.create).not.toHaveBeenCalled();
@@ -289,9 +309,9 @@ describe('ChangeReviewsService', () => {
           status: 'open',
           unresolvedThreadCount: 2,
           submittedAt: new Date('2026-03-07T12:00:00Z'),
-          lastActivityAt: new Date('2026-03-07T12:30:00Z'),
-        },
-      ]),
+          lastActivityAt: new Date('2026-03-07T12:30:00Z')
+        }
+      ])
     );
     workModel.find.mockReturnValue(chain([work]));
     sourceModel.find.mockReturnValue(chain([source]));
@@ -299,19 +319,19 @@ describe('ChangeReviewsService', () => {
     const result = await service.listReviews({
       viewer: { userId: 'reviewer-1', roles: ['user'] },
       role: 'reviewer',
-      status: 'open',
+      status: 'open'
     });
 
     expect(reviewModel.find).toHaveBeenCalledWith({
       reviewerUserId: 'reviewer-1',
-      status: 'open',
+      status: 'open'
     });
     expect(result.items[0]).toMatchObject({
       reviewId: 'review-1',
       workTitle: 'Test Work',
       sourceLabel: 'Primary Score',
       reviewerUsername: 'reviewer-1-name',
-      ownerUsername: 'author-2-name',
+      ownerUsername: 'author-2-name'
     });
   });
 
@@ -324,12 +344,12 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'draft',
-      }),
+        status: 'draft'
+      })
     );
 
     await expect(
-      service.getReviewDetail('review-1', { userId: 'author-2', roles: ['user'] }),
+      service.getReviewDetail('review-1', { userId: 'author-2', roles: ['user'] })
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -342,11 +362,14 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
 
-    const detail = await service.getReviewDetail('review-1', { userId: 'reviewer-1', roles: ['user'] });
+    const detail = await service.getReviewDetail('review-1', {
+      userId: 'reviewer-1',
+      roles: ['user']
+    });
 
     expect(detail.viewerUserId).toBe('reviewer-1');
   });
@@ -360,8 +383,8 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
 
     const detail = await service.getReviewDetail(PUBLIC_CHANGE_REVIEW_ID);
@@ -377,8 +400,8 @@ describe('ChangeReviewsService', () => {
         canClose: false,
         canWithdraw: false,
         canReply: false,
-        canResolve: false,
-      },
+        canResolve: false
+      }
     });
   });
 
@@ -392,17 +415,17 @@ describe('ChangeReviewsService', () => {
         headRevisionId: 'rev-2',
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
 
     await expect(
-      service.getReviewCanonicalScore(PUBLIC_CHANGE_REVIEW_ID, 'rev-2'),
+      service.getReviewCanonicalScore(PUBLIC_CHANGE_REVIEW_ID, 'rev-2')
     ).resolves.toEqual(Buffer.from('<score-partwise/>\n'));
     expect(storageService.getObjectBuffer).toHaveBeenCalledWith('der', 'head.xml');
 
     await expect(
-      service.getReviewCanonicalScore(PUBLIC_CHANGE_REVIEW_ID, 'unrelated-revision'),
+      service.getReviewCanonicalScore(PUBLIC_CHANGE_REVIEW_ID, 'unrelated-revision')
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -414,8 +437,8 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
     commentModel.findOne = jest.fn().mockReturnValue({
       exec: jest.fn().mockResolvedValue({
@@ -423,20 +446,20 @@ describe('ChangeReviewsService', () => {
         reviewId: 'review-1',
         threadId: 'thread-1',
         userId: 'reviewer-1',
-        save,
-      }),
+        save
+      })
     });
 
     await service.deleteComment({
       reviewId: 'review-1',
       commentId: 'comment-1',
-      viewer: { userId: 'reviewer-1', roles: ['user'] },
+      viewer: { userId: 'reviewer-1', roles: ['user'] }
     });
 
     expect(save).toHaveBeenCalled();
     expect(threadModel.deleteOne).toHaveBeenCalledWith({
       reviewId: 'review-1',
-      threadId: 'thread-1',
+      threadId: 'thread-1'
     });
   });
 
@@ -451,50 +474,67 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
     threadModel.find.mockReturnValue(chain([]));
     commentModel.find.mockReturnValue(chain([]));
     storageService.getObjectBuffer
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch></note></measure></part></score-partwise>'
+        )
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>D</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>D</step><octave>4</octave></pitch></note></measure></part></score-partwise>'
+        )
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>4</octave></pitch></note></measure></part></score-partwise>'
+        )
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>D</step><octave>4</octave></pitch></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>D</step><octave>4</octave></pitch></note></measure></part></score-partwise>'
+        )
       );
 
-    const result = await service.getReviewDiff('review-1', { userId: 'reviewer-1', roles: ['user'] });
+    const result = await service.getReviewDiff('review-1', {
+      userId: 'reviewer-1',
+      roles: ['user']
+    });
 
     expect(result.fileKind).toBe('canonical');
     expect(result.scoreRegions.length).toBeGreaterThan(0);
     expect(result.bars).toHaveLength(2);
-    expect(result.bars).toEqual(expect.arrayContaining([
-      expect.objectContaining({ side: 'base', partId: 'P1', partIndex: 0, measureIndex: 0, commentable: true }),
-      expect.objectContaining({ side: 'head', partId: 'P1', partIndex: 0, measureIndex: 0, commentable: true }),
-    ]));
+    expect(result.bars).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          side: 'base',
+          partId: 'P1',
+          partIndex: 0,
+          measureIndex: 0,
+          commentable: true
+        }),
+        expect.objectContaining({
+          side: 'head',
+          partId: 'P1',
+          partIndex: 0,
+          measureIndex: 0,
+          commentable: true
+        })
+      ])
+    );
     expect(result.bars[0].anchorId).not.toBe(result.bars[1].anchorId);
     expect(result.scoreRegions[0]).toEqual(
       expect.objectContaining({
         label: 'Piano - m. 1',
         changeType: 'modified',
         summary: 'Changed Piano - m. 1: - <step>C</step>; + <step>D</step>',
-        commentable: true,
-      }),
+        commentable: true
+      })
     );
   });
 
@@ -510,34 +550,37 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
     threadModel.find.mockReturnValue(chain([]));
     commentModel.find.mockReturnValue(chain([]));
     storageService.getObjectBuffer
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-10"><rest/></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-10"><rest/></note></measure></part></score-partwise>'
+        )
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-20"><rest/></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-20"><rest/></note></measure></part></score-partwise>'
+        )
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-10"><rest/></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-10"><rest/></note></measure></part></score-partwise>'
+        )
       )
       .mockResolvedValueOnce(
         Buffer.from(
-          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-20"><rest/></note></measure></part></score-partwise>',
-        ),
+          '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note default-y="-20"><rest/></note></measure></part></score-partwise>'
+        )
       );
 
-    const result = await service.getReviewDiff('review-1', { userId: 'reviewer-1', roles: ['user'] });
+    const result = await service.getReviewDiff('review-1', {
+      userId: 'reviewer-1',
+      roles: ['user']
+    });
 
     // Measures that differ only in layout positioning attributes should not appear as changed regions.
     expect(result.scoreRegions).toHaveLength(0);
@@ -554,53 +597,62 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
     jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
       reviewId: 'review-1',
       fileKind: 'canonical',
       baseRevisionId: 'rev-1',
       headRevisionId: 'rev-2',
-      scoreRegions: [{
-        anchorId: 'changed-region',
-        partId: 'P1',
-        partIndex: 0,
-        partName: 'Piano',
-        side: 'head',
-        changeType: 'modified',
-        headMeasureIndex: 0,
-        headMeasureNumber: '1',
-        label: 'Piano - m. 1',
-        summary: 'Changed Piano - m. 1',
-        commentable: true,
-        regionHash: 'region-hash',
-      }],
+      scoreRegions: [
+        {
+          anchorId: 'changed-region',
+          partId: 'P1',
+          partIndex: 0,
+          partName: 'Piano',
+          side: 'head',
+          changeType: 'modified',
+          headMeasureIndex: 0,
+          headMeasureNumber: '1',
+          label: 'Piano - m. 1',
+          summary: 'Changed Piano - m. 1',
+          commentable: true,
+          regionHash: 'region-hash'
+        }
+      ],
       hunks: [],
       rawDiff: '',
-      threads: [],
+      threads: []
     } as any);
     storageService.getObjectBuffer.mockResolvedValueOnce(
       Buffer.from(
-        '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/></note></measure><measure number="2"><note><rest/></note></measure></part></score-partwise>',
-      ),
+        '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/></note></measure><measure number="2"><note><rest/></note></measure></part></score-partwise>'
+      )
     );
 
-    const result = await service.getReviewScoreView('review-1', { userId: 'reviewer-1', roles: ['user'] });
+    const result = await service.getReviewScoreView('review-1', {
+      userId: 'reviewer-1',
+      roles: ['user']
+    });
 
     expect(result.bars).toHaveLength(2);
-    expect(result.bars[0]).toEqual(expect.objectContaining({
-      kind: 'score_bar',
-      label: 'Piano - m. 1',
-      changeType: 'modified',
-      commentable: true,
-    }));
-    expect(result.bars[1]).toEqual(expect.objectContaining({
-      label: 'Piano - m. 2',
-      changeType: undefined,
-      hasThread: false,
-      commentable: true,
-    }));
+    expect(result.bars[0]).toEqual(
+      expect.objectContaining({
+        kind: 'score_bar',
+        label: 'Piano - m. 1',
+        changeType: 'modified',
+        commentable: true
+      })
+    );
+    expect(result.bars[1]).toEqual(
+      expect.objectContaining({
+        label: 'Piano - m. 2',
+        changeType: undefined,
+        hasThread: false,
+        commentable: true
+      })
+    );
   });
 
   it('marks score-view bars that have review threads', async () => {
@@ -614,8 +666,8 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         participantUserIds: ['reviewer-1', 'author-2'],
-        status: 'open',
-      }),
+        status: 'open'
+      })
     );
     jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
       reviewId: 'review-1',
@@ -625,42 +677,51 @@ describe('ChangeReviewsService', () => {
       scoreRegions: [],
       hunks: [],
       rawDiff: '',
-      threads: [{
-        threadId: 'thread-1',
-        status: 'open',
-        diffAnchor: {
-          anchorId: 'older-anchor-format',
-          lineHash: 'older-hash-format',
-          lineText: 'Piano - m. 1',
-        },
-        comments: [],
-      }],
+      threads: [
+        {
+          threadId: 'thread-1',
+          status: 'open',
+          diffAnchor: {
+            anchorId: 'older-anchor-format',
+            lineHash: 'older-hash-format',
+            lineText: 'Piano - m. 1'
+          },
+          comments: []
+        }
+      ]
     } as any);
     storageService.getObjectBuffer.mockResolvedValueOnce(
       Buffer.from(
-        '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/></note></measure></part></score-partwise>',
-      ),
+        '<score-partwise><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list><part id="P1"><measure number="1"><note><rest/></note></measure></part></score-partwise>'
+      )
     );
 
-    const result = await service.getReviewScoreView('review-1', { userId: 'reviewer-1', roles: ['user'] });
+    const result = await service.getReviewScoreView('review-1', {
+      userId: 'reviewer-1',
+      roles: ['user']
+    });
 
-    expect(result.bars[0]).toEqual(expect.objectContaining({
-      label: 'Piano - m. 1',
-      hasThread: true,
-      threadAnchorId: 'older-anchor-format',
-    }));
+    expect(result.bars[0]).toEqual(
+      expect.objectContaining({
+        label: 'Piano - m. 1',
+        hasThread: true,
+        threadAnchorId: 'older-anchor-format'
+      })
+    );
   });
 
   it('rejects client-generated measure anchors that are not in the review diff', async () => {
-    reviewModel.findOne.mockReturnValue(chain({
-      reviewId: 'review-1',
-      workId: '164349',
-      sourceId: 'src-1',
-      reviewerUserId: 'reviewer-1',
-      ownerUserId: 'author-2',
-      participantUserIds: ['reviewer-1', 'author-2'],
-      status: 'open',
-    }));
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open'
+      })
+    );
     jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
       reviewId: 'review-1',
       fileKind: 'canonical',
@@ -670,7 +731,7 @@ describe('ChangeReviewsService', () => {
       bars: [],
       hunks: [],
       rawDiff: '',
-      threads: [],
+      threads: []
     } as any);
     jest.spyOn(service, 'getReviewScoreView').mockResolvedValue({
       reviewId: 'review-1',
@@ -678,46 +739,52 @@ describe('ChangeReviewsService', () => {
       headRevisionId: 'rev-2',
       bars: [],
       removedRegions: [],
-      threads: [],
+      threads: []
     } as any);
 
-    await expect(service.createThread({
-      reviewId: 'review-1',
-      anchorId: 'score-measure:head:4',
-      content: 'This should not be accepted',
-      viewer: { userId: 'reviewer-1', roles: ['user'] },
-    })).rejects.toThrow(BadRequestException);
+    await expect(
+      service.createThread({
+        reviewId: 'review-1',
+        anchorId: 'score-measure:head:4',
+        content: 'This should not be accepted',
+        viewer: { userId: 'reviewer-1', roles: ['user'] }
+      })
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('creates a thread only for an exact backend-generated comparison bar anchor', async () => {
-    reviewModel.findOne.mockReturnValue(chain({
-      reviewId: 'review-1',
-      workId: '164349',
-      sourceId: 'src-1',
-      reviewerUserId: 'reviewer-1',
-      ownerUserId: 'author-2',
-      participantUserIds: ['reviewer-1', 'author-2'],
-      status: 'open',
-    }));
+    reviewModel.findOne.mockReturnValue(
+      chain({
+        reviewId: 'review-1',
+        workId: '164349',
+        sourceId: 'src-1',
+        reviewerUserId: 'reviewer-1',
+        ownerUserId: 'author-2',
+        participantUserIds: ['reviewer-1', 'author-2'],
+        status: 'open'
+      })
+    );
     jest.spyOn(service, 'getReviewDiff').mockResolvedValue({
       reviewId: 'review-1',
       fileKind: 'canonical',
       baseRevisionId: 'rev-1',
       headRevisionId: 'rev-2',
       scoreRegions: [],
-      bars: [{
-        anchorId: 'trusted-part-aware-anchor',
-        side: 'base',
-        partId: 'P2',
-        partIndex: 1,
-        measureIndex: 4,
-        measureHash: 'measure-hash',
-        label: 'Cello - m. 5',
-        commentable: true,
-      }],
+      bars: [
+        {
+          anchorId: 'trusted-part-aware-anchor',
+          side: 'base',
+          partId: 'P2',
+          partIndex: 1,
+          measureIndex: 4,
+          measureHash: 'measure-hash',
+          label: 'Cello - m. 5',
+          commentable: true
+        }
+      ],
       hunks: [],
       rawDiff: '',
-      threads: [],
+      threads: []
     } as any);
 
     await service.createThread({
@@ -725,17 +792,19 @@ describe('ChangeReviewsService', () => {
       anchorId: 'trusted-part-aware-anchor',
       content: 'Check this measure',
       patchsetNumber: 2,
-      viewer: { userId: 'reviewer-1', roles: ['user'] },
+      viewer: { userId: 'reviewer-1', roles: ['user'] }
     });
 
-    expect(threadModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      diffAnchor: expect.objectContaining({
-        anchorId: 'trusted-part-aware-anchor',
-        side: 'base',
-        lineHash: 'measure-hash',
-        lineText: 'Cello - m. 5',
-      }),
-    }));
+    expect(threadModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        diffAnchor: expect.objectContaining({
+          anchorId: 'trusted-part-aware-anchor',
+          side: 'base',
+          lineHash: 'measure-hash',
+          lineText: 'Cello - m. 5'
+        })
+      })
+    );
   });
 
   it('submits a draft review and queues notifications for participants and watchers', async () => {
@@ -758,8 +827,8 @@ describe('ChangeReviewsService', () => {
         lastActivityAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
-        save,
-      }),
+        save
+      })
     );
     watchesService.getSubscribersUserIds.mockResolvedValue(['watcher-1', 'author-2', 'reviewer-1']);
     threadModel.countDocuments.mockReturnValue({ exec: jest.fn().mockResolvedValue(1) });
@@ -767,7 +836,7 @@ describe('ChangeReviewsService', () => {
     const result = await service.submitReview({
       reviewId: 'review-1',
       summary: 'Please address these changes',
-      viewer: { userId: 'reviewer-1', roles: ['user'] },
+      viewer: { userId: 'reviewer-1', roles: ['user'] }
     });
 
     expect(save).toHaveBeenCalled();
@@ -776,22 +845,22 @@ describe('ChangeReviewsService', () => {
       expect.objectContaining({
         reviewId: 'review-1',
         recipientUserId: 'author-2',
-        actorUserId: 'reviewer-1',
-      }),
+        actorUserId: 'reviewer-1'
+      })
     );
     expect(notificationsService.queueChangeReviewSubmitted).toHaveBeenCalledWith(
       expect.objectContaining({
         reviewId: 'review-1',
         recipientUserId: 'uploader-1',
-        actorUserId: 'reviewer-1',
-      }),
+        actorUserId: 'reviewer-1'
+      })
     );
     expect(notificationsService.queueChangeReviewSubmitted).toHaveBeenCalledWith(
       expect.objectContaining({
         reviewId: 'review-1',
         recipientUserId: 'watcher-1',
-        actorUserId: 'reviewer-1',
-      }),
+        actorUserId: 'reviewer-1'
+      })
     );
     expect(result.status).toBe('open');
   });
@@ -807,17 +876,22 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         status: 'open',
-        save,
-      }),
+        save
+      })
     );
 
     const result = await service.closeReview({
       reviewId: 'review-1',
-      viewer: { userId: 'author-2', roles: ['user'] },
+      viewer: { userId: 'author-2', roles: ['user'] }
     });
 
     expect(save).toHaveBeenCalled();
-    expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith('164349', 'src-1', 'trunk', 'closed');
+    expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith(
+      '164349',
+      'src-1',
+      'trunk',
+      'closed'
+    );
     expect(result).toEqual({ ok: true });
   });
 
@@ -832,17 +906,22 @@ describe('ChangeReviewsService', () => {
         reviewerUserId: 'reviewer-1',
         ownerUserId: 'author-2',
         status: 'closed',
-        save,
-      }),
+        save
+      })
     );
 
     const result = await service.reopenReview({
       reviewId: 'review-1',
-      viewer: { userId: 'author-2', roles: ['user'] },
+      viewer: { userId: 'author-2', roles: ['user'] }
     });
 
     expect(save).toHaveBeenCalled();
-    expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith('164349', 'src-1', 'trunk', 'open');
+    expect(branchesService.setBranchLifecycle).toHaveBeenCalledWith(
+      '164349',
+      'src-1',
+      'trunk',
+      'open'
+    );
     expect(result).toEqual({ ok: true });
   });
 
@@ -854,7 +933,7 @@ describe('ChangeReviewsService', () => {
       const internals = service as any;
       return internals.diffScoreStructures(
         internals.extractScoreStructure(baseXml),
-        internals.extractScoreStructure(headXml),
+        internals.extractScoreStructure(headXml)
       );
     };
 
@@ -913,7 +992,11 @@ describe('ChangeReviewsService', () => {
       // Index pairing would have called m.2 and m.3 modified and m.4 added.
       expect(regions).toHaveLength(1);
       expect(regions[0]).toEqual(
-        expect.objectContaining({ changeType: 'added', headMeasureIndex: 1, baseMeasureIndex: undefined }),
+        expect.objectContaining({
+          changeType: 'added',
+          headMeasureIndex: 1,
+          baseMeasureIndex: undefined
+        })
       );
     });
 
@@ -927,25 +1010,39 @@ describe('ChangeReviewsService', () => {
 
       expect(regions).toHaveLength(1);
       expect(regions[0]).toEqual(
-        expect.objectContaining({ changeType: 'removed', baseMeasureIndex: 1, headMeasureIndex: undefined }),
+        expect.objectContaining({
+          changeType: 'removed',
+          baseMeasureIndex: 1,
+          headMeasureIndex: undefined
+        })
       );
     });
 
     it('still reports a real edit, carrying both measure indices', () => {
       const base = score(bar(1, quarter(8)));
-      const head = score(bar(1, '<note><pitch><step>D</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>'));
+      const head = score(
+        bar(
+          1,
+          '<note><pitch><step>D</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>'
+        )
+      );
 
       const regions = diffMeasures(base, head);
 
       expect(regions).toHaveLength(1);
       expect(regions[0]).toEqual(
-        expect.objectContaining({ changeType: 'modified', baseMeasureIndex: 0, headMeasureIndex: 0 }),
+        expect.objectContaining({
+          changeType: 'modified',
+          baseMeasureIndex: 0,
+          headMeasureIndex: 0
+        })
       );
     });
 
     it('drops a modified bar whose only difference is element order', () => {
       // Same elements, same start tags, different order: nothing to show a reviewer.
-      const note = '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>';
+      const note =
+        '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>';
       const words = '<direction><direction-type><words>cresc.</words></direction-type></direction>';
       const base = score(bar(1, note + words));
       const head = score(bar(1, words + note));
@@ -954,7 +1051,8 @@ describe('ChangeReviewsService', () => {
     });
 
     it('still reports an added or removed bar that has no describable summary', () => {
-      const note = '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>';
+      const note =
+        '<note><pitch><step>C</step><octave>4</octave></pitch><duration>8</duration><type>quarter</type></note>';
       const base = score(bar(1, note));
       const head = score(bar(1, note) + bar(2, note));
 
@@ -967,7 +1065,9 @@ describe('ChangeReviewsService', () => {
     it('does not let a self-closing <print/> swallow the measures that follow it', () => {
       // `<print\b[\s\S]*?</print>` skips past `<print/>` to the next closing tag, taking
       // every measure in between with it.
-      const base = score(`<print new-system="yes"/>${bar(1, quarter(8))}<print><system-layout/></print>${bar(2, quarter(8))}`);
+      const base = score(
+        `<print new-system="yes"/>${bar(1, quarter(8))}<print><system-layout/></print>${bar(2, quarter(8))}`
+      );
       const head = base;
 
       const internals = service as any;

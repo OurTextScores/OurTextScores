@@ -52,7 +52,9 @@ describe('UploadSourceService (unit)', () => {
     getBranchLifecycle: jest.fn().mockResolvedValue('open'),
     getBranchOwnerUserId: jest.fn(),
     ensureDefaultTrunk: jest.fn().mockResolvedValue(undefined),
-    listBranches: jest.fn().mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }])
+    listBranches: jest
+      .fn()
+      .mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }])
   } as unknown as jest.Mocked<BranchesService>;
 
   const notifications = {
@@ -63,7 +65,9 @@ describe('UploadSourceService (unit)', () => {
     getRawByWorkId: jest.fn()
   } as any;
   const changeReviewsService = {
-    syncOpenReviewPatchsetForRevision: jest.fn().mockResolvedValue({ ok: true, patchsetCreated: false })
+    syncOpenReviewPatchsetForRevision: jest
+      .fn()
+      .mockResolvedValue({ ok: true, patchsetCreated: false })
   } as any;
   const config = {
     get: jest.fn((_: string, defaultValue?: string) => defaultValue)
@@ -76,7 +80,9 @@ describe('UploadSourceService (unit)', () => {
       lean: jest.fn().mockReturnThis(),
       exec: jest.fn().mockResolvedValue([])
     });
-    branchesService.listBranches.mockResolvedValue([{ name: 'trunk', policy: 'public', lifecycle: 'open' }]);
+    branchesService.listBranches.mockResolvedValue([
+      { name: 'trunk', policy: 'public', lifecycle: 'open' }
+    ]);
     branchesService.getBranchPolicy.mockResolvedValue('public');
     branchesService.getBranchLifecycle.mockResolvedValue('open');
     branchesService.getBranchOwnerUserId.mockResolvedValue(undefined);
@@ -97,52 +103,113 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() creates a new source, runs pipeline, and commits to Fossil', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     // chainable findOne().sort().lean() for previousRevision
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.xml', etag: 'e' });
-    const derivLoc = (path: string, type: string) => ({ bucket: 'der', objectKey: path, sizeBytes: type === 'pdf' ? 5 : 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: type === 'pdf' ? 'application/pdf' : 'application/xml', lastModifiedAt: new Date() });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.xml',
+      etag: 'e'
+    });
+    const derivLoc = (path: string, type: string) => ({
+      bucket: 'der',
+      objectKey: path,
+      sizeBytes: type === 'pdf' ? 5 : 3,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: type === 'pdf' ? 'application/pdf' : 'application/xml',
+      lastModifiedAt: new Date()
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: false,
       notes: ['ok'],
       manifest: derivLoc('10/s1/rev-0001/manifest.json', 'json'),
-      manifestData: { version: 1, generatedAt: new Date().toISOString(), workId: '10', sourceId: 's1', sequenceNumber: 1, tooling: { musescore3: 'v' }, notes: [], pending: false, artifacts: [] },
+      manifestData: {
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        workId: '10',
+        sourceId: 's1',
+        sequenceNumber: 1,
+        tooling: { musescore3: 'v' },
+        notes: [],
+        pending: false,
+        artifacts: []
+      },
       derivatives: {
         canonicalXml: derivLoc('10/s1/rev-0001/canonical.xml', 'xml'),
-        normalizedMxl: { bucket: 'der', objectKey: '10/s1/rev-0001/normalized.mxl', sizeBytes: 4, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/vnd.recordare.musicxml', lastModifiedAt: new Date() },
+        normalizedMxl: {
+          bucket: 'der',
+          objectKey: '10/s1/rev-0001/normalized.mxl',
+          sizeBytes: 4,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/vnd.recordare.musicxml',
+          lastModifiedAt: new Date()
+        },
         pdf: derivLoc('10/s1/rev-0001/score.pdf', 'pdf')
       }
     });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('content'));
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
     const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
     expect(derivativePipeline.process).toHaveBeenCalled();
     expect(sourceModel.create).toHaveBeenCalled();
     expect(sourceRevisionModel.create).toHaveBeenCalled();
-    expect(worksService.recordSourceUpload).toHaveBeenCalledWith('10', expect.arrayContaining(['application/xml', 'application/vnd.recordare.musicxml']), expect.any(Date));
+    expect(worksService.recordSourceUpload).toHaveBeenCalledWith(
+      '10',
+      expect.arrayContaining(['application/xml', 'application/vnd.recordare.musicxml']),
+      expect.any(Date)
+    );
     expect(fossilService.commitRevision).toHaveBeenCalled();
   });
 
   it('upload() accepts .mscx and resolves MuseScore source format', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mscx', etag: 'e' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.mscx',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: false,
       notes: ['ok'],
       manifest: undefined,
       derivatives: {
-        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        canonicalXml: {
+          bucket: 'der',
+          objectKey: '10/s1/rev-0001/canonical.xml',
+          sizeBytes: 3,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date()
+        }
       }
     });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
 
-    const file = { originalname: 'score.mscx', mimetype: 'application/octet-stream', size: 22, buffer: Buffer.from('<mscx/>') } as any;
+    const file = {
+      originalname: 'score.mscx',
+      mimetype: 'application/octet-stream',
+      size: 22,
+      buffer: Buffer.from('<mscx/>')
+    } as any;
     const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
@@ -155,21 +222,41 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() accepts .abc and resolves ABC source format', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.abc', etag: 'e' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.abc',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: false,
       notes: ['ok'],
       manifest: undefined,
       derivatives: {
-        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        canonicalXml: {
+          bucket: 'der',
+          objectKey: '10/s1/rev-0001/canonical.xml',
+          sizeBytes: 3,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date()
+        }
       }
     });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
 
-    const file = { originalname: 'score.abc', mimetype: 'text/plain', size: 22, buffer: Buffer.from('X:1\nK:C\nC D E F|\n') } as any;
+    const file = {
+      originalname: 'score.abc',
+      mimetype: 'text/plain',
+      size: 22,
+      buffer: Buffer.from('X:1\nK:C\nC D E F|\n')
+    } as any;
     const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
@@ -182,23 +269,56 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() forwards original mscz buffer for client-preconverted uploads', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mxl', etag: 'e' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.mxl',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: false,
       notes: ['ok'],
       manifest: undefined,
       derivatives: {
-        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+        canonicalXml: {
+          bucket: 'der',
+          objectKey: '10/s1/rev-0001/canonical.xml',
+          sizeBytes: 3,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date()
+        }
       }
     });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
 
-    const file = { originalname: 'score.mxl', mimetype: 'application/vnd.recordare.musicxml', size: 22, buffer: Buffer.from('mxl') } as any;
-    const originalMscz = { originalname: 'score.mscz', mimetype: 'application/vnd.musescore.mscz', size: 30, buffer: Buffer.from('mscz') } as any;
-    await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid', undefined, originalMscz);
+    const file = {
+      originalname: 'score.mxl',
+      mimetype: 'application/vnd.recordare.musicxml',
+      size: 22,
+      buffer: Buffer.from('mxl')
+    } as any;
+    const originalMscz = {
+      originalname: 'score.mscz',
+      mimetype: 'application/vnd.musescore.mscz',
+      size: 30,
+      buffer: Buffer.from('mscz')
+    } as any;
+    await service.upload(
+      '10',
+      { label: 'Uploaded source' },
+      file,
+      undefined,
+      'pid',
+      undefined,
+      originalMscz
+    );
 
     expect(derivativePipeline.process).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -208,14 +328,34 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() rejects invalid originalMscz extension', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
 
-    const file = { originalname: 'score.mxl', mimetype: 'application/vnd.recordare.musicxml', size: 22, buffer: Buffer.from('mxl') } as any;
-    const invalidOriginal = { originalname: 'not-mscz.xml', mimetype: 'application/xml', size: 30, buffer: Buffer.from('xml') } as any;
+    const file = {
+      originalname: 'score.mxl',
+      mimetype: 'application/vnd.recordare.musicxml',
+      size: 22,
+      buffer: Buffer.from('mxl')
+    } as any;
+    const invalidOriginal = {
+      originalname: 'not-mscz.xml',
+      mimetype: 'application/xml',
+      size: 30,
+      buffer: Buffer.from('xml')
+    } as any;
 
     await expect(
-      service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid', undefined, invalidOriginal)
+      service.upload(
+        '10',
+        { label: 'Uploaded source' },
+        file,
+        undefined,
+        'pid',
+        undefined,
+        invalidOriginal
+      )
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(derivativePipeline.process).not.toHaveBeenCalled();
@@ -224,12 +364,44 @@ describe('UploadSourceService (unit)', () => {
   it('uploadRevision() updates an existing source and records revision', async () => {
     sourceModel.findOne.mockReturnValue({ lean: () => ({}) });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
-    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: { canonicalXml: { bucket: 'der', objectKey: 'c', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'aa' }, contentType: 'application/xml', lastModifiedAt: new Date() } }, manifest: { bucket: 'der', objectKey: 'm', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'cc' }, contentType: 'application/json', lastModifiedAt: new Date() } });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/x/raw/file.xml',
+      etag: 'e'
+    });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: false,
+      notes: [],
+      derivatives: {
+        canonicalXml: {
+          bucket: 'der',
+          objectKey: 'c',
+          sizeBytes: 1,
+          checksum: { algorithm: 'sha256', hexDigest: 'aa' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date()
+        }
+      },
+      manifest: {
+        bucket: 'der',
+        objectKey: 'm',
+        sizeBytes: 1,
+        checksum: { algorithm: 'sha256', hexDigest: 'cc' },
+        contentType: 'application/json',
+        lastModifiedAt: new Date()
+      }
+    });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
     const res = await service.uploadRevision('10', 'x', {}, file, undefined, 'pid');
     expect(res.status).toBe('accepted');
     expect(sourceRevisionModel.create).toHaveBeenCalled();
@@ -246,20 +418,29 @@ describe('UploadSourceService (unit)', () => {
         sourceType: 'score'
       })
     });
-    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({ sequenceNumber: 2 }) }) });
+    sourceRevisionModel.findOne.mockReturnValue({
+      sort: () => ({ lean: () => ({ sequenceNumber: 2 }) })
+    });
     sourceRevisionModel.find.mockReturnValue({
       sort: jest.fn().mockReturnThis(),
       lean: jest.fn().mockReturnThis(),
-      exec: jest.fn().mockResolvedValue([
-        { revisionId: 'r-current', sequenceNumber: 2, branchName: 'feature-a' }
-      ])
+      exec: jest
+        .fn()
+        .mockResolvedValue([
+          { revisionId: 'r-current', sequenceNumber: 2, branchName: 'feature-a' }
+        ])
     });
     branchesService.listBranches.mockResolvedValue([
       { name: 'trunk', policy: 'public', lifecycle: 'open' },
       { name: 'feature-a', policy: 'public', lifecycle: 'open', baseRevisionId: 'r-base' }
     ]);
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
 
     await expect(
       service.uploadRevision(
@@ -287,7 +468,12 @@ describe('UploadSourceService (unit)', () => {
     });
     branchesService.getBranchLifecycle.mockResolvedValue('closed');
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
 
     await expect(
       service.uploadRevision('10', 'x', { branchName: 'feature-a' }, file, undefined, 'pid')
@@ -316,8 +502,14 @@ describe('UploadSourceService (unit)', () => {
         derivatives: { referencePdf: preservedReference }
       })
     });
-    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({ sequenceNumber: 1 }) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
+    sourceRevisionModel.findOne.mockReturnValue({
+      sort: () => ({ lean: () => ({ sequenceNumber: 1 }) })
+    });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/x/raw/file.xml',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: false,
       notes: [],
@@ -340,16 +532,25 @@ describe('UploadSourceService (unit)', () => {
         lastModifiedAt: new Date()
       }
     });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'trunk' });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'trunk' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
     const res = await service.uploadRevision('10', 'x', {}, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
-    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      derivatives: expect.objectContaining({ referencePdf: preservedReference })
-    }));
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        derivatives: expect.objectContaining({ referencePdf: preservedReference })
+      })
+    );
     expect(sourceModel.updateOne).toHaveBeenCalledWith(
       { workId: '10', sourceId: 'x' },
       expect.objectContaining({
@@ -380,17 +581,37 @@ describe('UploadSourceService (unit)', () => {
     });
     sourceRevisionModel.updateOne.mockReturnValue({ exec: () => Promise.resolve() });
     sourceModel.updateOne.mockReturnValue({ exec: () => Promise.resolve() });
-    storageService.putAuxiliaryObject.mockResolvedValue({ bucket: 'aux', objectKey: '10/s1/rev-0002/reference.pdf' });
+    storageService.putAuxiliaryObject.mockResolvedValue({
+      bucket: 'aux',
+      objectKey: '10/s1/rev-0002/reference.pdf'
+    });
     imslpService.getRawByWorkId.mockResolvedValue({
       metadata: {
         files: [
-          { name: 'score.pdf', sha1, size: 123, mime_type: 'application/pdf', title: 'Score', url: 'u', timestamp: 't', user: 'u' }
+          {
+            name: 'score.pdf',
+            sha1,
+            size: 123,
+            mime_type: 'application/pdf',
+            title: 'Score',
+            url: 'u',
+            timestamp: 't',
+            user: 'u'
+          }
         ]
       }
     });
 
-    const file = { originalname: 'ref.pdf', mimetype: 'application/pdf', size: buffer.length, buffer } as any;
-    const res = await service.uploadReferencePdf('10', 's1', file, 'pid', { userId: 'owner-1', roles: ['user'] } as any);
+    const file = {
+      originalname: 'ref.pdf',
+      mimetype: 'application/pdf',
+      size: buffer.length,
+      buffer
+    } as any;
+    const res = await service.uploadReferencePdf('10', 's1', file, 'pid', {
+      userId: 'owner-1',
+      roles: ['user']
+    } as any);
     expect(res.ok).toBe(true);
     expect(sourceModel.updateOne).toHaveBeenCalled();
     expect(sourceRevisionModel.updateOne).toHaveBeenCalled();
@@ -410,9 +631,17 @@ describe('UploadSourceService (unit)', () => {
       lean: () => ({ exec: () => Promise.resolve(sourceDoc) })
     });
 
-    const file = { originalname: 'ref.pdf', mimetype: 'application/pdf', size: 10, buffer: Buffer.from('x') } as any;
+    const file = {
+      originalname: 'ref.pdf',
+      mimetype: 'application/pdf',
+      size: 10,
+      buffer: Buffer.from('x')
+    } as any;
     await expect(
-      service.uploadReferencePdf('10', 's1', file, 'pid', { userId: 'other', roles: ['user'] } as any)
+      service.uploadReferencePdf('10', 's1', file, 'pid', {
+        userId: 'other',
+        roles: ['user']
+      } as any)
     ).rejects.toThrow('Only source owner or admin can upload reference PDF');
   });
 
@@ -440,7 +669,9 @@ describe('UploadSourceService (unit)', () => {
       size: bigSize,
       buffer: Buffer.alloc(1)
     } as any;
-    sourceModel.findOne.mockReturnValue({ lean: () => ({ label: 'Existing', sourceType: 'score' }) });
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({ label: 'Existing', sourceType: 'score' })
+    });
 
     await expect(
       service.uploadRevision('10', 'source-1', {}, file, undefined, 'pid')
@@ -450,9 +681,15 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() fails for MuseScore files when pipeline cannot produce core derivatives', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mscz', etag: 'e' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.mscz',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: true,
       notes: ['Canonical MusicXML could not be produced.'],
@@ -488,7 +725,11 @@ describe('UploadSourceService (unit)', () => {
       })
     });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mscz', etag: 'e' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.mscz',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: true,
       notes: ['Canonical MusicXML could not be produced.'],
@@ -515,9 +756,15 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() fails for ABC files when pipeline cannot produce core derivatives', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.abc', etag: 'e' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.abc',
+      etag: 'e'
+    });
     derivativePipeline.process = jest.fn().mockResolvedValue({
       pending: true,
       notes: ['Canonical MusicXML could not be produced.'],
@@ -544,60 +791,122 @@ describe('UploadSourceService (unit)', () => {
   });
 
   it('upload() saves license to revision', async () => {
-    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    worksService.ensureWork = jest
+      .fn()
+      .mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.xml', etag: 'e' });
-    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/s1/raw/file.xml',
+      etag: 'e'
+    });
+    derivativePipeline.process = jest
+      .fn()
+      .mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('content'));
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
-    const res = await service.upload('10', { label: 'Source with license', license: 'CC0', licenseUrl: 'http://cc0' }, file, undefined, 'pid');
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
+    const res = await service.upload(
+      '10',
+      { label: 'Source with license', license: 'CC0', licenseUrl: 'http://cc0' },
+      file,
+      undefined,
+      'pid'
+    );
 
     expect(res.status).toBe('accepted');
-    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      license: 'CC0',
-      licenseUrl: 'http://cc0'
-    }));
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        license: 'CC0',
+        licenseUrl: 'http://cc0'
+      })
+    );
   });
 
   it('uploadRevision() saves license to revision', async () => {
     sourceModel.findOne.mockReturnValue({ lean: () => ({}) });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
-    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/x/raw/file.xml',
+      etag: 'e'
+    });
+    derivativePipeline.process = jest
+      .fn()
+      .mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
-    const res = await service.uploadRevision('10', 'x', { license: 'CC-BY-4.0' }, file, undefined, 'pid');
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
+    const res = await service.uploadRevision(
+      '10',
+      'x',
+      { license: 'CC-BY-4.0' },
+      file,
+      undefined,
+      'pid'
+    );
 
     expect(res.status).toBe('accepted');
-    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      license: 'CC-BY-4.0'
-    }));
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        license: 'CC-BY-4.0'
+      })
+    );
   });
 
   it('uploadRevision() inherits license from previous revision (via Source) if not provided', async () => {
     // Mock Source with a license (representing the state from previous revision)
-    sourceModel.findOne.mockReturnValue({ lean: () => ({ license: 'CC0', licenseUrl: 'http://cc0' }) });
+    sourceModel.findOne.mockReturnValue({
+      lean: () => ({ license: 'CC0', licenseUrl: 'http://cc0' })
+    });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
     sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
 
-    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/x/raw/file.xml', etag: 'e' });
-    derivativePipeline.process = jest.fn().mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
-    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
+    storageService.putRawObject.mockResolvedValue({
+      bucket: 'raw',
+      objectKey: '10/x/raw/file.xml',
+      etag: 'e'
+    });
+    derivativePipeline.process = jest
+      .fn()
+      .mockResolvedValue({ pending: false, notes: [], derivatives: {}, manifest: undefined });
+    fossilService.commitRevision = jest
+      .fn()
+      .mockResolvedValue({ artifactId: 'xyz', repositoryPath: '/repo', branchName: 'feature' });
     storageService.getObjectBuffer.mockResolvedValue(Buffer.from('x'));
 
-    const file = { originalname: 'file.xml', mimetype: 'application/xml', size: 12, buffer: Buffer.from('<xml/>') } as any;
+    const file = {
+      originalname: 'file.xml',
+      mimetype: 'application/xml',
+      size: 12,
+      buffer: Buffer.from('<xml/>')
+    } as any;
     // No license provided in request
     const res = await service.uploadRevision('10', 'x', {}, file, undefined, 'pid');
 
     expect(res.status).toBe('accepted');
-    expect(sourceRevisionModel.create).toHaveBeenCalledWith(expect.objectContaining({
-      license: 'CC0',
-      licenseUrl: 'http://cc0'
-    }));
+    expect(sourceRevisionModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        license: 'CC0',
+        licenseUrl: 'http://cc0'
+      })
+    );
   });
 
   it('validateReferencePdfAgainstImslp() accepts a matching IMSLP PDF hash', async () => {
@@ -628,7 +937,10 @@ describe('UploadSourceService (unit)', () => {
 
   it('validateReferencePdfAgainstImslp() rejects when IMSLP metadata is missing', async () => {
     imslpService.getRawByWorkId.mockResolvedValue(null);
-    const result = await (service as any).validateReferencePdfAgainstImslp({ buffer: Buffer.from('x') } as any, '10');
+    const result = await (service as any).validateReferencePdfAgainstImslp(
+      { buffer: Buffer.from('x') } as any,
+      '10'
+    );
     expect(result.valid).toBe(false);
     expect(result.reason).toContain('IMSLP metadata not available');
   });
@@ -637,7 +949,10 @@ describe('UploadSourceService (unit)', () => {
     imslpService.getRawByWorkId.mockResolvedValue({
       metadata: { files: [{ name: 'not-pdf.txt', mime_type: 'text/plain' }] }
     });
-    const result = await (service as any).validateReferencePdfAgainstImslp({ buffer: Buffer.from('x') } as any, '10');
+    const result = await (service as any).validateReferencePdfAgainstImslp(
+      { buffer: Buffer.from('x') } as any,
+      '10'
+    );
     expect(result.valid).toBe(false);
     expect(result.reason).toContain('No PDF files found');
   });

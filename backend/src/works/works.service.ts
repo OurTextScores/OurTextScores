@@ -15,8 +15,15 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
 import { execFile } from 'node:child_process';
+import * as https from 'node:https';
 import { promisify } from 'node:util';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -26,7 +33,10 @@ import { Source, SourceDocument } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from './schemas/source-revision.schema';
 import { RevisionRating, RevisionRatingDocument } from './schemas/revision-rating.schema';
 import { RevisionComment, RevisionCommentDocument } from './schemas/revision-comment.schema';
-import { RevisionCommentVote, RevisionCommentVoteDocument } from './schemas/revision-comment-vote.schema';
+import {
+  RevisionCommentVote,
+  RevisionCommentVoteDocument
+} from './schemas/revision-comment-vote.schema';
 import { BranchRating, BranchRatingDocument } from './schemas/branch-rating.schema';
 import { BranchComment, BranchCommentDocument } from './schemas/branch-comment.schema';
 import { BranchCommentVote, BranchCommentVoteDocument } from './schemas/branch-comment-vote.schema';
@@ -237,7 +247,7 @@ export class WorksService {
     private readonly searchService: SearchService,
     private readonly usersService: UsersService,
     private readonly branchesService: BranchesService
-  ) { }
+  ) {}
 
   async findAll(options?: {
     limit?: number;
@@ -357,7 +367,10 @@ export class WorksService {
     }
     const metadataResult = await this.imslpService.ensureByWorkId(workId);
     const workDocument = await this.ensureWork(workId);
-    const hydratedWork = await this.hydrateWorkMetadataFromImslp(workDocument, metadataResult.metadata);
+    const hydratedWork = await this.hydrateWorkMetadataFromImslp(
+      workDocument,
+      metadataResult.metadata
+    );
 
     return {
       work: this.toSummary(hydratedWork),
@@ -383,10 +396,12 @@ export class WorksService {
 
     // Attempt enrichment via permalink (more reliable for initial scrape), must produce basic_info and files
     const ensured = await this.imslpService.ensureByPermalink(url);
-    const ensuredMeta = ensured?.metadata?.metadata ?? {} as Record<string, unknown>;
+    const ensuredMeta = ensured?.metadata?.metadata ?? ({} as Record<string, unknown>);
     const basic = (ensuredMeta['basic_info'] as Record<string, unknown> | undefined) ?? undefined;
     const hasNumericBasic = basic != null && /^\d+$/.test(String((basic as any)['page_id']));
-    const files = Array.isArray((ensuredMeta as any)['files']) ? ((ensuredMeta as any)['files'] as any[]) : [];
+    const files = Array.isArray((ensuredMeta as any)['files'])
+      ? ((ensuredMeta as any)['files'] as any[])
+      : [];
     const hasFiles = files.length > 0;
 
     if (!hasNumericBasic || !hasFiles) {
@@ -397,7 +412,7 @@ export class WorksService {
           ensuredWorkId: ensured?.workId ?? null,
           basicPageId: basic ? String((basic as any)['page_id'] ?? '') : null,
           pageTitle: basic ? String((basic as any)['page_title'] ?? '') : null,
-          filesCount: files.length,
+          filesCount: files.length
         })}`
       );
       throw new BadRequestException('Unable to obtain enriched IMSLP metadata; record not created');
@@ -539,16 +554,10 @@ export class WorksService {
     await this.notifications.migrateSource(workId, sourceId, newWorkId, newSourceId);
 
     await this.revisionRatingModel
-      .updateMany(
-        { workId, sourceId },
-        { $set: { workId: newWorkId, sourceId: newSourceId } }
-      )
+      .updateMany({ workId, sourceId }, { $set: { workId: newWorkId, sourceId: newSourceId } })
       .exec();
     await this.revisionCommentModel
-      .updateMany(
-        { workId, sourceId },
-        { $set: { workId: newWorkId, sourceId: newSourceId } }
-      )
+      .updateMany({ workId, sourceId }, { $set: { workId: newWorkId, sourceId: newSourceId } })
       .exec();
 
     await (this as any).recomputeWorkStats(workId);
@@ -614,9 +623,7 @@ except Exception:
       update.$addToSet = { availableFormats: { $each: uniqueFormats } };
     }
 
-    return this.workModel
-      .findOneAndUpdate({ workId }, update, { new: true })
-      .exec();
+    return this.workModel.findOneAndUpdate({ workId }, update, { new: true }).exec();
   }
 
   async recordSourceRevision(
@@ -633,9 +640,7 @@ except Exception:
     if (uniqueFormats.length > 0) {
       (update as any).$addToSet = { availableFormats: { $each: uniqueFormats } };
     }
-    const updated = await this.workModel
-      .findOneAndUpdate({ workId }, update, { new: true })
-      .exec();
+    const updated = await this.workModel.findOneAndUpdate({ workId }, update, { new: true }).exec();
 
     // Index in search after update
     if (updated) {
@@ -721,11 +726,19 @@ except Exception:
 
       const list = revisionsBySource.get(revision.sourceId) ?? [];
       // Derive a safer validation view: if derivatives exist but snapshot is still 'pending', treat as passed in the view
-      const vSnap: ValidationState = (revision as any).validationSnapshot || { status: 'pending', issues: [] };
-      const hasDerivatives = !!((revision as any).derivatives?.canonicalXml);
-      const validationForView: ValidationState = (vSnap.status === 'pending' && hasDerivatives)
-        ? { ...vSnap, status: 'passed', performedAt: vSnap.performedAt || (revision as any).createdAt }
-        : vSnap;
+      const vSnap: ValidationState = (revision as any).validationSnapshot || {
+        status: 'pending',
+        issues: []
+      };
+      const hasDerivatives = !!(revision as any).derivatives?.canonicalXml;
+      const validationForView: ValidationState =
+        vSnap.status === 'pending' && hasDerivatives
+          ? {
+              ...vSnap,
+              status: 'passed',
+              performedAt: vSnap.performedAt || (revision as any).createdAt
+            }
+          : vSnap;
       list.push({
         revisionId: revision.revisionId,
         sequenceNumber: revision.sequenceNumber,
@@ -798,17 +811,23 @@ except Exception:
       }
 
       const latestVisibleRevision = visibleRevisions[0];
-      const latestVisibleReferencePdf = visibleRevisions.find((revision) => !!revision.derivatives?.referencePdf)?.derivatives?.referencePdf;
+      const latestVisibleReferencePdf = visibleRevisions.find(
+        (revision) => !!revision.derivatives?.referencePdf
+      )?.derivatives?.referencePdf;
       const hasVisibleReferencePdf = !!latestVisibleReferencePdf;
       const baseDerivatives =
-        latestVisibleRevision?.derivatives ?? (totalRevisionCount === 0 ? source.derivatives : undefined);
-      const effectiveDerivatives = latestVisibleReferencePdf && !baseDerivatives?.referencePdf
-        ? { ...(baseDerivatives ?? {}), referencePdf: latestVisibleReferencePdf }
-        : baseDerivatives;
+        latestVisibleRevision?.derivatives ??
+        (totalRevisionCount === 0 ? source.derivatives : undefined);
+      const effectiveDerivatives =
+        latestVisibleReferencePdf && !baseDerivatives?.referencePdf
+          ? { ...(baseDerivatives ?? {}), referencePdf: latestVisibleReferencePdf }
+          : baseDerivatives;
       const effectiveLatestRevisionId =
-        latestVisibleRevision?.revisionId ?? (totalRevisionCount === 0 ? source.latestRevisionId : undefined);
+        latestVisibleRevision?.revisionId ??
+        (totalRevisionCount === 0 ? source.latestRevisionId : undefined);
       const effectiveLatestRevisionAt =
-        latestVisibleRevision?.createdAt ?? (totalRevisionCount === 0 ? source.latestRevisionAt : undefined);
+        latestVisibleRevision?.createdAt ??
+        (totalRevisionCount === 0 ? source.latestRevisionAt : undefined);
 
       sourceViews.push({
         sourceId: source.sourceId,
@@ -835,7 +854,10 @@ except Exception:
         projectIds: Array.isArray((source as any).projectIds) ? (source as any).projectIds : [],
         projectBadges: (Array.isArray((source as any).projectIds) ? (source as any).projectIds : [])
           .filter((projectId: string) => projectTitleById.has(projectId))
-          .map((projectId: string) => ({ projectId, title: projectTitleById.get(projectId) as string })),
+          .map((projectId: string) => ({
+            projectId,
+            title: projectTitleById.get(projectId) as string
+          })),
         storage: source.storage,
         validation: source.validation,
         provenance: source.provenance,
@@ -865,10 +887,7 @@ except Exception:
     const { workId, sourceId, viewer } = input;
     const viewerIsAdmin = this.isViewerAdmin(viewer);
     const work = await this.getHydratedWork(workId);
-    const source = await this.sourceModel
-      .findOne({ workId, sourceId })
-      .lean()
-      .exec();
+    const source = await this.sourceModel.findOne({ workId, sourceId }).lean().exec();
 
     if (!source) {
       throw new NotFoundException('Source not found');
@@ -888,7 +907,7 @@ except Exception:
       .exec();
 
     const visibleRevisions = revisions.filter((revision) =>
-      this.canViewerAccessRevision(revision as any, viewer, viewerIsAdmin),
+      this.canViewerAccessRevision(revision as any, viewer, viewerIsAdmin)
     );
 
     if (revisions.length > 0 && visibleRevisions.length === 0) {
@@ -913,9 +932,8 @@ except Exception:
       revisions: visibleRevisions as any[],
       userIdToUsername
     });
-    const selectedBranch = branchViews.find((branch) => branch.name === selectedBranchName)
-      ?? branchViews[0]
-      ?? {
+    const selectedBranch = branchViews.find((branch) => branch.name === selectedBranchName) ??
+      branchViews[0] ?? {
         name: selectedBranchName,
         policy: 'public' as const,
         lifecycle: 'open' as const,
@@ -923,18 +941,20 @@ except Exception:
         empty: true
       };
 
-    const selectedBranchRevisions = visibleRevisions
-      .filter((revision) => this.resolveRevisionBranchName(revision as any) === selectedBranch.name);
+    const selectedBranchRevisions = visibleRevisions.filter(
+      (revision) => this.resolveRevisionBranchName(revision as any) === selectedBranch.name
+    );
     const parsedCursor = this.decodeHistoryCursor(input.cursor);
-    const filteredRevisions = selectedBranchRevisions.filter((revision) =>
-      parsedCursor == null || revision.sequenceNumber < parsedCursor,
+    const filteredRevisions = selectedBranchRevisions.filter(
+      (revision) => parsedCursor == null || revision.sequenceNumber < parsedCursor
     );
     const requestedLimit = Number.isFinite(input.limit) ? Number(input.limit) : 50;
     const limit = Math.min(Math.max(requestedLimit, 1), 200);
     const pagedRevisions = filteredRevisions.slice(0, limit);
-    const nextCursor = filteredRevisions.length > limit
-      ? this.encodeHistoryCursor(filteredRevisions[limit].sequenceNumber)
-      : null;
+    const nextCursor =
+      filteredRevisions.length > limit
+        ? this.encodeHistoryCursor(filteredRevisions[limit].sequenceNumber)
+        : null;
 
     const headRevisionId = selectedBranch.headRevisionId;
     const revisionViews: SourceHistoryRevisionView[] = pagedRevisions.map((revision) => ({
@@ -953,11 +973,11 @@ except Exception:
       isBranchHead: revision.revisionId === headRevisionId
     }));
 
-    const canCommitToSelectedBranch = selectedBranch.lifecycle === 'open' && (
-      selectedBranch.policy === 'public'
-      || viewerIsAdmin
-      || Boolean(selectedBranch.ownerUserId && viewer?.userId === selectedBranch.ownerUserId)
-    );
+    const canCommitToSelectedBranch =
+      selectedBranch.lifecycle === 'open' &&
+      (selectedBranch.policy === 'public' ||
+        viewerIsAdmin ||
+        Boolean(selectedBranch.ownerUserId && viewer?.userId === selectedBranch.ownerUserId));
 
     return {
       source: {
@@ -1022,7 +1042,7 @@ except Exception:
       return {
         sourceOriginalFilename: String((source as any).originalFilename || 'score'),
         locator,
-        resolvedRevisionId: String((revision as any).revisionId || revisionId),
+        resolvedRevisionId: String((revision as any).revisionId || revisionId)
       };
     }
 
@@ -1035,7 +1055,7 @@ except Exception:
 
     const totalRevisionCount = revisions.length;
     const visibleRevisions = revisions.filter((revision) =>
-      this.canViewerAccessRevision(revision as any, viewer, viewerIsAdmin),
+      this.canViewerAccessRevision(revision as any, viewer, viewerIsAdmin)
     );
 
     if (totalRevisionCount > 0 && visibleRevisions.length === 0) {
@@ -1043,14 +1063,17 @@ except Exception:
     }
 
     const latestVisibleRevision = visibleRevisions[0] as any;
-    const latestVisibleReferencePdf = (visibleRevisions.find(
-      (revision) => Boolean((revision as any)?.derivatives?.referencePdf),
-    ) as any)?.derivatives?.referencePdf;
+    const latestVisibleReferencePdf = (
+      visibleRevisions.find((revision) =>
+        Boolean((revision as any)?.derivatives?.referencePdf)
+      ) as any
+    )?.derivatives?.referencePdf;
 
     let locator: StorageLocator | undefined;
     if (kind === 'manifest') {
-      locator = latestVisibleRevision?.manifest
-        || (totalRevisionCount === 0 ? (source as any)?.derivatives?.manifest : undefined);
+      locator =
+        latestVisibleRevision?.manifest ||
+        (totalRevisionCount === 0 ? (source as any)?.derivatives?.manifest : undefined);
     } else if (kind === 'referencePdf') {
       if (totalRevisionCount === 0) {
         locator = (source as any)?.derivatives?.referencePdf;
@@ -1058,8 +1081,9 @@ except Exception:
         locator = latestVisibleRevision?.derivatives?.referencePdf || latestVisibleReferencePdf;
       }
     } else {
-      locator = latestVisibleRevision?.derivatives?.[kind]
-        || (totalRevisionCount === 0 ? (source as any)?.derivatives?.[kind] : undefined);
+      locator =
+        latestVisibleRevision?.derivatives?.[kind] ||
+        (totalRevisionCount === 0 ? (source as any)?.derivatives?.[kind] : undefined);
     }
 
     if (!locator) {
@@ -1070,8 +1094,8 @@ except Exception:
       sourceOriginalFilename: String((source as any).originalFilename || 'score'),
       locator,
       resolvedRevisionId:
-        latestVisibleRevision?.revisionId
-        || (totalRevisionCount === 0 ? String((source as any).latestRevisionId || '') : undefined),
+        latestVisibleRevision?.revisionId ||
+        (totalRevisionCount === 0 ? String((source as any).latestRevisionId || '') : undefined)
     };
   }
 
@@ -1079,7 +1103,8 @@ except Exception:
     // Define "pending" sources as those lacking a canonical derivative
     const pendingSources = await this.sourceModel
       .find({
-        workId, $or: [
+        workId,
+        $or: [
           { derivatives: { $exists: false } },
           { 'derivatives.canonicalXml': { $exists: false } }
         ]
@@ -1127,11 +1152,11 @@ except Exception:
 
       // Delete objects (best-effort)
       for (const obj of toDelete) {
-        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => { });
+        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => {});
       }
 
       // Remove fossil repository if created
-      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => { });
+      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => {});
 
       // Remove DB docs
       await this.sourceRevisionModel.deleteMany({ workId, sourceId: src.sourceId }).exec();
@@ -1163,7 +1188,15 @@ except Exception:
     const updated = await this.workModel
       .findOneAndUpdate(
         { workId },
-        { $set: { sourceCount, availableFormats: Array.from(formats), hasReferencePdf, hasVerifiedSources, hasFlaggedSources } },
+        {
+          $set: {
+            sourceCount,
+            availableFormats: Array.from(formats),
+            hasReferencePdf,
+            hasVerifiedSources,
+            hasFlaggedSources
+          }
+        },
         { new: true }
       )
       .exec();
@@ -1216,10 +1249,10 @@ except Exception:
       }
 
       for (const obj of toDelete) {
-        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => { });
+        await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => {});
       }
 
-      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => { });
+      await this.fossilService.removeRepository(workId, src.sourceId).catch(() => {});
 
       await this.sourceRevisionModel.deleteMany({ workId, sourceId: src.sourceId }).exec();
       await this.sourceModel.deleteOne({ workId, sourceId: src.sourceId }).exec();
@@ -1246,10 +1279,7 @@ except Exception:
     if (!src) return { removed: false };
 
     const isAdmin = (actor.roles ?? []).includes('admin');
-    const revisions = await this.sourceRevisionModel
-      .find({ workId, sourceId })
-      .lean()
-      .exec();
+    const revisions = await this.sourceRevisionModel.find({ workId, sourceId }).lean().exec();
 
     if (!isAdmin) {
       const distinctCreators = Array.from(
@@ -1272,12 +1302,16 @@ except Exception:
           throw new ForbiddenException('Only source owner or admin can delete source');
         }
       } else {
-        throw new ForbiddenException('Only admin can delete a source with revisions from multiple users');
+        throw new ForbiddenException(
+          'Only admin can delete a source with revisions from multiple users'
+        );
       }
     }
 
     const toDelete: { bucket: string; objectKey: string }[] = [];
-    const add = (loc?: StorageLocator) => { if (loc) toDelete.push({ bucket: loc.bucket, objectKey: loc.objectKey }); };
+    const add = (loc?: StorageLocator) => {
+      if (loc) toDelete.push({ bucket: loc.bucket, objectKey: loc.objectKey });
+    };
     add(src.storage);
     add(src.derivatives?.normalizedMxl);
     add(src.derivatives?.canonicalXml);
@@ -1306,9 +1340,9 @@ except Exception:
       add(rev.manifest);
     }
     for (const obj of toDelete) {
-      await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => { });
+      await this.storageService.deleteObject(obj.bucket, obj.objectKey).catch(() => {});
     }
-    await this.fossilService.removeRepository(workId, sourceId).catch(() => { });
+    await this.fossilService.removeRepository(workId, sourceId).catch(() => {});
     await this.sourceRevisionModel.deleteMany({ workId, sourceId }).exec();
     await this.sourceModel.deleteOne({ workId, sourceId }).exec();
     await this.recomputeWorkStats(workId);
@@ -1316,7 +1350,8 @@ except Exception:
   }
 
   private toSummary(
-    work: Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> & Partial<Work>
+    work: Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> &
+      Partial<Work>
   ): WorkSummary {
     return {
       workId: work.workId,
@@ -1336,7 +1371,9 @@ except Exception:
     work: Pick<Work, 'workId' | 'sourceCount' | 'availableFormats'> &
       Partial<Pick<Work, 'latestRevisionAt' | 'title' | 'composer' | 'catalogNumber'>>,
     metadata: ImslpWorkDto
-  ): Promise<Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> & Partial<Work>> {
+  ): Promise<
+    Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> & Partial<Work>
+  > {
     const parsed = this.parseImslpMetadata(metadata);
     const update: Record<string, string> = {};
 
@@ -1355,11 +1392,7 @@ except Exception:
     }
 
     const updated = await this.workModel
-      .findOneAndUpdate(
-        { workId: work.workId },
-        { $set: update },
-        { new: true, upsert: false }
-      )
+      .findOneAndUpdate({ workId: work.workId }, { $set: update }, { new: true, upsert: false })
       .exec();
 
     if (!updated) {
@@ -1467,16 +1500,18 @@ except Exception:
 
     // Update source latest pointers
     const receivedAt = rev.createdAt || new Date();
-    await this.sourceModel.updateOne(
-      { workId, sourceId },
-      {
-        $set: {
-          latestRevisionId: rev.revisionId,
-          latestRevisionAt: receivedAt,
-          derivatives: rev.derivatives
+    await this.sourceModel
+      .updateOne(
+        { workId, sourceId },
+        {
+          $set: {
+            latestRevisionId: rev.revisionId,
+            latestRevisionAt: receivedAt,
+            derivatives: rev.derivatives
+          }
         }
-      }
-    ).exec();
+      )
+      .exec();
     // Update work summary
     const formatsForWork = new Set<string>();
     if (rev.derivatives?.normalizedMxl) formatsForWork.add('application/vnd.recordare.musicxml');
@@ -1486,7 +1521,12 @@ except Exception:
     // Notify watchers
     const userIds = await this.watches.getSubscribersUserIds(workId, sourceId);
     if (userIds.length > 0) {
-      await this.notifications.queueNewRevision({ workId, sourceId, revisionId: rev.revisionId, userIds });
+      await this.notifications.queueNewRevision({
+        workId,
+        sourceId,
+        revisionId: rev.revisionId,
+        userIds
+      });
     }
 
     return { status: 'approved' };
@@ -1530,11 +1570,7 @@ except Exception:
       payload['catalogNumber'] = updates.catalogNumber?.trim() || undefined;
 
     const updated = await this.workModel
-      .findOneAndUpdate(
-        { workId },
-        { $set: payload },
-        { new: true, upsert: false }
-      )
+      .findOneAndUpdate({ workId }, { $set: payload }, { new: true, upsert: false })
       .lean()
       .exec();
 
@@ -1554,10 +1590,7 @@ except Exception:
     updates: { label?: string; description?: string },
     actor: { userId?: string; roles?: string[] }
   ): Promise<{ ok: boolean }> {
-    const source = await this.sourceModel
-      .findOne({ workId, sourceId })
-      .lean()
-      .exec();
+    const source = await this.sourceModel.findOne({ workId, sourceId }).lean().exec();
     if (!source) {
       throw new NotFoundException(`Source ${sourceId} not found in work ${workId}`);
     }
@@ -1598,14 +1631,11 @@ except Exception:
 
     const payload: Record<string, unknown> = {};
     if (updates.label !== undefined) payload['label'] = updates.label?.trim() || undefined;
-    if (updates.description !== undefined) payload['description'] = updates.description?.trim() || undefined;
+    if (updates.description !== undefined)
+      payload['description'] = updates.description?.trim() || undefined;
 
     const updated = await this.sourceModel
-      .findOneAndUpdate(
-        { workId, sourceId },
-        { $set: payload },
-        { new: true }
-      )
+      .findOneAndUpdate({ workId, sourceId }, { $set: payload }, { new: true })
       .lean()
       .exec();
 
@@ -1644,10 +1674,7 @@ except Exception:
     return { ok: true, verifiedAt: now };
   }
 
-  async removeVerification(
-    workId: string,
-    sourceId: string
-  ): Promise<{ ok: true }> {
+  async removeVerification(workId: string, sourceId: string): Promise<{ ok: true }> {
     const updated = await this.sourceModel
       .findOneAndUpdate(
         { workId, sourceId },
@@ -1711,10 +1738,7 @@ except Exception:
     return { ok: true, flaggedAt: now };
   }
 
-  async removeFlag(
-    workId: string,
-    sourceId: string
-  ): Promise<{ ok: true }> {
+  async removeFlag(workId: string, sourceId: string): Promise<{ ok: true }> {
     const updated = await this.sourceModel
       .findOneAndUpdate(
         { workId, sourceId },
@@ -1760,18 +1784,24 @@ except Exception:
 
     const url = buildUrl(permalinkOrSlug);
     const html = await new Promise<string>((resolve, reject) => {
-      const https = require('node:https');
       const req = https.get(url, (res: any) => {
-        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
           // simple redirect follow
           const redirected = buildUrl(res.headers.location as string);
-          https.get(redirected, (res2: any) => {
-            let data = '';
-            res2.setEncoding('utf8');
-            res2.on('data', (chunk: string) => (data += chunk));
-            res2.on('end', () => resolve(data));
-            res2.on('error', reject);
-          }).on('error', reject);
+          https
+            .get(redirected, (res2: any) => {
+              let data = '';
+              res2.setEncoding('utf8');
+              res2.on('data', (chunk: string) => (data += chunk));
+              res2.on('end', () => resolve(data));
+              res2.on('error', reject);
+            })
+            .on('error', reject);
           return;
         }
         let data = '';
@@ -1793,7 +1823,9 @@ except Exception:
     return Boolean((viewer?.roles ?? []).includes('admin'));
   }
 
-  private async getHydratedWork(workId: string): Promise<
+  private async getHydratedWork(
+    workId: string
+  ): Promise<
     Pick<Work, 'workId' | 'latestRevisionAt' | 'sourceCount' | 'availableFormats'> & Partial<Work>
   > {
     let work = await this.workModel.findOne({ workId }).lean().exec();
@@ -1804,7 +1836,10 @@ except Exception:
     if (!work.title || !work.composer) {
       try {
         const metadataResult = await this.imslpService.ensureByWorkId(workId);
-        const hydrated = await this.hydrateWorkMetadataFromImslp(work as any, metadataResult.metadata);
+        const hydrated = await this.hydrateWorkMetadataFromImslp(
+          work as any,
+          metadataResult.metadata
+        );
         work = hydrated as any;
       } catch {
         // Keep existing work details if metadata enrichment fails.
@@ -1836,7 +1871,13 @@ except Exception:
   }
 
   private buildSourceHistoryBranches(input: {
-    declaredBranches: Array<{ name: string; policy: 'public' | 'owner_approval'; lifecycle?: 'open' | 'closed'; ownerUserId?: string; baseRevisionId?: string }>;
+    declaredBranches: Array<{
+      name: string;
+      policy: 'public' | 'owner_approval';
+      lifecycle?: 'open' | 'closed';
+      ownerUserId?: string;
+      baseRevisionId?: string;
+    }>;
     revisions: Array<any>;
     userIdToUsername: Map<string, string>;
   }): SourceHistoryBranchView[] {
@@ -1848,7 +1889,9 @@ except Exception:
         policy: branch.policy,
         lifecycle: branch.lifecycle || 'open',
         ownerUserId: branch.ownerUserId,
-        ownerUsername: branch.ownerUserId ? input.userIdToUsername.get(branch.ownerUserId) : undefined,
+        ownerUsername: branch.ownerUserId
+          ? input.userIdToUsername.get(branch.ownerUserId)
+          : undefined,
         baseRevisionId: branch.baseRevisionId,
         commitCount: 0,
         empty: true
@@ -1895,11 +1938,21 @@ except Exception:
     branchName?: string;
     fossilBranch?: string;
   }): string {
-    return this.branchesService.sanitizeName(revision.branchName || revision.fossilBranch || 'trunk');
+    return this.branchesService.sanitizeName(
+      revision.branchName || revision.fossilBranch || 'trunk'
+    );
   }
 
-  private async ensureBranchExists(workId: string, sourceId: string, branchName?: string): Promise<string> {
-    const source = await this.sourceModel.findOne({ workId, sourceId }).select('sourceId').lean().exec();
+  private async ensureBranchExists(
+    workId: string,
+    sourceId: string,
+    branchName?: string
+  ): Promise<string> {
+    const source = await this.sourceModel
+      .findOne({ workId, sourceId })
+      .select('sourceId')
+      .lean()
+      .exec();
     if (!source) {
       throw new NotFoundException('Source not found');
     }
@@ -1941,7 +1994,7 @@ except Exception:
       approval?: { ownerUserId?: string };
     },
     viewer?: ViewerContext,
-    viewerIsAdmin?: boolean,
+    viewerIsAdmin?: boolean
   ): boolean {
     const isAdmin = viewerIsAdmin ?? this.isViewerAdmin(viewer);
     const visibility = (revision.visibility || 'public') as string;
@@ -1957,7 +2010,9 @@ except Exception:
       return true;
     }
 
-    const isUploader = Boolean(viewer?.userId && viewer.userId === String(revision.createdBy || ''));
+    const isUploader = Boolean(
+      viewer?.userId && viewer.userId === String(revision.createdBy || '')
+    );
     if (isUploader) {
       return true;
     }
@@ -1972,7 +2027,7 @@ except Exception:
 
   private pickRevisionLocator(
     revision: { derivatives?: DerivativeArtifacts; manifest?: StorageLocator },
-    kind: DownloadAssetKind,
+    kind: DownloadAssetKind
   ): StorageLocator | undefined {
     if (kind === 'manifest') {
       return revision.manifest;
@@ -2005,9 +2060,7 @@ except Exception:
     }
 
     // Check if user already rated
-    const existing = await this.revisionRatingModel
-      .findOne({ revisionId, userId })
-      .exec();
+    const existing = await this.revisionRatingModel.findOne({ revisionId, userId }).exec();
 
     if (existing) {
       throw new BadRequestException('You have already rated this revision');
@@ -2060,9 +2113,9 @@ except Exception:
     ]);
 
     // Build histogram with all star levels (1-5)
-    const histogram = [1, 2, 3, 4, 5].map(stars => {
-      const userEntry = aggregation.find(a => a._id.rating === stars && !a._id.isAdmin);
-      const adminEntry = aggregation.find(a => a._id.rating === stars && a._id.isAdmin);
+    const histogram = [1, 2, 3, 4, 5].map((stars) => {
+      const userEntry = aggregation.find((a) => a._id.rating === stars && !a._id.isAdmin);
+      const adminEntry = aggregation.find((a) => a._id.rating === stars && a._id.isAdmin);
       return {
         stars,
         userCount: userEntry?.count ?? 0,
@@ -2078,13 +2131,8 @@ except Exception:
   /**
    * Check if a user has rated a specific revision
    */
-  async hasUserRatedRevision(
-    revisionId: string,
-    userId: string
-  ): Promise<boolean> {
-    const existing = await this.revisionRatingModel
-      .findOne({ revisionId, userId })
-      .exec();
+  async hasUserRatedRevision(revisionId: string, userId: string): Promise<boolean> {
+    const existing = await this.revisionRatingModel.findOne({ revisionId, userId }).exec();
 
     return !!existing;
   }
@@ -2143,9 +2191,9 @@ except Exception:
       }
     ]);
 
-    const histogram = [1, 2, 3, 4, 5].map(stars => {
-      const userEntry = aggregation.find(a => a._id.rating === stars && !a._id.isAdmin);
-      const adminEntry = aggregation.find(a => a._id.rating === stars && a._id.isAdmin);
+    const histogram = [1, 2, 3, 4, 5].map((stars) => {
+      const userEntry = aggregation.find((a) => a._id.rating === stars && !a._id.isAdmin);
+      const adminEntry = aggregation.find((a) => a._id.rating === stars && a._id.isAdmin);
       return {
         stars,
         userCount: userEntry?.count ?? 0,
@@ -2155,7 +2203,7 @@ except Exception:
 
     return {
       histogram,
-      totalRatings: aggregation.reduce((sum, entry) => sum + entry.count, 0),
+      totalRatings: aggregation.reduce((sum, entry) => sum + entry.count, 0)
     };
   }
 
@@ -2199,9 +2247,7 @@ except Exception:
 
     // If replying to a comment, verify parent exists
     if (parentCommentId) {
-      const parent = await this.revisionCommentModel
-        .findOne({ commentId: parentCommentId })
-        .exec();
+      const parent = await this.revisionCommentModel.findOne({ commentId: parentCommentId }).exec();
 
       if (!parent || parent.deleted) {
         throw new NotFoundException('Parent comment not found');
@@ -2241,7 +2287,11 @@ except Exception:
     } else {
       // New comment on source - notify source owner
       const source = await this.sourceModel.findOne({ workId, sourceId }).exec();
-      if (source && source.provenance?.uploadedByUserId && source.provenance.uploadedByUserId !== userId) {
+      if (
+        source &&
+        source.provenance?.uploadedByUserId &&
+        source.provenance.uploadedByUserId !== userId
+      ) {
         await this.notifications.queueSourceComment({
           workId,
           sourceId,
@@ -2260,30 +2310,27 @@ except Exception:
   /**
    * Get comments for a revision (with vote info for current user)
    */
-  async getComments(
-    revisionId: string,
-    currentUserId?: string
-  ): Promise<any[]> {
+  async getComments(revisionId: string, currentUserId?: string): Promise<any[]> {
     const comments = await this.revisionCommentModel
       .find({ revisionId, deleted: { $ne: true } })
       .sort({ voteScore: -1, createdAt: -1 })
       .exec();
 
     // Get user votes if authenticated
-    let userVotes: Map<string, 'up' | 'down'> = new Map();
+    const userVotes: Map<string, 'up' | 'down'> = new Map();
     if (currentUserId) {
       const votes = await this.revisionCommentVoteModel
         .find({
-          commentId: { $in: comments.map(c => c.commentId) },
+          commentId: { $in: comments.map((c) => c.commentId) },
           userId: currentUserId
         })
         .exec();
 
-      votes.forEach(v => userVotes.set(v.commentId, v.voteType));
+      votes.forEach((v) => userVotes.set(v.commentId, v.voteType));
     }
 
     // Get usernames
-    const userIds = [...new Set(comments.map(c => c.userId))];
+    const userIds = [...new Set(comments.map((c) => c.userId))];
     const userMap = new Map<string, string>();
     for (const uid of userIds) {
       try {
@@ -2301,7 +2348,7 @@ except Exception:
     const result: any[] = [];
 
     // First pass: Build all comment objects and add to map
-    comments.forEach(c => {
+    comments.forEach((c) => {
       const comment = {
         commentId: c.commentId,
         userId: c.userId,
@@ -2319,7 +2366,7 @@ except Exception:
     });
 
     // Second pass: Build nested structure
-    comments.forEach(c => {
+    comments.forEach((c) => {
       const comment = commentMap.get(c.commentId);
       if (c.parentCommentId) {
         const parent = commentMap.get(c.parentCommentId);
@@ -2385,19 +2432,19 @@ except Exception:
       .sort({ voteScore: -1, createdAt: -1 })
       .exec();
 
-    let userVotes: Map<string, 'up' | 'down'> = new Map();
+    const userVotes: Map<string, 'up' | 'down'> = new Map();
     if (currentUserId) {
       const votes = await this.branchCommentVoteModel
         .find({
-          commentId: { $in: comments.map(c => c.commentId) },
+          commentId: { $in: comments.map((c) => c.commentId) },
           userId: currentUserId
         })
         .exec();
 
-      votes.forEach(v => userVotes.set(v.commentId, v.voteType));
+      votes.forEach((v) => userVotes.set(v.commentId, v.voteType));
     }
 
-    const userIds = [...new Set(comments.map(c => c.userId))];
+    const userIds = [...new Set(comments.map((c) => c.userId))];
     const userMap = new Map<string, string>();
     for (const uid of userIds) {
       try {
@@ -2413,7 +2460,7 @@ except Exception:
     const commentMap = new Map();
     const result: any[] = [];
 
-    comments.forEach(c => {
+    comments.forEach((c) => {
       const comment = {
         commentId: c.commentId,
         userId: c.userId,
@@ -2430,7 +2477,7 @@ except Exception:
       commentMap.set(c.commentId, comment);
     });
 
-    comments.forEach(c => {
+    comments.forEach((c) => {
       const comment = commentMap.get(c.commentId);
       if (c.parentCommentId) {
         const parent = commentMap.get(c.parentCommentId);
@@ -2506,9 +2553,7 @@ except Exception:
       throw new NotFoundException('Comment not found');
     }
 
-    const existingVote = await this.branchCommentVoteModel
-      .findOne({ commentId, userId })
-      .exec();
+    const existingVote = await this.branchCommentVoteModel.findOne({ commentId, userId }).exec();
 
     const now = new Date();
 
@@ -2624,14 +2669,8 @@ except Exception:
   /**
    * Delete a comment (soft delete - user must own it or be admin)
    */
-  async deleteComment(
-    commentId: string,
-    userId: string,
-    isAdmin: boolean
-  ): Promise<{ ok: true }> {
-    const comment = await this.revisionCommentModel
-      .findOne({ commentId })
-      .exec();
+  async deleteComment(commentId: string, userId: string, isAdmin: boolean): Promise<{ ok: true }> {
+    const comment = await this.revisionCommentModel.findOne({ commentId }).exec();
 
     if (!comment || comment.deleted) {
       throw new NotFoundException('Comment not found');
@@ -2643,10 +2682,7 @@ except Exception:
 
     const now = new Date();
     await this.revisionCommentModel
-      .updateOne(
-        { commentId },
-        { $set: { deleted: true, deletedAt: now, content: '[deleted]' } }
-      )
+      .updateOne({ commentId }, { $set: { deleted: true, deletedAt: now, content: '[deleted]' } })
       .exec();
 
     return { ok: true };
@@ -2669,9 +2705,7 @@ except Exception:
     }
 
     // Check existing vote
-    const existingVote = await this.revisionCommentVoteModel
-      .findOne({ commentId, userId })
-      .exec();
+    const existingVote = await this.revisionCommentVoteModel.findOne({ commentId, userId }).exec();
 
     const now = new Date();
 
@@ -2708,11 +2742,7 @@ except Exception:
   /**
    * Flag a comment for review
    */
-  async flagComment(
-    commentId: string,
-    userId: string,
-    reason: string
-  ): Promise<{ ok: true }> {
+  async flagComment(commentId: string, userId: string, reason: string): Promise<{ ok: true }> {
     if (!reason || !reason.trim()) {
       throw new BadRequestException('Flag reason is required');
     }
@@ -2746,12 +2776,8 @@ except Exception:
   /**
    * Remove flag from comment (admin only)
    */
-  async unflagComment(
-    commentId: string
-  ): Promise<{ ok: true }> {
-    const comment = await this.revisionCommentModel
-      .findOne({ commentId })
-      .exec();
+  async unflagComment(commentId: string): Promise<{ ok: true }> {
+    const comment = await this.revisionCommentModel.findOne({ commentId }).exec();
 
     if (!comment) {
       throw new NotFoundException('Comment not found');
@@ -2786,8 +2812,8 @@ except Exception:
     // Get usernames for comment authors and flaggers
     const userIds = [
       ...new Set([
-        ...comments.map(c => c.userId),
-        ...comments.map(c => c.flaggedBy).filter(Boolean)
+        ...comments.map((c) => c.userId),
+        ...comments.map((c) => c.flaggedBy).filter(Boolean)
       ])
     ] as string[];
 
@@ -2804,13 +2830,13 @@ except Exception:
     }
 
     // Get revision info
-    const revisionIds = [...new Set(comments.map(c => c.revisionId))];
+    const revisionIds = [...new Set(comments.map((c) => c.revisionId))];
     const revisions = await this.sourceRevisionModel
       .find({ revisionId: { $in: revisionIds } })
       .exec();
-    const revisionMap = new Map(revisions.map(r => [r.revisionId, r]));
+    const revisionMap = new Map(revisions.map((r) => [r.revisionId, r]));
 
-    return comments.map(c => {
+    return comments.map((c) => {
       const revision = revisionMap.get(c.revisionId);
       return {
         commentId: c.commentId,
@@ -2843,10 +2869,9 @@ except Exception:
 
     const userIds = [
       ...new Set(
-        sources.flatMap((s: any) => [
-          s?.provenance?.uploadedByUserId,
-          s?.adminFlaggedBy
-        ]).filter(Boolean)
+        sources
+          .flatMap((s: any) => [s?.provenance?.uploadedByUserId, s?.adminFlaggedBy])
+          .filter(Boolean)
       )
     ] as string[];
 
@@ -2874,7 +2899,9 @@ except Exception:
       adminFlagReason: s.adminFlagReason,
       adminFlaggedAt: s.adminFlaggedAt,
       adminFlaggedBy: s.adminFlaggedBy,
-      adminFlaggedByUsername: s.adminFlaggedBy ? userMap.get(s.adminFlaggedBy) || 'Unknown' : undefined,
+      adminFlaggedByUsername: s.adminFlaggedBy
+        ? userMap.get(s.adminFlaggedBy) || 'Unknown'
+        : undefined,
       uploadedByUserId: s?.provenance?.uploadedByUserId,
       uploadedByUsername: s?.provenance?.uploadedByUserId
         ? userMap.get(s.provenance.uploadedByUserId) || 'Unknown'

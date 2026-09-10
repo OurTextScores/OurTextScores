@@ -10,7 +10,8 @@ import { matchScannerMusicXmlParts } from './scanner-part-matching';
  * reader could see was the same music.
  */
 
-const score = (partList: string, parts: string) => Buffer.from(`<?xml version="1.0"?>
+const score = (partList: string, parts: string) =>
+  Buffer.from(`<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list>${partList}</part-list>
   ${parts}
@@ -62,9 +63,7 @@ const splitStaves = (measures = 1, options: { divisions?: [number, number] } = {
               `<line>${sign === 'G' ? 2 : 4}</line></clef></attributes>`
             : ''
         }
-        ${pitches
-          .map(([step, octave]) => note(step, octave, divisions))
-          .join('')}
+        ${pitches.map(([step, octave]) => note(step, octave, divisions)).join('')}
       </measure>`
     ).join('')}</part>`;
   return score(
@@ -189,9 +188,11 @@ describe('scanner part-layout reconciliation', () => {
   });
 
   it('refuses to fold parts of unequal length', () => {
-    const upper = `<part id="Pupper"><measure number="1"><attributes><divisions>4</divisions>` +
+    const upper =
+      `<part id="Pupper"><measure number="1"><attributes><divisions>4</divisions>` +
       `</attributes>${note('C', 5)}</measure><measure number="2">${note('D', 5)}</measure></part>`;
-    const lower = `<part id="Plower"><measure number="1"><attributes><divisions>4</divisions>` +
+    const lower =
+      `<part id="Plower"><measure number="1"><attributes><divisions>4</divisions>` +
       `</attributes>${note('C', 3)}</measure></part>`;
     const result = reconcile(
       grandStaff(2),

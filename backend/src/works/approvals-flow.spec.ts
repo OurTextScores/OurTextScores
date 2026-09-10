@@ -20,7 +20,15 @@ describe('WorksService approvals flow', () => {
   const notifications = { queueNewRevision: jest.fn() } as any;
   const searchService = { indexWork: jest.fn() } as any;
   const branchesService = { migrateSource: jest.fn() } as any;
-  const usersService = { userModel: { find: jest.fn().mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) }) }) } } as any;
+  const usersService = {
+    userModel: {
+      find: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) })
+        })
+      })
+    }
+  } as any;
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -55,8 +63,22 @@ describe('WorksService approvals flow', () => {
 
   it('approveRevision updates status, updates latest and notifies watchers', async () => {
     const revDoc: any = {
-      workId: 'w', sourceId: 's', revisionId: 'r2', createdAt: new Date('2024-01-02'),
-      status: 'pending_approval', approval: { ownerUserId: 'owner1' }, derivatives: { canonicalXml: { bucket: 'b', objectKey: 'c', sizeBytes: 1, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() } },
+      workId: 'w',
+      sourceId: 's',
+      revisionId: 'r2',
+      createdAt: new Date('2024-01-02'),
+      status: 'pending_approval',
+      approval: { ownerUserId: 'owner1' },
+      derivatives: {
+        canonicalXml: {
+          bucket: 'b',
+          objectKey: 'c',
+          sizeBytes: 1,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/xml',
+          lastModifiedAt: new Date()
+        }
+      },
       save: jest.fn().mockResolvedValue(undefined)
     };
     sourceRevisionModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(revDoc) });

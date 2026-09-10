@@ -8,7 +8,7 @@ import {
   Patch,
   Post,
   Req,
-  UseGuards,
+  UseGuards
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -23,7 +23,7 @@ import { WorksService } from './works.service';
 export class WorksEngagementController {
   constructor(
     private readonly worksService: WorksService,
-    private readonly analyticsService: AnalyticsService,
+    private readonly analyticsService: AnalyticsService
   ) {}
 
   @Post(':workId/sources/:sourceId/revisions/:revisionId/approve')
@@ -31,7 +31,7 @@ export class WorksEngagementController {
   @ApiOperation({
     summary: 'Approve a revision',
     description:
-      'Approve a pending revision (for branches with owner_approval policy). Requires authentication and ownership permissions.',
+      'Approve a pending revision (for branches with owner_approval policy). Requires authentication and ownership permissions.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -44,11 +44,11 @@ export class WorksEngagementController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Param('revisionId') revisionId: string,
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.approveRevision(workId, sourceId, revisionId, {
       userId: user.userId,
-      roles: user.roles,
+      roles: user.roles
     });
   }
 
@@ -57,7 +57,7 @@ export class WorksEngagementController {
   @ApiOperation({
     summary: 'Reject a revision',
     description:
-      'Reject a pending revision (for branches with owner_approval policy). Requires authentication and ownership permissions.',
+      'Reject a pending revision (for branches with owner_approval policy). Requires authentication and ownership permissions.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -70,11 +70,11 @@ export class WorksEngagementController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Param('revisionId') revisionId: string,
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.rejectRevision(workId, sourceId, revisionId, {
       userId: user.userId,
-      roles: user.roles,
+      roles: user.roles
     });
   }
 
@@ -82,7 +82,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Rate a revision',
-    description: 'Submit a 1-5 star rating for a revision. One rating per user per revision.',
+    description: 'Submit a 1-5 star rating for a revision. One rating per user per revision.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -97,7 +97,7 @@ export class WorksEngagementController {
     @Param('revisionId') revisionId: string,
     @Body() body: { rating: number },
     @CurrentUser() user: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const isAdmin = user?.roles?.includes('admin') ?? false;
     const result = await this.worksService.rateRevision(
@@ -106,7 +106,7 @@ export class WorksEngagementController {
       revisionId,
       user.userId,
       body.rating,
-      isAdmin,
+      isAdmin
     );
     if (req) {
       await this.analyticsService.trackBestEffort({
@@ -114,14 +114,14 @@ export class WorksEngagementController {
         actor: this.analyticsService.toActor(user),
         requestContext: this.analyticsService.getRequestContext(req, {
           sourceApp: 'backend',
-          route: req.originalUrl ?? req.url,
+          route: req.originalUrl ?? req.url
         }),
         properties: {
           work_id: workId,
           source_id: sourceId,
           revision_id: revisionId,
-          rating_value: body.rating,
-        },
+          rating_value: body.rating
+        }
       });
     }
     return result;
@@ -131,7 +131,7 @@ export class WorksEngagementController {
   @ApiOperation({
     summary: 'Get rating histogram',
     description:
-      'Get rating distribution (histogram) for a revision, showing user and admin counts per star level',
+      'Get rating distribution (histogram) for a revision, showing user and admin counts per star level'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -141,7 +141,7 @@ export class WorksEngagementController {
   async getRevisionRatings(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
-    @Param('revisionId') revisionId: string,
+    @Param('revisionId') revisionId: string
   ) {
     return this.worksService.getRevisionRatings(workId, sourceId, revisionId);
   }
@@ -153,17 +153,24 @@ export class WorksEngagementController {
     @Param('sourceId') sourceId: string,
     @Param('branchName') branchName: string,
     @Body() body: { rating: number },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     const isAdmin = user?.roles?.includes('admin') ?? false;
-    return this.worksService.rateBranch(workId, sourceId, branchName, user.userId, body.rating, isAdmin);
+    return this.worksService.rateBranch(
+      workId,
+      sourceId,
+      branchName,
+      user.userId,
+      body.rating,
+      isAdmin
+    );
   }
 
   @Get(':workId/sources/:sourceId/branches/:branchName/ratings')
   async getBranchRatings(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
-    @Param('branchName') branchName: string,
+    @Param('branchName') branchName: string
   ) {
     return this.worksService.getBranchRatings(workId, sourceId, branchName);
   }
@@ -174,9 +181,14 @@ export class WorksEngagementController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Param('branchName') branchName: string,
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
-    const hasRated = await this.worksService.hasUserRatedBranch(workId, sourceId, branchName, user.userId);
+    const hasRated = await this.worksService.hasUserRatedBranch(
+      workId,
+      sourceId,
+      branchName,
+      user.userId
+    );
     return { hasRated };
   }
 
@@ -184,7 +196,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Check if user has rated',
-    description: 'Check if the current user has already rated this revision',
+    description: 'Check if the current user has already rated this revision'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -200,7 +212,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Create a comment',
-    description: 'Post a comment on a revision or reply to an existing comment',
+    description: 'Post a comment on a revision or reply to an existing comment'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -215,7 +227,7 @@ export class WorksEngagementController {
     @Param('revisionId') revisionId: string,
     @Body() body: { content: string; parentCommentId?: string },
     @CurrentUser() user: RequestUser,
-    @Req() req?: Request,
+    @Req() req?: Request
   ) {
     const result = await this.worksService.createComment(
       workId,
@@ -223,7 +235,7 @@ export class WorksEngagementController {
       revisionId,
       user.userId,
       body.content,
-      body.parentCommentId,
+      body.parentCommentId
     );
     if (req) {
       await this.analyticsService.trackBestEffort({
@@ -231,14 +243,14 @@ export class WorksEngagementController {
         actor: this.analyticsService.toActor(user),
         requestContext: this.analyticsService.getRequestContext(req, {
           sourceApp: 'backend',
-          route: req.originalUrl ?? req.url,
+          route: req.originalUrl ?? req.url
         }),
         properties: {
           work_id: workId,
           source_id: sourceId,
           revision_id: revisionId,
-          is_reply: Boolean(body.parentCommentId),
-        },
+          is_reply: Boolean(body.parentCommentId)
+        }
       });
     }
     return result;
@@ -247,7 +259,8 @@ export class WorksEngagementController {
   @Get(':workId/sources/:sourceId/revisions/:revisionId/comments')
   @ApiOperation({
     summary: 'Get comments',
-    description: 'Get all comments for a revision (nested structure with vote info for authenticated user)',
+    description:
+      'Get all comments for a revision (nested structure with vote info for authenticated user)'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -265,9 +278,16 @@ export class WorksEngagementController {
     @Param('sourceId') sourceId: string,
     @Param('branchName') branchName: string,
     @Body() body: { content: string; parentCommentId?: string },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
-    return this.worksService.createBranchComment(workId, sourceId, branchName, user.userId, body.content, body.parentCommentId);
+    return this.worksService.createBranchComment(
+      workId,
+      sourceId,
+      branchName,
+      user.userId,
+      body.content,
+      body.parentCommentId
+    );
   }
 
   @Get(':workId/sources/:sourceId/branches/:branchName/comments')
@@ -275,7 +295,7 @@ export class WorksEngagementController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Param('branchName') branchName: string,
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     return this.worksService.getBranchComments(workId, sourceId, branchName, user?.userId);
   }
@@ -284,7 +304,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Update a comment',
-    description: 'Edit your own comment',
+    description: 'Edit your own comment'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -298,7 +318,7 @@ export class WorksEngagementController {
   async updateComment(
     @Param('commentId') commentId: string,
     @Body() body: { content: string },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.updateComment(commentId, user.userId, body.content);
   }
@@ -308,7 +328,7 @@ export class WorksEngagementController {
   async updateBranchComment(
     @Param('commentId') commentId: string,
     @Body() body: { content: string },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.updateBranchComment(commentId, user.userId, body.content);
   }
@@ -317,7 +337,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Delete a comment',
-    description: 'Delete your own comment (or any comment if admin)',
+    description: 'Delete your own comment (or any comment if admin)'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -334,7 +354,10 @@ export class WorksEngagementController {
 
   @Delete(':workId/sources/:sourceId/branches/:branchName/comments/:commentId')
   @UseGuards(AuthRequiredGuard)
-  async deleteBranchComment(@Param('commentId') commentId: string, @CurrentUser() user: RequestUser) {
+  async deleteBranchComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: RequestUser
+  ) {
     const isAdmin = user?.roles?.includes('admin') ?? false;
     return this.worksService.deleteBranchComment(commentId, user.userId, isAdmin);
   }
@@ -343,7 +366,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Vote on a comment',
-    description: 'Upvote or downvote a comment (toggle to remove vote)',
+    description: 'Upvote or downvote a comment (toggle to remove vote)'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -355,7 +378,7 @@ export class WorksEngagementController {
   async voteComment(
     @Param('commentId') commentId: string,
     @Body() body: { voteType: 'up' | 'down' },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.voteComment(commentId, user.userId, body.voteType);
   }
@@ -365,7 +388,7 @@ export class WorksEngagementController {
   async voteBranchComment(
     @Param('commentId') commentId: string,
     @Body() body: { voteType: 'up' | 'down' },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.voteBranchComment(commentId, user.userId, body.voteType);
   }
@@ -374,7 +397,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Flag a comment for review',
-    description: 'Report a comment as inappropriate or violating guidelines',
+    description: 'Report a comment as inappropriate or violating guidelines'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -387,7 +410,7 @@ export class WorksEngagementController {
   async flagComment(
     @Param('commentId') commentId: string,
     @Body() body: { reason: string },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.flagComment(commentId, user.userId, body.reason);
   }
@@ -397,7 +420,7 @@ export class WorksEngagementController {
   async flagBranchComment(
     @Param('commentId') commentId: string,
     @Body() body: { reason: string },
-    @CurrentUser() user: RequestUser,
+    @CurrentUser() user: RequestUser
   ) {
     return this.worksService.flagBranchComment(commentId, user.userId, body.reason);
   }
@@ -406,7 +429,7 @@ export class WorksEngagementController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Remove flag from comment (admin only)',
-    description: 'Clear the flag from a comment',
+    description: 'Clear the flag from a comment'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -425,7 +448,10 @@ export class WorksEngagementController {
 
   @Delete(':workId/sources/:sourceId/branches/:branchName/comments/:commentId/flag')
   @UseGuards(AuthRequiredGuard)
-  async unflagBranchComment(@Param('commentId') commentId: string, @CurrentUser() user?: RequestUser) {
+  async unflagBranchComment(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user?: RequestUser
+  ) {
     if (!user?.roles?.includes('admin')) {
       throw new ForbiddenException('Admin role required');
     }

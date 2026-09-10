@@ -19,7 +19,10 @@ export class HttpErrorFilter implements ExceptionFilter {
         message = payload;
       } else if (payload && typeof payload === 'object') {
         const any = payload as any;
-        message = (Array.isArray(any.message) ? any.message.join(', ') : any.message) || any.error || message;
+        message =
+          (Array.isArray(any.message) ? any.message.join(', ') : any.message) ||
+          any.error ||
+          message;
         code = any.code || this.mapStatusToCode(status);
       } else {
         code = this.mapStatusToCode(status);

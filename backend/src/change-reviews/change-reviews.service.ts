@@ -2,16 +2,29 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
+  NotFoundException
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
-import { ChangeReview, ChangeReviewDocument, ChangeReviewStatus } from './schemas/change-review.schema';
-import { ChangeReviewPatchset, ChangeReviewPatchsetDocument } from './schemas/change-review-patchset.schema';
-import { ChangeReviewThread, ChangeReviewThreadDocument } from './schemas/change-review-thread.schema';
-import { ChangeReviewComment, ChangeReviewCommentDocument } from './schemas/change-review-comment.schema';
+import {
+  ChangeReview,
+  ChangeReviewDocument,
+  ChangeReviewStatus
+} from './schemas/change-review.schema';
+import {
+  ChangeReviewPatchset,
+  ChangeReviewPatchsetDocument
+} from './schemas/change-review-patchset.schema';
+import {
+  ChangeReviewThread,
+  ChangeReviewThreadDocument
+} from './schemas/change-review-thread.schema';
+import {
+  ChangeReviewComment,
+  ChangeReviewCommentDocument
+} from './schemas/change-review-comment.schema';
 import { Work, WorkDocument } from '../works/schemas/work.schema';
 import { Source, SourceDocument } from '../works/schemas/source.schema';
 import { SourceRevision, SourceRevisionDocument } from '../works/schemas/source-revision.schema';
@@ -91,7 +104,7 @@ export class ChangeReviewsService {
     private readonly notificationsService: NotificationsService,
     private readonly storageService: StorageService,
     private readonly usersService: UsersService,
-    private readonly watchesService: WatchesService,
+    private readonly watchesService: WatchesService
   ) {}
 
   async createOrOpenBranchReview(input: {
@@ -112,14 +125,18 @@ export class ChangeReviewsService {
         workId,
         sourceId,
         branchName,
-        status: { $in: ['open', 'closed'] },
+        status: { $in: ['open', 'closed'] }
       })
       .lean()
       .exec();
     if (existing) {
       const [work, source] = await Promise.all([
         this.workModel.findOne({ workId }).select('workId title composer').lean().exec(),
-        this.sourceModel.findOne({ workId, sourceId }).select('workId sourceId label sourceType provenance').lean().exec(),
+        this.sourceModel
+          .findOne({ workId, sourceId })
+          .select('workId sourceId label sourceType provenance')
+          .lean()
+          .exec()
       ]);
       if (!work || !source) {
         throw new NotFoundException('Review target not found');
@@ -140,7 +157,7 @@ export class ChangeReviewsService {
       sourceId,
       branchName,
       viewer: opener,
-      initialPair: input.initialPair,
+      initialPair: input.initialPair
     });
     const ownerUserId = await this.resolveOwnerUserId({
       explicitOwnerUserId: input.ownerUserId,
@@ -148,7 +165,7 @@ export class ChangeReviewsService {
       sourceId,
       branchName,
       headRevision: target.headRevision as any,
-      source: target.source as any,
+      source: target.source as any
     });
 
     if (!ownerUserId) {
@@ -157,12 +174,10 @@ export class ChangeReviewsService {
 
     const participantUserIds = Array.from(
       new Set(
-        [
-          opener.userId,
-          ownerUserId,
-          (target.source as any)?.provenance?.uploadedByUserId,
-        ].filter(Boolean),
-      ),
+        [opener.userId, ownerUserId, (target.source as any)?.provenance?.uploadedByUserId].filter(
+          Boolean
+        )
+      )
     );
 
     const now = new Date();
@@ -179,17 +194,17 @@ export class ChangeReviewsService {
       reviewerUserId: opener.userId,
       ownerUserId,
       participantUserIds,
-      title: input.title?.trim() || [
-        (target.work as any)?.title,
-        (target.source as any)?.label,
-        branchName,
-      ].filter(Boolean).join(' — '),
+      title:
+        input.title?.trim() ||
+        [(target.work as any)?.title, (target.source as any)?.label, branchName]
+          .filter(Boolean)
+          .join(' — '),
       status: 'open',
       unresolvedThreadCount: 0,
       submittedAt: now,
       lastActivityAt: now,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     });
 
     await this.patchsetModel.create({
@@ -204,12 +219,17 @@ export class ChangeReviewsService {
       headSequenceNumber: Number((target.headRevision as any).sequenceNumber || 0),
       createdByUserId: opener.userId,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     });
     await this.branchesService.setBranchLifecycle(workId, sourceId, branchName, 'open');
     await this.queueSubmittedReviewNotifications(created.toObject() as any, opener.userId);
 
-    return this.buildReviewDetail(created.toObject() as any, target.work as any, target.source as any, opener);
+    return this.buildReviewDetail(
+      created.toObject() as any,
+      target.work as any,
+      target.source as any,
+      opener
+    );
   }
 
   async syncOpenReviewPatchsetForRevision(input: {
@@ -239,7 +259,8 @@ export class ChangeReviewsService {
       return { ok: true, patchsetCreated: false };
     }
 
-    const nextPatchsetNumber = (await this.patchsetModel.countDocuments({ reviewId: review.reviewId }).exec()) + 1;
+    const nextPatchsetNumber =
+      (await this.patchsetModel.countDocuments({ reviewId: review.reviewId }).exec()) + 1;
     const now = new Date();
     await this.patchsetModel.create({
       reviewId: review.reviewId,
@@ -253,7 +274,7 @@ export class ChangeReviewsService {
       headSequenceNumber: Number(input.headSequenceNumber || 0),
       createdByUserId: input.actorUserId,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     });
     await this.reviewModel
       .updateOne(
@@ -264,9 +285,9 @@ export class ChangeReviewsService {
             headRevisionId: input.headRevisionId,
             baseSequenceNumber: Number(review.headSequenceNumber || 0),
             headSequenceNumber: Number(input.headSequenceNumber || 0),
-            lastActivityAt: now,
-          },
-        },
+            lastActivityAt: now
+          }
+        }
       )
       .exec();
     return { ok: true, patchsetCreated: true };
@@ -291,7 +312,7 @@ export class ChangeReviewsService {
       query.$or = [
         { reviewerUserId: input.viewer.userId },
         { ownerUserId: input.viewer.userId },
-        { participantUserIds: input.viewer.userId },
+        { participantUserIds: input.viewer.userId }
       ];
     }
 
@@ -307,16 +328,20 @@ export class ChangeReviewsService {
       .exec();
 
     const workIds = Array.from(new Set(reviews.map((review) => review.workId)));
-    const sourceKeys = Array.from(new Set(reviews.map((review) => `${review.workId}::${review.sourceId}`)));
+    const sourceKeys = Array.from(
+      new Set(reviews.map((review) => `${review.workId}::${review.sourceId}`))
+    );
     const userIds = Array.from(
-      new Set(
-        reviews.flatMap((review) => [review.reviewerUserId, review.ownerUserId]),
-      ),
+      new Set(reviews.flatMap((review) => [review.reviewerUserId, review.ownerUserId]))
     );
 
     const [works, sources, userIdToUsername] = await Promise.all([
       workIds.length > 0
-        ? this.workModel.find({ workId: { $in: workIds } }).select('workId title composer').lean().exec()
+        ? this.workModel
+            .find({ workId: { $in: workIds } })
+            .select('workId title composer')
+            .lean()
+            .exec()
         : Promise.resolve([]),
       sourceKeys.length > 0
         ? this.sourceModel
@@ -324,17 +349,19 @@ export class ChangeReviewsService {
               $or: sourceKeys.map((key) => {
                 const [workId, sourceId] = key.split('::');
                 return { workId, sourceId };
-              }),
+              })
             })
             .select('workId sourceId label sourceType')
             .lean()
             .exec()
         : Promise.resolve([]),
-      this.loadUsernames(userIds),
+      this.loadUsernames(userIds)
     ]);
 
     const worksById = new Map(works.map((work: any) => [String(work.workId), work]));
-    const sourcesByKey = new Map(sources.map((source: any) => [`${source.workId}::${source.sourceId}`, source]));
+    const sourcesByKey = new Map(
+      sources.map((source: any) => [`${source.workId}::${source.sourceId}`, source])
+    );
 
     return {
       items: reviews.map((review) => {
@@ -361,10 +388,10 @@ export class ChangeReviewsService {
           workTitle: work?.title,
           composer: work?.composer,
           sourceLabel: source?.label,
-          sourceType: source?.sourceType,
+          sourceType: source?.sourceType
         };
       }),
-      nextCursor: null,
+      nextCursor: null
     };
   }
 
@@ -372,8 +399,16 @@ export class ChangeReviewsService {
     const review = await this.getReadableReview(reviewId, viewer);
 
     const [work, source] = await Promise.all([
-      this.workModel.findOne({ workId: review.workId }).select('workId title composer').lean().exec(),
-      this.sourceModel.findOne({ workId: review.workId, sourceId: review.sourceId }).select('workId sourceId label sourceType').lean().exec(),
+      this.workModel
+        .findOne({ workId: review.workId })
+        .select('workId title composer')
+        .lean()
+        .exec(),
+      this.sourceModel
+        .findOne({ workId: review.workId, sourceId: review.sourceId })
+        .select('workId sourceId label sourceType')
+        .lean()
+        .exec()
     ]);
 
     if (!work || !source) {
@@ -409,7 +444,7 @@ export class ChangeReviewsService {
         .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: headRevisionId })
         .lean()
         .exec(),
-      this.buildThreadViews(review.reviewId),
+      this.buildThreadViews(review.reviewId)
     ]);
 
     if (!baseRevision || !headRevision) {
@@ -428,7 +463,7 @@ export class ChangeReviewsService {
       reviewId: review.reviewId,
       patchsetNumber,
       baseRevisionId,
-      headRevisionId,
+      headRevisionId
     });
 
     return {
@@ -441,7 +476,7 @@ export class ChangeReviewsService {
       bars: scoreComparison.bars,
       hunks: parsed.hunks,
       rawDiff,
-      threads: threadViews,
+      threads: threadViews
     };
   }
 
@@ -449,7 +484,11 @@ export class ChangeReviewsService {
     const diff = await this.getReviewDiff(reviewId, viewer, patchsetNumber);
     const review = await this.getReadableReview(reviewId, viewer);
     const headRevision = await this.sourceRevisionModel
-      .findOne({ workId: review.workId, sourceId: review.sourceId, revisionId: diff.headRevisionId })
+      .findOne({
+        workId: review.workId,
+        sourceId: review.sourceId,
+        revisionId: diff.headRevisionId
+      })
       .lean()
       .exec();
     const headLocator = (headRevision as any)?.derivatives?.canonicalXml;
@@ -457,12 +496,15 @@ export class ChangeReviewsService {
       throw new NotFoundException('Canonical XML missing for head revision');
     }
 
-    const headBuffer = await this.storageService.getObjectBuffer(headLocator.bucket, headLocator.objectKey);
+    const headBuffer = await this.storageService.getObjectBuffer(
+      headLocator.bucket,
+      headLocator.objectKey
+    );
     const headScore = this.extractScoreStructure(headBuffer.toString('utf8'));
     const changedByBar = new Map(
       diff.scoreRegions
         .filter((region) => region.side === 'head' && region.headMeasureIndex != null)
-        .map((region) => [`${region.partId}|${region.headMeasureIndex}`, region]),
+        .map((region) => [`${region.partId}|${region.headMeasureIndex}`, region])
     );
     const bars = headScore.parts.flatMap((part) =>
       part.measures.map((measure) => {
@@ -475,13 +517,14 @@ export class ChangeReviewsService {
           side: 'head',
           partId: part.partId,
           measureIndex: measure.measureIndex,
-          measureHash: measure.rawSignature,
+          measureHash: measure.rawSignature
         });
-        const thread = diff.threads.find((candidate) =>
-          candidate.diffAnchor.anchorId === anchorId
-          || candidate.diffAnchor.anchorId === change?.anchorId
-          || candidate.diffAnchor.lineHash === measure.rawSignature
-          || candidate.diffAnchor.lineText === label,
+        const thread = diff.threads.find(
+          (candidate) =>
+            candidate.diffAnchor.anchorId === anchorId ||
+            candidate.diffAnchor.anchorId === change?.anchorId ||
+            candidate.diffAnchor.lineHash === measure.rawSignature ||
+            candidate.diffAnchor.lineText === label
         );
         return {
           kind: 'score_bar' as const,
@@ -501,9 +544,9 @@ export class ChangeReviewsService {
           summary: change?.summary,
           threadAnchorId: thread?.diffAnchor.anchorId,
           hasThread: Boolean(thread),
-          commentable: true,
+          commentable: true
         };
-      }),
+      })
     );
 
     return {
@@ -513,14 +556,14 @@ export class ChangeReviewsService {
       headRevisionId: diff.headRevisionId,
       bars,
       removedRegions: diff.scoreRegions.filter((region) => region.changeType === 'removed'),
-      threads: diff.threads,
+      threads: diff.threads
     };
   }
 
   async getReviewCanonicalScore(
     reviewId: string,
     revisionId: string,
-    viewer?: RequestUser,
+    viewer?: RequestUser
   ): Promise<Buffer> {
     const review = await this.getReadableReview(reviewId, viewer);
     let belongsToReview =
@@ -529,7 +572,7 @@ export class ChangeReviewsService {
       const patchset = await this.patchsetModel
         .findOne({
           reviewId: review.reviewId,
-          $or: [{ baseRevisionId: revisionId }, { headRevisionId: revisionId }],
+          $or: [{ baseRevisionId: revisionId }, { headRevisionId: revisionId }]
         })
         .lean()
         .exec();
@@ -543,7 +586,7 @@ export class ChangeReviewsService {
       .findOne({
         workId: review.workId,
         sourceId: review.sourceId,
-        revisionId,
+        revisionId
       })
       .lean()
       .exec();
@@ -573,15 +616,25 @@ export class ChangeReviewsService {
     }
 
     const diff = await this.getReviewDiff(review.reviewId, input.viewer, input.patchsetNumber);
-    const scoreRegion = (diff as any).scoreRegions?.find((region: any) => region.anchorId === input.anchorId) || null;
+    const scoreRegion =
+      (diff as any).scoreRegions?.find((region: any) => region.anchorId === input.anchorId) || null;
     const anchor = scoreRegion ? null : this.findAnchor(diff.hunks, input.anchorId);
-    const scoreBar = (diff as any).bars?.find((bar: any) => bar.anchorId === input.anchorId) || null;
-    const scoreView = scoreRegion || anchor || scoreBar
-      ? null
-      : await this.getReviewScoreView(review.reviewId, input.viewer, input.patchsetNumber);
+    const scoreBar =
+      (diff as any).bars?.find((bar: any) => bar.anchorId === input.anchorId) || null;
+    const scoreView =
+      scoreRegion || anchor || scoreBar
+        ? null
+        : await this.getReviewScoreView(review.reviewId, input.viewer, input.patchsetNumber);
     const singleScoreBar = scoreView?.bars.find((bar) => bar.anchorId === input.anchorId) || null;
-    const removedRegion = scoreView?.removedRegions.find((region) => region.anchorId === input.anchorId) || null;
-    if (!scoreRegion && !scoreBar && !singleScoreBar && !removedRegion && (!anchor || !anchor.commentable)) {
+    const removedRegion =
+      scoreView?.removedRegions.find((region) => region.anchorId === input.anchorId) || null;
+    if (
+      !scoreRegion &&
+      !scoreBar &&
+      !singleScoreBar &&
+      !removedRegion &&
+      (!anchor || !anchor.commentable)
+    ) {
       throw new BadRequestException('Invalid or non-commentable diff anchor');
     }
     const scoreAnchor = scoreRegion || scoreBar || singleScoreBar || removedRegion;
@@ -601,14 +654,20 @@ export class ChangeReviewsService {
         oldLineNumber: anchor?.oldLineNumber,
         newLineNumber: anchor?.newLineNumber,
         anchorId: scoreAnchor?.anchorId || anchor?.anchorId || input.anchorId,
-        lineHash: scoreRegion?.regionHash || scoreBar?.measureHash || singleScoreBar?.measureHash || removedRegion?.regionHash || anchor?.lineHash || this.hashText(input.anchorId),
+        lineHash:
+          scoreRegion?.regionHash ||
+          scoreBar?.measureHash ||
+          singleScoreBar?.measureHash ||
+          removedRegion?.regionHash ||
+          anchor?.lineHash ||
+          this.hashText(input.anchorId),
         lineText: scoreAnchor?.label || anchor?.content || 'Score region',
-        hunkHeader: scoreAnchor?.summary || anchor?.hunkHeader,
+        hunkHeader: scoreAnchor?.summary || anchor?.hunkHeader
       },
       status: 'open',
       createdByUserId: input.viewer.userId,
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     });
 
     await this.commentModel.create({
@@ -617,7 +676,7 @@ export class ChangeReviewsService {
       threadId,
       userId: input.viewer.userId,
       content,
-      createdAt: now,
+      createdAt: now
     });
 
     await this.addParticipantUserId(review.reviewId, input.viewer.userId);
@@ -625,7 +684,7 @@ export class ChangeReviewsService {
     await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
       activityType: 'thread_created',
       threadId,
-      contentPreview: content,
+      contentPreview: content
     });
     return this.getReviewDiff(review.reviewId, input.viewer);
   }
@@ -662,14 +721,14 @@ export class ChangeReviewsService {
       threadId: input.threadId,
       userId: input.viewer.userId,
       content,
-      createdAt: now,
+      createdAt: now
     });
     await this.addParticipantUserId(review.reviewId, input.viewer.userId);
     await this.syncReviewCounters(input.reviewId, now);
     await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
       activityType: 'comment_added',
       threadId: input.threadId,
-      contentPreview: content,
+      contentPreview: content
     });
     return this.buildThreadViews(input.reviewId);
   }
@@ -708,11 +767,7 @@ export class ChangeReviewsService {
     return { ok: true };
   }
 
-  async deleteComment(input: {
-    reviewId: string;
-    commentId: string;
-    viewer: RequestUser;
-  }) {
+  async deleteComment(input: { reviewId: string; commentId: string; viewer: RequestUser }) {
     const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).lean().exec();
     if (!review) {
       throw new NotFoundException('Change review not found');
@@ -736,7 +791,7 @@ export class ChangeReviewsService {
       .countDocuments({
         reviewId: input.reviewId,
         threadId: (comment as any).threadId,
-        deleted: { $ne: true },
+        deleted: { $ne: true }
       })
       .exec();
     if (remainingCommentCount === 0) {
@@ -784,11 +839,7 @@ export class ChangeReviewsService {
     return { ok: true };
   }
 
-  async submitReview(input: {
-    reviewId: string;
-    summary?: string;
-    viewer: RequestUser;
-  }) {
+  async submitReview(input: { reviewId: string; summary?: string; viewer: RequestUser }) {
     const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).exec();
     if (!review) {
       throw new NotFoundException('Change review not found');
@@ -803,7 +854,9 @@ export class ChangeReviewsService {
     const summary = input.summary?.trim();
     const threadCount = await this.threadModel.countDocuments({ reviewId: input.reviewId }).exec();
     if (!summary && threadCount === 0) {
-      throw new BadRequestException('Review must include a summary or at least one thread before submit');
+      throw new BadRequestException(
+        'Review must include a summary or at least one thread before submit'
+      );
     }
 
     const now = new Date();
@@ -818,10 +871,7 @@ export class ChangeReviewsService {
     return this.getReviewDetail(String((review as any).reviewId), input.viewer);
   }
 
-  async closeReview(input: {
-    reviewId: string;
-    viewer: RequestUser;
-  }) {
+  async closeReview(input: { reviewId: string; viewer: RequestUser }) {
     const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).exec();
     if (!review) {
       throw new NotFoundException('Change review not found');
@@ -844,18 +894,15 @@ export class ChangeReviewsService {
       String((review as any).workId),
       String((review as any).sourceId),
       String((review as any).branchName || 'trunk'),
-      'closed',
+      'closed'
     );
     await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
-      activityType: 'review_closed',
+      activityType: 'review_closed'
     });
     return { ok: true };
   }
 
-  async reopenReview(input: {
-    reviewId: string;
-    viewer: RequestUser;
-  }) {
+  async reopenReview(input: { reviewId: string; viewer: RequestUser }) {
     const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).exec();
     if (!review) {
       throw new NotFoundException('Change review not found');
@@ -878,18 +925,15 @@ export class ChangeReviewsService {
       String((review as any).workId),
       String((review as any).sourceId),
       String((review as any).branchName || 'trunk'),
-      'open',
+      'open'
     );
     await this.queueReviewActivityNotifications(review as any, input.viewer.userId, {
-      activityType: 'review_reopened',
+      activityType: 'review_reopened'
     });
     return { ok: true };
   }
 
-  async withdrawReview(input: {
-    reviewId: string;
-    viewer: RequestUser;
-  }) {
+  async withdrawReview(input: { reviewId: string; viewer: RequestUser }) {
     const review = await this.reviewModel.findOne({ reviewId: input.reviewId }).exec();
     if (!review) {
       throw new NotFoundException('Change review not found');
@@ -915,25 +959,29 @@ export class ChangeReviewsService {
     const publicExample = isPublicChangeReview(review.reviewId);
     const participantIds = Array.from(
       new Set(
-        [review.reviewerUserId, review.ownerUserId, ...(review.participantUserIds || [])].filter(Boolean),
-      ),
+        [review.reviewerUserId, review.ownerUserId, ...(review.participantUserIds || [])].filter(
+          Boolean
+        )
+      )
     );
     const userIdToUsername = await this.loadUsernames(participantIds);
     const [threadCounts, patchsets] = await Promise.all([
       this.threadModel.aggregate([
         { $match: { reviewId: review.reviewId } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
       ]),
       this.patchsetModel
         .find({ reviewId: review.reviewId })
         .sort({ patchsetNumber: 1 })
         .select('patchsetNumber baseSequenceNumber headSequenceNumber createdAt createdByUserId')
         .lean()
-        .exec(),
+        .exec()
     ]);
 
     const openThreads = Number(threadCounts.find((item) => item._id === 'open')?.count || 0);
-    const resolvedThreads = Number(threadCounts.find((item) => item._id === 'resolved')?.count || 0);
+    const resolvedThreads = Number(
+      threadCounts.find((item) => item._id === 'resolved')?.count || 0
+    );
 
     return {
       reviewId: review.reviewId,
@@ -953,7 +1001,7 @@ export class ChangeReviewsService {
       participantUserIds: review.participantUserIds || [],
       participants: participantIds.map((userId) => ({
         userId,
-        username: userIdToUsername.get(userId),
+        username: userIdToUsername.get(userId)
       })),
       title: review.title,
       summary: review.summary,
@@ -971,41 +1019,42 @@ export class ChangeReviewsService {
       work: {
         workId: work.workId,
         title: work.title,
-        composer: work.composer,
+        composer: work.composer
       },
       source: {
         sourceId: source.sourceId,
         label: source.label,
-        sourceType: source.sourceType,
+        sourceType: source.sourceType
       },
       patchsets: patchsets.map((ps: any) => ({
         patchsetNumber: ps.patchsetNumber,
         baseSequenceNumber: ps.baseSequenceNumber,
         headSequenceNumber: ps.headSequenceNumber,
-        createdAt: ps.createdAt,
+        createdAt: ps.createdAt
       })),
       permissions: {
         canRead: true,
         canEditDraft:
           !publicExample && review.status === 'draft' && review.reviewerUserId === viewer?.userId,
         canAddThread:
-          !publicExample && (
-            (review.status === 'draft' && review.reviewerUserId === viewer?.userId)
-            || (review.status === 'open' && this.canCreateTopLevelThread(review, viewer))
-          ),
+          !publicExample &&
+          ((review.status === 'draft' && review.reviewerUserId === viewer?.userId) ||
+            (review.status === 'open' && this.canCreateTopLevelThread(review, viewer))),
         canSubmit:
           !publicExample && review.status === 'draft' && review.reviewerUserId === viewer?.userId,
         canClose:
           !publicExample && review.status === 'open' && this.canManageOpenReview(review, viewer),
         canWithdraw:
-          !publicExample
-          && ['draft', 'open'].includes(String(review.status))
-          && review.reviewerUserId === viewer?.userId,
+          !publicExample &&
+          ['draft', 'open'].includes(String(review.status)) &&
+          review.reviewerUserId === viewer?.userId,
         canReply:
-          !publicExample && review.status === 'open' && this.canParticipateInOpenReview(review, viewer),
+          !publicExample &&
+          review.status === 'open' &&
+          this.canParticipateInOpenReview(review, viewer),
         canResolve:
-          !publicExample && review.status === 'open' && this.canManageOpenReview(review, viewer),
-      },
+          !publicExample && review.status === 'open' && this.canManageOpenReview(review, viewer)
+      }
     };
   }
 
@@ -1016,16 +1065,14 @@ export class ChangeReviewsService {
         .find({ reviewId, deleted: { $ne: true } })
         .sort({ createdAt: 1 })
         .lean()
-        .exec(),
+        .exec()
     ]);
     const userIds = Array.from(
-      new Set(
-        [
-          ...threads.map((thread: any) => String(thread.createdByUserId)),
-          ...comments.map((comment: any) => String(comment.userId)),
-          ...threads.map((thread: any) => String(thread.resolvedByUserId || '')).filter(Boolean),
-        ],
-      ),
+      new Set([
+        ...threads.map((thread: any) => String(thread.createdByUserId)),
+        ...comments.map((comment: any) => String(comment.userId)),
+        ...threads.map((thread: any) => String(thread.resolvedByUserId || '')).filter(Boolean)
+      ])
     );
     const userIdToUsername = await this.loadUsernames(userIds);
     const commentsByThreadId = new Map<string, any[]>();
@@ -1037,7 +1084,7 @@ export class ChangeReviewsService {
         username: userIdToUsername.get(String((comment as any).userId)),
         content: (comment as any).content,
         createdAt: (comment as any).createdAt,
-        editedAt: (comment as any).editedAt,
+        editedAt: (comment as any).editedAt
       });
       commentsByThreadId.set(String((comment as any).threadId), list);
     }
@@ -1051,10 +1098,12 @@ export class ChangeReviewsService {
       createdByUsername: userIdToUsername.get(String(thread.createdByUserId)),
       resolvedAt: thread.resolvedAt,
       resolvedByUserId: thread.resolvedByUserId,
-      resolvedByUsername: thread.resolvedByUserId ? userIdToUsername.get(String(thread.resolvedByUserId)) : undefined,
+      resolvedByUsername: thread.resolvedByUserId
+        ? userIdToUsername.get(String(thread.resolvedByUserId))
+        : undefined,
       comments: commentsByThreadId.get(String(thread.threadId)) || [],
       createdAt: thread.createdAt,
-      updatedAt: thread.updatedAt,
+      updatedAt: thread.updatedAt
     }));
   }
 
@@ -1067,16 +1116,28 @@ export class ChangeReviewsService {
   }) {
     const viewerIsAdmin = this.isAdmin(input.viewer);
     const [work, source, baseRevision, headRevision] = await Promise.all([
-      this.workModel.findOne({ workId: input.workId }).select('workId title composer').lean().exec(),
+      this.workModel
+        .findOne({ workId: input.workId })
+        .select('workId title composer')
+        .lean()
+        .exec(),
       this.sourceModel.findOne({ workId: input.workId, sourceId: input.sourceId }).lean().exec(),
       this.sourceRevisionModel
-        .findOne({ workId: input.workId, sourceId: input.sourceId, revisionId: input.baseRevisionId })
+        .findOne({
+          workId: input.workId,
+          sourceId: input.sourceId,
+          revisionId: input.baseRevisionId
+        })
         .lean()
         .exec(),
       this.sourceRevisionModel
-        .findOne({ workId: input.workId, sourceId: input.sourceId, revisionId: input.headRevisionId })
+        .findOne({
+          workId: input.workId,
+          sourceId: input.sourceId,
+          revisionId: input.headRevisionId
+        })
         .lean()
-        .exec(),
+        .exec()
     ]);
 
     if (!work) {
@@ -1094,7 +1155,10 @@ export class ChangeReviewsService {
     if (!this.canViewerAccessRevision(headRevision as any, input.viewer, viewerIsAdmin)) {
       throw new NotFoundException(`Revision ${input.headRevisionId} not found`);
     }
-    if (Number((baseRevision as any).sequenceNumber || 0) > Number((headRevision as any).sequenceNumber || 0)) {
+    if (
+      Number((baseRevision as any).sequenceNumber || 0) >
+      Number((headRevision as any).sequenceNumber || 0)
+    ) {
       throw new BadRequestException('baseRevisionId must not be newer than headRevisionId');
     }
 
@@ -1114,21 +1178,25 @@ export class ChangeReviewsService {
         sourceId: input.sourceId,
         baseRevisionId: input.initialPair.baseRevisionId,
         headRevisionId: input.initialPair.headRevisionId,
-        viewer: input.viewer,
+        viewer: input.viewer
       });
     }
 
     const viewerIsAdmin = this.isAdmin(input.viewer);
     const branchName = this.branchesService.sanitizeName(input.branchName || 'trunk');
     const [work, source, revisions, declaredBranches] = await Promise.all([
-      this.workModel.findOne({ workId: input.workId }).select('workId title composer').lean().exec(),
+      this.workModel
+        .findOne({ workId: input.workId })
+        .select('workId title composer')
+        .lean()
+        .exec(),
       this.sourceModel.findOne({ workId: input.workId, sourceId: input.sourceId }).lean().exec(),
       this.sourceRevisionModel
         .find({ workId: input.workId, sourceId: input.sourceId })
         .sort({ sequenceNumber: -1 })
         .lean()
         .exec(),
-      this.branchesService.listBranches(input.workId, input.sourceId),
+      this.branchesService.listBranches(input.workId, input.sourceId)
     ]);
 
     if (!work) {
@@ -1139,10 +1207,10 @@ export class ChangeReviewsService {
     }
 
     const visibleRevisions = revisions.filter((revision: any) =>
-      this.canViewerAccessRevision(revision as any, input.viewer, viewerIsAdmin),
+      this.canViewerAccessRevision(revision as any, input.viewer, viewerIsAdmin)
     );
-    const branchRevisions = visibleRevisions.filter((revision: any) =>
-      this.resolveBranchName(revision as any) === branchName,
+    const branchRevisions = visibleRevisions.filter(
+      (revision: any) => this.resolveBranchName(revision as any) === branchName
     );
     const headRevision = branchRevisions[0];
     if (!headRevision) {
@@ -1154,7 +1222,9 @@ export class ChangeReviewsService {
       const declaredBranch = declaredBranches.find((branch) => branch.name === branchName);
       const baseRevisionId = declaredBranch?.baseRevisionId;
       if (baseRevisionId) {
-        baseRevision = visibleRevisions.find((revision: any) => String(revision.revisionId) === baseRevisionId) as any;
+        baseRevision = visibleRevisions.find(
+          (revision: any) => String(revision.revisionId) === baseRevisionId
+        ) as any;
       }
     }
     if (!baseRevision) {
@@ -1163,8 +1233,13 @@ export class ChangeReviewsService {
       baseRevision = headRevision;
     }
 
-    if (Number((baseRevision as any).sequenceNumber || 0) > Number((headRevision as any).sequenceNumber || 0)) {
-      throw new BadRequestException('Resolved branch review base revision is newer than the branch head');
+    if (
+      Number((baseRevision as any).sequenceNumber || 0) >
+      Number((headRevision as any).sequenceNumber || 0)
+    ) {
+      throw new BadRequestException(
+        'Resolved branch review base revision is newer than the branch head'
+      );
     }
 
     return { work, source, baseRevision, headRevision };
@@ -1227,7 +1302,7 @@ export class ChangeReviewsService {
   private assertCanMutateReview(
     review: any,
     viewer: RequestUser,
-    options: { allowNewThreads: boolean },
+    options: { allowNewThreads: boolean }
   ) {
     if (review.status === 'draft') {
       if (review.reviewerUserId !== viewer.userId) {
@@ -1243,7 +1318,9 @@ export class ChangeReviewsService {
       throw new ForbiddenException('You do not have access to modify this review');
     }
     if (options.allowNewThreads && !this.canCreateTopLevelThread(review, viewer)) {
-      throw new ForbiddenException('You do not have access to create top-level threads on this review');
+      throw new ForbiddenException(
+        'You do not have access to create top-level threads on this review'
+      );
     }
   }
 
@@ -1259,7 +1336,11 @@ export class ChangeReviewsService {
     return this.isAdmin(viewer) || review.ownerUserId === viewer?.userId;
   }
 
-  private canViewerAccessRevision(revision: RevisionLike, viewer?: RequestUser, viewerIsAdmin?: boolean): boolean {
+  private canViewerAccessRevision(
+    revision: RevisionLike,
+    viewer?: RequestUser,
+    viewerIsAdmin?: boolean
+  ): boolean {
     const isAdmin = viewerIsAdmin ?? this.isAdmin(viewer);
     const visibility = (revision.visibility || 'public') as string;
     if (visibility !== 'public' && !isAdmin) {
@@ -1309,16 +1390,18 @@ export class ChangeReviewsService {
   }
 
   private async syncReviewCounters(reviewId: string, activityAt: Date) {
-    const openThreadCount = await this.threadModel.countDocuments({ reviewId, status: 'open' }).exec();
+    const openThreadCount = await this.threadModel
+      .countDocuments({ reviewId, status: 'open' })
+      .exec();
     await this.reviewModel
       .updateOne(
         { reviewId },
         {
           $set: {
             unresolvedThreadCount: openThreadCount,
-            lastActivityAt: activityAt,
-          },
-        },
+            lastActivityAt: activityAt
+          }
+        }
       )
       .exec();
   }
@@ -1327,7 +1410,9 @@ export class ChangeReviewsService {
     if (!userId) {
       return;
     }
-    await this.reviewModel.updateOne({ reviewId }, { $addToSet: { participantUserIds: userId } }).exec();
+    await this.reviewModel
+      .updateOne({ reviewId }, { $addToSet: { participantUserIds: userId } })
+      .exec();
   }
 
   private async queueReviewActivityNotifications(
@@ -1337,19 +1422,18 @@ export class ChangeReviewsService {
       activityType: 'thread_created' | 'comment_added' | 'review_closed' | 'review_reopened';
       threadId?: string;
       contentPreview?: string;
-    },
+    }
   ) {
     const watcherUserIds = await this.watchesService.getSubscribersUserIds(
       String(review.workId),
-      String(review.sourceId),
+      String(review.sourceId)
     );
     const recipientUserIds = Array.from(
       new Set(
-        [
-          ...((review.participantUserIds as string[] | undefined) || []),
-          ...watcherUserIds,
-        ].filter((userId) => Boolean(userId) && userId !== actorUserId),
-      ),
+        [...((review.participantUserIds as string[] | undefined) || []), ...watcherUserIds].filter(
+          (userId) => Boolean(userId) && userId !== actorUserId
+        )
+      )
     );
 
     await Promise.all(
@@ -1364,24 +1448,23 @@ export class ChangeReviewsService {
           activityType: input.activityType,
           branchName: String(review.branchName || 'trunk'),
           threadId: input.threadId,
-          contentPreview: input.contentPreview,
-        }),
-      ),
+          contentPreview: input.contentPreview
+        })
+      )
     );
   }
 
   private async queueSubmittedReviewNotifications(review: any, actorUserId: string) {
     const watcherUserIds = await this.watchesService.getSubscribersUserIds(
       String(review.workId),
-      String(review.sourceId),
+      String(review.sourceId)
     );
     const recipientUserIds = Array.from(
       new Set(
-        [
-          ...((review.participantUserIds as string[] | undefined) || []),
-          ...watcherUserIds,
-        ].filter((userId) => Boolean(userId) && userId !== actorUserId),
-      ),
+        [...((review.participantUserIds as string[] | undefined) || []), ...watcherUserIds].filter(
+          (userId) => Boolean(userId) && userId !== actorUserId
+        )
+      )
     );
 
     await Promise.all(
@@ -1395,16 +1478,19 @@ export class ChangeReviewsService {
           actorUserId,
           unresolvedThreadCount: Number(review.unresolvedThreadCount || 0),
           baseRevisionId: String(review.baseRevisionId),
-          headRevisionId: String(review.headRevisionId),
-        }),
-      ),
+          headRevisionId: String(review.headRevisionId)
+        })
+      )
     );
   }
 
-  private async generateUnifiedDiff(aLoc: { bucket: string; objectKey: string }, bLoc: { bucket: string; objectKey: string }) {
+  private async generateUnifiedDiff(
+    aLoc: { bucket: string; objectKey: string },
+    bLoc: { bucket: string; objectKey: string }
+  ) {
     const [bufA, bufB] = await Promise.all([
       this.storageService.getObjectBuffer(aLoc.bucket, aLoc.objectKey),
-      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey),
+      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey)
     ]);
     const { exec } = await import('node:child_process');
     const { promisify } = await import('node:util');
@@ -1440,47 +1526,46 @@ export class ChangeReviewsService {
       patchsetNumber?: number;
       baseRevisionId: string;
       headRevisionId: string;
-    },
+    }
   ) {
     const [bufA, bufB] = await Promise.all([
       this.storageService.getObjectBuffer(aLoc.bucket, aLoc.objectKey),
-      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey),
+      this.storageService.getObjectBuffer(bLoc.bucket, bLoc.objectKey)
     ]);
     const baseScore = this.extractScoreStructure(bufA.toString('utf8'));
     const headScore = this.extractScoreStructure(bufB.toString('utf8'));
-    const buildBars = (
-      score: typeof baseScore,
-      side: 'base' | 'head',
-      revisionId: string,
-    ) => score.parts.flatMap((part) => part.measures.map((measure) => ({
-      kind: 'score_bar' as const,
-      anchorId: this.buildScoreBarAnchor({
-        reviewId: context.reviewId,
-        patchsetNumber: context.patchsetNumber,
-        revisionId,
-        side,
-        partId: part.partId,
-        measureIndex: measure.measureIndex,
-        measureHash: measure.rawSignature,
-      }),
-      patchsetNumber: context.patchsetNumber,
-      revisionId,
-      side,
-      partId: part.partId,
-      partIndex: part.partIndex,
-      partName: part.partName,
-      measureIndex: measure.measureIndex,
-      measureNumber: measure.measureNumber,
-      measureHash: measure.signature,
-      label: `${part.partName || `Part ${part.partIndex + 1}`} - m. ${measure.measureNumber}`,
-      commentable: true,
-    })));
+    const buildBars = (score: typeof baseScore, side: 'base' | 'head', revisionId: string) =>
+      score.parts.flatMap((part) =>
+        part.measures.map((measure) => ({
+          kind: 'score_bar' as const,
+          anchorId: this.buildScoreBarAnchor({
+            reviewId: context.reviewId,
+            patchsetNumber: context.patchsetNumber,
+            revisionId,
+            side,
+            partId: part.partId,
+            measureIndex: measure.measureIndex,
+            measureHash: measure.rawSignature
+          }),
+          patchsetNumber: context.patchsetNumber,
+          revisionId,
+          side,
+          partId: part.partId,
+          partIndex: part.partIndex,
+          partName: part.partName,
+          measureIndex: measure.measureIndex,
+          measureNumber: measure.measureNumber,
+          measureHash: measure.signature,
+          label: `${part.partName || `Part ${part.partIndex + 1}`} - m. ${measure.measureNumber}`,
+          commentable: true
+        }))
+      );
     return {
       regions: this.diffScoreStructures(baseScore, headScore),
       bars: [
         ...buildBars(baseScore, 'base', context.baseRevisionId),
-        ...buildBars(headScore, 'head', context.headRevisionId),
-      ],
+        ...buildBars(headScore, 'head', context.headRevisionId)
+      ]
     };
   }
 
@@ -1494,7 +1579,7 @@ export class ChangeReviewsService {
     measureHash: string;
   }) {
     return this.hashText(
-      `score-bar|${input.reviewId}|${input.patchsetNumber ?? 'latest'}|${input.revisionId}|${input.side}|${input.partId}|${input.measureIndex}|${input.measureHash}`,
+      `score-bar|${input.reviewId}|${input.patchsetNumber ?? 'latest'}|${input.revisionId}|${input.side}|${input.partId}|${input.measureIndex}|${input.measureHash}`
     );
   }
 
@@ -1516,23 +1601,21 @@ export class ChangeReviewsService {
     }> = [];
 
     const lines = String(rawDiff || '').split('\n');
-    let currentHunk:
-      | {
-          hunkId: string;
-          header: string;
-          lines: Array<{
-            anchorId: string;
-            type: 'context' | 'add' | 'del';
-            side: 'base' | 'head';
-            oldLineNumber?: number;
-            newLineNumber?: number;
-            content: string;
-            commentable: boolean;
-            lineHash: string;
-            hunkHeader: string;
-          }>;
-        }
-      | null = null;
+    let currentHunk: {
+      hunkId: string;
+      header: string;
+      lines: Array<{
+        anchorId: string;
+        type: 'context' | 'add' | 'del';
+        side: 'base' | 'head';
+        oldLineNumber?: number;
+        newLineNumber?: number;
+        content: string;
+        commentable: boolean;
+        lineHash: string;
+        hunkHeader: string;
+      }>;
+    } | null = null;
     let oldLine = 0;
     let newLine = 0;
 
@@ -1543,7 +1626,7 @@ export class ChangeReviewsService {
         currentHunk = {
           hunkId: this.hashText(`hunk:${rawLine}`),
           header: rawLine,
-          lines: [],
+          lines: []
         };
         hunks.push(currentHunk);
         oldLine = Number(match[1]);
@@ -1568,7 +1651,7 @@ export class ChangeReviewsService {
           content,
           commentable: false,
           lineHash: this.hashText(content),
-          hunkHeader: currentHunk.header,
+          hunkHeader: currentHunk.header
         });
         oldLine += 1;
         newLine += 1;
@@ -1581,7 +1664,7 @@ export class ChangeReviewsService {
           content,
           commentable: true,
           lineHash: this.hashText(content),
-          hunkHeader: currentHunk.header,
+          hunkHeader: currentHunk.header
         });
         oldLine += 1;
       } else if (marker === '+') {
@@ -1593,7 +1676,7 @@ export class ChangeReviewsService {
           content,
           commentable: true,
           lineHash: this.hashText(content),
-          hunkHeader: currentHunk.header,
+          hunkHeader: currentHunk.header
         });
         newLine += 1;
       }
@@ -1616,7 +1699,7 @@ export class ChangeReviewsService {
         hunkHeader: string;
       }>;
     }>,
-    anchorId: string,
+    anchorId: string
   ) {
     for (const hunk of hunks) {
       const found = hunk.lines.find((line) => line.anchorId === anchorId);
@@ -1672,7 +1755,9 @@ export class ChangeReviewsService {
         const attrs = measureMatch[1] || '';
         const measureBody = measureMatch[2] || '';
         const numberMatch = attrs.match(/\bnumber="([^"]+)"/i);
-        const declaredDivisions = [...measureBody.matchAll(/<divisions>\s*(\d+)\s*<\/divisions>/gi)];
+        const declaredDivisions = [
+          ...measureBody.matchAll(/<divisions>\s*(\d+)\s*<\/divisions>/gi)
+        ];
         if (declaredDivisions.length) {
           const declared = Number(declaredDivisions[declaredDivisions.length - 1][1]);
           if (Number.isFinite(declared) && declared > 0) {
@@ -1688,15 +1773,18 @@ export class ChangeReviewsService {
         // software rewriting default-x/y coordinates doesn't flag musically unchanged measures.
         const semanticMeasureBody = normalizedMeasureBody.replace(
           /\s+(default-x|default-y|relative-x|relative-y)="[^"]*"/g,
-          '',
+          ''
         );
-        const comparableMeasureBody = this.buildComparableMeasureBody(semanticMeasureBody, divisions);
+        const comparableMeasureBody = this.buildComparableMeasureBody(
+          semanticMeasureBody,
+          divisions
+        );
         measures.push({
           measureIndex,
           measureNumber: (numberMatch?.[1] || `${measureIndex + 1}`).trim(),
           rawSignature: this.hashText(semanticMeasureBody),
           signature: this.hashText(comparableMeasureBody),
-          xml: comparableMeasureBody,
+          xml: comparableMeasureBody
         });
         measureIndex += 1;
       }
@@ -1704,7 +1792,7 @@ export class ChangeReviewsService {
         partId,
         partIndex,
         partName: partNames.get(partId),
-        measures,
+        measures
       });
       partIndex += 1;
     }
@@ -1737,7 +1825,7 @@ export class ChangeReviewsService {
       });
     const withoutSpannerIds = inQuarterNotes.replace(
       /<(wedge|slur|tied|tuplet|octave-shift|bracket|dashes|glissando|slide)\b([^>]*?)\s+number="\d+"/gi,
-      '<$1$2',
+      '<$1$2'
     );
     return this.canonicalizeSilentMeasure(withoutSpannerIds);
   }
@@ -1787,7 +1875,12 @@ export class ChangeReviewsService {
   private diffScoreStructures(baseScore: ScoreStructure, headScore: ScoreStructure) {
     const baseById = new Map(baseScore.parts.map((part) => [part.partId, part]));
     const headById = new Map(headScore.parts.map((part) => [part.partId, part]));
-    const orderedPartIds = Array.from(new Set([...headScore.parts.map((part) => part.partId), ...baseScore.parts.map((part) => part.partId)]));
+    const orderedPartIds = Array.from(
+      new Set([
+        ...headScore.parts.map((part) => part.partId),
+        ...baseScore.parts.map((part) => part.partId)
+      ])
+    );
     const regions: Array<{
       anchorId: string;
       partId: string;
@@ -1814,7 +1907,7 @@ export class ChangeReviewsService {
       const partIndex = headPart?.partIndex ?? basePart?.partIndex ?? 0;
       const ops = this.alignMeasures(
         baseMeasures.map((measure) => measure.signature),
-        headMeasures.map((measure) => measure.signature),
+        headMeasures.map((measure) => measure.signature)
       );
 
       let opIndex = 0;
@@ -1841,12 +1934,15 @@ export class ChangeReviewsService {
 
         const pairCount = Math.max(removedIndices.length, addedIndices.length);
         for (let pair = 0; pair < pairCount; pair += 1) {
-          const baseMeasure = removedIndices[pair] !== undefined ? baseMeasures[removedIndices[pair]] : undefined;
-          const headMeasure = addedIndices[pair] !== undefined ? headMeasures[addedIndices[pair]] : undefined;
+          const baseMeasure =
+            removedIndices[pair] !== undefined ? baseMeasures[removedIndices[pair]] : undefined;
+          const headMeasure =
+            addedIndices[pair] !== undefined ? headMeasures[addedIndices[pair]] : undefined;
           const index = headMeasure?.measureIndex ?? baseMeasure?.measureIndex ?? 0;
           const changeType = !baseMeasure ? 'added' : !headMeasure ? 'removed' : 'modified';
           const side = changeType === 'removed' ? 'base' : 'head';
-          const measureNumber = headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
+          const measureNumber =
+            headMeasure?.measureNumber || baseMeasure?.measureNumber || `${index + 1}`;
           const label = `${partName || `Part ${partIndex + 1}`} - m. ${measureNumber}`;
           const xmlDiff = this.summarizeMeasureXmlDiff(baseMeasure?.xml, headMeasure?.xml);
           if (changeType === 'modified' && xmlDiff === null) {
@@ -1854,13 +1950,22 @@ export class ChangeReviewsService {
             // reporting, but a "modified" bar with nothing to say is noise.
             continue;
           }
-          const summaryPrefix = changeType === 'added' ? `Added ${label}` : changeType === 'removed' ? `Removed ${label}` : `Changed ${label}`;
+          const summaryPrefix =
+            changeType === 'added'
+              ? `Added ${label}`
+              : changeType === 'removed'
+                ? `Removed ${label}`
+                : `Changed ${label}`;
           const summary = xmlDiff ? `${summaryPrefix}: ${xmlDiff}` : summaryPrefix;
           // Anchors hash the raw signature, not the normalized one, so tightening the
           // comparison does not silently re-anchor every thread on existing reviews.
-          const regionHash = this.hashText(`${partId}|${index}|${baseMeasure?.rawSignature || ''}|${headMeasure?.rawSignature || ''}|${changeType}`);
+          const regionHash = this.hashText(
+            `${partId}|${index}|${baseMeasure?.rawSignature || ''}|${headMeasure?.rawSignature || ''}|${changeType}`
+          );
           regions.push({
-            anchorId: this.hashText(`score-region|${partId}|${index}|${baseMeasure?.measureNumber || ''}|${headMeasure?.measureNumber || ''}|${regionHash}`),
+            anchorId: this.hashText(
+              `score-region|${partId}|${index}|${baseMeasure?.measureNumber || ''}|${headMeasure?.measureNumber || ''}|${regionHash}`
+            ),
             partId,
             partIndex,
             partName,
@@ -1873,7 +1978,7 @@ export class ChangeReviewsService {
             label,
             summary,
             commentable: true,
-            regionHash,
+            regionHash
           });
         }
       }
@@ -1896,8 +2001,9 @@ export class ChangeReviewsService {
       return elements;
     };
     const extractStartTags = (xml?: string) => {
-      return Array.from((xml || '').matchAll(/<(?!\/|!|\?)([A-Za-z_][\w:.-]*)(?:\s[^>]*)?\/?>/g))
-        .map((match) => match[0].replace(/\s+/g, ' ').trim());
+      return Array.from(
+        (xml || '').matchAll(/<(?!\/|!|\?)([A-Za-z_][\w:.-]*)(?:\s[^>]*)?\/?>/g)
+      ).map((match) => match[0].replace(/\s+/g, ' ').trim());
     };
     const subtract = (values: string[], otherValues: string[]) => {
       const remaining = [...otherValues];
@@ -1942,6 +2048,9 @@ export class ChangeReviewsService {
   }
 
   private stripXmlText(value: string) {
-    return String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return String(value || '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }

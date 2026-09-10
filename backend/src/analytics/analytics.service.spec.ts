@@ -200,7 +200,7 @@ describe('AnalyticsService', () => {
         comments: 0,
         ratings: 0,
         downloads: 1
-      },
+      }
     ]);
 
     const result = await service.getTimeseries({
@@ -280,7 +280,9 @@ describe('AnalyticsService', () => {
 
     rollupFind
       .mockReturnValueOnce({ lean: () => ({ exec: () => Promise.resolve(existingRows) }) } as any)
-      .mockReturnValueOnce({ lean: () => ({ exec: () => Promise.resolve(materializedRows) }) } as any);
+      .mockReturnValueOnce({
+        lean: () => ({ exec: () => Promise.resolve(materializedRows) })
+      } as any);
 
     const result = await service.getTimeseries({
       from: new Date('2026-02-01T00:00:00Z'),
@@ -396,11 +398,36 @@ describe('AnalyticsService', () => {
 
   it('getFunnel returns deterministic step counts', async () => {
     findExec.mockResolvedValue([
-      { eventName: 'signup_completed', eventTime: new Date('2026-02-01T00:00:00Z'), userId: 'u1', properties: {} },
-      { eventName: 'first_score_loaded', eventTime: new Date('2026-02-02T00:00:00Z'), userId: 'u1', properties: {} },
-      { eventName: 'editor_revision_saved', eventTime: new Date('2026-02-03T00:00:00Z'), userId: 'u1', properties: {} },
-      { eventName: 'score_viewed', eventTime: new Date('2026-02-11T00:00:00Z'), userId: 'u1', properties: {} },
-      { eventName: 'signup_completed', eventTime: new Date('2026-02-01T00:00:00Z'), userId: 'u2', properties: {} }
+      {
+        eventName: 'signup_completed',
+        eventTime: new Date('2026-02-01T00:00:00Z'),
+        userId: 'u1',
+        properties: {}
+      },
+      {
+        eventName: 'first_score_loaded',
+        eventTime: new Date('2026-02-02T00:00:00Z'),
+        userId: 'u1',
+        properties: {}
+      },
+      {
+        eventName: 'editor_revision_saved',
+        eventTime: new Date('2026-02-03T00:00:00Z'),
+        userId: 'u1',
+        properties: {}
+      },
+      {
+        eventName: 'score_viewed',
+        eventTime: new Date('2026-02-11T00:00:00Z'),
+        userId: 'u1',
+        properties: {}
+      },
+      {
+        eventName: 'signup_completed',
+        eventTime: new Date('2026-02-01T00:00:00Z'),
+        userId: 'u2',
+        properties: {}
+      }
     ]);
 
     const result = await service.getFunnel({

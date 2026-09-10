@@ -19,7 +19,8 @@ export class ApprovalsController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Get approval inbox',
-    description: 'Get pending revisions awaiting approval from the current user. Requires authentication.'
+    description:
+      'Get pending revisions awaiting approval from the current user. Requires authentication.'
   })
   @ApiQuery({
     name: 'limit',
@@ -74,4 +75,3 @@ export class ApprovalsController {
     };
   }
 }
-

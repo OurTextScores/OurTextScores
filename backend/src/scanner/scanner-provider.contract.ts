@@ -37,10 +37,7 @@ export interface ScannerProviderResult {
   /** Capability-owned normalized review data; absent without decoded token geometry. */
   review?: { staves: ReviewStaff[] };
   /** Named MusicXML readings produced by one inference request. */
-  outputCandidates?: Record<
-    string,
-    { artifactKind: string; review?: { staves: ReviewStaff[] } }
-  >;
+  outputCandidates?: Record<string, { artifactKind: string; review?: { staves: ReviewStaff[] } }>;
   /** Structured families that can be materialized later without inference. */
   availableStructuredHeadFamilies?: string[];
 }

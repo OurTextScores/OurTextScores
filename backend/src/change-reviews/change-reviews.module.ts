@@ -13,9 +13,18 @@ import { SourceBranch, SourceBranchSchema } from '../branches/schemas/source-bra
 import { ChangeReviewsController } from './change-reviews.controller';
 import { ChangeReviewsService } from './change-reviews.service';
 import { ChangeReview, ChangeReviewSchema } from './schemas/change-review.schema';
-import { ChangeReviewPatchset, ChangeReviewPatchsetSchema } from './schemas/change-review-patchset.schema';
-import { ChangeReviewThread, ChangeReviewThreadSchema } from './schemas/change-review-thread.schema';
-import { ChangeReviewComment, ChangeReviewCommentSchema } from './schemas/change-review-comment.schema';
+import {
+  ChangeReviewPatchset,
+  ChangeReviewPatchsetSchema
+} from './schemas/change-review-patchset.schema';
+import {
+  ChangeReviewThread,
+  ChangeReviewThreadSchema
+} from './schemas/change-review-thread.schema';
+import {
+  ChangeReviewComment,
+  ChangeReviewCommentSchema
+} from './schemas/change-review-comment.schema';
 
 @Module({
   imports: [
@@ -33,11 +42,11 @@ import { ChangeReviewComment, ChangeReviewCommentSchema } from './schemas/change
       { name: Work.name, schema: WorkSchema },
       { name: Source.name, schema: SourceSchema },
       { name: SourceRevision.name, schema: SourceRevisionSchema },
-      { name: SourceBranch.name, schema: SourceBranchSchema },
-    ]),
+      { name: SourceBranch.name, schema: SourceBranchSchema }
+    ])
   ],
   controllers: [ChangeReviewsController],
   providers: [ChangeReviewsService],
-  exports: [ChangeReviewsService],
+  exports: [ChangeReviewsService]
 })
 export class ChangeReviewsModule {}

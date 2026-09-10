@@ -329,8 +329,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const processorEnabled =
-      (this.config.get<string>('NOTIFICATIONS_PROCESSOR_ENABLED', 'true') ?? 'true').toLowerCase() !==
-      'false';
+      (
+        this.config.get<string>('NOTIFICATIONS_PROCESSOR_ENABLED', 'true') ?? 'true'
+      ).toLowerCase() !== 'false';
     if (processorEnabled) {
       // Simple polling loop without external deps
       this.timer = setInterval(() => {

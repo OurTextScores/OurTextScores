@@ -74,7 +74,12 @@ export class ProjectsService {
   ) {
     const limit = Math.max(1, Math.min(options?.limit ?? 20, 100));
     const offset = Math.max(0, options?.offset ?? 0);
-    const status = options?.status === 'archived' ? 'archived' : options?.status === 'active' ? 'active' : undefined;
+    const status =
+      options?.status === 'archived'
+        ? 'archived'
+        : options?.status === 'active'
+          ? 'active'
+          : undefined;
     const q = options?.q?.trim();
 
     const query: Record<string, unknown> = {};
@@ -143,10 +148,18 @@ export class ProjectsService {
     const slug = await this.generateUniqueSlug(payload.slug || title);
     const projectId = await this.generateUniqueId(this.projectModel, 'projectId', 'prj');
 
-    const memberUserIds = this.normalizeUserIds(payload.memberUserIds).filter((id) => id !== leadUserId);
+    const memberUserIds = this.normalizeUserIds(payload.memberUserIds).filter(
+      (id) => id !== leadUserId
+    );
     const spreadsheetProvider = this.normalizeSpreadsheetProvider(payload.spreadsheetProvider);
-    const spreadsheetEmbedUrl = this.normalizeUrl(payload.spreadsheetEmbedUrl, 'spreadsheetEmbedUrl');
-    const spreadsheetExternalUrl = this.normalizeUrl(payload.spreadsheetExternalUrl, 'spreadsheetExternalUrl');
+    const spreadsheetEmbedUrl = this.normalizeUrl(
+      payload.spreadsheetEmbedUrl,
+      'spreadsheetEmbedUrl'
+    );
+    const spreadsheetExternalUrl = this.normalizeUrl(
+      payload.spreadsheetExternalUrl,
+      'spreadsheetExternalUrl'
+    );
 
     try {
       const created = await this.projectModel.create({
@@ -231,20 +244,27 @@ export class ProjectsService {
       set.visibility = payload.visibility;
     }
     if (payload.spreadsheetProvider !== undefined) {
-      set.spreadsheetProvider = this.normalizeSpreadsheetProvider(payload.spreadsheetProvider ?? undefined);
+      set.spreadsheetProvider = this.normalizeSpreadsheetProvider(
+        payload.spreadsheetProvider ?? undefined
+      );
     }
     if (payload.spreadsheetEmbedUrl !== undefined) {
-      set.spreadsheetEmbedUrl = this.normalizeUrl(payload.spreadsheetEmbedUrl ?? undefined, 'spreadsheetEmbedUrl');
+      set.spreadsheetEmbedUrl = this.normalizeUrl(
+        payload.spreadsheetEmbedUrl ?? undefined,
+        'spreadsheetEmbedUrl'
+      );
     }
     if (payload.spreadsheetExternalUrl !== undefined) {
-      set.spreadsheetExternalUrl = this.normalizeUrl(payload.spreadsheetExternalUrl ?? undefined, 'spreadsheetExternalUrl');
+      set.spreadsheetExternalUrl = this.normalizeUrl(
+        payload.spreadsheetExternalUrl ?? undefined,
+        'spreadsheetExternalUrl'
+      );
     }
 
-    const updated = await this.projectModel.findOneAndUpdate(
-      { projectId },
-      { $set: set },
-      { new: true }
-    ).lean().exec();
+    const updated = await this.projectModel
+      .findOneAndUpdate({ projectId }, { $set: set }, { new: true })
+      .lean()
+      .exec();
     if (!updated) throw new NotFoundException('project not found');
 
     const [view] = await this.withUserRefs([updated as unknown as ProjectDocLean]);
@@ -270,11 +290,14 @@ export class ProjectsService {
       members.delete(id);
     }
 
-    const updated = await this.projectModel.findOneAndUpdate(
-      { projectId },
-      { $set: { memberUserIds: Array.from(members).sort() } },
-      { new: true }
-    ).lean().exec();
+    const updated = await this.projectModel
+      .findOneAndUpdate(
+        { projectId },
+        { $set: { memberUserIds: Array.from(members).sort() } },
+        { new: true }
+      )
+      .lean()
+      .exec();
 
     if (!updated) throw new NotFoundException('project not found');
     const [view] = await this.withUserRefs([updated as unknown as ProjectDocLean]);
@@ -285,11 +308,10 @@ export class ProjectsService {
     const project = await this.getProjectDoc(projectId);
     this.assertCanEditProject(project, actor);
 
-    const updated = await this.projectModel.findOneAndUpdate(
-      { projectId },
-      { $set: { status: 'archived' } },
-      { new: true }
-    ).lean().exec();
+    const updated = await this.projectModel
+      .findOneAndUpdate({ projectId }, { $set: { status: 'archived' } }, { new: true })
+      .lean()
+      .exec();
 
     if (!updated) throw new NotFoundException('project not found');
     const [view] = await this.withUserRefs([updated as unknown as ProjectDocLean]);
@@ -304,16 +326,22 @@ export class ProjectsService {
     if (project.visibility === 'private' && !this.isAdmin(actor)) {
       throw new ForbiddenException('Private projects cannot be joined directly');
     }
-    if (project.leadUserId === actor.userId || (project.memberUserIds ?? []).includes(actor.userId)) {
+    if (
+      project.leadUserId === actor.userId ||
+      (project.memberUserIds ?? []).includes(actor.userId)
+    ) {
       const [view] = await this.withUserRefs([project]);
       return view;
     }
 
-    const updated = await this.projectModel.findOneAndUpdate(
-      { projectId },
-      { $addToSet: { memberUserIds: actor.userId } },
-      { new: true }
-    ).lean().exec();
+    const updated = await this.projectModel
+      .findOneAndUpdate(
+        { projectId },
+        { $addToSet: { memberUserIds: actor.userId } },
+        { new: true }
+      )
+      .lean()
+      .exec();
 
     if (!updated) throw new NotFoundException('project not found');
     const [view] = await this.withUserRefs([updated as unknown as ProjectDocLean]);
@@ -342,14 +370,17 @@ export class ProjectsService {
         .exec()
     ]);
 
-    const workIds = Array.from(new Set(docs.map((doc: any) => String(doc.workId || '')).filter(Boolean)));
-    const works = workIds.length > 0
-      ? await this.workModel
-          .find({ workId: { $in: workIds } })
-          .select('workId title composer catalogNumber')
-          .lean()
-          .exec()
-      : [];
+    const workIds = Array.from(
+      new Set(docs.map((doc: any) => String(doc.workId || '')).filter(Boolean))
+    );
+    const works =
+      workIds.length > 0
+        ? await this.workModel
+            .find({ workId: { $in: workIds } })
+            .select('workId title composer catalogNumber')
+            .lean()
+            .exec()
+        : [];
 
     for (const work of works as any[]) {
       if (work?.workId && (!work.title || !work.composer)) {
@@ -361,13 +392,14 @@ export class ProjectsService {
       }
     }
 
-    const hydratedWorks = workIds.length > 0
-      ? await this.workModel
-          .find({ workId: { $in: workIds } })
-          .select('workId title composer catalogNumber')
-          .lean()
-          .exec()
-      : [];
+    const hydratedWorks =
+      workIds.length > 0
+        ? await this.workModel
+            .find({ workId: { $in: workIds } })
+            .select('workId title composer catalogNumber')
+            .lean()
+            .exec()
+        : [];
     const workById = new Map<string, any>();
     for (const work of hydratedWorks as any[]) {
       workById.set(String(work.workId), work);
@@ -375,18 +407,17 @@ export class ProjectsService {
 
     const userIds = Array.from(
       new Set(
-        docs
-          .map((doc: any) => String(doc?.provenance?.uploadedByUserId || ''))
-          .filter(Boolean)
+        docs.map((doc: any) => String(doc?.provenance?.uploadedByUserId || '')).filter(Boolean)
       )
     );
-    const users = userIds.length > 0
-      ? await this.userModel
-          .find({ _id: { $in: userIds } })
-          .select('_id username displayName')
-          .lean()
-          .exec()
-      : [];
+    const users =
+      userIds.length > 0
+        ? await this.userModel
+            .find({ _id: { $in: userIds } })
+            .select('_id username displayName')
+            .lean()
+            .exec()
+        : [];
     const userById = new Map<string, { username?: string; displayName?: string }>();
     for (const user of users as any[]) {
       userById.set(String(user._id), {
@@ -431,19 +462,23 @@ export class ProjectsService {
     const source = await this.sourceModel.findOne({ sourceId }).lean().exec();
     if (!source) throw new NotFoundException('source not found');
 
-    const currentProjectIds = Array.isArray((source as any).projectIds) ? ((source as any).projectIds as string[]) : [];
+    const currentProjectIds = Array.isArray((source as any).projectIds)
+      ? ((source as any).projectIds as string[])
+      : [];
     if (!currentProjectIds.includes(projectId)) {
       return { ok: true };
     }
 
     const nextProjectIds = currentProjectIds.filter((id) => id !== projectId);
-    await this.sourceModel.updateOne(
-      { sourceId },
-      {
-        $set: { projectLinkCount: nextProjectIds.length },
-        $pull: { projectIds: projectId }
-      }
-    ).exec();
+    await this.sourceModel
+      .updateOne(
+        { sourceId },
+        {
+          $set: { projectLinkCount: nextProjectIds.length },
+          $pull: { projectIds: projectId }
+        }
+      )
+      .exec();
 
     await this.refreshProjectCounts(projectId);
     return { ok: true };
@@ -514,17 +549,27 @@ export class ProjectsService {
       originalMsczFile
     );
 
-    await this.sourceModel.updateOne(
-      { workId: result.workId, sourceId: result.sourceId },
-      { $addToSet: { projectIds: projectId } }
-    ).exec();
+    await this.sourceModel
+      .updateOne(
+        { workId: result.workId, sourceId: result.sourceId },
+        { $addToSet: { projectIds: projectId } }
+      )
+      .exec();
 
-    const linkedSource = await this.sourceModel.findOne({ workId: result.workId, sourceId: result.sourceId }).select('projectIds').lean().exec();
-    const projectIds = Array.isArray((linkedSource as any)?.projectIds) ? (linkedSource as any).projectIds : [];
-    await this.sourceModel.updateOne(
-      { workId: result.workId, sourceId: result.sourceId },
-      { $set: { projectLinkCount: projectIds.length } }
-    ).exec();
+    const linkedSource = await this.sourceModel
+      .findOne({ workId: result.workId, sourceId: result.sourceId })
+      .select('projectIds')
+      .lean()
+      .exec();
+    const projectIds = Array.isArray((linkedSource as any)?.projectIds)
+      ? (linkedSource as any).projectIds
+      : [];
+    await this.sourceModel
+      .updateOne(
+        { workId: result.workId, sourceId: result.sourceId },
+        { $set: { projectLinkCount: projectIds.length } }
+      )
+      .exec();
 
     await this.refreshProjectCounts(projectId);
     return result;
@@ -560,7 +605,9 @@ export class ProjectsService {
     const sourceId = (source as any).sourceId as string;
 
     // Check if already linked to this project
-    const currentProjectIds = Array.isArray((source as any).projectIds) ? ((source as any).projectIds as string[]) : [];
+    const currentProjectIds = Array.isArray((source as any).projectIds)
+      ? ((source as any).projectIds as string[])
+      : [];
     if (currentProjectIds.includes(projectId)) {
       return {
         ok: true,
@@ -571,18 +618,25 @@ export class ProjectsService {
     }
 
     // Add project to source's projectIds
-    await this.sourceModel.updateOne(
-      { workId: resolvedWorkId, sourceId },
-      { $addToSet: { projectIds: projectId } }
-    ).exec();
+    await this.sourceModel
+      .updateOne({ workId: resolvedWorkId, sourceId }, { $addToSet: { projectIds: projectId } })
+      .exec();
 
     // Update projectLinkCount
-    const linkedSource = await this.sourceModel.findOne({ workId: resolvedWorkId, sourceId }).select('projectIds').lean().exec();
-    const projectIds = Array.isArray((linkedSource as any)?.projectIds) ? (linkedSource as any).projectIds : [];
-    await this.sourceModel.updateOne(
-      { workId: resolvedWorkId, sourceId },
-      { $set: { projectLinkCount: projectIds.length } }
-    ).exec();
+    const linkedSource = await this.sourceModel
+      .findOne({ workId: resolvedWorkId, sourceId })
+      .select('projectIds')
+      .lean()
+      .exec();
+    const projectIds = Array.isArray((linkedSource as any)?.projectIds)
+      ? (linkedSource as any).projectIds
+      : [];
+    await this.sourceModel
+      .updateOne(
+        { workId: resolvedWorkId, sourceId },
+        { $set: { projectLinkCount: projectIds.length } }
+      )
+      .exec();
 
     await this.refreshProjectCounts(projectId);
 
@@ -594,7 +648,11 @@ export class ProjectsService {
     };
   }
 
-  async listRows(projectId: string, options?: { limit?: number; offset?: number }, actor?: { userId?: string; roles?: string[] }) {
+  async listRows(
+    projectId: string,
+    options?: { limit?: number; offset?: number },
+    actor?: { userId?: string; roles?: string[] }
+  ) {
     const project = await this.getProjectDoc(projectId);
     this.assertCanRead(project, actor);
 
@@ -622,7 +680,12 @@ export class ProjectsService {
 
   async createRow(
     projectId: string,
-    payload: { externalScoreUrl?: string; imslpUrl?: string; hasReferencePdf?: boolean; notes?: string },
+    payload: {
+      externalScoreUrl?: string;
+      imslpUrl?: string;
+      hasReferencePdf?: boolean;
+      notes?: string;
+    },
     actor: Actor
   ) {
     const project = await this.getProjectDoc(projectId);
@@ -684,12 +747,14 @@ export class ProjectsService {
       updatedAt: new Date()
     };
 
-    const externalScoreUrl = payload.externalScoreUrl !== undefined
-      ? this.normalizeUrl(payload.externalScoreUrl ?? undefined, 'externalScoreUrl')
-      : row.externalScoreUrl;
-    const imslpUrl = payload.imslpUrl !== undefined
-      ? this.normalizeUrl(payload.imslpUrl ?? undefined, 'imslpUrl')
-      : row.imslpUrl;
+    const externalScoreUrl =
+      payload.externalScoreUrl !== undefined
+        ? this.normalizeUrl(payload.externalScoreUrl ?? undefined, 'externalScoreUrl')
+        : row.externalScoreUrl;
+    const imslpUrl =
+      payload.imslpUrl !== undefined
+        ? this.normalizeUrl(payload.imslpUrl ?? undefined, 'imslpUrl')
+        : row.imslpUrl;
 
     if (payload.externalScoreUrl !== undefined) {
       set.externalScoreUrl = externalScoreUrl;
@@ -713,7 +778,9 @@ export class ProjectsService {
     if (payload.verified !== undefined && payload.verified !== row.verified) {
       const canVerify = await this.canToggleVerified(project, row, actor);
       if (!canVerify) {
-        throw new ForbiddenException('Only source owner, project lead, or admin can change verified');
+        throw new ForbiddenException(
+          'Only source owner, project lead, or admin can change verified'
+        );
       }
 
       set.verified = payload.verified;
@@ -728,14 +795,17 @@ export class ProjectsService {
 
     await this.assertNoDuplicateRow(projectId, externalScoreUrl, imslpUrl, rowId);
 
-    const updated = await this.rowModel.findOneAndUpdate(
-      { projectId, rowId, rowVersion: payload.rowVersion },
-      {
-        $set: set,
-        $inc: { rowVersion: 1 }
-      },
-      { new: true }
-    ).lean().exec();
+    const updated = await this.rowModel
+      .findOneAndUpdate(
+        { projectId, rowId, rowVersion: payload.rowVersion },
+        {
+          $set: set,
+          $inc: { rowVersion: 1 }
+        },
+        { new: true }
+      )
+      .lean()
+      .exec();
 
     if (!updated) {
       throw new ConflictException('row update conflict; reload and retry');
@@ -758,7 +828,13 @@ export class ProjectsService {
   async createInternalSource(
     projectId: string,
     rowId: string,
-    payload: { workId?: string; imslpUrl?: string; sourceId?: string; sourceLabel?: string; sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other' },
+    payload: {
+      workId?: string;
+      imslpUrl?: string;
+      sourceId?: string;
+      sourceLabel?: string;
+      sourceType?: 'score' | 'parts' | 'audio' | 'metadata' | 'other';
+    },
     actor: Actor
   ) {
     const project = await this.getProjectDoc(projectId);
@@ -779,24 +855,29 @@ export class ProjectsService {
 
     const resolvedWorkId = await this.resolveWorkIdForRow(payload, row);
 
-    await this.workModel.findOneAndUpdate(
-      { workId: resolvedWorkId },
-      {
-        $setOnInsert: {
-          workId: resolvedWorkId,
-          sourceCount: 0,
-          availableFormats: [],
-          hasReferencePdf: false,
-          hasVerifiedSources: false,
-          hasFlaggedSources: false
-        }
-      },
-      { upsert: true, new: true }
-    ).exec();
+    await this.workModel
+      .findOneAndUpdate(
+        { workId: resolvedWorkId },
+        {
+          $setOnInsert: {
+            workId: resolvedWorkId,
+            sourceCount: 0,
+            availableFormats: [],
+            hasReferencePdf: false,
+            hasVerifiedSources: false,
+            hasFlaggedSources: false
+          }
+        },
+        { upsert: true, new: true }
+      )
+      .exec();
 
     let sourceId = payload.sourceId?.trim();
     if (sourceId) {
-      const existing = await this.sourceModel.findOne({ workId: resolvedWorkId, sourceId }).lean().exec();
+      const existing = await this.sourceModel
+        .findOne({ workId: resolvedWorkId, sourceId })
+        .lean()
+        .exec();
       if (!existing) {
         throw new NotFoundException('sourceId not found for the target work');
       }
@@ -806,11 +887,19 @@ export class ProjectsService {
       const zeroChecksum = '0'.repeat(64);
 
       const sourceType = payload.sourceType ?? 'score';
-      const sourceLabel = payload.sourceLabel?.trim() || this.defaultSourceLabel(project.title, row.rowId, row.externalScoreUrl);
+      const sourceLabel =
+        payload.sourceLabel?.trim() ||
+        this.defaultSourceLabel(project.title, row.rowId, row.externalScoreUrl);
       const format = 'application/octet-stream';
       const external = row.externalScoreUrl ? this.safeUrl(row.externalScoreUrl) : undefined;
-      const fallbackName = external ? decodeURIComponent(external.pathname.split('/').filter(Boolean).pop() || 'external-link') : 'external-link';
-      const sourceDescription = this.buildSourceDescription(row.notes, row.externalScoreUrl, row.imslpUrl);
+      const fallbackName = external
+        ? decodeURIComponent(external.pathname.split('/').filter(Boolean).pop() || 'external-link')
+        : 'external-link';
+      const sourceDescription = this.buildSourceDescription(
+        row.notes,
+        row.externalScoreUrl,
+        row.imslpUrl
+      );
 
       await this.sourceModel.create({
         workId: resolvedWorkId,
@@ -850,41 +939,53 @@ export class ProjectsService {
         projectLinkCount: 1
       });
 
-      await this.workModel.updateOne(
-        { workId: resolvedWorkId },
-        {
-          $inc: { sourceCount: 1 },
-          $addToSet: { availableFormats: format },
-          $set: { hasReferencePdf: row.hasReferencePdf === true }
-        }
-      ).exec();
+      await this.workModel
+        .updateOne(
+          { workId: resolvedWorkId },
+          {
+            $inc: { sourceCount: 1 },
+            $addToSet: { availableFormats: format },
+            $set: { hasReferencePdf: row.hasReferencePdf === true }
+          }
+        )
+        .exec();
     }
 
-    await this.sourceModel.updateOne(
-      { workId: resolvedWorkId, sourceId },
-      { $addToSet: { projectIds: projectId } }
-    ).exec();
+    await this.sourceModel
+      .updateOne({ workId: resolvedWorkId, sourceId }, { $addToSet: { projectIds: projectId } })
+      .exec();
 
-    const linkedSource = await this.sourceModel.findOne({ workId: resolvedWorkId, sourceId }).select('projectIds').lean().exec();
-    const projectIds = Array.isArray((linkedSource as any)?.projectIds) ? (linkedSource as any).projectIds : [];
-    await this.sourceModel.updateOne(
-      { workId: resolvedWorkId, sourceId },
-      { $set: { projectLinkCount: projectIds.length } }
-    ).exec();
+    const linkedSource = await this.sourceModel
+      .findOne({ workId: resolvedWorkId, sourceId })
+      .select('projectIds')
+      .lean()
+      .exec();
+    const projectIds = Array.isArray((linkedSource as any)?.projectIds)
+      ? (linkedSource as any).projectIds
+      : [];
+    await this.sourceModel
+      .updateOne(
+        { workId: resolvedWorkId, sourceId },
+        { $set: { projectLinkCount: projectIds.length } }
+      )
+      .exec();
 
-    const updatedRow = await this.rowModel.findOneAndUpdate(
-      { projectId, rowId },
-      {
-        $set: {
-          linkedWorkId: resolvedWorkId,
-          linkedSourceId: sourceId,
-          updatedBy: actor.userId,
-          updatedAt: new Date()
+    const updatedRow = await this.rowModel
+      .findOneAndUpdate(
+        { projectId, rowId },
+        {
+          $set: {
+            linkedWorkId: resolvedWorkId,
+            linkedSourceId: sourceId,
+            updatedBy: actor.userId,
+            updatedAt: new Date()
+          },
+          $inc: { rowVersion: 1 }
         },
-        $inc: { rowVersion: 1 }
-      },
-      { new: true }
-    ).lean().exec();
+        { new: true }
+      )
+      .lean()
+      .exec();
 
     await this.refreshProjectCounts(projectId);
 
@@ -901,7 +1002,10 @@ export class ProjectsService {
     payload: { workId?: string; imslpUrl?: string },
     row: Pick<ProjectSourceRow, 'imslpUrl'>
   ): Promise<string> {
-    return this.resolveWorkId({ workId: payload.workId, imslpUrl: payload.imslpUrl ?? row.imslpUrl });
+    return this.resolveWorkId({
+      workId: payload.workId,
+      imslpUrl: payload.imslpUrl ?? row.imslpUrl
+    });
   }
 
   private async resolveWorkId(payload: { workId?: string; imslpUrl?: string }): Promise<string> {
@@ -928,7 +1032,11 @@ export class ProjectsService {
     return ensured.work.workId;
   }
 
-  private async canToggleVerified(project: ProjectDocLean, row: any, actor: Actor): Promise<boolean> {
+  private async canToggleVerified(
+    project: ProjectDocLean,
+    row: any,
+    actor: Actor
+  ): Promise<boolean> {
     if (this.isAdmin(actor)) return true;
     if (project.leadUserId === actor.userId) return true;
 
@@ -1018,16 +1126,26 @@ export class ProjectsService {
     }
   }
 
-  private defaultSourceLabel(projectTitle: string, rowId: string, externalScoreUrl?: string): string {
+  private defaultSourceLabel(
+    projectTitle: string,
+    rowId: string,
+    externalScoreUrl?: string
+  ): string {
     const parsed = externalScoreUrl ? this.safeUrl(externalScoreUrl) : null;
-    const fromPath = parsed ? decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || '') : '';
+    const fromPath = parsed
+      ? decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || '')
+      : '';
     if (fromPath && fromPath !== 'external-link' && fromPath !== '/') {
       return fromPath;
     }
     return `${projectTitle} (${rowId})`;
   }
 
-  private buildSourceDescription(notes?: string, externalScoreUrl?: string, imslpUrl?: string): string | undefined {
+  private buildSourceDescription(
+    notes?: string,
+    externalScoreUrl?: string,
+    imslpUrl?: string
+  ): string | undefined {
     const lines: string[] = [];
     const trimmedNotes = (notes || '').trim();
     if (trimmedNotes) {
@@ -1046,7 +1164,11 @@ export class ProjectsService {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  private async generateUniqueId(model: Model<any>, field: string, prefix: string): Promise<string> {
+  private async generateUniqueId(
+    model: Model<any>,
+    field: string,
+    prefix: string
+  ): Promise<string> {
     for (let i = 0; i < 10; i += 1) {
       const candidate = `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 10)}`;
       const exists = await model.exists({ [field]: candidate });
@@ -1102,9 +1224,17 @@ export class ProjectsService {
       if (imslpUrl === undefined) {
         return;
       }
-      candidates.push({ projectId, imslpUrl, $or: [{ externalScoreUrl: { $exists: false } }, { externalScoreUrl: null }] });
+      candidates.push({
+        projectId,
+        imslpUrl,
+        $or: [{ externalScoreUrl: { $exists: false } }, { externalScoreUrl: null }]
+      });
     } else if (imslpUrl === undefined) {
-      candidates.push({ projectId, externalScoreUrl, $or: [{ imslpUrl: { $exists: false } }, { imslpUrl: null }] });
+      candidates.push({
+        projectId,
+        externalScoreUrl,
+        $or: [{ imslpUrl: { $exists: false } }, { imslpUrl: null }]
+      });
     } else {
       candidates.push(query);
     }
@@ -1126,15 +1256,17 @@ export class ProjectsService {
       this.sourceModel.countDocuments({ projectIds: projectId }).exec()
     ]);
 
-    await this.projectModel.updateOne(
-      { projectId },
-      {
-        $set: {
-          rowCount,
-          linkedSourceCount
+    await this.projectModel
+      .updateOne(
+        { projectId },
+        {
+          $set: {
+            rowCount,
+            linkedSourceCount
+          }
         }
-      }
-    ).exec();
+      )
+      .exec();
   }
 
   private async withUserRefs(projects: ProjectDocLean[]) {
@@ -1146,13 +1278,14 @@ export class ProjectsService {
       }
     }
 
-    const users = userIds.size > 0
-      ? await this.userModel
-          .find({ _id: { $in: Array.from(userIds) } })
-          .select('_id username displayName')
-          .lean()
-          .exec()
-      : [];
+    const users =
+      userIds.size > 0
+        ? await this.userModel
+            .find({ _id: { $in: Array.from(userIds) } })
+            .select('_id username displayName')
+            .lean()
+            .exec()
+        : [];
 
     const map = new Map<string, UserRefView>();
     for (const user of users as any[]) {

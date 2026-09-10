@@ -83,9 +83,7 @@ export class LegalService {
     context?: { requestIp?: string; requestId?: string }
   ): Promise<{ caseId: string; status: CaseStatus }> {
     if (!input.goodFaithStatement || !input.perjuryStatement) {
-      throw new BadRequestException(
-        'goodFaithStatement and perjuryStatement must be accepted'
-      );
+      throw new BadRequestException('goodFaithStatement and perjuryStatement must be accepted');
     }
 
     const workId = input.workId?.trim();
@@ -95,19 +93,14 @@ export class LegalService {
       throw new BadRequestException('workId and sourceId are required');
     }
 
-    const source = await this.sourceModel
-      .findOne({ workId, sourceId })
-      .lean()
-      .exec();
+    const source = await this.sourceModel.findOne({ workId, sourceId }).lean().exec();
     if (!source) {
       throw new NotFoundException('Source not found');
     }
 
     let revision: SourceRevisionDocument | null = null;
     if (revisionId) {
-      revision = await this.sourceRevisionModel
-        .findOne({ workId, sourceId, revisionId })
-        .exec();
+      revision = await this.sourceRevisionModel.findOne({ workId, sourceId, revisionId }).exec();
       if (!revision) {
         throw new NotFoundException('Revision not found');
       }
@@ -118,9 +111,9 @@ export class LegalService {
     const submittedAt = new Date();
 
     const uploaderUserId = revision
-      ? (revision.createdBy && revision.createdBy !== 'system'
-          ? revision.createdBy
-          : source.provenance?.uploadedByUserId)
+      ? revision.createdBy && revision.createdBy !== 'system'
+        ? revision.createdBy
+        : source.provenance?.uploadedByUserId
       : source.provenance?.uploadedByUserId;
 
     const createdCase = await this.takedownCaseModel.create({
@@ -332,7 +325,10 @@ export class LegalService {
     return { caseId: doc.caseId, status: doc.status };
   }
 
-  async restoreCase(caseId: string, actor: RequestUser): Promise<{ caseId: string; status: CaseStatus }> {
+  async restoreCase(
+    caseId: string,
+    actor: RequestUser
+  ): Promise<{ caseId: string; status: CaseStatus }> {
     const doc = await this.takedownCaseModel.findOne({ caseId: caseId.trim() }).exec();
     if (!doc) throw new NotFoundException('Case not found');
 
@@ -429,7 +425,9 @@ export class LegalService {
       const withheld = timeline.find((a) => a.actionType === 'content_withheld');
       if (withheld) {
         disabledCases += 1;
-        disableDurationsHours.push((withheld.createdAt.getTime() - submittedAt.getTime()) / 3_600_000);
+        disableDurationsHours.push(
+          (withheld.createdAt.getTime() - submittedAt.getTime()) / 3_600_000
+        );
       }
 
       const restored = timeline.find((a) => a.actionType === 'content_restored');
@@ -455,7 +453,8 @@ export class LegalService {
       counterNoticesReceived,
       disabledCases,
       restoredCases,
-      reinstatementRatio: disabledCases > 0 ? Number((restoredCases / disabledCases).toFixed(4)) : null,
+      reinstatementRatio:
+        disabledCases > 0 ? Number((restoredCases / disabledCases).toFixed(4)) : null,
       medianTimeToDisableHours: this.computeMedian(disableDurationsHours),
       medianCounterNoticeTurnaroundHours: this.computeMedian(counterTurnaroundHours),
       casesByStatus
@@ -520,10 +519,7 @@ export class LegalService {
         .updateOne({ workId: target.workId, sourceId: target.sourceId }, { $set: withholdSet })
         .exec();
       await this.sourceRevisionModel
-        .updateMany(
-          { workId: target.workId, sourceId: target.sourceId },
-          { $set: withholdSet }
-        )
+        .updateMany({ workId: target.workId, sourceId: target.sourceId }, { $set: withholdSet })
         .exec();
       return;
     }
@@ -562,10 +558,7 @@ export class LegalService {
     if (!values.length) return null;
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    const median =
-      sorted.length % 2 === 1
-        ? sorted[mid]
-        : (sorted[mid - 1] + sorted[mid]) / 2;
+    const median = sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     return Number(median.toFixed(2));
   }
 
@@ -579,7 +572,9 @@ export class LegalService {
     try {
       this.transporter = nodemailer.createTransport(emailServer);
     } catch (error) {
-      this.logger.warn(`Failed to configure legal email transporter: ${String((error as Error)?.message || error)}`);
+      this.logger.warn(
+        `Failed to configure legal email transporter: ${String((error as Error)?.message || error)}`
+      );
       this.transporter = null;
     }
     return this.transporter;

@@ -26,10 +26,10 @@ export class ChangeReviewThread {
       anchorId: { type: String, trim: true, required: true },
       lineHash: { type: String, trim: true, required: true },
       lineText: { type: String, required: true },
-      hunkHeader: { type: String, trim: true },
+      hunkHeader: { type: String, trim: true }
     },
     _id: false,
-    required: true,
+    required: true
   })
   diffAnchor!: {
     side: 'base' | 'head';

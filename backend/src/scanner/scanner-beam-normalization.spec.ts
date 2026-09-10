@@ -11,7 +11,9 @@ const score = (notes: string) =>
 
 describe('scanner beam normalization', () => {
   it('detects the mixed explicit/automatic MusicXML case', () => {
-    const base = score('<note><rest/><duration>1</duration><type>eighth</type><beam number="1">begin</beam></note>');
+    const base = score(
+      '<note><rest/><duration>1</duration><type>eighth</type><beam number="1">begin</beam></note>'
+    );
     const automatic = score('<note><rest/><duration>1</duration><type>eighth</type></note>');
     expect(scannerMusicXmlNeedsBeamMaterialization(automatic, base)).toBe(true);
     expect(scannerMusicXmlNeedsBeamMaterialization(base, automatic)).toBe(false);
@@ -21,7 +23,9 @@ describe('scanner beam normalization', () => {
 
   it('uses MuseScore output so the candidate keeps the beaming it rendered with', async () => {
     const input = score('<note><rest/><duration>1</duration><type>eighth</type></note>');
-    const normalized = score('<note><rest/><duration>1</duration><type>eighth</type><beam number="1">begin</beam></note>');
+    const normalized = score(
+      '<note><rest/><duration>1</duration><type>eighth</type><beam number="1">begin</beam></note>'
+    );
     const museScoreOutput = Buffer.from(
       normalized
         .toString('utf8')
@@ -36,7 +40,11 @@ describe('scanner beam normalization', () => {
 
     const result = await materializeScannerAutoBeams(input, { executable: 'musescore-test', run });
 
-    expect(run).toHaveBeenCalledWith('musescore-test', expect.stringContaining('input.musicxml'), expect.stringContaining('output.musicxml'));
+    expect(run).toHaveBeenCalledWith(
+      'musescore-test',
+      expect.stringContaining('input.musicxml'),
+      expect.stringContaining('output.musicxml')
+    );
     expect(result).toEqual({ musicXml: normalized, materialized: true });
   });
 });

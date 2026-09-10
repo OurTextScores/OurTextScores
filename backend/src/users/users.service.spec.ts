@@ -12,7 +12,7 @@ describe('UsersService', () => {
     const mockModel = {
       findById: jest.fn(),
       findOne: jest.fn(),
-      findOneAndUpdate: jest.fn(),
+      findOneAndUpdate: jest.fn()
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -20,9 +20,9 @@ describe('UsersService', () => {
         UsersService,
         {
           provide: getModelToken(User.name),
-          useValue: mockModel,
-        },
-      ],
+          useValue: mockModel
+        }
+      ]
     }).compile();
 
     service = module.get<UsersService>(UsersService);
@@ -39,11 +39,11 @@ describe('UsersService', () => {
         _id: 'user123',
         email: 'test@example.com',
         displayName: 'Test User',
-        roles: ['user'],
+        roles: ['user']
       };
 
       model.findById.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
+        exec: jest.fn().mockResolvedValue(mockUser)
       } as any);
 
       const result = await service.findById('user123');
@@ -54,7 +54,7 @@ describe('UsersService', () => {
 
     it('returns null when user not found', async () => {
       model.findById.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
+        exec: jest.fn().mockResolvedValue(null)
       } as any);
 
       const result = await service.findById('nonexistent');
@@ -67,7 +67,7 @@ describe('UsersService', () => {
 
       for (const id of testIds) {
         model.findById.mockReturnValue({
-          exec: jest.fn().mockResolvedValue({ _id: id }),
+          exec: jest.fn().mockResolvedValue({ _id: id })
         } as any);
 
         await service.findById(id);
@@ -82,11 +82,11 @@ describe('UsersService', () => {
         _id: 'user123',
         email: 'test@example.com',
         displayName: 'Test User',
-        roles: ['user'],
+        roles: ['user']
       };
 
       model.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
+        exec: jest.fn().mockResolvedValue(mockUser)
       } as any);
 
       const result = await service.findByEmail('test@example.com');
@@ -97,7 +97,7 @@ describe('UsersService', () => {
 
     it('normalizes email to lowercase', async () => {
       model.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
+        exec: jest.fn().mockResolvedValue(null)
       } as any);
 
       await service.findByEmail('TEST@EXAMPLE.COM');
@@ -107,7 +107,7 @@ describe('UsersService', () => {
 
     it('trims whitespace from email', async () => {
       model.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
+        exec: jest.fn().mockResolvedValue(null)
       } as any);
 
       await service.findByEmail('  test@example.com  ');
@@ -145,7 +145,7 @@ describe('UsersService', () => {
 
     it('handles email with mixed case and spaces', async () => {
       model.findOne.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(null),
+        exec: jest.fn().mockResolvedValue(null)
       } as any);
 
       await service.findByEmail('  MiXeD@CaSe.COM  ');
@@ -160,11 +160,11 @@ describe('UsersService', () => {
         _id: 'newuser123',
         email: 'new@example.com',
         displayName: 'New User',
-        roles: ['user'],
+        roles: ['user']
       };
 
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
+        exec: jest.fn().mockResolvedValue(mockUser)
       } as any);
 
       const result = await service.getOrCreateByEmail('new@example.com', 'New User');
@@ -177,8 +177,8 @@ describe('UsersService', () => {
             displayName: 'New User',
             roles: ['user'],
             status: 'active',
-            enforcementStrikes: 0,
-          },
+            enforcementStrikes: 0
+          }
         },
         { new: true, upsert: true }
       );
@@ -190,11 +190,11 @@ describe('UsersService', () => {
         _id: 'existing123',
         email: 'existing@example.com',
         displayName: 'Existing User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       };
 
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(mockUser),
+        exec: jest.fn().mockResolvedValue(mockUser)
       } as any);
 
       const result = await service.getOrCreateByEmail('existing@example.com', 'Different Name');
@@ -204,7 +204,7 @@ describe('UsersService', () => {
 
     it('normalizes email before get-or-create', async () => {
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({} as any),
+        exec: jest.fn().mockResolvedValue({} as any)
       } as any);
 
       await service.getOrCreateByEmail('  TEST@EXAMPLE.COM  ', 'Test User');
@@ -213,8 +213,8 @@ describe('UsersService', () => {
         { email: 'test@example.com' },
         expect.objectContaining({
           $setOnInsert: expect.objectContaining({
-            email: 'test@example.com',
-          }),
+            email: 'test@example.com'
+          })
         }),
         expect.any(Object)
       );
@@ -222,7 +222,7 @@ describe('UsersService', () => {
 
     it('creates user without displayName when not provided', async () => {
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({} as any),
+        exec: jest.fn().mockResolvedValue({} as any)
       } as any);
 
       await service.getOrCreateByEmail('nodisplay@example.com');
@@ -235,8 +235,8 @@ describe('UsersService', () => {
             displayName: undefined,
             roles: ['user'],
             status: 'active',
-            enforcementStrikes: 0,
-          },
+            enforcementStrikes: 0
+          }
         },
         { new: true, upsert: true }
       );
@@ -244,7 +244,7 @@ describe('UsersService', () => {
 
     it('assigns default "user" role to new users', async () => {
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({} as any),
+        exec: jest.fn().mockResolvedValue({} as any)
       } as any);
 
       await service.getOrCreateByEmail('newrole@example.com', 'New User');
@@ -255,7 +255,7 @@ describe('UsersService', () => {
 
     it('uses upsert option to create if not exists', async () => {
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({} as any),
+        exec: jest.fn().mockResolvedValue({} as any)
       } as any);
 
       await service.getOrCreateByEmail('test@example.com');
@@ -266,7 +266,7 @@ describe('UsersService', () => {
 
     it('handles empty displayName', async () => {
       model.findOneAndUpdate.mockReturnValue({
-        exec: jest.fn().mockResolvedValue({} as any),
+        exec: jest.fn().mockResolvedValue({} as any)
       } as any);
 
       await service.getOrCreateByEmail('test@example.com', '');
@@ -282,7 +282,7 @@ describe('UsersService', () => {
         _id: 'user123',
         email: 'test@example.com',
         displayName: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       } as any;
 
       const result = service.toBasic(user);
@@ -291,7 +291,7 @@ describe('UsersService', () => {
         id: 'user123',
         email: 'test@example.com',
         displayName: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       });
     });
 
@@ -299,7 +299,7 @@ describe('UsersService', () => {
       const user = {
         _id: { toString: () => 'objectid123' },
         email: 'test@example.com',
-        roles: ['user'],
+        roles: ['user']
       } as any;
 
       const result = service.toBasic(user);
@@ -312,7 +312,7 @@ describe('UsersService', () => {
         _id: 'user123',
         email: 'test@example.com',
         displayName: null,
-        roles: ['user'],
+        roles: ['user']
       } as any;
 
       const result = service.toBasic(user);
@@ -324,7 +324,7 @@ describe('UsersService', () => {
       const user = {
         _id: 'user123',
         email: 'test@example.com',
-        roles: ['user'],
+        roles: ['user']
       } as any;
 
       const result = service.toBasic(user);
@@ -336,7 +336,7 @@ describe('UsersService', () => {
       const user = {
         _id: 'user123',
         email: 'test@example.com',
-        roles: null,
+        roles: null
       } as any;
 
       const result = service.toBasic(user);
@@ -347,7 +347,7 @@ describe('UsersService', () => {
     it('handles undefined roles', () => {
       const user = {
         _id: 'user123',
-        email: 'test@example.com',
+        email: 'test@example.com'
       } as any;
 
       const result = service.toBasic(user);
@@ -359,7 +359,7 @@ describe('UsersService', () => {
       const user = {
         _id: 'user123',
         email: 'test@example.com',
-        roles: [],
+        roles: []
       } as any;
 
       const result = service.toBasic(user);
@@ -371,7 +371,7 @@ describe('UsersService', () => {
       const user = {
         _id: 'user123',
         email: 'test@example.com',
-        roles: ['user', 'admin', 'moderator', 'editor'],
+        roles: ['user', 'admin', 'moderator', 'editor']
       } as any;
 
       const result = service.toBasic(user);

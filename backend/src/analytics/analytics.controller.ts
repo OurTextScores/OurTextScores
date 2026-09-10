@@ -67,7 +67,11 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
-  @ApiQuery({ name: 'timezone', required: false, description: 'IANA timezone (default America/New_York)' })
+  @ApiQuery({
+    name: 'timezone',
+    required: false,
+    description: 'IANA timezone (default America/New_York)'
+  })
   @ApiResponse({ status: 201, description: 'Rollups backfilled successfully' })
   async backfillRollups(
     @Query('from') from?: string,
@@ -109,7 +113,11 @@ export class AnalyticsController {
     return `ip:${ip || 'unknown'}`;
   }
 
-  private consumeIngestBudget(rateKey: string, events: number, maxEventsPerWindow: number): boolean {
+  private consumeIngestBudget(
+    rateKey: string,
+    events: number,
+    maxEventsPerWindow: number
+  ): boolean {
     const now = Date.now();
     if (events > maxEventsPerWindow) {
       return false;
@@ -152,7 +160,11 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
-  @ApiQuery({ name: 'excludeAdmins', required: false, description: 'Exclude admin activity (default true)' })
+  @ApiQuery({
+    name: 'excludeAdmins',
+    required: false,
+    description: 'Exclude admin activity (default true)'
+  })
   @ApiResponse({ status: 200, description: 'Overview metrics returned' })
   async getOverview(
     @Query('from') from?: string,
@@ -173,14 +185,25 @@ export class AnalyticsController {
   @UseGuards(AuthRequiredGuard, AdminRequiredGuard)
   @ApiOperation({
     summary: 'Get analytics timeseries',
-    description:
-      'Returns bucketed activity and engagement metrics for dashboard charting.'
+    description: 'Returns bucketed activity and engagement metrics for dashboard charting.'
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
-  @ApiQuery({ name: 'excludeAdmins', required: false, description: 'Exclude admin activity (default true)' })
-  @ApiQuery({ name: 'timezone', required: false, description: 'IANA timezone (default America/New_York)' })
-  @ApiQuery({ name: 'bucket', required: false, description: 'Bucket granularity: day|week (default day)' })
+  @ApiQuery({
+    name: 'excludeAdmins',
+    required: false,
+    description: 'Exclude admin activity (default true)'
+  })
+  @ApiQuery({
+    name: 'timezone',
+    required: false,
+    description: 'IANA timezone (default America/New_York)'
+  })
+  @ApiQuery({
+    name: 'bucket',
+    required: false,
+    description: 'Bucket granularity: day|week (default day)'
+  })
   @ApiResponse({ status: 200, description: 'Timeseries metrics returned' })
   async getTimeseries(
     @Query('from') from?: string,
@@ -210,7 +233,11 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
-  @ApiQuery({ name: 'excludeAdmins', required: false, description: 'Exclude admin activity (default true)' })
+  @ApiQuery({
+    name: 'excludeAdmins',
+    required: false,
+    description: 'Exclude admin activity (default true)'
+  })
   @ApiResponse({ status: 200, description: 'Funnel metrics returned' })
   async getFunnel(
     @Query('from') from?: string,
@@ -235,8 +262,16 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
-  @ApiQuery({ name: 'excludeAdmins', required: false, description: 'Exclude admin activity (default true)' })
-  @ApiQuery({ name: 'timezone', required: false, description: 'IANA timezone (default America/New_York)' })
+  @ApiQuery({
+    name: 'excludeAdmins',
+    required: false,
+    description: 'Exclude admin activity (default true)'
+  })
+  @ApiQuery({
+    name: 'timezone',
+    required: false,
+    description: 'IANA timezone (default America/New_York)'
+  })
   @ApiResponse({ status: 200, description: 'Retention report returned' })
   async getRetention(
     @Query('from') from?: string,
@@ -264,10 +299,7 @@ export class AnalyticsController {
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
   @ApiResponse({ status: 200, description: 'Catalog metrics returned' })
-  async getCatalog(
-    @Query('from') from?: string,
-    @Query('to') to?: string
-  ) {
+  async getCatalog(@Query('from') from?: string, @Query('to') to?: string) {
     const parsedFrom = this.parseDateOrUndefined(from, 'from');
     const parsedTo = this.parseDateOrUndefined(to, 'to');
     return this.analytics.getCatalogStats({
@@ -284,9 +316,21 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO start timestamp (inclusive)' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO end timestamp (exclusive)' })
-  @ApiQuery({ name: 'excludeAdmins', required: false, description: 'Exclude admin activity (default true)' })
-  @ApiQuery({ name: 'timezone', required: false, description: 'IANA timezone (default America/New_York)' })
-  @ApiQuery({ name: 'bucket', required: false, description: 'Bucket granularity: day|week (default day)' })
+  @ApiQuery({
+    name: 'excludeAdmins',
+    required: false,
+    description: 'Exclude admin activity (default true)'
+  })
+  @ApiQuery({
+    name: 'timezone',
+    required: false,
+    description: 'IANA timezone (default America/New_York)'
+  })
+  @ApiQuery({
+    name: 'bucket',
+    required: false,
+    description: 'Bucket granularity: day|week (default day)'
+  })
   @ApiResponse({ status: 200, description: 'Editor runtime metrics returned' })
   async getEditorMetrics(
     @Query('from') from?: string,

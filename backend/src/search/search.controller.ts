@@ -38,7 +38,8 @@ export class SearchController {
   @UseGuards(AuthOptionalGuard)
   @ApiOperation({
     summary: 'Search for works',
-    description: 'Search for music works using MeiliSearch full-text search. Searches across title, composer, catalog number, and work ID.'
+    description:
+      'Search for music works using MeiliSearch full-text search. Searches across title, composer, catalog number, and work ID.'
   })
   @ApiQuery({
     name: 'q',
@@ -135,7 +136,8 @@ export class SearchController {
   @Get('users')
   @ApiOperation({
     summary: 'Search for users',
-    description: 'Search for users by username. Matches usernames starting with the query string (case-insensitive).'
+    description:
+      'Search for users by username. Matches usernames starting with the query string (case-insensitive).'
   })
   @ApiQuery({
     name: 'q',

@@ -8,14 +8,13 @@ const extractUser = (_: unknown, ctx: ExecutionContext): RequestUser | undefined
 };
 
 describe('CurrentUser Decorator', () => {
-
   const createMockExecutionContext = (user?: RequestUser): ExecutionContext => {
     const request = user ? { user } : {};
 
     return {
       switchToHttp: () => ({
-        getRequest: () => request,
-      }),
+        getRequest: () => request
+      })
     } as ExecutionContext;
   };
 
@@ -25,7 +24,7 @@ describe('CurrentUser Decorator', () => {
         userId: 'user123',
         email: 'test@example.com',
         name: 'Test User',
-        roles: ['user', 'admin'],
+        roles: ['user', 'admin']
       };
 
       const context = createMockExecutionContext(mockUser);
@@ -47,7 +46,7 @@ describe('CurrentUser Decorator', () => {
 
     it('extracts user with minimal fields', () => {
       const mockUser: RequestUser = {
-        userId: 'user456',
+        userId: 'user456'
       };
 
       const context = createMockExecutionContext(mockUser);
@@ -63,7 +62,7 @@ describe('CurrentUser Decorator', () => {
         userId: 'user789',
         email: 'full@example.com',
         name: 'Full User',
-        roles: ['admin', 'moderator', 'user'],
+        roles: ['admin', 'moderator', 'user']
       };
 
       const context = createMockExecutionContext(mockUser);
@@ -83,7 +82,7 @@ describe('CurrentUser Decorator', () => {
         userId: 'preserve-test',
         email: 'preserve@example.com',
         name: 'Preserve User',
-        roles: ['test'],
+        roles: ['test']
       };
 
       const context = createMockExecutionContext(mockUser);
@@ -109,7 +108,7 @@ describe('CurrentUser Decorator', () => {
 
     it('ignores decorator data parameter', () => {
       const mockUser: RequestUser = {
-        userId: 'ignore-param',
+        userId: 'ignore-param'
       };
 
       const context = createMockExecutionContext(mockUser);

@@ -5,12 +5,16 @@ import { execFile } from 'node:child_process';
 
 // Simple chain helper
 function chain<T>(result: T) {
-  return { limit: jest.fn().mockReturnThis(), lean: jest.fn().mockReturnThis(), exec: jest.fn().mockResolvedValue(result) } as any;
+  return {
+    limit: jest.fn().mockReturnThis(),
+    lean: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue(result)
+  } as any;
 }
 
 jest.mock('node:child_process', () => ({
   ...jest.requireActual('node:child_process'),
-  execFile: jest.fn(),
+  execFile: jest.fn()
 }));
 
 // Get typed mock
@@ -22,7 +26,7 @@ describe('ImslpService (unit, mocked model)', () => {
     find: jest.fn(),
     findOne: jest.fn(),
     updateOne: jest.fn(),
-    findOneAndUpdate: jest.fn(),
+    findOneAndUpdate: jest.fn()
   } as any as jest.Mocked<Model<ImslpWork>> & any;
 
   beforeEach(() => {
@@ -44,7 +48,13 @@ describe('ImslpService (unit, mocked model)', () => {
 
   it('search returns mapped DTOs', async () => {
     const docs = [
-      { workId: '123', title: 'Symphony', composer: 'X', permalink: 'https://imslp.org/wiki/123', metadata: { basic_info: { page_id: 123, page_title: 'Symphony' } } }
+      {
+        workId: '123',
+        title: 'Symphony',
+        composer: 'X',
+        permalink: 'https://imslp.org/wiki/123',
+        metadata: { basic_info: { page_id: 123, page_title: 'Symphony' } }
+      }
     ];
     (model.find as jest.Mock).mockReturnValue(chain(docs));
     const result = await service.search('Sym', 5);
@@ -65,21 +75,41 @@ describe('ImslpService (unit, mocked model)', () => {
   });
 
   it('ensureByWorkId returns cached metadata DTO', async () => {
-    const doc = { workId: '200', title: 'T', composer: 'C', permalink: 'https://imslp.org/wiki/200', metadata: { basic_info: { page_id: 200, page_title: 'T' } } };
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(doc) }) });
+    const doc = {
+      workId: '200',
+      title: 'T',
+      composer: 'C',
+      permalink: 'https://imslp.org/wiki/200',
+      metadata: { basic_info: { page_id: 200, page_title: 'T' } }
+    };
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(doc) })
+    });
     const res = await service.ensureByWorkId('200');
     expect(res.workId).toBe('200');
     expect(res.metadata).toMatchObject({ workId: '200', title: 'T', composer: 'C' });
   });
 
   it('ensureByWorkId throws NotFoundException when work not found', async () => {
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(null) }) });
-    await expect(service.ensureByWorkId('999')).rejects.toThrow('IMSLP metadata not found for work 999');
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(null) })
+    });
+    await expect(service.ensureByWorkId('999')).rejects.toThrow(
+      'IMSLP metadata not found for work 999'
+    );
   });
 
   it('ensureByPermalink returns cached metadata DTO', async () => {
-    const doc = { workId: '300', title: 'Concerto', composer: 'Y', permalink: 'https://imslp.org/wiki/Concerto', metadata: { basic_info: { page_id: 300, page_title: 'Concerto' } } };
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(doc) }) });
+    const doc = {
+      workId: '300',
+      title: 'Concerto',
+      composer: 'Y',
+      permalink: 'https://imslp.org/wiki/Concerto',
+      metadata: { basic_info: { page_id: 300, page_title: 'Concerto' } }
+    };
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(doc) })
+    });
     const res = await service.ensureByPermalink('https://imslp.org/wiki/Concerto');
     expect(res.workId).toBe('300');
     expect(res.metadata).toMatchObject({ workId: '300', title: 'Concerto', composer: 'Y' });
@@ -91,11 +121,21 @@ describe('ImslpService (unit, mocked model)', () => {
       title: 'Sonata',
       composer: 'Z',
       permalink: 'https://imslp.org/wiki/Sonata',
-      metadata: { id: 400, title: 'Sonata', composer: 'Z', basic_info: { page_id: 400, page_title: 'Sonata' }, intvals: { pageid: 400, worktitle: 'Sonata' } }
+      metadata: {
+        id: 400,
+        title: 'Sonata',
+        composer: 'Z',
+        basic_info: { page_id: 400, page_title: 'Sonata' },
+        intvals: { pageid: 400, worktitle: 'Sonata' }
+      }
     };
 
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(null) }) });
-    (model.findOneAndUpdate as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(mockDoc) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(null) })
+    });
+    (model.findOneAndUpdate as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(mockDoc) })
+    });
 
     // Spy on the private fetchFromMediaWiki method to return the doc
     jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(mockDoc);
@@ -119,7 +159,9 @@ describe('ImslpService (unit, mocked model)', () => {
       metadata: { id: 500, basic_info: { page_id: 500, page_title: 'Prelude' } }
     };
 
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(docWithoutBasicInfo) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(docWithoutBasicInfo) })
+    });
     jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(null);
     jest.spyOn(service as any, 'fetchViaMwClient').mockResolvedValue(enrichedDoc);
     jest.spyOn(service as any, 'fetchAndStoreFromExternal').mockResolvedValue(null);
@@ -140,10 +182,15 @@ describe('ImslpService (unit, mocked model)', () => {
 
     const enrichedDoc = {
       ...docWithoutFiles,
-      metadata: { basic_info: { page_id: 600, page_title: 'Fugue' }, files: [{ name: 'score.pdf' }] }
+      metadata: {
+        basic_info: { page_id: 600, page_title: 'Fugue' },
+        files: [{ name: 'score.pdf' }]
+      }
     };
 
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(docWithoutFiles) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(docWithoutFiles) })
+    });
     jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(null);
     jest.spyOn(service as any, 'fetchViaMwClient').mockResolvedValue(enrichedDoc);
     jest.spyOn(service as any, 'fetchAndStoreFromExternal').mockResolvedValue(null);
@@ -153,7 +200,8 @@ describe('ImslpService (unit, mocked model)', () => {
   });
 
   it('ensureByPermalink retries MWClient enrichment with canonical permalink when files remain empty', async () => {
-    const canonicalPermalink = 'https://imslp.org/wiki/Le_carnaval_des_animaux_(Saint-Sa%C3%ABns,_Camille)';
+    const canonicalPermalink =
+      'https://imslp.org/wiki/Le_carnaval_des_animaux_(Saint-Sa%C3%ABns,_Camille)';
     const docWithoutFiles = {
       workId: '6099',
       title: 'Le carnaval des animaux',
@@ -170,15 +218,22 @@ describe('ImslpService (unit, mocked model)', () => {
       ...docWithoutFiles,
       workId: '6099',
       permalink: canonicalPermalink,
-      metadata: { basic_info: { page_id: 6099, page_title: 'Le carnaval des animaux' }, files: [{ name: 'score.pdf' }] }
+      metadata: {
+        basic_info: { page_id: 6099, page_title: 'Le carnaval des animaux' },
+        files: [{ name: 'score.pdf' }]
+      }
     };
 
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(docWithoutFiles) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(docWithoutFiles) })
+    });
     jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(null);
     jest.spyOn(service as any, 'fetchAndStoreFromExternal').mockResolvedValue(null);
     const fetchViaSpy = jest
       .spyOn(service as any, 'fetchViaMwClient')
-      .mockImplementation(async (input: string) => (input === canonicalPermalink ? enrichedCanonical : stillEmpty));
+      .mockImplementation(async (input: string) =>
+        input === canonicalPermalink ? enrichedCanonical : stillEmpty
+      );
     const canonicalSpy = jest
       .spyOn(service as any, 'resolveCanonicalPermalink')
       .mockResolvedValue(canonicalPermalink);
@@ -192,16 +247,22 @@ describe('ImslpService (unit, mocked model)', () => {
   });
 
   it('ensureByPermalink handles all fetch methods returning null', async () => {
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(null) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(null) })
+    });
     jest.spyOn(service as any, 'fetchFromMediaWiki').mockResolvedValue(null);
     jest.spyOn(service as any, 'fetchViaMwClient').mockResolvedValue(null);
     jest.spyOn(service as any, 'fetchAndStoreFromExternal').mockResolvedValue(null);
 
-    await expect(service.ensureByPermalink('https://imslp.org/wiki/NonExistent')).rejects.toThrow('Unable to resolve IMSLP permalink');
+    await expect(service.ensureByPermalink('https://imslp.org/wiki/NonExistent')).rejects.toThrow(
+      'Unable to resolve IMSLP permalink'
+    );
   });
 
   it('enrichByWorkId returns null for non-existent work', async () => {
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(null) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(null) })
+    });
     jest.spyOn(service as any, 'fetchViaMwClient').mockResolvedValue(null);
 
     const result = await service.enrichByWorkId('999');
@@ -210,9 +271,16 @@ describe('ImslpService (unit, mocked model)', () => {
 
   it('enrichByWorkId fetches and enriches existing work', async () => {
     const existingDoc = { workId: '700', permalink: 'https://imslp.org/wiki/Symphony' };
-    const enrichedDoc = { workId: '700', title: 'Symphony', composer: 'Mozart', metadata: { basic_info: { page_id: 700 } } };
+    const enrichedDoc = {
+      workId: '700',
+      title: 'Symphony',
+      composer: 'Mozart',
+      metadata: { basic_info: { page_id: 700 } }
+    };
 
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(existingDoc) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(existingDoc) })
+    });
     jest.spyOn(service as any, 'fetchViaMwClient').mockResolvedValue(enrichedDoc);
 
     const result = await service.enrichByWorkId('700');
@@ -220,9 +288,15 @@ describe('ImslpService (unit, mocked model)', () => {
   });
 
   it('enrichByWorkId handles numeric workId without existing doc', async () => {
-    const enrichedDoc = { workId: '800', title: 'Quartet', metadata: { basic_info: { page_id: 800 } } };
+    const enrichedDoc = {
+      workId: '800',
+      title: 'Quartet',
+      metadata: { basic_info: { page_id: 800 } }
+    };
 
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(null) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(null) })
+    });
     jest.spyOn(service as any, 'fetchViaMwClient').mockResolvedValue(enrichedDoc);
 
     const result = await service.enrichByWorkId('800');
@@ -231,7 +305,13 @@ describe('ImslpService (unit, mocked model)', () => {
 
   it('search handles special characters in query', async () => {
     const docs = [
-      { workId: '900', title: 'Test & Query', composer: 'Smith', permalink: 'https://imslp.org/wiki/900', metadata: { basic_info: { page_id: 900, page_title: 'Test & Query' } } }
+      {
+        workId: '900',
+        title: 'Test & Query',
+        composer: 'Smith',
+        permalink: 'https://imslp.org/wiki/900',
+        metadata: { basic_info: { page_id: 900, page_title: 'Test & Query' } }
+      }
     ];
     (model.find as jest.Mock).mockReturnValue(chain(docs));
     const result = await service.search('Test & Query', 5);
@@ -240,8 +320,15 @@ describe('ImslpService (unit, mocked model)', () => {
   });
 
   it('ensureByWorkId handles doc without metadata', async () => {
-    const doc = { workId: '1000', title: 'No Metadata', composer: 'Unknown', permalink: 'https://imslp.org/wiki/1000' };
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(doc) }) });
+    const doc = {
+      workId: '1000',
+      title: 'No Metadata',
+      composer: 'Unknown',
+      permalink: 'https://imslp.org/wiki/1000'
+    };
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(doc) })
+    });
     const res = await service.ensureByWorkId('1000');
     expect(res.workId).toBe('1000');
     expect(res.metadata.title).toBe('No Metadata');
@@ -255,11 +342,17 @@ describe('ImslpService (unit, mocked model)', () => {
       composer: 'Beethoven',
       permalink: 'https://imslp.org/wiki/1100',
       metadata: {
-        basic_info: { page_id: 1100, page_title: 'Complex Work', composer_names: ['Beethoven', 'Ludwig van'] },
+        basic_info: {
+          page_id: 1100,
+          page_title: 'Complex Work',
+          composer_names: ['Beethoven', 'Ludwig van']
+        },
         files: [{ name: 'score.pdf', size: 1024 }]
       }
     };
-    (model.findOne as jest.Mock).mockReturnValue({ lean: () => ({ exec: () => Promise.resolve(doc) }) });
+    (model.findOne as jest.Mock).mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve(doc) })
+    });
     const res = await service.ensureByWorkId('1100');
     expect(res.metadata.workId).toBe('1100');
     expect(res.metadata.title).toBe('Complex Work');

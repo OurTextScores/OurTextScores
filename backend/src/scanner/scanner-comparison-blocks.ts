@@ -492,10 +492,7 @@ function componentDifferences(
         baseOnly: baseOnly.slice(0, MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE),
         candidateOnly: candidateOnly.slice(0, MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE),
         baseOmitted: Math.max(0, baseOnly.length - MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE),
-        candidateOmitted: Math.max(
-          0,
-          candidateOnly.length - MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE
-        )
+        candidateOmitted: Math.max(0, candidateOnly.length - MAX_SCANNER_COMPONENT_DETAILS_PER_SIDE)
       });
     }
   }

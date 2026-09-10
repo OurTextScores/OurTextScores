@@ -40,10 +40,7 @@ export class BranchesController {
       }
     }
   })
-  async list(
-    @Param('workId') workId: string,
-    @Param('sourceId') sourceId: string
-  ) {
+  async list(@Param('workId') workId: string, @Param('sourceId') sourceId: string) {
     const branches = await this.branches.listBranches(workId, sourceId);
     return { branches };
   }
@@ -62,9 +59,20 @@ export class BranchesController {
       required: ['name', 'policy'],
       properties: {
         name: { type: 'string', example: 'feature-improvements', description: 'Branch name' },
-        policy: { type: 'string', enum: ['public', 'owner_approval'], example: 'public', description: 'Branch policy' },
-        ownerUserId: { type: 'string', description: 'Owner user ID (defaults to current user for owner_approval policy)' },
-        baseRevisionId: { type: 'string', description: 'The revision this branch is created from (typically the latest revision)' }
+        policy: {
+          type: 'string',
+          enum: ['public', 'owner_approval'],
+          example: 'public',
+          description: 'Branch policy'
+        },
+        ownerUserId: {
+          type: 'string',
+          description: 'Owner user ID (defaults to current user for owner_approval policy)'
+        },
+        baseRevisionId: {
+          type: 'string',
+          description: 'The revision this branch is created from (typically the latest revision)'
+        }
       }
     }
   })
@@ -80,8 +88,15 @@ export class BranchesController {
     @CurrentUser() user: RequestUser
   ) {
     // If policy is owner_approval and no owner specified, default to current user
-    const finalOwner = policy === 'owner_approval' ? (ownerUserId || user?.userId) : ownerUserId;
-    const created = await this.branches.createBranch({ workId, sourceId, name, policy, ownerUserId: finalOwner, baseRevisionId });
+    const finalOwner = policy === 'owner_approval' ? ownerUserId || user?.userId : ownerUserId;
+    const created = await this.branches.createBranch({
+      workId,
+      sourceId,
+      name,
+      policy,
+      ownerUserId: finalOwner,
+      baseRevisionId
+    });
     return { branch: created };
   }
 
@@ -89,7 +104,8 @@ export class BranchesController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Update branch settings',
-    description: 'Update branch policy and owner. Requires authentication and appropriate permissions.'
+    description:
+      'Update branch policy and owner. Requires authentication and appropriate permissions.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -98,7 +114,11 @@ export class BranchesController {
     schema: {
       type: 'object',
       properties: {
-        policy: { type: 'string', enum: ['public', 'owner_approval'], description: 'Branch policy' },
+        policy: {
+          type: 'string',
+          enum: ['public', 'owner_approval'],
+          description: 'Branch policy'
+        },
         ownerUserId: { type: 'string', description: 'Owner user ID' }
       }
     }
@@ -134,14 +154,18 @@ export class BranchesController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Delete a branch',
-    description: 'Delete a branch from the Fossil VCS repository. Requires authentication and appropriate permissions.'
+    description:
+      'Delete a branch from the Fossil VCS repository. Requires authentication and appropriate permissions.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
   @ApiParam({ name: 'branchName', description: 'Branch name to delete' })
   @ApiResponse({ status: 200, description: 'Branch deleted successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden - cannot delete protected branches or insufficient permissions' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - cannot delete protected branches or insufficient permissions'
+  })
   async remove(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,

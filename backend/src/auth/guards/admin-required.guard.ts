@@ -15,4 +15,3 @@ export class AdminRequiredGuard implements CanActivate {
     return true;
   }
 }
-

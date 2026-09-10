@@ -53,7 +53,6 @@ describe('locateSymbol', () => {
     expect(locateSymbol([], 0)).toBeNull();
     expect(locateSymbol([note()], 5)).toBeNull();
   });
-
 });
 
 describe('note-level location', () => {

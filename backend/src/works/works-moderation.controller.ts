@@ -7,7 +7,7 @@ import {
   Get,
   Param,
   Post,
-  UseGuards,
+  UseGuards
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -24,7 +24,8 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Migrate source to a new work (admin only)',
-    description: 'Move a source and all associated data to a new work by IMSLP URL. Creates the work if needed.',
+    description:
+      'Move a source and all associated data to a new work by IMSLP URL. Creates the work if needed.'
   })
   @ApiParam({ name: 'workId', description: 'Current Work ID', example: '164349' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -32,10 +33,10 @@ export class WorksModerationController {
     schema: {
       type: 'object',
       properties: {
-        imslpUrl: { type: 'string', description: 'IMSLP permalink or slug URL for the target work' },
+        imslpUrl: { type: 'string', description: 'IMSLP permalink or slug URL for the target work' }
       },
-      required: ['imslpUrl'],
-    },
+      required: ['imslpUrl']
+    }
   })
   @ApiResponse({ status: 200, description: 'Migration completed' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
@@ -45,7 +46,7 @@ export class WorksModerationController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body('imslpUrl') imslpUrl: string,
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     if (!user?.roles?.includes('admin')) {
       throw new ForbiddenException('Admin role required');
@@ -55,7 +56,7 @@ export class WorksModerationController {
     }
     return this.worksService.migrateSourceToWorkByImslpUrl(workId, sourceId, imslpUrl.trim(), {
       userId: user.userId,
-      roles: user.roles,
+      roles: user.roles
     });
   }
 
@@ -63,7 +64,7 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Get all flagged comments (admin only)',
-    description: 'Retrieve all flagged comments for moderation dashboard',
+    description: 'Retrieve all flagged comments for moderation dashboard'
   })
   @ApiResponse({ status: 200, description: 'List of flagged comments with context' })
   @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
@@ -78,7 +79,7 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Get all flagged sources (admin only)',
-    description: 'Retrieve all flagged sources for moderation and legal review.',
+    description: 'Retrieve all flagged sources for moderation and legal review.'
   })
   @ApiResponse({ status: 200, description: 'List of flagged sources with context' })
   @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
@@ -93,7 +94,7 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Verify source (admin only)',
-    description: 'Mark a source as verified/valid transcription',
+    description: 'Mark a source as verified/valid transcription'
   })
   @ApiParam({ name: 'workId', description: 'Work ID' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -101,9 +102,9 @@ export class WorksModerationController {
     schema: {
       type: 'object',
       properties: {
-        note: { type: 'string', description: 'Optional verification note' },
-      },
-    },
+        note: { type: 'string', description: 'Optional verification note' }
+      }
+    }
   })
   @ApiResponse({ status: 200, description: 'Source verified successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - admin role required' })
@@ -112,7 +113,7 @@ export class WorksModerationController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body() body: { note?: string },
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     if (!user?.roles?.includes('admin')) {
       throw new ForbiddenException('Admin role required');
@@ -124,7 +125,7 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Remove verification (admin only)',
-    description: 'Remove verification from a source',
+    description: 'Remove verification from a source'
   })
   @ApiParam({ name: 'workId', description: 'Work ID' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -134,7 +135,7 @@ export class WorksModerationController {
   async removeVerification(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     if (!user?.roles?.includes('admin')) {
       throw new ForbiddenException('Admin role required');
@@ -146,7 +147,8 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Flag source for deletion',
-    description: 'Mark a source as problematic/should be deleted. Any authenticated user can flag sources.',
+    description:
+      'Mark a source as problematic/should be deleted. Any authenticated user can flag sources.'
   })
   @ApiParam({ name: 'workId', description: 'Work ID' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -155,9 +157,9 @@ export class WorksModerationController {
       type: 'object',
       required: ['reason'],
       properties: {
-        reason: { type: 'string', description: 'Reason for flagging' },
-      },
-    },
+        reason: { type: 'string', description: 'Reason for flagging' }
+      }
+    }
   })
   @ApiResponse({ status: 200, description: 'Source flagged successfully' })
   @ApiResponse({ status: 400, description: 'Reason required' })
@@ -167,7 +169,7 @@ export class WorksModerationController {
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
     @Body() body: { reason: string },
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     if (!body.reason?.trim()) {
       throw new BadRequestException('Reason is required');
@@ -179,7 +181,7 @@ export class WorksModerationController {
   @UseGuards(AuthRequiredGuard)
   @ApiOperation({
     summary: 'Remove flag (admin only)',
-    description: 'Remove deletion flag from a source',
+    description: 'Remove deletion flag from a source'
   })
   @ApiParam({ name: 'workId', description: 'Work ID' })
   @ApiParam({ name: 'sourceId', description: 'Source ID' })
@@ -189,7 +191,7 @@ export class WorksModerationController {
   async removeFlag(
     @Param('workId') workId: string,
     @Param('sourceId') sourceId: string,
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user?: RequestUser
   ) {
     if (!user?.roles?.includes('admin')) {
       throw new ForbiddenException('Admin role required');

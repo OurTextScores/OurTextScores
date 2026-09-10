@@ -139,13 +139,9 @@ describe('StorageService', () => {
       const stream = Readable.from(['test data']);
       await service.putRawObject('stream-key', stream, 9, 'text/plain');
 
-      expect(mockClient.putObject).toHaveBeenCalledWith(
-        'test-raw',
-        'stream-key',
-        stream,
-        9,
-        { 'Content-Type': 'text/plain' }
-      );
+      expect(mockClient.putObject).toHaveBeenCalledWith('test-raw', 'stream-key', stream, 9, {
+        'Content-Type': 'text/plain'
+      });
     });
   });
 

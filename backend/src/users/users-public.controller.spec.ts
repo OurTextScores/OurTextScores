@@ -62,9 +62,11 @@ describe('UsersPublicController', () => {
 
     workModel.find.mockReturnValue({
       lean: () => ({
-        exec: jest.fn().mockResolvedValue([
-          { workId: 'w1', title: 'Work 1', composer: 'Composer 1', catalogNumber: 'Op. 1' }
-        ])
+        exec: jest
+          .fn()
+          .mockResolvedValue([
+            { workId: 'w1', title: 'Work 1', composer: 'Composer 1', catalogNumber: 'Op. 1' }
+          ])
       })
     });
 
@@ -85,6 +87,8 @@ describe('UsersPublicController', () => {
 
   it('getContributions throws when user not found', async () => {
     users.findById.mockResolvedValue(null);
-    await expect(controller.getContributions('missing', '10', '0')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(controller.getContributions('missing', '10', '0')).rejects.toBeInstanceOf(
+      NotFoundException
+    );
   });
 });

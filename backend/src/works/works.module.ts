@@ -11,7 +11,10 @@ import { Source, SourceSchema } from './schemas/source.schema';
 import { SourceRevision, SourceRevisionSchema } from './schemas/source-revision.schema';
 import { RevisionRating, RevisionRatingSchema } from './schemas/revision-rating.schema';
 import { RevisionComment, RevisionCommentSchema } from './schemas/revision-comment.schema';
-import { RevisionCommentVote, RevisionCommentVoteSchema } from './schemas/revision-comment-vote.schema';
+import {
+  RevisionCommentVote,
+  RevisionCommentVoteSchema
+} from './schemas/revision-comment-vote.schema';
 import { BranchRating, BranchRatingSchema } from './schemas/branch-rating.schema';
 import { BranchComment, BranchCommentSchema } from './schemas/branch-comment.schema';
 import { BranchCommentVote, BranchCommentVoteSchema } from './schemas/branch-comment-vote.schema';
@@ -61,7 +64,7 @@ import { ChangeReviewsModule } from '../change-reviews/change-reviews.module';
     WorksController,
     WorksDownloadsController,
     WorksEngagementController,
-    WorksModerationController,
+    WorksModerationController
   ],
   providers: [WorksService, UploadSourceService, DerivativePipelineService],
   exports: [WorksService, UploadSourceService, DerivativePipelineService]

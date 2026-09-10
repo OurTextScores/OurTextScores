@@ -40,10 +40,12 @@ export class ProgressService {
     if (!id) return;
     const subject = this.channels.get(id);
     if (subject) {
-      subject.next({ data: { message: 'done', timestamp: new Date().toISOString() }, type: 'done' });
+      subject.next({
+        data: { message: 'done', timestamp: new Date().toISOString() },
+        type: 'done'
+      });
       subject.complete();
       this.channels.delete(id);
     }
   }
 }
-

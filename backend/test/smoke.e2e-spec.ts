@@ -43,7 +43,7 @@ describe('Smoke Tests (e2e)', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [AppModule]
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -114,7 +114,7 @@ describe('Smoke Tests (e2e)', () => {
       expect(response.body.workId).toBe(createdWorkId);
       expect(response.body.sources).toBeDefined();
 
-      const source = response.body.sources.find(s => s.sourceId === createdSourceId);
+      const source = response.body.sources.find((s) => s.sourceId === createdSourceId);
       expect(source).toBeDefined();
       expect(source.license).toBe('CC-BY-4.0');
       expect(source.licenseAttribution).toBe('Test Author');
@@ -135,7 +135,7 @@ describe('Smoke Tests (e2e)', () => {
   describe('Derivative Generation', () => {
     it('GET /api/works/:workId/sources/:sourceId/revisions should list revisions with derivatives', async () => {
       // Wait a bit for derivative pipeline to process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const response = await request(app.getHttpServer())
         .get(`/api/works/${createdWorkId}/sources/${createdSourceId}/revisions`)

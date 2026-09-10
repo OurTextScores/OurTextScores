@@ -253,10 +253,7 @@ export class PdmxService {
             $sum: {
               $cond: [
                 {
-                  $and: [
-                    { $ne: ['$assets.pdfPath', null] },
-                    { $ne: ['$assets.pdfPath', ''] }
-                  ]
+                  $and: [{ $ne: ['$assets.pdfPath', null] }, { $ne: ['$assets.pdfPath', ''] }]
                 },
                 1,
                 0
@@ -546,7 +543,11 @@ export class PdmxService {
 
     const existing = await this.pdmxModel.findOne({ pdmxId: id }).lean().exec();
     if (!existing) throw new NotFoundException('PDMX record not found');
-    if ((existing as any)?.import?.status === 'imported' && (existing as any)?.import?.importedWorkId && (existing as any)?.import?.importedSourceId) {
+    if (
+      (existing as any)?.import?.status === 'imported' &&
+      (existing as any)?.import?.importedWorkId &&
+      (existing as any)?.import?.importedSourceId
+    ) {
       return {
         ok: true,
         alreadyImported: true,
@@ -610,7 +611,11 @@ export class PdmxService {
       }
 
       const buffer = await fs.readFile(fullMxlPath);
-      const sourceLabel = payload.sourceLabel?.trim() || (lock as any)?.title || (lock as any)?.songName || `PDMX ${id}`;
+      const sourceLabel =
+        payload.sourceLabel?.trim() ||
+        (lock as any)?.title ||
+        (lock as any)?.songName ||
+        `PDMX ${id}`;
       const sourceType = payload.sourceType || 'score';
 
       const file: Express.Multer.File = {
@@ -658,24 +663,26 @@ export class PdmxService {
         );
       }
 
-      await this.pdmxModel.updateOne(
-        { pdmxId: id },
-        {
-          $set: {
-            'import.status': 'imported',
-            'import.importedWorkId': upload.workId,
-            'import.importedSourceId': upload.sourceId,
-            'import.importedRevisionId': upload.revisionId,
-            'import.importedProjectId': projectId,
-            'import.imslpUrl': imslpUrl,
-            'import.updatedBy': actor.userId,
-            'import.updatedAt': new Date()
-          },
-          $unset: {
-            'import.error': ''
+      await this.pdmxModel
+        .updateOne(
+          { pdmxId: id },
+          {
+            $set: {
+              'import.status': 'imported',
+              'import.importedWorkId': upload.workId,
+              'import.importedSourceId': upload.sourceId,
+              'import.importedRevisionId': upload.revisionId,
+              'import.importedProjectId': projectId,
+              'import.imslpUrl': imslpUrl,
+              'import.updatedBy': actor.userId,
+              'import.updatedAt': new Date()
+            },
+            $unset: {
+              'import.error': ''
+            }
           }
-        }
-      ).exec();
+        )
+        .exec();
 
       return {
         ok: true,

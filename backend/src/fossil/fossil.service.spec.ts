@@ -13,7 +13,7 @@ jest.mock('node:fs', () => ({
     mkdir: jest.fn(),
     mkdtemp: jest.fn(),
     writeFile: jest.fn(),
-    rm: jest.fn(),
+    rm: jest.fn()
   }
 }));
 
@@ -91,9 +91,7 @@ describe('FossilService', () => {
       revisionId: 'rev123',
       sequenceNumber: 1,
       message: 'Initial commit',
-      files: [
-        { relativePath: 'score.xml', content: Buffer.from('<score/>') }
-      ]
+      files: [{ relativePath: 'score.xml', content: Buffer.from('<score/>') }]
     };
 
     it('creates new repository if it does not exist', async () => {
@@ -127,7 +125,11 @@ describe('FossilService', () => {
 
       expect(mockFs.access).toHaveBeenCalledWith('/test/fossil/work1/source1.fossil');
       expect(mockFs.mkdir).toHaveBeenCalledWith('/test/fossil/work1', { recursive: true });
-      expect(mockSpawn).toHaveBeenCalledWith('fossil', ['init', '-A', 'testuser', '/test/fossil/work1/source1.fossil'], expect.any(Object));
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'fossil',
+        ['init', '-A', 'testuser', '/test/fossil/work1/source1.fossil'],
+        expect.any(Object)
+      );
       expect(result.repositoryPath).toBe('/test/fossil/work1/source1.fossil');
       expect(result.artifactId).toBe('abc123');
     });
@@ -176,7 +178,10 @@ describe('FossilService', () => {
 
       // mkdir is called with the parent directory of the file (which is the checkout dir for a file at the root)
       expect(mockFs.mkdir).toHaveBeenCalledWith('/tmp/checkout', { recursive: true });
-      expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/checkout/score.xml', Buffer.from('<score/>'));
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        '/tmp/checkout/score.xml',
+        Buffer.from('<score/>')
+      );
     });
 
     it('commits with branch name when provided', async () => {
@@ -284,15 +289,16 @@ describe('FossilService', () => {
 
       await expect(service.commitRevision(mockRequest)).rejects.toThrow();
 
-      expect(mockFs.rm).toHaveBeenCalledWith('/tmp/checkout-error', { recursive: true, force: true });
+      expect(mockFs.rm).toHaveBeenCalledWith('/tmp/checkout-error', {
+        recursive: true,
+        force: true
+      });
     });
 
     it('normalizes line endings for text files', async () => {
       const requestWithTextFile: FossilCommitRequest = {
         ...mockRequest,
-        files: [
-          { relativePath: 'file.xml', content: Buffer.from('line1\r\nline2\r\nline3') }
-        ]
+        files: [{ relativePath: 'file.xml', content: Buffer.from('line1\r\nline2\r\nline3') }]
       };
 
       mockFs.access.mockResolvedValue(undefined);
@@ -311,12 +317,10 @@ describe('FossilService', () => {
     });
 
     it('does not normalize line endings for binary files', async () => {
-      const binaryContent = Buffer.from([0x00, 0xFF, 0x0D, 0x0A, 0x00]);
+      const binaryContent = Buffer.from([0x00, 0xff, 0x0d, 0x0a, 0x00]);
       const requestWithBinaryFile: FossilCommitRequest = {
         ...mockRequest,
-        files: [
-          { relativePath: 'file.bin', content: binaryContent }
-        ]
+        files: [{ relativePath: 'file.bin', content: binaryContent }]
       };
 
       mockFs.access.mockResolvedValue(undefined);
@@ -328,10 +332,7 @@ describe('FossilService', () => {
 
       await service.commitRevision(requestWithBinaryFile);
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
-        '/tmp/checkout/file.bin',
-        binaryContent
-      );
+      expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/checkout/file.bin', binaryContent);
     });
 
     it('handles multiple files in commit', async () => {
@@ -355,7 +356,10 @@ describe('FossilService', () => {
 
       expect(mockFs.writeFile).toHaveBeenCalledTimes(3);
       expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/checkout/score.xml', expect.any(Buffer));
-      expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/checkout/metadata.json', expect.any(Buffer));
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        '/tmp/checkout/metadata.json',
+        expect.any(Buffer)
+      );
       expect(mockFs.writeFile).toHaveBeenCalledWith('/tmp/checkout/data.txt', expect.any(Buffer));
     });
 
@@ -404,14 +408,21 @@ describe('FossilService', () => {
 
       const result = await service.diff('work1', 'source1', 'artifact1', 'artifact2', 'file.txt');
 
-      expect(mockSpawn).toHaveBeenCalledWith('fossil', [
-        '-R', '/test/fossil/work1/source1.fossil',
-        'diff',
-        '-r', 'artifact1',
-        '-r', 'artifact2',
-        '--',
-        'file.txt'
-      ], expect.any(Object));
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'fossil',
+        [
+          '-R',
+          '/test/fossil/work1/source1.fossil',
+          'diff',
+          '-r',
+          'artifact1',
+          '-r',
+          'artifact2',
+          '--',
+          'file.txt'
+        ],
+        expect.any(Object)
+      );
 
       expect(result).toBe(diffOutput);
     });
@@ -433,11 +444,11 @@ describe('FossilService', () => {
 
       const result = await service.listBranches('work1', 'source1');
 
-      expect(mockSpawn).toHaveBeenCalledWith('fossil', [
-        '-R', '/test/fossil/work1/source1.fossil',
-        'branch',
-        'list'
-      ], expect.any(Object));
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'fossil',
+        ['-R', '/test/fossil/work1/source1.fossil', 'branch', 'list'],
+        expect.any(Object)
+      );
 
       expect(result).toEqual(['trunk', 'feature-1', 'feature-2']);
     });

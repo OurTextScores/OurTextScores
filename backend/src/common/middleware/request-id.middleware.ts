@@ -5,11 +5,7 @@ export interface RequestWithId extends Request {
   requestId?: string;
 }
 
-export function requestIdMiddleware(
-  req: RequestWithId,
-  res: Response,
-  next: NextFunction
-): void {
+export function requestIdMiddleware(req: RequestWithId, res: Response, next: NextFunction): void {
   const incoming = req.header('x-request-id');
   const requestId = incoming && incoming.trim() ? incoming.trim() : randomUUID();
   req.requestId = requestId;

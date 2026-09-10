@@ -27,10 +27,13 @@ describe('WatchesService', () => {
   it('count, isSubscribed, and getSubscribersUserIds', async () => {
     model.countDocuments.mockReturnValue({ exec: () => Promise.resolve(3) });
     expect(await svc.count('w1', 's1')).toBe(3);
-    model.findOne.mockReturnValue({ lean: () => ({ exec: () => Promise.resolve({ userId: 'u1' }) }) });
+    model.findOne.mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve({ userId: 'u1' }) })
+    });
     expect(await svc.isSubscribed('u1', 'w1', 's1')).toBe(true);
-    model.find.mockReturnValue({ lean: () => ({ exec: () => Promise.resolve([{ userId: 'a' }, { userId: 'b' }]) }) });
+    model.find.mockReturnValue({
+      lean: () => ({ exec: () => Promise.resolve([{ userId: 'a' }, { userId: 'b' }]) })
+    });
     expect(await svc.getSubscribersUserIds('w1', 's1')).toEqual(['a', 'b']);
   });
 });
-

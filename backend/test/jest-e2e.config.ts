@@ -33,9 +33,7 @@ const config: Config = {
   moduleNameMapper: {
     '^src/(.*)$': '<rootDir>/../src/$1'
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(uuid)/)'
-  ],
+  transformIgnorePatterns: ['node_modules/(?!(uuid)/)'],
   testTimeout: 30000 // E2E tests may take longer
 };
 

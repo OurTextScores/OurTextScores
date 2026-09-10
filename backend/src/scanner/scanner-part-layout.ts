@@ -231,10 +231,7 @@ function mergedAttributes(perPart: OrderedEntry[][], staves: number): OrderedEnt
 /** Content that belongs to the bar rather than to a staff, taken once. */
 const BAR_SCOPED = new Set(['print', 'barline', 'sound']);
 
-function foldMeasure(
-  perPartMeasures: OrderedEntry[],
-  staves: number
-): OrderedEntry {
+function foldMeasure(perPartMeasures: OrderedEntry[], staves: number): OrderedEntry {
   const leadingAttributes: OrderedEntry[][] = [];
   const bodies: OrderedEntry[][] = [];
   for (const measure of perPartMeasures) {
@@ -329,7 +326,8 @@ export function reconcileScannerPartLayout(input: {
 
   parseValidMusicXml(input.baseXml);
   parseValidMusicXml(input.candidateXml);
-  const parse = (xml: Buffer) => musicXmlParser({ preserveOrder: true }).parse(xml.toString('utf8'));
+  const parse = (xml: Buffer) =>
+    musicXmlParser({ preserveOrder: true }).parse(xml.toString('utf8'));
   const candidateTree = parse(input.candidateXml);
   const baseRoot = rootOf(parse(input.baseXml));
   const candidateRoot = rootOf(candidateTree);
@@ -379,7 +377,8 @@ export function reconcileScannerPartLayout(input: {
     if (group.some((index) => candidateStaves[index] !== 1)) {
       refusals.push({
         code: 'multi-staff-member',
-        detail: 'Only single-staff parts are folded together, so nothing is guessed about which staff a note was on'
+        detail:
+          'Only single-staff parts are folded together, so nothing is guessed about which staff a note was on'
       });
       continue;
     }
@@ -400,7 +399,8 @@ export function reconcileScannerPartLayout(input: {
     if (!divisionsAgree) {
       refusals.push({
         code: 'divisions-differ',
-        detail: 'These parts count time differently bar for bar, and rewriting one into the other’s units is a change to what it says'
+        detail:
+          'These parts count time differently bar for bar, and rewriting one into the other’s units is a change to what it says'
       });
     }
   }
@@ -428,8 +428,7 @@ export function reconcileScannerPartLayout(input: {
   for (const entry of candidateRoot) {
     if (tagOf(entry) !== 'part-list') continue;
     entry['part-list'] = (entry['part-list'] as OrderedEntry[]).filter(
-      (item) =>
-        tagOf(item) !== 'score-part' || keptIds.has(String(attrs(item)['@_id']))
+      (item) => tagOf(item) !== 'score-part' || keptIds.has(String(attrs(item)['@_id']))
     );
   }
   let ordinal = 0;

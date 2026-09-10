@@ -18,7 +18,11 @@ import { StorageService } from './storage.service';
           try {
             const parsed = new URL(url);
             endPoint = parsed.hostname;
-            port = parsed.port ? parseInt(parsed.port, 10) : parsed.protocol === 'https:' ? 443 : 80;
+            port = parsed.port
+              ? parseInt(parsed.port, 10)
+              : parsed.protocol === 'https:'
+                ? 443
+                : 80;
             useSSL = parsed.protocol === 'https:';
           } catch (err) {
             // ignore malformed URL and fall back to explicit env vars

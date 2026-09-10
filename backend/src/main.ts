@@ -59,25 +59,21 @@ async function bootstrap() {
     .setTitle('OurTextScores API')
     .setDescription(
       'API for OurTextScores - a collaborative platform for musical score transcription and version control.\n\n' +
-      '## Features\n' +
-      '- Work and source management with IMSLP integration\n' +
-      '- File upload and derivative generation (PDF, MXL, canonical XML)\n' +
-      '- Version control with Fossil VCS\n' +
-      '- Text diffs for canonical XML and manifests\n' +
-      '- Branch management for collaborative workflows\n' +
-      '- Watch/subscribe for notifications\n' +
-      '- User content licensing (CC licenses, Public Domain, etc.)\n\n' +
-      '## Platform License\n' +
-      'This API and platform are licensed under AGPL-3.0.\n\n' +
-      '## User Content\n' +
-      'Uploaded musical scores may be licensed separately by contributors.'
+        '## Features\n' +
+        '- Work and source management with IMSLP integration\n' +
+        '- File upload and derivative generation (PDF, MXL, canonical XML)\n' +
+        '- Version control with Fossil VCS\n' +
+        '- Text diffs for canonical XML and manifests\n' +
+        '- Branch management for collaborative workflows\n' +
+        '- Watch/subscribe for notifications\n' +
+        '- User content licensing (CC licenses, Public Domain, etc.)\n\n' +
+        '## Platform License\n' +
+        'This API and platform are licensed under AGPL-3.0.\n\n' +
+        '## User Content\n' +
+        'Uploaded musical scores may be licensed separately by contributors.'
     )
     .setVersion('0.1.0')
-    .setContact(
-      'OurTextScores Contributors',
-      'https://github.com/ourtextscores',
-      ''
-    )
+    .setContact('OurTextScores Contributors', 'https://github.com/ourtextscores', '')
     .setLicense('AGPL-3.0', 'https://www.gnu.org/licenses/agpl-3.0.html')
     .addTag('health', 'Health check endpoints')
     .addTag('works', 'Work and source management')

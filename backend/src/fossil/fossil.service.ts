@@ -109,10 +109,7 @@ export class FossilService {
 
   private normalizeLineEndingsIfText(path: string, content: Buffer): Buffer {
     const lower = path.toLowerCase();
-    const isText =
-      lower.endsWith('.xml') ||
-      lower.endsWith('.json') ||
-      lower.endsWith('.txt');
+    const isText = lower.endsWith('.xml') || lower.endsWith('.json') || lower.endsWith('.txt');
     if (!isText) {
       return content;
     }
@@ -146,9 +143,7 @@ export class FossilService {
     const match = lines.find((line) => {
       const lower = line.toLowerCase();
       return (
-        lower.startsWith('uuid:') ||
-        lower.startsWith('hash:') ||
-        lower.startsWith('checkout:')
+        lower.startsWith('uuid:') || lower.startsWith('hash:') || lower.startsWith('checkout:')
       );
     });
 
@@ -158,10 +153,7 @@ export class FossilService {
     return id && id.length > 0 ? id : undefined;
   }
 
-  private runFossil(
-    args: string[],
-    options: { cwd?: string } = {}
-  ): Promise<CommandResult> {
+  private runFossil(args: string[], options: { cwd?: string } = {}): Promise<CommandResult> {
     return new Promise((resolve, reject) => {
       const child = spawn('fossil', args, {
         cwd: options.cwd,
@@ -192,7 +184,10 @@ export class FossilService {
     const raw = line.split(':', 2)[1]?.trim() ?? '';
     if (!raw) return undefined;
     // tags may be comma or space separated depending on fossil output
-    const parts = raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+    const parts = raw
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     // Prefer first non-trunk tag if present; otherwise trunk
     const nonTrunk = parts.find((p) => p.toLowerCase() !== 'trunk');
     return nonTrunk ?? (parts[0] || undefined);
@@ -213,7 +208,17 @@ export class FossilService {
   ): Promise<string> {
     const repoPath = this.getRepositoryPath(workId, sourceId);
     // Use fossil diff with -R to specify repository file
-    const { stdout } = await this.runFossil(['-R', repoPath, 'diff', '-r', artifactA, '-r', artifactB, '--', relativePath]);
+    const { stdout } = await this.runFossil([
+      '-R',
+      repoPath,
+      'diff',
+      '-r',
+      artifactA,
+      '-r',
+      artifactB,
+      '--',
+      relativePath
+    ]);
     return stdout;
   }
 
@@ -221,7 +226,10 @@ export class FossilService {
     const repoPath = this.getRepositoryPath(workId, sourceId);
     try {
       const { stdout } = await this.runFossil(['-R', repoPath, 'branch', 'list']);
-      const lines = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+      const lines = stdout
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
       const names = new Set<string>();
       for (const line of lines) {
         // formats can be like: "* trunk" or "  feature-x"

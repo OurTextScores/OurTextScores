@@ -14,7 +14,12 @@ import {
  */
 
 /** A three-measure part, so a deletion has bars on both sides of it. */
-const threeBars = (first: string, second: string, third: string, divisions = 8) => `<?xml version="1.0"?>
+const threeBars = (
+  first: string,
+  second: string,
+  third: string,
+  divisions = 8
+) => `<?xml version="1.0"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Cello</part-name></score-part></part-list>
   <part id="P1">
@@ -67,7 +72,7 @@ const note = (
     ${
       options.tie || options.slur
         ? `<notations>${options.tie ? `<tied type="${options.tie}"/>` : ''}${
-              options.slur ? `<slur number="1" type="${options.slur}"/>` : ''
+            options.slur ? `<slur number="1" type="${options.slur}"/>` : ''
           }</notations>`
         : ''
     }
@@ -113,9 +118,17 @@ describe('scanner splice safety', () => {
     // case §5.2 was protecting against, and it still refuses.
     const base = score(note(4) + note(4), 4);
     const candidate = score(
-      note(630) + note(630) + note(630) + note(630) +
-      note(630) + note(630) + note(630) + note(630) +
-      note(10080) + note(10080) + note(10080),
+      note(630) +
+        note(630) +
+        note(630) +
+        note(630) +
+        note(630) +
+        note(630) +
+        note(630) +
+        note(630) +
+        note(10080) +
+        note(10080) +
+        note(10080),
       10080
     );
     const result = assess(base, candidate);
@@ -158,7 +171,10 @@ describe('scanner splice safety', () => {
     // A tie says two noteheads are one sounding note. If the bar being spliced
     // in ends on the pitch the next bar continues, nothing is severed and there
     // is nothing to repair.
-    const withTie = twoBars(note(8) + note(8, { tie: 'start' }), note(8, { tie: 'stop' }) + note(8));
+    const withTie = twoBars(
+      note(8) + note(8, { tie: 'start' }),
+      note(8, { tie: 'stop' }) + note(8)
+    );
     const result = assess(withTie, withTie, [0]);
 
     expect(result.safe).toBe(true);

@@ -21,10 +21,7 @@ export interface UserNotificationPreferences {
   emailCategories?: NotificationEmailCategories;
 }
 
-export const DEFAULT_NOTIFICATION_EMAIL_CATEGORIES: Record<
-  NotificationEmailCategory,
-  boolean
-> = {
+export const DEFAULT_NOTIFICATION_EMAIL_CATEGORIES: Record<NotificationEmailCategory, boolean> = {
   comments: true,
   revisions: true,
   reviews: true,

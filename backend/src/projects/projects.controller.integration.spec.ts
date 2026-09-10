@@ -46,7 +46,10 @@ describe('ProjectsController (integration-style module test)', () => {
   it('list parses pagination args and delegates', async () => {
     service.listProjects.mockResolvedValue({ projects: [], total: 0, limit: 20, offset: 0 } as any);
 
-    const result = await controller.list('25', '10', 'active', 'mozart', { userId: 'u1', roles: ['user'] } as any);
+    const result = await controller.list('25', '10', 'active', 'mozart', {
+      userId: 'u1',
+      roles: ['user']
+    } as any);
 
     expect(service.listProjects).toHaveBeenCalledWith(
       { limit: 25, offset: 10, status: 'active', q: 'mozart' },
@@ -65,7 +68,11 @@ describe('ProjectsController (integration-style module test)', () => {
   });
 
   it('createSource forwards payload and actor', async () => {
-    service.createInternalSource.mockResolvedValue({ ok: true, workId: '5000', sourceId: 'src_1' } as any);
+    service.createInternalSource.mockResolvedValue({
+      ok: true,
+      workId: '5000',
+      sourceId: 'src_1'
+    } as any);
 
     const out = await controller.createSource(
       'prj_1',

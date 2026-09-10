@@ -39,7 +39,7 @@ describe('User Content Licensing (e2e)', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [AppModule]
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -80,7 +80,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC0');
     });
   });
@@ -103,7 +103,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-4.0');
       expect(source.licenseAttribution).toBe('Jane Doe');
     });
@@ -126,7 +126,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-SA-4.0');
       expect(source.licenseAttribution).toBe('John Smith');
     });
@@ -149,7 +149,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-NC-4.0');
     });
   });
@@ -170,7 +170,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('Public Domain');
     });
   });
@@ -191,7 +191,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('All Rights Reserved');
     });
   });
@@ -213,7 +213,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('Other');
       expect(source.licenseUrl).toBe('https://example.com/custom-license');
     });
@@ -234,7 +234,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       // License fields should be undefined or null
       expect(source.license).toBeUndefined();
     });
@@ -268,7 +268,7 @@ describe('User Content Licensing (e2e)', () => {
         .get(`/api/works/${testWorkId}`)
         .expect(200);
 
-      const source = workResponse.body.sources.find(s => s.sourceId === sourceId);
+      const source = workResponse.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-4.0');
       expect(source.licenseAttribution).toBe('New Author');
 
@@ -277,12 +277,12 @@ describe('User Content Licensing (e2e)', () => {
       expect(revisions).toHaveLength(2);
 
       // Latest revision (seq 2)
-      const rev2 = revisions.find(r => r.sequenceNumber === 2);
+      const rev2 = revisions.find((r) => r.sequenceNumber === 2);
       expect(rev2.license).toBe('CC-BY-4.0');
       expect(rev2.licenseAttribution).toBe('New Author');
 
       // Previous revision (seq 1)
-      const rev1 = revisions.find(r => r.sequenceNumber === 1);
+      const rev1 = revisions.find((r) => r.sequenceNumber === 1);
       expect(rev1.license).toBe('CC0');
     });
   });
@@ -301,24 +301,20 @@ describe('User Content Licensing (e2e)', () => {
       const sourceId = response.body.sourceId;
 
       // Check via /api/works/:workId
-      const work1 = await request(app.getHttpServer())
-        .get(`/api/works/${testWorkId}`)
-        .expect(200);
+      const work1 = await request(app.getHttpServer()).get(`/api/works/${testWorkId}`).expect(200);
 
-      let source = work1.body.sources.find(s => s.sourceId === sourceId);
+      let source = work1.body.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-SA-4.0');
       expect(source.licenseAttribution).toBe('Test Attribution');
 
       // Check via /api/works (list endpoint)
-      const worksList = await request(app.getHttpServer())
-        .get('/api/works')
-        .expect(200);
+      const worksList = await request(app.getHttpServer()).get('/api/works').expect(200);
 
-      const workFromList = worksList.body.find(w => w.workId === testWorkId);
+      const workFromList = worksList.body.find((w) => w.workId === testWorkId);
       expect(workFromList).toBeDefined();
 
       // License info should be available in source listings
-      source = workFromList.sources.find(s => s.sourceId === sourceId);
+      source = workFromList.sources.find((s) => s.sourceId === sourceId);
       expect(source.license).toBe('CC-BY-SA-4.0');
     });
   });

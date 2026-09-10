@@ -85,7 +85,7 @@ export class DerivativePipelineService {
   constructor(
     private readonly storageService: StorageService,
     private readonly progress: ProgressService
-  ) { }
+  ) {}
 
   private getMuseScoreCommands(): string[] {
     const preferred = (process.env.MUSESCORE_CLI || 'musescore3').trim();
@@ -117,7 +117,9 @@ export class DerivativePipelineService {
     }
 
     if (parsed === 0) {
-      this.logger.warn('MUSESCORE_EXPORT_TIMEOUT_MS=0, MuseScore exports will run without a Node timeout.');
+      this.logger.warn(
+        'MUSESCORE_EXPORT_TIMEOUT_MS=0, MuseScore exports will run without a Node timeout.'
+      );
       return undefined;
     }
 
@@ -153,7 +155,10 @@ export class DerivativePipelineService {
     }
 
     const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < DerivativePipelineService.MIN_KERN_CONVERTER_TIMEOUT_MS) {
+    if (
+      !Number.isFinite(parsed) ||
+      parsed < DerivativePipelineService.MIN_KERN_CONVERTER_TIMEOUT_MS
+    ) {
       this.logger.warn(
         `Invalid KERN_CONVERTER_TIMEOUT_MS="${raw}", using default ${DerivativePipelineService.DEFAULT_KERN_CONVERTER_TIMEOUT_MS}ms`
       );
@@ -170,7 +175,10 @@ export class DerivativePipelineService {
     }
 
     const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < DerivativePipelineService.MIN_ABC_CONVERTER_TIMEOUT_MS) {
+    if (
+      !Number.isFinite(parsed) ||
+      parsed < DerivativePipelineService.MIN_ABC_CONVERTER_TIMEOUT_MS
+    ) {
       this.logger.warn(
         `Invalid ABC_CONVERTER_TIMEOUT_MS="${raw}", using default ${DerivativePipelineService.DEFAULT_ABC_CONVERTER_TIMEOUT_MS}ms`
       );
@@ -202,9 +210,7 @@ export class DerivativePipelineService {
           timeoutMs: effectiveTimeoutMs
         });
         if (command !== commands[0]) {
-          this.logger.warn(
-            `MuseScore fallback succeeded for ${purpose} using ${command}`
-          );
+          this.logger.warn(`MuseScore fallback succeeded for ${purpose} using ${command}`);
         }
         return { command };
       } catch (error) {
@@ -216,7 +222,8 @@ export class DerivativePipelineService {
   }
 
   async process(input: DerivativePipelineInput): Promise<DerivativePipelineResult> {
-    const publish = (message: string, stage?: string) => this.progress.publish(input.progressId, message, stage);
+    const publish = (message: string, stage?: string) =>
+      this.progress.publish(input.progressId, message, stage);
     const extension = extname((input.originalFilename ?? '').toLowerCase());
     const format = input.format.toLowerCase();
     const derivatives: DerivativeArtifacts = {};
@@ -370,9 +377,7 @@ export class DerivativePipelineService {
           publish('Compressed MXL generated from XML', 'deriv.xml2mxl');
         } catch (err) {
           pending = true;
-          notes.push(
-            `Could not convert MusicXML to compressed MXL: ${this.readableError(err)}`
-          );
+          notes.push(`Could not convert MusicXML to compressed MXL: ${this.readableError(err)}`);
         }
       } else {
         pending = true;
@@ -416,7 +421,9 @@ export class DerivativePipelineService {
           notes.push('PDF generation deferred to background job.');
           publish('PDF generation queued for background job', 'deriv.pdf.deferred');
         } else {
-          notes.push('PDF generation deferred mode enabled, but no exportable score source was produced.');
+          notes.push(
+            'PDF generation deferred mode enabled, but no exportable score source was produced.'
+          );
           publish('PDF generation skipped (no exportable score source)', 'deriv.pdf.skipped');
         }
       } else {
@@ -458,14 +465,18 @@ export class DerivativePipelineService {
         try {
           const thumbnail = await this.generateThumbnail(pdfBuffer, workspace);
           if (thumbnail) {
-            this.logger.log(`Thumbnail generated successfully (${thumbnail.length} bytes), storing...`);
+            this.logger.log(
+              `Thumbnail generated successfully (${thumbnail.length} bytes), storing...`
+            );
             this.logger.log(`Storing to: ${derivativesBaseKey}/thumbnail.png`);
             derivatives.thumbnail = await this.storeDerivative(
               `${derivativesBaseKey}/thumbnail.png`,
               thumbnail,
               'image/png'
             );
-            this.logger.log(`Thumbnail stored successfully: ${JSON.stringify(derivatives.thumbnail)}`);
+            this.logger.log(
+              `Thumbnail stored successfully: ${JSON.stringify(derivatives.thumbnail)}`
+            );
             publish('Stored thumbnail', 'store.thumbnail');
           } else {
             this.logger.warn('Thumbnail generation returned undefined');
@@ -478,9 +489,7 @@ export class DerivativePipelineService {
       }
 
       const tools = await this.getToolVersions();
-      const artifacts: ManifestArtifact[] = [
-        { type: 'raw', locator: input.rawStorage }
-      ];
+      const artifacts: ManifestArtifact[] = [{ type: 'raw', locator: input.rawStorage }];
       if (derivatives.normalizedMxl) {
         artifacts.push({ type: 'normalizedMxl', locator: derivatives.normalizedMxl });
       }
@@ -602,17 +611,12 @@ export class DerivativePipelineService {
         source.bucket,
         source.objectKey
       );
-      const sourceExtension =
-        source.contentType === 'application/xml' ? '.xml' : '.mxl';
+      const sourceExtension = source.contentType === 'application/xml' ? '.xml' : '.mxl';
       const sourcePath = join(workspace, `deferred-source${sourceExtension}`);
       await fs.writeFile(sourcePath, sourceBuffer);
 
       const outPdf = join(workspace, 'score.pdf');
-      await this.runMuseScoreExport(
-        sourcePath,
-        outPdf,
-        'deferred score PDF export'
-      );
+      await this.runMuseScoreExport(sourcePath, outPdf, 'deferred score PDF export');
       const pdfBuffer = await fs.readFile(outPdf);
 
       const pdf = await this.storeDerivative(
@@ -641,19 +645,13 @@ export class DerivativePipelineService {
    * Render standalone MusicXML with the same MuseScore and thumbnail path used
    * by catalogue derivatives. Callers own persistence of the returned files.
    */
-  async renderMusicXmlPdf(
-    musicXml: Buffer
-  ): Promise<{ pdf: Buffer; thumbnail?: Buffer }> {
+  async renderMusicXmlPdf(musicXml: Buffer): Promise<{ pdf: Buffer; thumbnail?: Buffer }> {
     const workspace = await fs.mkdtemp(join(tmpdir(), 'ots-musicxml-render-'));
     try {
       const sourcePath = join(workspace, 'score.musicxml');
       const outputPath = join(workspace, 'score.pdf');
       await fs.writeFile(sourcePath, musicXml);
-      await this.runMuseScoreExport(
-        sourcePath,
-        outputPath,
-        'standalone MusicXML PDF export'
-      );
+      await this.runMuseScoreExport(sourcePath, outputPath, 'standalone MusicXML PDF export');
       const pdf = await fs.readFile(outputPath);
       const thumbnail = await this.generateThumbnail(pdf, workspace);
       return { pdf, thumbnail };
@@ -740,11 +738,7 @@ export class DerivativePipelineService {
   }
 
   private isKernFile(extension: string, format: string): boolean {
-    return (
-      extension === '.krn' ||
-      format === 'application/x-kern' ||
-      format === 'text/x-kern'
-    );
+    return extension === '.krn' || format === 'application/x-kern' || format === 'text/x-kern';
   }
 
   private isAbcFile(extension: string, format: string): boolean {
@@ -823,9 +817,10 @@ export class DerivativePipelineService {
     }
 
     if (!response.ok) {
-      const detail = typeof payload?.error === 'string' && payload.error.trim()
-        ? payload.error.trim()
-        : `HTTP ${response.status}`;
+      const detail =
+        typeof payload?.error === 'string' && payload.error.trim()
+          ? payload.error.trim()
+          : `HTTP ${response.status}`;
       throw new Error(`ABC converter failed: ${detail}`);
     }
 
@@ -929,7 +924,6 @@ export class DerivativePipelineService {
     return { path: canonicalPath, buffer };
   }
 
-
   public async generateThumbnail(
     pdfBuffer: Buffer,
     workspace: string
@@ -983,9 +977,7 @@ export class DerivativePipelineService {
     const museCmd = museCommands[0] || 'musescore3';
     const kernCmd = this.getKernConverterCommand();
     const abcEndpoint = this.getAbcConverterEndpoint();
-    const [musescore] = await Promise.all([
-      this.getCommandVersion(museCmd, ['--version']),
-    ]);
+    const [musescore] = await Promise.all([this.getCommandVersion(museCmd, ['--version'])]);
     const kernConverter = kernCmd
       ? await this.getCommandVersion(kernCmd, ['--version'])
       : undefined;
@@ -1008,9 +1000,7 @@ export class DerivativePipelineService {
       });
       return stdout.split('\n')[0]?.trim() || 'unknown';
     } catch (error) {
-      this.logger.warn(
-        `Unable to determine version for ${command}: ${this.readableError(error)}`
-      );
+      this.logger.warn(`Unable to determine version for ${command}: ${this.readableError(error)}`);
       return 'unknown';
     }
   }
@@ -1034,7 +1024,9 @@ export class DerivativePipelineService {
       if (options.timeoutMs && options.timeoutMs > 0) {
         timer = setTimeout(() => {
           killed = true;
-          try { child.kill('SIGTERM'); } catch { }
+          try {
+            child.kill('SIGTERM');
+          } catch {}
         }, options.timeoutMs);
       }
       child.stdout.on('data', (chunk) => {
@@ -1052,7 +1044,9 @@ export class DerivativePipelineService {
         if (code === 0 && !killed) {
           resolve({ stdout, stderr });
         } else {
-          const reason = killed ? `timed out after ${options.timeoutMs}ms` : `exited with code ${code}`;
+          const reason = killed
+            ? `timed out after ${options.timeoutMs}ms`
+            : `exited with code ${code}`;
           reject(new Error(`${command} ${reason}: ${stderr.trim()}`));
         }
       });

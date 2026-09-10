@@ -6,8 +6,10 @@ import { promises as fs } from 'node:fs';
 describe('DerivativePipelineService (unit, mocked IO)', () => {
   let service: DerivativePipelineService;
   const storage = {
-    putDerivativeObject: jest.fn().mockResolvedValue(({ bucket: 'der', objectKey: 'obj', etag: 'e' })),
-    putAuxiliaryObject: jest.fn().mockResolvedValue(({ bucket: 'aux', objectKey: 'aux', etag: 'e' }))
+    putDerivativeObject: jest
+      .fn()
+      .mockResolvedValue({ bucket: 'der', objectKey: 'obj', etag: 'e' }),
+    putAuxiliaryObject: jest.fn().mockResolvedValue({ bucket: 'aux', objectKey: 'aux', etag: 'e' })
   } as any as jest.Mocked<StorageService>;
   const progress = new ProgressService();
 
@@ -18,8 +20,18 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     delete process.env.MUSESCORE_PDF_MODE;
     service = new DerivativePipelineService(storage, progress);
     // Stub out calls that hit external tools and file IO complexity
-    (service as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({ bucket: 'der', objectKey: key, sizeBytes: buf.length, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: ct, lastModifiedAt: new Date() }));
-    (service as any).extractCanonicalXml = jest.fn(async () => ({ path: '/tmp/canonical.xml', buffer: Buffer.from('<xml/>') }));
+    (service as any).storeDerivative = jest.fn(async (key: string, buf: Buffer, ct: string) => ({
+      bucket: 'der',
+      objectKey: key,
+      sizeBytes: buf.length,
+      checksum: { algorithm: 'sha256', hexDigest: 'x' },
+      contentType: ct,
+      lastModifiedAt: new Date()
+    }));
+    (service as any).extractCanonicalXml = jest.fn(async () => ({
+      path: '/tmp/canonical.xml',
+      buffer: Buffer.from('<xml/>')
+    }));
     (service as any).runCommand = jest.fn(async () => ({ stdout: '', stderr: '' }));
   });
 
@@ -31,7 +43,14 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
       format: 'application/vnd.recordare.musicxml',
       originalFilename: 'score.mxl',
       buffer: Buffer.from('zipdata'),
-      rawStorage: { bucket: 'raw', objectKey: '1/s/raw', sizeBytes: 9, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() }
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
     };
     const out = await service.process(input);
     expect(out.pending).toBe(false);
@@ -49,7 +68,14 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
       format: 'application/vnd.recordare.musicxml',
       originalFilename: 'score.mxl',
       buffer: Buffer.from('zipdata'),
-      rawStorage: { bucket: 'raw', objectKey: '1/s/raw', sizeBytes: 9, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() }
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
     };
     const out = await service.process(input);
     expect(out.pdfDeferred).toBe(true);
@@ -130,7 +156,14 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
       format: 'application/vnd.recordare.musicxml',
       originalFilename: 'score.mxl',
       buffer: Buffer.from('zipdata'),
-      rawStorage: { bucket: 'raw', objectKey: '1/s/raw', sizeBytes: 9, checksum: { algorithm: 'sha256', hexDigest: 'r' }, contentType: 'application/octet-stream', lastModifiedAt: new Date() }
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s/raw',
+        sizeBytes: 9,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/octet-stream',
+        lastModifiedAt: new Date()
+      }
     };
     const out = await service.process(input);
     expect(out.pending).toBe(false);
@@ -190,7 +223,8 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(out.derivatives.normalizedMxl).toBeTruthy();
     expect(
       runSpy.mock.calls.some(
-        (call: any[]) => call[0] === 'musescore3' && Array.isArray(call[1]) && call[1][0] === '--export-to'
+        (call: any[]) =>
+          call[0] === 'musescore3' && Array.isArray(call[1]) && call[1][0] === '--export-to'
       )
     ).toBe(true);
   });
@@ -385,7 +419,9 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(runSpy).toHaveBeenCalled();
     expect(out.derivatives.mscz).toBeFalsy();
 
-    const msczCalls = storeDerivativeSpy.mock.calls.filter((call: any[]) => call[0].includes('.mscz'));
+    const msczCalls = storeDerivativeSpy.mock.calls.filter((call: any[]) =>
+      call[0].includes('.mscz')
+    );
     expect(msczCalls.length).toBe(0);
   });
 
@@ -435,8 +471,8 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(result.derivatives.mscz).toBeFalsy();
 
     // Verify no call to storeDerivative with .mscz
-    const msczCalls = storeDerivativeSpy.mock.calls.filter(call =>
-      call[0].includes('.mscz') || call[2] === 'application/vnd.musescore.mscz'
+    const msczCalls = storeDerivativeSpy.mock.calls.filter(
+      (call) => call[0].includes('.mscz') || call[2] === 'application/vnd.musescore.mscz'
     );
     expect(msczCalls.length).toBe(0);
   });
@@ -474,8 +510,8 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(result.derivatives.mscz).toBeTruthy();
     expect(result.derivatives.mscz?.objectKey).toContain('score.mscz');
 
-    const msczCalls = storeDerivativeSpy.mock.calls.filter(call =>
-      call[0].includes('score.mscz') && call[2] === 'application/vnd.musescore.mscz'
+    const msczCalls = storeDerivativeSpy.mock.calls.filter(
+      (call) => call[0].includes('score.mscz') && call[2] === 'application/vnd.musescore.mscz'
     );
     expect(msczCalls.length).toBe(1);
   });
@@ -554,14 +590,16 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     (global as any).fetch = jest.fn(async () => ({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({
-        content: '<score-partwise><part-list><score-part id="P1"/></part-list><part id="P1"><measure number="1"/></part></score-partwise>',
-        conversion: {
-          validation: {
-            checks: []
+      text: async () =>
+        JSON.stringify({
+          content:
+            '<score-partwise><part-list><score-part id="P1"/></part-list><part id="P1"><measure number="1"/></part></score-partwise>',
+          conversion: {
+            validation: {
+              checks: []
+            }
           }
-        }
-      })
+        })
     }));
 
     try {

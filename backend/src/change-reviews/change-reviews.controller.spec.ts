@@ -21,7 +21,7 @@ describe('ChangeReviewsController', () => {
     submitReview: jest.fn(),
     closeReview: jest.fn(),
     reopenReview: jest.fn(),
-    withdrawReview: jest.fn(),
+    withdrawReview: jest.fn()
   } as any as jest.Mocked<ChangeReviewsService>;
 
   const controller = new ChangeReviewsController(service);
@@ -40,7 +40,7 @@ describe('ChangeReviewsController', () => {
       viewer,
       role: 'owner',
       status: 'open',
-      limit: 25,
+      limit: 25
     });
   });
 
@@ -53,7 +53,7 @@ describe('ChangeReviewsController', () => {
       'src-1',
       'trunk',
       { title: 'CR for trunk', baseRevisionId: 'rev-1', headRevisionId: 'rev-2' },
-      viewer,
+      viewer
     );
 
     expect(service.createOrOpenBranchReview).toHaveBeenCalledWith({
@@ -63,7 +63,7 @@ describe('ChangeReviewsController', () => {
       ownerUserId: undefined,
       title: 'CR for trunk',
       initialPair: { baseRevisionId: 'rev-1', headRevisionId: 'rev-2' },
-      opener: viewer,
+      opener: viewer
     });
     expect(result).toEqual({ reviewId: 'review-branch-1' });
   });
@@ -79,26 +79,71 @@ describe('ChangeReviewsController', () => {
 
   it('allows guarded public reads while keeping mutations authenticated', () => {
     const controllerGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController);
-    const createBranchReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.createOrOpenBranchReview);
-    const listGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.listReviews);
-    const detailGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewDetail);
-    const diffGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewDiff);
-    const scoreViewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewScoreView);
-    const scoreGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.getReviewCanonicalScore);
-    const createThreadGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.createThread);
-    const addThreadCommentGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.addThreadComment);
-    const updateCommentGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.updateComment);
-    const deleteCommentGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.deleteComment);
-    const updateThreadStatusGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.updateThreadStatus);
-    const submitReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.submitReview);
-    const closeReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.closeReview);
-    const reopenReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.reopenReview);
-    const withdrawReviewGuards = Reflect.getMetadata(GUARDS_METADATA, ChangeReviewsController.prototype.withdrawReview);
+    const createBranchReviewGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.createOrOpenBranchReview
+    );
+    const listGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.listReviews
+    );
+    const detailGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.getReviewDetail
+    );
+    const diffGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.getReviewDiff
+    );
+    const scoreViewGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.getReviewScoreView
+    );
+    const scoreGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.getReviewCanonicalScore
+    );
+    const createThreadGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.createThread
+    );
+    const addThreadCommentGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.addThreadComment
+    );
+    const updateCommentGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.updateComment
+    );
+    const deleteCommentGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.deleteComment
+    );
+    const updateThreadStatusGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.updateThreadStatus
+    );
+    const submitReviewGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.submitReview
+    );
+    const closeReviewGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.closeReview
+    );
+    const reopenReviewGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.reopenReview
+    );
+    const withdrawReviewGuards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      ChangeReviewsController.prototype.withdrawReview
+    );
 
     expect(createBranchReviewGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(listGuards).toEqual(expect.arrayContaining([AuthRequiredGuard]));
     expect(controllerGuards).toEqual(
-      expect.arrayContaining([AuthOptionalGuard, PublicExampleAccessGuard]),
+      expect.arrayContaining([AuthOptionalGuard, PublicExampleAccessGuard])
     );
     expect(detailGuards || []).not.toContain(AuthRequiredGuard);
     expect(diffGuards || []).not.toContain(AuthRequiredGuard);

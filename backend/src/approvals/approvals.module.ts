@@ -12,4 +12,3 @@ import { AuthModule } from '../auth/auth.module';
   controllers: [ApprovalsController]
 })
 export class ApprovalsModule {}
-
