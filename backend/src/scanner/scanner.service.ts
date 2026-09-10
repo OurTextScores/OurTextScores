@@ -1248,6 +1248,25 @@ export class ScannerService implements OnModuleInit {
       });
     }
 
+    /**
+     * The exact bitmap the crop endpoint will return for a system.
+     *
+     * Routed through the same function that endpoint uses, given the same
+     * single-system input, so the padding it adds cannot drift from the
+     * geometry declared here — a divergence would clip the image and move
+     * every overlay drawn on it, which is the bug this replaced.
+     */
+    const cropRegionFor = (system: any): [number, number, number, number] | undefined => {
+      if (!comparison.sourceImage) return undefined;
+      const [rect] = comparisonCropRects(
+        [{ systemIndex: system.systemIndex, region: system.region }],
+        comparison.sourceImage
+      );
+      return rect
+        ? [rect.left, rect.top, rect.left + rect.width, rect.top + rect.height]
+        : undefined;
+    };
+
     const base = {
       version: SCANNER_COMPARE_REGIONS_VERSION,
       statusVersion: comparison.statusVersion,
@@ -1265,34 +1284,40 @@ export class ScannerService implements OnModuleInit {
       // The scan's own lines, for a row-per-system view. Present even when the
       // page-wide join refuses: the systems are known regardless of whether
       // every block's location could be proven.
-      systems: (comparison.systems || []).map((system: any) => ({
-        systemIndex: system.systemIndex,
-        region: system.region,
-        leftMeasureIndexes: system.baseMeasureIndexes,
-        rightMeasureIndexes: system.candidateMeasureIndexes,
-        staffRows: (system.staffRows || []).map((row) => ({
-          stablePartKey: row.stablePartKey,
-          staffIndices: row.staffIndices,
-          region: row.region,
-          leftPartIndex: ordinals.get(row.stablePartKey)?.left,
-          rightPartIndex: ordinals.get(row.stablePartKey)?.right,
-          leftMeasureIndexes: row.baseMeasureIndexes,
-          rightMeasureIndexes: row.candidateMeasureIndexes
-        })),
-        // Relative to this document's own URL, so it resolves correctly
-        // whatever prefix the caller reached us through — the browser arrives
-        // via the frontend's proxy, which this process cannot know. Built here
-        // rather than by the client because the crop is status-version bound,
-        // and a consumer assembling it would be one refactor away from pinning
-        // the wrong revision.
-        cropUrl:
-          `systems/${system.systemIndex}/crop?` +
-          new URLSearchParams({
-            baseEngine: baseEngineId,
-            candidateEngine: candidateEngineId,
-            statusVersion: String(comparison.statusVersion)
-          }).toString()
-      })),
+      systems: (comparison.systems || []).map((system: any) => {
+        return {
+          systemIndex: system.systemIndex,
+          // `region` is the semantic union of the measure evidence. The crop
+          // endpoint deliberately adds air around it, so consumers must use
+          // `cropRegion` for the bitmap's aspect ratio and coordinate frame.
+          region: system.region,
+          cropRegion: cropRegionFor(system),
+          leftMeasureIndexes: system.baseMeasureIndexes,
+          rightMeasureIndexes: system.candidateMeasureIndexes,
+          staffRows: (system.staffRows || []).map((row) => ({
+            stablePartKey: row.stablePartKey,
+            staffIndices: row.staffIndices,
+            region: row.region,
+            leftPartIndex: ordinals.get(row.stablePartKey)?.left,
+            rightPartIndex: ordinals.get(row.stablePartKey)?.right,
+            leftMeasureIndexes: row.baseMeasureIndexes,
+            rightMeasureIndexes: row.candidateMeasureIndexes
+          })),
+          // Relative to this document's own URL, so it resolves correctly
+          // whatever prefix the caller reached us through — the browser arrives
+          // via the frontend's proxy, which this process cannot know. Built here
+          // rather than by the client because the crop is status-version bound,
+          // and a consumer assembling it would be one refactor away from pinning
+          // the wrong revision.
+          cropUrl:
+            `systems/${system.systemIndex}/crop?` +
+            new URLSearchParams({
+              baseEngine: baseEngineId,
+              candidateEngine: candidateEngineId,
+              statusVersion: String(comparison.statusVersion)
+            }).toString()
+        };
+      }),
       regions: [] as any[],
       warnings: [] as any[],
       refusalReasons: comparison.refusalReasons || []
@@ -1314,7 +1339,10 @@ export class ScannerService implements OnModuleInit {
      * without knowing the scan's dimensions or how it was resized.
      */
     const systemRegions = new Map<number, number[]>(
-      (comparison.systems || []).map((system: any) => [system.systemIndex, system.region])
+      (comparison.systems || []).map((system: any) => [
+        system.systemIndex,
+        cropRegionFor(system) || system.region
+      ])
     );
     const cropBoxesFor = (blockIndex: number) => {
       const entry = (comparison.geometry?.blocks || []).find(

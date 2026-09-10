@@ -792,8 +792,8 @@ describe('ScannerService', () => {
                 staves: [
                   {
                     index: 0,
-                    region: [0, 0, 100, 50],
-                    barLines: [0, 100],
+                    region: [20, 10, 80, 40],
+                    barLines: [20, 80],
                     tokens: [['note_4', 'C4', '_', '_', '_', 'upper']],
                     symbols: []
                   }
@@ -869,6 +869,12 @@ describe('ScannerService', () => {
       leftMeasureIndexes: [0],
       rightMeasureIndexes: [0]
     });
+    // The crop endpoint pads the semantic region by 12px and clamps it to the
+    // page, and `cropRegion` must be that exact rectangle — the image is laid
+    // out against it, so a `region` here would clip the scan and shift every
+    // overlay drawn on it. Padded left and right, clamped top and bottom.
+    expect(regions.systems[0].region).toEqual([20, 10, 80, 40]);
+    expect(regions.systems[0].cropRegion).toEqual([8, 0, 92, 50]);
     for (const region of regions.regions) {
       expect(Array.isArray(region.leftMeasureIndexes)).toBe(true);
       expect(Array.isArray(region.rightMeasureIndexes)).toBe(true);
@@ -924,9 +930,13 @@ describe('ScannerService', () => {
       groundedBlock.contentSignature,
       result.geometry.geometrySignature
     );
+    // Exactly the rectangle `cropRegion` declared above: 92 - 8 wide, and the
+    // full page height once the vertical padding is clamped. A consumer sizing
+    // the image from `region` instead would be laying out an 60x30 box for an
+    // 84x50 bitmap.
     await expect(sharp(crop.body).metadata()).resolves.toMatchObject({
       format: 'png',
-      width: 100,
+      width: 84,
       height: 50
     });
     expect(comparisonStorage.getObjectBuffer.mock.calls).toEqual([
@@ -965,7 +975,7 @@ describe('ScannerService', () => {
     );
     await expect(sharp(partialCrop.body).metadata()).resolves.toMatchObject({
       format: 'png',
-      width: 100,
+      width: 84,
       height: 50
     });
     partialComparison.mockRestore();
