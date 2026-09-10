@@ -1,7 +1,13 @@
 "use client";
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useRouter } from "next/navigation";
 import ScannerJobClient from "./scanner-job-client";
 import { ScannerJob } from "../scanner-types";
@@ -848,6 +854,54 @@ describe("ScannerJobClient", () => {
         name: "Open the finished score in the Score Editor",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("says how long the engine reading a page has been at it", async () => {
+    /*
+        "Recognizing…" alone reads the same at four seconds and at four
+        minutes, so a reader with no way to tell them apart reloads the page to
+        find out whether anything is happening.
+    */
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-08-06T12:02:10.000Z"));
+    const job: ScannerJob = {
+      ...partialJob,
+      status: "running",
+      startedAt: "2026-08-06T12:00:10.000Z",
+      pages: [
+        {
+          ...partialJob.pages[0],
+          status: "running",
+          engines: {
+            homr: {
+              status: "running",
+              attempts: 1,
+              startedAt: "2026-08-06T12:01:40.000Z",
+              hasMusicXml: false,
+              hasPdf: false,
+              hasKern: false,
+            },
+          },
+        },
+      ],
+    };
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => job }) as jest.Mock;
+    render(<ScannerJobClient jobId="job-1" />);
+
+    // The engine started 30s ago, not the job two minutes ago: the line names
+    // that engine, so the clock beside it has to be that engine's.
+    const clocks = await screen.findAllByTestId("elapsed-time");
+    expect(clocks.map((node) => node.textContent)).toContain("0:30");
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    expect(
+      screen.getAllByTestId("elapsed-time").map((node) => node.textContent),
+    ).toContain("0:35");
+    jest.useRealTimers();
   });
 
   it("does not offer the whole job while pages are still being read", async () => {

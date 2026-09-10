@@ -77,6 +77,17 @@ export interface ScannerEngineRun {
   /** Exact post-rotation pixels supplied to this run; geometry must bind to this identity. */
   recognitionRaster?: ScannerRasterIdentity;
   providerRequestId?: string;
+  /**
+   * When this run was handed to the provider.
+   *
+   * `durationMs` is only written when a run finishes, so while one is in
+   * flight there was nothing to say how long it had been going -- the page
+   * read "Recognizing…" for as long as it took, whether that was four seconds
+   * or four minutes. Recorded on the transition to `running` so a reader can
+   * be shown the elapsed time, and left in place afterwards as the start of
+   * the interval `durationMs` measures.
+   */
+  startedAt?: Date;
   durationMs?: number;
   inferenceMs?: number;
   generation?: ScannerGenerationMetadata;

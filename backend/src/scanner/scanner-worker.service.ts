@@ -1188,8 +1188,17 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       providerAttempts: prior?.providerAttempts,
       idempotencyKey,
       recognitionRaster: input.recognitionRaster,
+      // A retry is a new wait, so this is always now rather than the first
+      // attempt's start: a reader watching one is asking how long the attempt
+      // in front of them has been going.
+      startedAt: new Date(),
       artifacts: prior?.artifacts || {}
     });
+    // Read back rather than kept in a local: `withScannerEngineRun` owns how a
+    // run is merged onto a page, and the terminal runs below are rebuilt from
+    // scratch, so they take the start time from the run that was actually
+    // recorded.
+    const runningRun = runningPage.engines?.[definition.id];
     await input.onPageChange?.(runningPage);
 
     this.telemetry.emit('page_engine_started', {
@@ -1301,6 +1310,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         idempotencyKey,
         recognitionRaster: input.recognitionRaster,
         providerRequestId: scanned.result.requestId,
+        startedAt: runningRun?.startedAt,
         durationMs: providerMs,
         inferenceMs: scanned.result.inferenceMs,
         generation: scanned.result.generation,
@@ -1386,6 +1396,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         providerAttempts: (prior?.providerAttempts || 0) + attempts,
         idempotencyKey,
         recognitionRaster: input.recognitionRaster,
+        startedAt: runningRun?.startedAt,
         durationMs: providerMs,
         errorCode: providerError.code,
         errorMessage: providerError.message,

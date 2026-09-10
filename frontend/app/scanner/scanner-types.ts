@@ -13,6 +13,8 @@ export interface ScannerEngineRun {
   status:
     "pending" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
   attempts: number;
+  /** When this attempt reached the provider; absent on runs that never began. */
+  startedAt?: string;
   providerAttempts?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -99,6 +101,8 @@ export interface ScannerJob {
   errorMessage?: string;
   canRetry: boolean;
   createdAt: string;
+  /** When a worker claimed the job; absent while it is still queued. */
+  startedAt?: string;
   updatedAt: string;
   completedAt?: string;
   resultExpiresAt: string;

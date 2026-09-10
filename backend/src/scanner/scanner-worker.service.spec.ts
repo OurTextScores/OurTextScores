@@ -910,6 +910,8 @@ describe('ScannerWorkerService', () => {
       config
     ) as any;
 
+    const reportedPages: any[] = [];
+    const before = Date.now();
     const result = await scannerWorker.scanEnginePage({
       job: { jobId: 'job-1', userId: 'user-1', generation: 1 },
       page: {
@@ -945,8 +947,25 @@ describe('ScannerWorkerService', () => {
       pageNumber: 1,
       detectTitle: false,
       userHash: 'user-hash',
+      onPageChange: async (page: any) => reportedPages.push(page),
       definition: scannerWorker.engineRegistry().get('transcoda')
     });
+
+    /*
+        A run in flight has to say when it started.
+
+        `durationMs` is only written once a run finishes, so while one is going
+        there was nothing to count from and the page could only say
+        "Recognizing…" -- for four seconds or four minutes alike. The reader
+        watching it is asking exactly the question this answers.
+    */
+    const running = reportedPages.find((page) => page.engines?.transcoda?.status === 'running');
+    expect(running?.engines?.transcoda?.startedAt).toBeInstanceOf(Date);
+    expect(running.engines.transcoda.startedAt.getTime()).toBeGreaterThanOrEqual(before);
+    expect(running.engines.transcoda.startedAt.getTime()).toBeLessThanOrEqual(Date.now());
+    // And it survives into the finished run, as the start of the interval
+    // `durationMs` measures.
+    expect(result.page.engines.transcoda.startedAt).toBeInstanceOf(Date);
 
     expect(result.page).toMatchObject({
       status: 'succeeded',

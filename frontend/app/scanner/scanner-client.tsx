@@ -9,6 +9,7 @@ import {
   ScannerProviderOption,
   scannerStatusLabel,
 } from "./scanner-types";
+import { ElapsedTime } from "./elapsed-time";
 
 async function readError(response: Response): Promise<string> {
   try {
@@ -127,12 +128,11 @@ export default function ScannerClient() {
   const abortUpload = useRef<(() => void) | null>(null);
   const router = useRouter();
   const selectionError = uploadSelectionError(files);
-  const providerSelectionError =
-    !firstProvider
-      ? "Select a provider."
-      : secondProvider && firstProvider === secondProvider
-        ? "Select two different providers."
-        : null;
+  const providerSelectionError = !firstProvider
+    ? "Select a provider."
+    : secondProvider && firstProvider === secondProvider
+      ? "Select two different providers."
+      : null;
   const usesOtsHomr = [firstProvider, secondProvider].includes("ots-homr");
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const percent =
@@ -536,8 +536,24 @@ export default function ScannerClient() {
                     {new Date(job.createdAt).toLocaleString()}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <span className="flex shrink-0 items-baseline gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   {scannerStatusLabel(job.status)}
+                  {/*
+                    A list of jobs all reading "Running" says nothing about
+                    which one has been going since this morning. Queued counts
+                    from when it was accepted, because that is the whole of its
+                    wait; anything further along counts from when a worker
+                    picked it up.
+                  */}
+                  {activeScannerStatuses.includes(job.status) && (
+                    <ElapsedTime
+                      since={
+                        job.status === "queued"
+                          ? job.createdAt
+                          : job.startedAt || job.createdAt
+                      }
+                    />
+                  )}
                 </span>
               </Link>
             ))}

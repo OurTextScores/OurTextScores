@@ -10,6 +10,7 @@ import {
   ScannerJob,
   scannerStatusLabel,
 } from "../scanner-types";
+import { ElapsedTime } from "../elapsed-time";
 
 async function responseError(
   response: Response,
@@ -92,6 +93,13 @@ function activePage(
       ? job.pages.find((page) => page.hasMusicXml && !page.hasPdf)
       : undefined) ||
     selected
+  );
+}
+
+/** The engine currently working this page, if any. */
+function runningRunOf(page: ScannerPage) {
+  return Object.values(page.engines || {}).find(
+    (run) => run?.status === "running",
   );
 }
 
@@ -632,6 +640,18 @@ export default function ScannerJobClient({
         ([, run]) => run?.status === "running",
       )
     : undefined;
+  /*
+      Where the clock beside the active stage counts from.
+
+      A queued job has not started, so the honest number is how long it has been
+      waiting for a worker -- which is the question that state provokes. Once it
+      is running, the engine actually working the page is more precise than the
+      job, and the line names that engine.
+  */
+  const activeSince =
+    job.status === "queued"
+      ? job.createdAt
+      : runningEngine?.[1]?.startedAt || job.startedAt || job.createdAt;
   const activeStage =
     job.status === "queued"
       ? "Waiting for a scanner worker…"
@@ -670,9 +690,13 @@ export default function ScannerJobClient({
               {job.originalFilename}
             </h1>
             <p className="mt-2 text-sm text-slate-500" aria-live="polite">
-              {active
-                ? activeStage
-                : `${completedPages}/${job.includedPageCount} included pages complete · ${scannerStatusLabel(job.status)}`}
+              {active ? (
+                <>
+                  {activeStage} <ElapsedTime since={activeSince} />
+                </>
+              ) : (
+                `${completedPages}/${job.includedPageCount} included pages complete · ${scannerStatusLabel(job.status)}`
+              )}
             </p>
           </div>
           {readOnly ? (
@@ -745,7 +769,12 @@ export default function ScannerJobClient({
                 return (
                   <li key={engineId} className="flex justify-between gap-4">
                     <span>{engineLabel(job, engineId)}</span>
-                    <span>{run ? engineRunLabel(run.status) : "Waiting"}</span>
+                    <span className="flex items-baseline gap-2">
+                      {run ? engineRunLabel(run.status) : "Waiting"}
+                      {run?.status === "running" && (
+                        <ElapsedTime since={run.startedAt} />
+                      )}
+                    </span>
                   </li>
                 );
               })}
@@ -1003,8 +1032,9 @@ export default function ScannerJobClient({
                     Source {page.pageNumber}
                   </span>
                 )}
-                <span className="block px-2 pb-2 text-[11px] capitalize text-slate-500">
+                <span className="flex items-baseline gap-1 px-2 pb-2 text-[11px] capitalize text-slate-500">
                   {pageStageLabel(job, page)}
+                  <ElapsedTime since={runningRunOf(page)?.startedAt} />
                 </span>
               </button>
             ))}
@@ -1024,7 +1054,9 @@ export default function ScannerJobClient({
                 Page {selected.ordinal}
               </h2>
               <p className="text-sm text-slate-500">
-                {pageStageLabel(job, selected)} · {selected.attempts} provider{" "}
+                {pageStageLabel(job, selected)}{" "}
+                <ElapsedTime since={runningRunOf(selected)?.startedAt} /> ·{" "}
+                {selected.attempts} provider{" "}
                 {selected.attempts === 1 ? "attempt" : "attempts"}
               </p>
             </div>
