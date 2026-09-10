@@ -98,6 +98,8 @@ describe('Works Pagination (e2e)', () => {
         .expect(200)
         .expect((res) => {
           const { works, total, limit, offset } = res.body;
+          expect(limit).toBe(20);
+          expect(offset).toBe(0);
           // If there are works, ensure structure is correct
           if (works.length > 0) {
             expect(works[0]).toHaveProperty('workId');

@@ -525,16 +525,15 @@ describe('NotificationsService', () => {
     it('handles invalid email server config', () => {
       const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       config.get.mockImplementation((key: string) => {
-        if (key === 'EMAIL_SERVER') return 'invalid://bad-config';
+        if (key === 'EMAIL_SERVER') return 'invalid://user:super-secret@bad-config';
         return undefined;
       });
 
       const newSvc = new NotificationsService(outboxModel, inboxModel, users, config);
       newSvc.onModuleInit();
 
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to configure email transporter')
-      );
+      expect(warnSpy).toHaveBeenCalledWith('Failed to configure email transporter: TypeError');
+      expect(warnSpy.mock.calls.flat().join(' ')).not.toContain('super-secret');
 
       newSvc.onModuleDestroy();
       warnSpy.mockRestore();

@@ -23,6 +23,16 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private transporter: nodemailer.Transporter | null = null;
   private emailFrom: string = 'OurTextScores <noreply@example.com>';
   private publicWebBaseUrl: string = 'http://localhost:3000';
+
+  private errorKind(error: unknown): string {
+    if (!error || typeof error !== 'object') return 'unknown error';
+    const name = error instanceof Error ? error.name : 'Error';
+    const code = (error as { code?: unknown }).code;
+    return typeof code === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(code)
+      ? `${name} (${code})`
+      : name;
+  }
+
   constructor(
     @InjectModel(NotificationOutbox.name)
     private readonly outboxModel: Model<NotificationOutboxDocument>,
@@ -344,8 +354,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     if (emailServer) {
       try {
         this.transporter = nodemailer.createTransport(emailServer);
-      } catch (e) {
-        this.logger.warn('Failed to configure email transporter');
+      } catch (error) {
+        this.logger.warn(`Failed to configure email transporter: ${this.errorKind(error)}`);
       }
     }
     if (from) this.emailFrom = from;

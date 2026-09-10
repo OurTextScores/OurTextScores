@@ -128,9 +128,13 @@ describe('API Smoke Tests (running server)', () => {
 
       const firstRev = response.body[0];
       revisionId1 = firstRev.revisionId;
+      expect(revisionId1).toEqual(expect.any(String));
+      expect(revisionId1.length).toBeGreaterThan(0);
 
       if (response.body.length >= 2) {
         revisionId2 = response.body[1].revisionId;
+        expect(revisionId2).toEqual(expect.any(String));
+        expect(revisionId2).not.toBe(revisionId1);
       }
     });
   });

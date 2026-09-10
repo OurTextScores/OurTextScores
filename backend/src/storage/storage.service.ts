@@ -19,6 +19,14 @@ export interface PutObjectResult {
   versionId?: string;
 }
 
+const MISSING_OBJECT_ERROR_CODES = new Set(['NoSuchKey', 'NoSuchObject', 'NotFound']);
+
+function isMissingObjectError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && MISSING_OBJECT_ERROR_CODES.has(code);
+}
+
 export class StorageService {
   private readonly client: Client;
   private readonly rawBucket: string;
@@ -136,8 +144,8 @@ export class StorageService {
   async deleteObject(bucket: string, objectKey: string): Promise<void> {
     try {
       await this.client.removeObject(bucket, objectKey);
-    } catch (err) {
-      // ignore missing objects
+    } catch (error) {
+      if (!isMissingObjectError(error)) throw error;
     }
   }
 

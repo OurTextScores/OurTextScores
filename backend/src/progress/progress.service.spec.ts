@@ -35,10 +35,25 @@ describe('ProgressService', () => {
     it('returns existing observable for existing channel ID', () => {
       const observable1 = service.stream('channel-2');
       const observable2 = service.stream('channel-2');
+      const firstEvents: MessageEvent[] = [];
+      const secondEvents: MessageEvent[] = [];
+      const firstSubscription = observable1.subscribe((event) => firstEvents.push(event));
+      const secondSubscription = observable2.subscribe((event) => secondEvents.push(event));
 
-      // Should use the same underlying channel (subject), even if observables differ
+      service.publish('channel-2', 'shared event', 'test.shared');
+
       expect((service as any).channels.size).toBe(1);
       expect((service as any).channels.get('channel-2')).toBeDefined();
+      expect(firstEvents).toEqual(secondEvents);
+      expect(firstEvents).toEqual([
+        expect.objectContaining({
+          type: 'progress',
+          data: expect.objectContaining({ message: 'shared event', stage: 'test.shared' })
+        })
+      ]);
+
+      firstSubscription.unsubscribe();
+      secondSubscription.unsubscribe();
     });
 
     it('creates multiple independent channels', () => {

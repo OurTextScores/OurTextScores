@@ -1,6 +1,8 @@
 import { StorageService } from './storage.service';
 import { Client } from 'minio';
 import { Readable } from 'node:stream';
+import { Logger } from '@nestjs/common';
+import { storageServiceFromConfig } from './storage.module';
 
 // Mock the minio module
 jest.mock('minio');
@@ -356,20 +358,51 @@ describe('StorageService', () => {
       expect(mockClient.removeObject).toHaveBeenCalledWith('test-bucket', 'test-key');
     });
 
-    it('handles errors gracefully (ignores missing objects)', async () => {
-      mockClient.removeObject.mockRejectedValue(new Error('Object not found'));
+    it.each(['NoSuchKey', 'NoSuchObject', 'NotFound'])(
+      'treats MinIO %s as an idempotent missing-object deletion',
+      async (code) => {
+        mockClient.removeObject.mockRejectedValue(Object.assign(new Error('not found'), { code }));
 
-      // Should not throw
-      await expect(service.deleteObject('bucket', 'missing-key')).resolves.toBeUndefined();
+        await expect(service.deleteObject('bucket', 'missing-key')).resolves.toBeUndefined();
 
-      expect(mockClient.removeObject).toHaveBeenCalledWith('bucket', 'missing-key');
+        expect(mockClient.removeObject).toHaveBeenCalledWith('bucket', 'missing-key');
+      }
+    );
+
+    it('propagates permission and infrastructure failures', async () => {
+      const failure = Object.assign(new Error('Permission denied'), { code: 'AccessDenied' });
+      mockClient.removeObject.mockRejectedValue(failure);
+
+      await expect(service.deleteObject('bucket', 'key')).rejects.toBe(failure);
     });
 
-    it('handles various error types', async () => {
-      mockClient.removeObject.mockRejectedValue(new Error('Permission denied'));
+    it('does not infer a missing object from an unstructured error message', async () => {
+      const failure = new Error('Object not found because the storage service is unavailable');
+      mockClient.removeObject.mockRejectedValue(failure);
 
-      // Should not throw regardless of error type
-      await expect(service.deleteObject('bucket', 'key')).resolves.toBeUndefined();
+      await expect(service.deleteObject('bucket', 'key')).rejects.toBe(failure);
+    });
+  });
+
+  describe('storageServiceFromConfig', () => {
+    it('warns without echoing a malformed MINIO_URL before using explicit settings', () => {
+      const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      const values: Record<string, string> = {
+        MINIO_URL: 'not-a-url-containing-super-secret',
+        MINIO_ENDPOINT: 'minio',
+        MINIO_PORT: '9000'
+      };
+      const configService = {
+        get: (key: string, fallback?: string) => values[key] ?? fallback
+      } as any;
+
+      storageServiceFromConfig(configService);
+
+      expect(warning).toHaveBeenCalledWith(
+        'MINIO_URL is invalid; using MINIO_ENDPOINT and MINIO_PORT instead'
+      );
+      expect(warning.mock.calls.flat().join(' ')).not.toContain('super-secret');
+      warning.mockRestore();
     });
   });
 });

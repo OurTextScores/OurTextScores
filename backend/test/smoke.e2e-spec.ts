@@ -146,12 +146,16 @@ describe('Smoke Tests (e2e)', () => {
 
       const firstRevision = response.body[0];
       revisionId1 = firstRevision.revisionId;
+      expect(revisionId1).toEqual(expect.any(String));
+      expect(revisionId1.length).toBeGreaterThan(0);
 
       // Check that derivatives are being generated
       expect(firstRevision.derivatives).toBeDefined();
 
       if (response.body.length >= 2) {
         revisionId2 = response.body[1].revisionId;
+        expect(revisionId2).toEqual(expect.any(String));
+        expect(revisionId2).not.toBe(revisionId1);
       }
     });
 
@@ -203,6 +207,14 @@ describe('Smoke Tests (e2e)', () => {
           // Accept both success and error if branch operations aren't fully implemented
           expect([201, 400, 404, 501]).toContain(res.status);
         });
+
+      if (response.status === 201) {
+        expect(response.body.branch).toEqual(
+          expect.objectContaining({ name: 'smoke-test-branch' })
+        );
+      } else {
+        expect(response.body).toEqual(expect.any(Object));
+      }
     });
   });
 
