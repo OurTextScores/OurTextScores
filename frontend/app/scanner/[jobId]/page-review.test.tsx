@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import PageReview, { mergeOptions } from "./page-review";
+import PageReview, { mergeOptions, readable } from "./page-review";
 
 function review(overrides: Record<string, unknown> = {}) {
   return {
@@ -194,6 +194,30 @@ describe("PageReview", () => {
     render(<PageReview jobId="job-1" pageNumber={3} />);
     expect(await screen.findByText("sixteenth note")).toBeInTheDocument();
     expect(screen.getByText("dotted eighth note")).toBeInTheDocument();
+  });
+
+  it("names time-signature components and asks about the right number", async () => {
+    mockReview(
+      review({
+        spots: [
+          {
+            id: 0,
+            head: "rhythm",
+            chosen: "timeSignatureBeats_6",
+            confidence: 0.44,
+            alternatives: [{ value: "timeSignatureBeats_3", confidence: 0.39 }],
+          },
+        ],
+      }),
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(
+      await screen.findByText("What is the top number of the time signature?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("6 as the top number (beats per measure)"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("timeSignatureBeats_6")).not.toBeInTheDocument();
   });
 
   it("renders a placeholder as an absence", async () => {
@@ -624,6 +648,52 @@ describe("PageReview", () => {
       }),
     );
     await waitFor(() => expect(decide).toHaveBeenCalledWith("stem", false));
+  });
+});
+
+describe("readable", () => {
+  it.each([
+    ["pitch", "C4", "C4"],
+    ["lift", "#", "sharp"],
+    ["lift", "bb", "double flat"],
+    ["articulation", "breathMark_fermata", "breath mark + fermata"],
+    ["slur", "slurStop", "a slur ends here"],
+    ["slur", "slurStart_slurStop", "one slur ends and another starts here"],
+    ["rhythm", "rest_4", "quarter rest"],
+    ["rhythm", "rest_0", "whole-measure rest"],
+    ["rhythm", "rest_3m", "3-measure rest"],
+    ["rhythm", "clef_F4", "bass clef"],
+    ["rhythm", "keySignature_-3", "3 flats"],
+    ["rhythm", "timeSignature/8", "8 as the bottom number (beat-note value)"],
+    [
+      "rhythm",
+      "timeSignatureBeats_6",
+      "6 as the top number (beats per measure)",
+    ],
+    ["beam.level.1", "not_applicable", "this note has no beam at this level"],
+    ["beam.level.1", "flag", "an unjoined flag (no beam)"],
+    ["beam.level.1", "forward_hook", "a forward beam hook"],
+    ["advance.delta", "zero", "at the same time"],
+    ["advance.delta", "other", "after an irregular or tuplet-derived gap"],
+    ["advance.delta", "8.", "after dotted eighth"],
+    ["stem.direction", "up", "upward stem"],
+    ["tie.state", "none", "not tied"],
+    ["tie.state", "start_and_stop", "one tie ends and another starts here"],
+    ["slur.slot.1.event", "continue", "the slur continues here"],
+    [
+      "slur.slot.1.side",
+      "unspecified",
+      "automatic placement (no side specified)",
+    ],
+    ["slur.slot.1.side", "below", "below the note"],
+  ])("renders %s=%s as %s", (head, value, label) => {
+    expect(readable(head, value)).toBe(label);
+  });
+
+  it("humanizes an unfamiliar future value instead of leaking its identifier", () => {
+    expect(readable("future.head", "newInternal_Value")).toBe(
+      "new internal value",
+    );
   });
 });
 

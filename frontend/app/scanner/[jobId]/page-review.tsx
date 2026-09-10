@@ -64,6 +64,9 @@ const CLEF_NAMES: Record<string, string> = {
 };
 
 const SYMBOL_NAMES: Record<string, string> = {
+  PAD: "scanner padding (not a score symbol)",
+  BOS: "start of the staff",
+  EOS: "end of the staff",
   barline: "a barline",
   doublebarline: "a double barline",
   bolddoublebarline: "a final barline",
@@ -75,6 +78,59 @@ const SYMBOL_NAMES: Record<string, string> = {
   voltaDiscontinue: "a volta break",
   chord: "part of a chord",
   newline: "a line break",
+};
+
+const ACCIDENTAL_NAMES: Record<string, string> = {
+  "#": "sharp",
+  "##": "double sharp",
+  N: "natural",
+  b: "flat",
+  bb: "double flat",
+};
+
+const ARTICULATION_NAMES: Record<string, string> = {
+  accent: "accent",
+  arpeggiate: "arpeggio",
+  breathMark: "breath mark",
+  fermata: "fermata",
+  staccatissimo: "staccatissimo",
+  staccato: "staccato",
+  tenuto: "tenuto",
+  tremolo: "tremolo",
+  trill: "trill",
+  turn: "turn",
+};
+
+const BEAM_STATE_NAMES: Record<string, string> = {
+  none: "no beam at this level",
+  not_applicable: "this note has no beam at this level",
+  flag: "an unjoined flag (no beam)",
+  begin: "start a beam",
+  continue: "continue the beam",
+  end: "end the beam",
+  forward_hook: "a forward beam hook",
+  backward_hook: "a backward beam hook",
+};
+
+const TIE_STATE_NAMES: Record<string, string> = {
+  none: "not tied",
+  start: "a tie starts here",
+  stop: "a tie ends here",
+  start_and_stop: "one tie ends and another starts here",
+};
+
+const SLUR_EVENT_NAMES: Record<string, string> = {
+  none: "no slur event",
+  start: "a slur starts here",
+  stop: "a slur ends here",
+  start_and_stop: "one slur ends and another starts here",
+  continue: "the slur continues here",
+};
+
+const SLUR_SIDE_NAMES: Record<string, string> = {
+  unspecified: "automatic placement (no side specified)",
+  above: "above the note",
+  below: "below the note",
 };
 
 /**
@@ -96,7 +152,16 @@ function questionFor(head: string, options: string[]): string {
     return "Which side of the note should the slur use?";
   if (head === "rhythm") {
     const allDurations = options.every((value) => /^(note|rest)_/.test(value));
-    return allDurations ? "Which duration is this?" : "What is this symbol?";
+    if (allDurations) return "Which duration is this?";
+    if (options.every((value) => /^timeSignatureBeats_\d+$/.test(value)))
+      return "What is the top number of the time signature?";
+    if (options.every((value) => /^timeSignature\/.+$/.test(value)))
+      return "What is the bottom number of the time signature?";
+    if (options.every((value) => /^keySignature_-?\d+$/.test(value)))
+      return "Which key signature is this?";
+    if (options.every((value) => /^clef_.+$/.test(value)))
+      return "Which clef is this?";
+    return "What is this symbol?";
   }
   return HEAD_LABELS[head] || "What is this?";
 }
@@ -144,7 +209,11 @@ function priorPowerOfTwo(value: number): number {
 }
 
 export function describeDuration(kern: string): string {
-  if (kern.endsWith("m")) return "multi-measure rest";
+  const multiMeasure = kern.match(/^(\d+)m$/);
+  if (multiMeasure) {
+    const measures = Number(multiMeasure[1]);
+    return `${measures}-measure`;
+  }
   const match = kern.match(/^(\d*)(G?)(\.*)$/);
   if (!match) return kern;
   const [, digits, grace, dots] = match;
@@ -153,8 +222,9 @@ export function describeDuration(kern: string): string {
     dots.length === 1 ? "dotted " : dots.length > 1 ? "double-dotted " : "";
   const gracePrefix = grace ? "grace " : "";
 
-  // kern 0 is the whole-measure rest, not a note value.
-  if (base === 0) return `${gracePrefix}whole-measure rest`;
+  // HOMR renders kern 0 as a whole note; rest_0 receives the more specific
+  // whole-measure wording below, where the symbol kind is known.
+  if (base === 0) return `${gracePrefix}whole`;
 
   const isPowerOfTwo = (base & (base - 1)) === 0;
   if (isPowerOfTwo) {
@@ -174,7 +244,16 @@ function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function readable(head: string, value: string): string {
+function humanizeIdentifier(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_.-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function readable(head: string, value: string): string {
   if (value === "." || value === "_" || value === "") {
     return head === "slur" || head === "articulation" || head === "lift"
       ? "none"
@@ -183,19 +262,24 @@ function readable(head: string, value: string): string {
   const rhythm = value.match(/^(note|rest)_(.+)$/);
   if (rhythm) {
     const [, kind, kern] = rhythm;
+    if (kind === "rest" && kern === "0") return "whole-measure rest";
     return `${describeDuration(kern)} ${kind}`;
   }
   if (value === "slurStart") return "a slur starts here";
-  if (value === "slurEnd") return "a slur ends here";
+  if (value === "slurStop" || value === "slurEnd") return "a slur ends here";
+  if (value === "slurStart_slurStop")
+    return "one slur ends and another starts here";
   if (head.startsWith("beam.level.")) {
-    return value === "none" ? "no beam" : value.replaceAll("_", " ");
+    return BEAM_STATE_NAMES[value] || humanizeIdentifier(value);
   }
   if (head === "advance.delta") {
     return value === "not_applicable"
-      ? "not applicable"
+      ? "no following note onset to time"
       : value === "zero"
         ? "at the same time"
-        : `after ${describeDuration(value)}`;
+        : value === "other"
+          ? "after an irregular or tuplet-derived gap"
+          : `after ${describeDuration(value)}`;
   }
   if (head === "stem.direction") {
     if (value === "not_applicable")
@@ -205,9 +289,27 @@ function readable(head: string, value: string): string {
     if (value === "down") return "downward stem";
     if (value === "double") return "stems in both directions";
   }
-  if (head === "tie.state") return value.replaceAll("_", " ");
-  if (head.startsWith("slur.slot.")) return value.replaceAll("_", " ");
+  if (head === "tie.state")
+    return TIE_STATE_NAMES[value] || humanizeIdentifier(value);
+  if (head.startsWith("slur.slot.") && head.endsWith(".event"))
+    return SLUR_EVENT_NAMES[value] || humanizeIdentifier(value);
+  if (head.startsWith("slur.slot.") && head.endsWith(".side"))
+    return SLUR_SIDE_NAMES[value] || humanizeIdentifier(value);
   if (SYMBOL_NAMES[value]) return SYMBOL_NAMES[value];
+
+  if (head === "lift" && ACCIDENTAL_NAMES[value])
+    return ACCIDENTAL_NAMES[value];
+
+  if (head === "articulation") {
+    return value
+      .split("_")
+      .map((part) => ARTICULATION_NAMES[part] || humanizeIdentifier(part))
+      .join(" + ");
+  }
+
+  // Pitch and octave are already standard score-reader notation. Preserve the
+  // capital note name rather than sending it through the lowercase fallback.
+  if (head === "pitch" && /^[A-G]\d+$/.test(value)) return value;
 
   const clef = value.match(/^clef_(.+)$/);
   if (clef) return CLEF_NAMES[clef[1]] || "a clef";
@@ -221,9 +323,15 @@ function readable(head: string, value: string): string {
   }
 
   const time = value.match(/^timeSignature\/(.+)$/);
-  if (time) return `a time signature (/${time[1]})`;
+  if (time) return `${time[1]} as the bottom number (beat-note value)`;
 
-  return value;
+  const timeBeats = value.match(/^timeSignatureBeats_(\d+)$/);
+  if (timeBeats) return `${timeBeats[1]} as the top number (beats per measure)`;
+
+  // New model values should still be legible before a bespoke musical label is
+  // added. In particular, never expose camelCase/snake_case implementation
+  // identifiers directly to a reviewer.
+  return humanizeIdentifier(value);
 }
 
 interface Option {
