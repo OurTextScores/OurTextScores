@@ -14,8 +14,10 @@ import ComparePageClient from "./compare-client";
  */
 export default async function ComparePage({
   params,
+  searchParams,
 }: {
   params: { jobId: string; pageNumber: string };
+  searchParams: { base?: string; candidate?: string };
 }) {
   const session = await fetchBackendSession();
   const target = `/scanner/${params.jobId}/pages/${params.pageNumber}/compare`;
@@ -35,7 +37,12 @@ export default async function ComparePage({
       >
         ← Back to the scan
       </Link>
-      <ComparePageClient jobId={params.jobId} pageNumber={pageNumber} />
+      <ComparePageClient
+        jobId={params.jobId}
+        pageNumber={pageNumber}
+        initialBaseEngine={searchParams.base}
+        initialCandidateEngine={searchParams.candidate}
+      />
     </main>
   );
 }

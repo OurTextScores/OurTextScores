@@ -32,7 +32,9 @@ describe("describeDuration", () => {
     expect(describeDuration("4.")).toBe("dotted quarter");
     expect(describeDuration("4..")).toBe("double-dotted quarter");
     expect(describeDuration("8G")).toBe("grace eighth");
-    expect(describeDuration("0")).toBe("whole-measure rest");
-    expect(describeDuration("4m")).toBe("multi-measure rest");
+    // The symbol kind adds "note" or "rest" in `readable`; this helper only
+    // names the duration so note_0 can remain a whole note.
+    expect(describeDuration("0")).toBe("whole");
+    expect(describeDuration("4m")).toBe("4-measure");
   });
 });

@@ -206,37 +206,85 @@ function sideCaveats(side: ComparisonSide): string[] {
   return caveats;
 }
 
+function structuredHeadLabel(family: string): string {
+  return (
+    {
+      beam: "Beams",
+      advance: "Rhythmic spacing",
+      stem: "Stem direction",
+      tie: "Ties",
+      slur: "Slurs",
+    }[family] || family
+  );
+}
+
+function structuredReadingAvailable(
+  page: ScannerPage,
+  engineId: string,
+): boolean {
+  const run = page.engines?.["ots-homr"];
+  if (engineId === "ots-homr-core")
+    return run?.status === "succeeded" && Boolean(run.hasMusicXml);
+  if (engineId === "ots-homr-selected-heads")
+    return Boolean(
+      run?.status === "succeeded" &&
+      (run.selectedStructuredHeadFamilies?.length || 0) > 0 &&
+      run.artifactKinds?.includes("selected-heads-musicxml"),
+    );
+  return false;
+}
+
 export default function PageComparison({
   jobId,
   job,
   page,
   open = false,
+  initialBaseEngine,
+  initialCandidateEngine,
 }: {
   jobId: string;
   job: ScannerJob;
   page: ScannerPage;
   /** True on the comparison's own page, where there is nothing to expand. */
   open?: boolean;
+  initialBaseEngine?: string;
+  initialCandidateEngine?: string;
 }) {
   const plannedEngineIds = useMemo(
-    () => job.enginePlan?.engineIds || Object.keys(page.engines || {}),
-    [job.enginePlan?.engineIds, page.engines],
+    () => [
+      ...new Set([
+        ...(job.enginePlan?.engineIds || Object.keys(page.engines || {})),
+        ...(initialBaseEngine ? [initialBaseEngine] : []),
+        ...(initialCandidateEngine ? [initialCandidateEngine] : []),
+      ]),
+    ],
+    [
+      initialBaseEngine,
+      initialCandidateEngine,
+      job.enginePlan?.engineIds,
+      page.engines,
+    ],
   );
   const eligibleEngineIds = useMemo(
     () =>
       plannedEngineIds.filter((engineId) => {
         const run = page.engines?.[engineId];
-        return run?.status === "succeeded" && run.hasMusicXml;
+        return (
+          structuredReadingAvailable(page, engineId) ||
+          (run?.status === "succeeded" && run.hasMusicXml)
+        );
       }),
-    [page.engines, plannedEngineIds],
+    [page, plannedEngineIds],
   );
-  const defaultBase = plannedEngineIds.includes(
-    job.enginePlan?.primaryEngineId || "",
-  )
-    ? String(job.enginePlan?.primaryEngineId)
-    : plannedEngineIds[0] || "";
+  const defaultBase =
+    initialBaseEngine ||
+    (plannedEngineIds.includes(job.enginePlan?.primaryEngineId || "")
+      ? String(job.enginePlan?.primaryEngineId)
+      : plannedEngineIds[0] || "");
   const defaultCandidate =
-    plannedEngineIds.find((engineId) => engineId !== defaultBase) || "";
+    initialCandidateEngine ||
+    plannedEngineIds.find((engineId) => engineId !== defaultBase) ||
+    "";
 
   const [baseEngine, setBaseEngine] = useState(defaultBase);
   const [candidateEngine, setCandidateEngine] = useState(defaultCandidate);
@@ -320,8 +368,17 @@ export default function PageComparison({
 
   if (plannedEngineIds.length < 2) return null;
 
-  const engineName = (engineId: string) =>
-    job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId;
+  const engineName = (engineId: string) => {
+    if (engineId === "ots-homr-core") return "OTS-HOMR base";
+    if (engineId === "ots-homr-selected-heads") {
+      const families =
+        page.engines?.["ots-homr"]?.selectedStructuredHeadFamilies || [];
+      return `OTS-HOMR + ${families.map(structuredHeadLabel).join(", ")}`;
+    }
+    return (
+      job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId
+    );
+  };
   // Two different failures used to read the same. "Cannot be compared safely"
   // is true only when the readings could not be lined up at all; once the
   // analysis has succeeded they *were* compared, and what is missing is the
@@ -474,7 +531,7 @@ export default function PageComparison({
                     disabled={engineId === candidateEngine}
                   >
                     {engineName(engineId)}
-                    {page.engines?.[engineId]?.status === "succeeded"
+                    {eligibleEngineIds.includes(engineId)
                       ? ""
                       : ` — ${page.engines?.[engineId]?.status || "no result"}`}
                   </option>
@@ -496,7 +553,7 @@ export default function PageComparison({
                     disabled={engineId === baseEngine}
                   >
                     {engineName(engineId)}
-                    {page.engines?.[engineId]?.status === "succeeded"
+                    {eligibleEngineIds.includes(engineId)
                       ? ""
                       : ` — ${page.engines?.[engineId]?.status || "no result"}`}
                   </option>

@@ -7,6 +7,17 @@ import type {
 } from './schemas/scanner-job.schema';
 
 export const BUILTIN_SCANNER_ENGINE_IDS = ['homr', 'transcoda', 'ots-homr'] as const;
+/** Logical readings of one OTS-HOMR run used to compare optional heads safely. */
+export const OTS_HOMR_CORE_READING_ID = 'ots-homr-core';
+export const OTS_HOMR_SELECTED_HEADS_READING_ID = 'ots-homr-selected-heads';
+export const OTS_HOMR_STRUCTURED_READING_IDS = [
+  OTS_HOMR_CORE_READING_ID,
+  OTS_HOMR_SELECTED_HEADS_READING_ID
+] as const;
+
+export function isOtsHomrStructuredReadingId(value: unknown): boolean {
+  return OTS_HOMR_STRUCTURED_READING_IDS.includes(value as any);
+}
 /** @deprecated Use BUILTIN_SCANNER_ENGINE_IDS for built-ins or ScannerEngineId for contracts. */
 export const SCANNER_ENGINES = BUILTIN_SCANNER_ENGINE_IDS;
 export type ScannerEngineId = string;

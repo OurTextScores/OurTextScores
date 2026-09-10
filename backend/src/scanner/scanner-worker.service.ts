@@ -352,6 +352,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               ? allStructured.review
               : core.review;
           let materialized: ScannerStorageLocator | undefined;
+          let comparisonBase =
+            run.artifacts['structured-comparison-base-musicxml'] || core.musicXml;
           let structuredProposals = run.artifacts['structured-heads'];
           let refreshedResult: ScannerProviderResult | undefined;
           const expectedProviderRevision = this.config.get<string>(
@@ -428,12 +430,37 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
               'application/vnd.recordare.musicxml+xml'
             );
             musicXml = materialized;
+            // A base-head correction changes the proposal shared by both
+            // variants. Compare optional heads against the same corrected base,
+            // otherwise the review would also show unrelated corrections made
+            // earlier in the base queue.
+            if (proposalDirty) {
+              if (families.length === 0) {
+                comparisonBase = materialized;
+              } else {
+                const coreBody = await adapter.materializeStructured(proposalBody, []);
+                assertValidMusicXml(coreBody);
+                comparisonBase = await this.store(
+                  `${this.baseKey(job)}/page-${String(page.pageNumber).padStart(3, '0')}-${engineId}-structured-comparison-base-${randomUUID()}.musicxml`,
+                  coreBody,
+                  'application/vnd.recordare.musicxml+xml'
+                );
+              }
+            }
           }
 
           if (run.artifacts.pdf) obsolete.push(run.artifacts.pdf);
           const priorMaterialized = run.artifacts['selected-heads-musicxml'];
           if (priorMaterialized && priorMaterialized.objectKey !== materialized?.objectKey) {
             obsolete.push(priorMaterialized);
+          }
+          const priorComparisonBase = run.artifacts['structured-comparison-base-musicxml'];
+          if (
+            priorComparisonBase &&
+            priorComparisonBase.objectKey !== comparisonBase.objectKey &&
+            priorComparisonBase.objectKey !== core.musicXml.objectKey
+          ) {
+            obsolete.push(priorComparisonBase);
           }
           current = {
             ...withScannerEngineRun(current, {
@@ -464,7 +491,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
                 musicXml,
                 pdf: undefined,
                 'structured-heads': structuredProposals,
-                'selected-heads-musicxml': materialized
+                'selected-heads-musicxml': materialized,
+                'structured-comparison-base-musicxml': comparisonBase
               }
             }),
             pdf: undefined

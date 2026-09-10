@@ -290,6 +290,26 @@ export class ScannerController {
     );
   }
 
+  @Get(':jobId/pages/:pageNumber/engines/ots-homr/structured-output/:variant')
+  async structuredOutputReading(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('variant') variant: string,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const reading = await this.scanner.pageStructuredOutputReading(
+      user.userId,
+      jobId,
+      pageNumber,
+      variant
+    );
+    response.setHeader('Content-Type', reading.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(reading.body);
+  }
+
   @Delete(':jobId')
   remove(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return this.scanner.deleteJob(user.userId, jobId);

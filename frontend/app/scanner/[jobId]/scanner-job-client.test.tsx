@@ -2,6 +2,7 @@
 
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useRouter } from "next/navigation";
 import ScannerJobClient from "./scanner-job-client";
 import { ScannerJob } from "../scanner-types";
 
@@ -53,7 +54,10 @@ const partialJob: ScannerJob = {
 };
 
 describe("ScannerJobClient", () => {
+  const push = jest.fn();
+
   beforeEach(() => {
+    (useRouter as jest.Mock).mockReturnValue({ push });
     globalThis.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => partialJob,
@@ -882,7 +886,7 @@ describe("ScannerJobClient", () => {
     expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
   });
 
-  it("selects OTS-HOMR head families independently after recognition", async () => {
+  it("opens base and selected OTS-HOMR heads in the compare editor", async () => {
     const updated: ScannerJob = {
       ...partialJob,
       status: "succeeded",
@@ -958,6 +962,7 @@ describe("ScannerJobClient", () => {
                     "ots-homr": {
                       ...updated.pages[0].engines?.["ots-homr"],
                       selectedStructuredHeadFamilies: ["beam"],
+                      artifactKinds: ["musicxml", "selected-heads-musicxml"],
                     },
                   },
                 },
@@ -977,28 +982,9 @@ describe("ScannerJobClient", () => {
     ).toBe(false);
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Review selected heads",
+        name: "Review selected heads (compare)",
       }),
     );
-    expect(
-      fetchMock.mock.calls.some(([, init]) => init?.method === "PUT"),
-    ).toBe(false);
-    expect(
-      await screen.findByText(/Beams · no uncertain questions/),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: "Beams" })).toBeChecked(),
-    );
-    expect(
-      screen.getByRole("checkbox", { name: "Rhythmic spacing" }),
-    ).not.toBeChecked();
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Review questions are ready below.",
-    );
-    expect(
-      screen.getByText(/Dynamics remain diagnostic only/),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Use this head" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
@@ -1008,9 +994,30 @@ describe("ScannerJobClient", () => {
         }),
       ),
     );
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+    const target = new URL(push.mock.calls[0][0], "http://localhost");
+    expect(target.pathname).toBe("/score-editor/index.html");
+    expect(target.searchParams.get("compareLeft")).toBe(
+      "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output/core",
+    );
+    expect(target.searchParams.get("compareRight")).toBe(
+      "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output/selected-heads",
+    );
+    expect(target.searchParams.get("rightLabel")).toBe("OTS-HOMR + Beams");
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes("/review?engineId=ots-homr&group=base"),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes("group=beam"),
+      ),
+    ).toBe(false);
+    expect(screen.queryByText(/Beams · no uncertain questions/)).toBeNull();
   });
 
-  it("offers review regeneration for a retained pre-review provider result", async () => {
+  it("opens base and selected OTS-HOMR heads in the merge editor", async () => {
     const stale: ScannerJob = {
       ...partialJob,
       status: "succeeded",
@@ -1054,7 +1061,8 @@ describe("ScannerJobClient", () => {
                     engines: {
                       "ots-homr": {
                         ...stale.pages[0].engines?.["ots-homr"],
-                        structuredOutputPending: true,
+                        structuredOutputPending: false,
+                        artifactKinds: ["musicxml", "selected-heads-musicxml"],
                       },
                     },
                   },
@@ -1067,7 +1075,9 @@ describe("ScannerJobClient", () => {
     render(<ScannerJobClient jobId="job-1" />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Review selected heads" }),
+      await screen.findByRole("button", {
+        name: "Review selected heads (merge)",
+      }),
     );
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1077,6 +1087,13 @@ describe("ScannerJobClient", () => {
           body: JSON.stringify({ families: ["beam"] }),
         }),
       ),
+    );
+    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
+    const target = new URL(push.mock.calls[0][0], "http://localhost");
+    expect(target.pathname).toBe("/scanner/job-1/pages/1/compare");
+    expect(target.searchParams.get("base")).toBe("ots-homr-core");
+    expect(target.searchParams.get("candidate")).toBe(
+      "ots-homr-selected-heads",
     );
   });
 });

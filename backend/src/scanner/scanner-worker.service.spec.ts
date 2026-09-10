@@ -193,6 +193,9 @@ describe('ScannerWorkerService', () => {
       artifacts: { pdf: undefined }
     });
     expect(updated.engines['ots-homr'].artifacts.musicXml.objectKey).toContain('selected-heads-');
+    expect(
+      updated.engines['ots-homr'].artifacts['structured-comparison-base-musicxml'].objectKey
+    ).toBe('core.musicxml');
     expect(scannerWorker.storage.deleteObject).toHaveBeenCalledWith(
       oldPdf.bucket,
       oldPdf.objectKey

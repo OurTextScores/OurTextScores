@@ -14,9 +14,13 @@ import { ScannerJob } from "../../../../scanner-types";
 export default function ComparePageClient({
   jobId,
   pageNumber,
+  initialBaseEngine,
+  initialCandidateEngine,
 }: {
   jobId: string;
   pageNumber: number;
+  initialBaseEngine?: string;
+  initialCandidateEngine?: string;
 }) {
   const [job, setJob] = useState<ScannerJob | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +38,7 @@ export default function ComparePageClient({
   useEffect(() => {
     const root = document.documentElement;
     const previous = root.style.scrollBehavior;
-    root.style.scrollBehavior = 'auto';
+    root.style.scrollBehavior = "auto";
     return () => {
       root.style.scrollBehavior = previous;
     };
@@ -46,7 +50,8 @@ export default function ComparePageClient({
       cache: "no-store",
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        if (!response.ok)
+          throw new Error(`Request failed (${response.status})`);
         return response.json();
       })
       .then((value) => {
@@ -91,7 +96,14 @@ export default function ComparePageClient({
         </h1>
         <p className="mt-1 text-sm text-slate-500">Page {page.ordinal}</p>
       </div>
-      <PageComparison jobId={jobId} job={job} page={page} open />
+      <PageComparison
+        jobId={jobId}
+        job={job}
+        page={page}
+        open
+        initialBaseEngine={initialBaseEngine}
+        initialCandidateEngine={initialCandidateEngine}
+      />
     </div>
   );
 }

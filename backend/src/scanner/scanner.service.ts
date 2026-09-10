@@ -148,6 +148,9 @@ import {
   scannerHomrRun,
   scannerMergedScoreBasis,
   scannerMergedScoreStale,
+  isOtsHomrStructuredReadingId,
+  OTS_HOMR_CORE_READING_ID,
+  OTS_HOMR_SELECTED_HEADS_READING_ID,
   isScannerEngineId,
   uniqueScannerStorageLocators,
   withScannerEngineRun,
@@ -175,6 +178,96 @@ const SCANNER_COMPARISON_CROP_GUTTER = 8;
 @Injectable()
 export class ScannerService implements OnModuleInit {
   private readonly logger = new Logger(ScannerService.name);
+
+  private runForPage(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    engineId: string
+  ): ScannerEngineRun | undefined {
+    const actualEngineId = isOtsHomrStructuredReadingId(engineId) ? 'ots-homr' : engineId;
+    return (
+      page.engines?.[actualEngineId] ||
+      (actualEngineId === 'homr'
+        ? scannerHomrRun(page, {
+            providerRevision: job.providerRevision,
+            modelRevision: job.modelRevision,
+            provenance: job.engineProvenance
+          })
+        : undefined)
+    );
+  }
+
+  private comparisonReading(
+    job: ScannerJobDocument,
+    page: ScannerPageResult,
+    readingId: string
+  ): {
+    readingId: string;
+    engineId: string;
+    displayName: string;
+    run: ScannerEngineRun;
+    artifact: ScannerStorageLocator;
+    definition: ReturnType<ScannerEngineRegistry['readable']>;
+    unsupportedSemanticClasses: string[];
+    review?: ScannerPageResult['review'];
+  } {
+    const plan = this.enginePlanForJob(job);
+    const structured = isOtsHomrStructuredReadingId(readingId);
+    const engineId = structured ? 'ots-homr' : readingId;
+    if (!plan.engineIds.includes(engineId)) {
+      throw new BadRequestException(`Scanner engine ${engineId} is not part of this job`);
+    }
+    const definition = this.registeredEngines?.readable(engineId);
+    if (this.registeredEngines && !definition) {
+      throw new BadRequestException(`Scanner engine ${engineId} is not registered for comparison`);
+    }
+    const run = this.runForPage(job, page, engineId);
+    if (run?.status !== 'succeeded') {
+      throw new ConflictException('The selected scanner reading has no successful result');
+    }
+    let artifact = run.reviewedMusicXml || run.artifacts.musicXml;
+    let review = run.review;
+    let displayName = plan.capabilitySnapshots[engineId].displayName;
+    if (readingId === OTS_HOMR_CORE_READING_ID) {
+      artifact =
+        run.artifacts['structured-comparison-base-musicxml'] ||
+        run.outputCandidates?.core?.musicXml;
+      review = run.outputCandidates?.core?.review || run.review;
+      displayName = 'OTS-HOMR base';
+    } else if (readingId === OTS_HOMR_SELECTED_HEADS_READING_ID) {
+      artifact = run.artifacts['selected-heads-musicxml'];
+      review = run.outputCandidates?.['all-structured']?.review || run.review;
+      const families = run.selectedStructuredHeadFamilies || [];
+      if (families.length === 0) artifact = undefined;
+      displayName = `OTS-HOMR + ${families.map((family) => this.structuredHeadLabel(family)).join(', ')}`;
+    }
+    if (!artifact) {
+      throw new ConflictException('The selected scanner reading is not available');
+    }
+    return {
+      readingId,
+      engineId,
+      displayName,
+      run,
+      artifact,
+      definition,
+      unsupportedSemanticClasses:
+        plan.capabilitySnapshots[engineId].unsupportedSemanticClasses || [],
+      review
+    };
+  }
+
+  private structuredHeadLabel(family: string): string {
+    return (
+      {
+        beam: 'Beams',
+        advance: 'Rhythmic spacing',
+        stem: 'Stem direction',
+        tie: 'Ties',
+        slur: 'Slurs'
+      }[family] || family
+    );
+  }
 
   constructor(
     @InjectModel(ScannerJob.name)
@@ -653,6 +746,7 @@ export class ScannerService implements OnModuleInit {
       Boolean(run.structuredProposalDirty && run.structuredOutputError) &&
       JSON.stringify(families) === JSON.stringify(run.selectedStructuredHeadFamilies || []);
     const reviewRefresh = this.structuredReviewNeedsRefresh(run);
+    const materializationMissing = families.length > 0 && !run.artifacts['selected-heads-musicxml'];
     if (
       run.reviewedMusicXml ||
       ((run.corrections?.length || 0) > 0 && engineId !== 'ots-homr' && !correctionRetry) ||
@@ -666,6 +760,7 @@ export class ScannerService implements OnModuleInit {
     if (
       !correctionRetry &&
       !reviewRefresh &&
+      !materializationMissing &&
       JSON.stringify(families) ===
         JSON.stringify(
           run.requestedStructuredHeadFamilies || run.selectedStructuredHeadFamilies || []
@@ -702,6 +797,38 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Scanner job changed; refresh and try again');
     }
     return this.present(updated);
+  }
+
+  /** Serve one side of the base-versus-selected-heads review. */
+  async pageStructuredOutputReading(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    variant: string
+  ): Promise<{ body: Buffer; contentType: string }> {
+    this.assertAvailable(userId);
+    const readingId =
+      variant === 'core'
+        ? OTS_HOMR_CORE_READING_ID
+        : variant === 'selected-heads'
+          ? OTS_HOMR_SELECTED_HEADS_READING_ID
+          : '';
+    if (!readingId) throw new BadRequestException('Invalid OTS-HOMR output variant');
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const reading = this.comparisonReading(job, page, readingId);
+    const body = await this.storage.getObjectBuffer(
+      reading.artifact.bucket,
+      reading.artifact.objectKey
+    );
+    if (
+      createHash('sha256').update(body).digest('hex') !==
+      reading.artifact.checksumSha256.toLowerCase()
+    ) {
+      throw new ConflictException('OTS-HOMR review output changed; refresh and try again');
+    }
+    return { body, contentType: reading.artifact.contentType };
   }
 
   async retryPage(userId: string, jobId: string, pageNumber: number): Promise<any> {
@@ -1355,57 +1482,32 @@ export class ScannerService implements OnModuleInit {
     // for every bar still under review. Spot review is a different matter — it
     // regenerates an engine's own XML, which a merged score would shadow — so
     // that guard stays where it is.
-    const plan = this.enginePlanForJob(job);
-    for (const engineId of [baseEngineId, candidateEngineId]) {
-      if (!plan.engineIds.includes(engineId)) {
-        throw new BadRequestException(`Scanner engine ${engineId} is not part of this job`);
-      }
-      if (this.registeredEngines && !this.registeredEngines.get(engineId)) {
-        throw new BadRequestException(
-          `Scanner engine ${engineId} is not registered for comparison`
-        );
-      }
-    }
-
-    const runFor = (engineId: ScannerEngineId): ScannerEngineRun | undefined =>
-      page.engines?.[engineId] ||
-      (engineId === 'homr'
-        ? scannerHomrRun(page, {
-            providerRevision: job.providerRevision,
-            modelRevision: job.modelRevision,
-            provenance: job.engineProvenance
-          })
-        : undefined);
-    const baseRun = runFor(baseEngineId);
-    const candidateRun = runFor(candidateEngineId);
-    if (baseRun?.status !== 'succeeded' || candidateRun?.status !== 'succeeded') {
-      throw new ConflictException('Both selected scanner engines must have successful results');
-    }
-    const baseArtifact = baseRun.reviewedMusicXml || baseRun.artifacts.musicXml;
-    const candidateArtifact = candidateRun.reviewedMusicXml || candidateRun.artifacts.musicXml;
+    const baseReading = this.comparisonReading(job, page, baseEngineId);
+    const candidateReading = this.comparisonReading(job, page, candidateEngineId);
+    const { run: baseRun, artifact: baseArtifact } = baseReading;
+    const { run: candidateRun, artifact: candidateArtifact } = candidateReading;
     if (
-      !/^[a-f0-9]{64}$/i.test(baseArtifact?.checksumSha256 || '') ||
-      !/^[a-f0-9]{64}$/i.test(candidateArtifact?.checksumSha256 || '')
+      !/^[a-f0-9]{64}$/i.test(baseArtifact.checksumSha256 || '') ||
+      !/^[a-f0-9]{64}$/i.test(candidateArtifact.checksumSha256 || '')
     ) {
       throw new ConflictException('Both selected scanner engine artifacts must be available');
     }
 
     const pair = { baseEngineId, candidateEngineId };
-    const side = (engineId: ScannerEngineId, run: ScannerEngineRun, checksum: string) => ({
-      engineId,
-      displayName: plan.capabilitySnapshots[engineId].displayName,
-      artifactChecksumSha256: checksum,
-      completeness: run.completeness,
-      unsupportedSemanticClasses:
-        plan.capabilitySnapshots[engineId].unsupportedSemanticClasses || []
+    const side = (reading: ReturnType<ScannerService['comparisonReading']>) => ({
+      engineId: reading.readingId,
+      displayName: reading.displayName,
+      artifactChecksumSha256: reading.artifact.checksumSha256,
+      completeness: reading.run.completeness,
+      unsupportedSemanticClasses: reading.unsupportedSemanticClasses
     });
     if (!page.recognitionRaster || !baseRun.recognitionRaster || !candidateRun.recognitionRaster) {
       return {
         version: SCANNER_PAGE_COMPARISON_VERSION,
         status: 'refused',
         pair,
-        base: side(baseEngineId, baseRun, baseArtifact.checksumSha256),
-        candidate: side(candidateEngineId, candidateRun, candidateArtifact.checksumSha256),
+        base: side(baseReading),
+        candidate: side(candidateReading),
         refusalReasons: [
           {
             stage: 'prerequisites',
@@ -1420,8 +1522,6 @@ export class ScannerService implements OnModuleInit {
       this.storage.getObjectBuffer(baseArtifact.bucket, baseArtifact.objectKey),
       this.storage.getObjectBuffer(candidateArtifact.bucket, candidateArtifact.objectKey)
     ]);
-    const baseDefinition = this.registeredEngines?.get(baseEngineId);
-    const candidateDefinition = this.registeredEngines?.get(candidateEngineId);
     const loadRecognitionRaster = () =>
       this.storage.getObjectBuffer(
         page.recognitionRaster!.storage.bucket,
@@ -1453,22 +1553,22 @@ export class ScannerService implements OnModuleInit {
         height: page.recognitionRaster.height
       },
       base: {
-        ...side(baseEngineId, baseRun, baseArtifact.checksumSha256),
+        ...side(baseReading),
         musicXml: baseMusicXml,
         recognitionRaster: baseRun.recognitionRaster,
         modelRevision: baseRun.modelRevision,
-        review: baseRun.review,
+        review: baseReading.review,
         ...producerSide(baseRun, baseArtifact),
-        measureGeometryProducer: baseDefinition?.measureGeometryProducer
+        measureGeometryProducer: baseReading.definition?.measureGeometryProducer
       },
       candidate: {
-        ...side(candidateEngineId, candidateRun, candidateArtifact.checksumSha256),
+        ...side(candidateReading),
         musicXml: candidateMusicXml,
         recognitionRaster: candidateRun.recognitionRaster,
         modelRevision: candidateRun.modelRevision,
-        review: candidateRun.review,
+        review: candidateReading.review,
         ...producerSide(candidateRun, candidateArtifact),
-        measureGeometryProducer: candidateDefinition?.measureGeometryProducer
+        measureGeometryProducer: candidateReading.definition?.measureGeometryProducer
       }
     });
   }
@@ -1511,28 +1611,10 @@ export class ScannerService implements OnModuleInit {
     // Readings stay served once a merge exists; they are the evidence the merge
     // is judged against, and withholding them would leave the merged pane with
     // nothing to compare to.
-    const plan = this.enginePlanForJob(job);
-    if (!plan.engineIds.includes(engineId)) {
-      throw new BadRequestException(`Scanner engine ${engineId} is not part of this job`);
-    }
-    if (this.registeredEngines && !this.registeredEngines.get(engineId)) {
-      throw new BadRequestException(`Scanner engine ${engineId} is not registered for comparison`);
-    }
-    const run =
-      page.engines?.[engineId] ||
-      (engineId === 'homr'
-        ? scannerHomrRun(page, {
-            providerRevision: job.providerRevision,
-            modelRevision: job.modelRevision,
-            provenance: job.engineProvenance
-          })
-        : undefined);
-    if (run?.status !== 'succeeded') {
-      throw new ConflictException('The selected scanner engine has no successful result');
-    }
-    const artifact = run.reviewedMusicXml || run.artifacts.musicXml;
+    const reading = this.comparisonReading(job, page, engineId);
+    const artifact = reading.artifact;
     if (
-      !artifact ||
+      !/^[a-f0-9]{64}$/i.test(artifact.checksumSha256 || '') ||
       artifact.checksumSha256.toLowerCase() !== artifactChecksumSha256.toLowerCase()
     ) {
       throw new ConflictException('Scanner comparison reading changed; refresh and try again');
@@ -1544,11 +1626,12 @@ export class ScannerService implements OnModuleInit {
     if (!baseEngineId || baseEngineId === engineId) {
       return { body, contentType: artifact.contentType };
     }
-    if (!isScannerEngineId(baseEngineId) || !plan.engineIds.includes(baseEngineId)) {
-      throw new BadRequestException(`Scanner engine ${baseEngineId} is not part of this job`);
-    }
+    this.comparisonReading(job, page, baseEngineId);
     const layout = reconcileScannerPartLayout({
-      baseXml: await this.engineMusicXml(page, baseEngineId),
+      baseXml: await this.comparisonReadingMusicXml(page, baseEngineId, {
+        baseEngineId,
+        candidateEngineId: engineId
+      }),
       candidateXml: body
     });
     return { body: layout.musicXml, contentType: artifact.contentType };
@@ -1701,15 +1784,7 @@ export class ScannerService implements OnModuleInit {
     if (!isScannerEngineId(input.sourceEngineId)) {
       throw new BadRequestException('A merged score must name the engine it started from');
     }
-    const plan = this.enginePlanForJob(job);
-    if (!plan.engineIds.includes(input.sourceEngineId)) {
-      throw new BadRequestException(
-        `Scanner engine ${input.sourceEngineId} is not part of this job`
-      );
-    }
-    if (page.engines?.[input.sourceEngineId]?.status !== 'succeeded') {
-      throw new ConflictException('That engine has no successful reading of this page');
-    }
+    this.comparisonReading(job, page, input.sourceEngineId);
 
     const currentRevision = page.mergedScore?.revision ?? 0;
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
@@ -1812,7 +1887,10 @@ export class ScannerService implements OnModuleInit {
     const newlyEdited = editedMeasures.filter((entry) => !priorEditedKeys.has(editedKey(entry)));
     if (newlyEdited.length > 0) {
       const plan = this.enginePlanForJob(job);
-      const [baseEngineId, candidateEngineId] = plan.engineIds;
+      const structuredPair = isOtsHomrStructuredReadingId(input.sourceEngineId);
+      const [baseEngineId, candidateEngineId] = structuredPair
+        ? [OTS_HOMR_CORE_READING_ID, OTS_HOMR_SELECTED_HEADS_READING_ID]
+        : plan.engineIds;
       for (const entry of newlyEdited) {
         await this.recordMergeDecision({
           page,
@@ -1830,7 +1908,10 @@ export class ScannerService implements OnModuleInit {
       // not which bar. New clients always submit `editedMeasures` and take the
       // per-bar branch above.
       const plan = this.enginePlanForJob(job);
-      const [baseEngineId, candidateEngineId] = plan.engineIds;
+      const structuredPair = isOtsHomrStructuredReadingId(input.sourceEngineId);
+      const [baseEngineId, candidateEngineId] = structuredPair
+        ? [OTS_HOMR_CORE_READING_ID, OTS_HOMR_SELECTED_HEADS_READING_ID]
+        : plan.engineIds;
       await this.recordMergeDecision({
         page,
         userId,
@@ -1881,13 +1962,8 @@ export class ScannerService implements OnModuleInit {
         'The merged score must start from one of two distinct valid scanner engines'
       );
     }
-    const plan = this.enginePlanForJob(job);
-    if (
-      !plan.engineIds.includes(input.baseEngineId) ||
-      !plan.engineIds.includes(input.candidateEngineId)
-    ) {
-      throw new BadRequestException('Both compared engines must be part of this scanner job');
-    }
+    this.comparisonReading(job, page, input.baseEngineId);
+    this.comparisonReading(job, page, input.candidateEngineId);
     const currentRevision = page.mergedScore?.revision ?? 0;
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
@@ -2611,11 +2687,22 @@ export class ScannerService implements OnModuleInit {
         input.page.sourceImage?.checksumSha256;
       if (!pageSha256) return;
       const artifactOf = (engineId: string) => {
-        const run = input.page.engines?.[engineId];
+        const actualEngineId = isOtsHomrStructuredReadingId(engineId) ? 'ots-homr' : engineId;
+        const run = input.page.engines?.[actualEngineId];
+        if (engineId === OTS_HOMR_CORE_READING_ID) {
+          return (
+            run?.artifacts?.['structured-comparison-base-musicxml']?.checksumSha256 ||
+            run?.outputCandidates?.core?.musicXml?.checksumSha256
+          );
+        }
+        if (engineId === OTS_HOMR_SELECTED_HEADS_READING_ID) {
+          return run?.artifacts?.['selected-heads-musicxml']?.checksumSha256;
+        }
         return run?.reviewedMusicXml?.checksumSha256 || run?.artifacts?.musicXml?.checksumSha256;
       };
       const revisionsOf = (engineId: string) => {
-        const run = input.page.engines?.[engineId];
+        const actualEngineId = isOtsHomrStructuredReadingId(engineId) ? 'ots-homr' : engineId;
+        const run = input.page.engines?.[actualEngineId];
         return { modelRevision: run?.modelRevision, providerRevision: run?.providerRevision };
       };
       await this.mergeDecisions.create({
@@ -2696,10 +2783,19 @@ export class ScannerService implements OnModuleInit {
 
   /** One engine's reading of a page: reviewed when it exists, raw otherwise. */
   private async engineMusicXml(page: ScannerPageResult, engineId: string): Promise<Buffer> {
-    const run = page.engines?.[engineId];
-    const artifact = run?.reviewedMusicXml || run?.artifacts?.musicXml;
+    const actualEngineId = isOtsHomrStructuredReadingId(engineId) ? 'ots-homr' : engineId;
+    const run = page.engines?.[actualEngineId];
+    let artifact = run?.reviewedMusicXml || run?.artifacts?.musicXml;
+    if (engineId === OTS_HOMR_CORE_READING_ID) {
+      artifact =
+        run?.artifacts?.['structured-comparison-base-musicxml'] ||
+        run?.outputCandidates?.core?.musicXml;
+    } else if (engineId === OTS_HOMR_SELECTED_HEADS_READING_ID) {
+      artifact = run?.artifacts?.['selected-heads-musicxml'];
+      if ((run?.selectedStructuredHeadFamilies || []).length === 0) artifact = undefined;
+    }
     if (run?.status !== 'succeeded' || !artifact) {
-      throw new ConflictException(`Scanner engine ${engineId} has no usable reading of this page`);
+      throw new ConflictException(`Scanner reading ${engineId} is not available for this page`);
     }
     return this.storage.getObjectBuffer(artifact.bucket, artifact.objectKey);
   }

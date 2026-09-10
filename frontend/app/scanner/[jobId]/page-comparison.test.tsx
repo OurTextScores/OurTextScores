@@ -181,11 +181,7 @@ describe("PageComparison", () => {
     } as ScannerJob;
 
     const { container } = render(
-      <PageComparison
-        jobId="job-1"
-        job={singleProviderJob}
-        page={page}
-      />,
+      <PageComparison jobId="job-1" job={singleProviderJob} page={page} />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -332,6 +328,93 @@ describe("PageComparison", () => {
     expect(
       screen.queryByRole("heading", { name: "Whole-page diff review" }),
     ).toBeNull();
+  });
+
+  it("populates the merge editor with OTS-HOMR base and selected-head readings", async () => {
+    const otsPage = {
+      ...page,
+      engines: {
+        "ots-homr": {
+          status: "succeeded" as const,
+          attempts: 1,
+          hasMusicXml: true,
+          hasPdf: false,
+          selectedStructuredHeadFamilies: ["beam", "advance"],
+          artifactKinds: ["musicxml", "selected-heads-musicxml"],
+        },
+      },
+    };
+    const otsJob = {
+      ...job,
+      enginePlan: {
+        ...job.enginePlan!,
+        engineIds: ["ots-homr"],
+        primaryEngineId: "ots-homr",
+        fallbackEngineIds: [],
+        capabilitySnapshots: {
+          "ots-homr": {
+            displayName: "OTS-HOMR",
+            unsupportedSemanticClasses: [],
+          },
+        },
+      },
+      pages: [otsPage],
+    } as ScannerJob;
+    (globalThis.fetch as jest.Mock).mockImplementation(
+      async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (!url.includes("/comparison?"))
+          throw new Error(`Unexpected request: ${url}`);
+        return {
+          ok: true,
+          json: async () => ({
+            ...readyComparison("ots-homr-selected-heads"),
+            base: {
+              engineId: "ots-homr-core",
+              displayName: "OTS-HOMR base",
+              artifactChecksumSha256: baseArtifactChecksum,
+              unsupportedSemanticClasses: [],
+            },
+            candidate: {
+              engineId: "ots-homr-selected-heads",
+              displayName: "OTS-HOMR + Beams, Rhythmic spacing",
+              artifactChecksumSha256: candidateArtifactChecksum,
+              unsupportedSemanticClasses: [],
+            },
+          }),
+        } as Response;
+      },
+    );
+
+    render(
+      <PageComparison
+        jobId="job-1"
+        job={otsJob}
+        page={otsPage}
+        open
+        initialBaseEngine="ots-homr-core"
+        initialCandidateEngine="ots-homr-selected-heads"
+      />,
+    );
+
+    expect(await screen.findByLabelText("Base reading")).toHaveValue(
+      "ots-homr-core",
+    );
+    expect(screen.getByLabelText("Candidate reading")).toHaveValue(
+      "ots-homr-selected-heads",
+    );
+    const frame = await screen.findByTitle(/Reconciling difference 1/);
+    const editor = new URL(frame.getAttribute("src")!, "http://localhost");
+    expect(editor.searchParams.get("leftLabel")).toBe("OTS-HOMR base");
+    expect(editor.searchParams.get("rightLabel")).toBe(
+      "OTS-HOMR + Beams, Rhythmic spacing",
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "baseEngine=ots-homr-core&candidateEngine=ots-homr-selected-heads",
+      ),
+      expect.objectContaining({ cache: "no-store" }),
+    );
   });
 
   it("never engraves a reading itself", async () => {

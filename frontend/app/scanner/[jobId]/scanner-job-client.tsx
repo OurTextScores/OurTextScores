@@ -30,6 +30,18 @@ function engineLabel(job: ScannerJob, engineId?: string): string {
   return job.enginePlan?.capabilitySnapshots[engineId]?.displayName || engineId;
 }
 
+function structuredHeadLabel(family: string): string {
+  return (
+    {
+      beam: "Beams",
+      advance: "Rhythmic spacing",
+      stem: "Stem direction",
+      tie: "Ties",
+      slur: "Slurs",
+    }[family] || family
+  );
+}
+
 function selectedRawEngineId(
   job: ScannerJob,
   page?: ScannerPage,
@@ -120,22 +132,15 @@ export default function ScannerJobClient({
   const [structuredDrafts, setStructuredDrafts] = useState<
     Record<string, string[]>
   >({});
-  const [structuredReviewFamilies, setStructuredReviewFamilies] = useState<
-    Record<string, string[]>
-  >({});
-  const [structuredReviewTarget, setStructuredReviewTarget] = useState<{
+  const [structuredLaunchTarget, setStructuredLaunchTarget] = useState<{
     pageNumber: number;
     engineId: string;
     families: string[];
-  } | null>(null);
-  const [structuredReviewReady, setStructuredReviewReady] = useState<{
-    pageNumber: number;
-    engineId: string;
+    mode: "compare" | "merge";
   } | null>(null);
   // Advancing a page from the bottom of a long document otherwise leaves the
   // reader looking at the footer of a page they have already dealt with.
   const pageSectionRef = useRef<HTMLElement | null>(null);
-  const spotReviewRef = useRef<HTMLDivElement | null>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   const refresh = useCallback(async () => {
@@ -179,34 +184,41 @@ export default function ScannerJobClient({
   }, [job, selectedPage]);
 
   useEffect(() => {
-    if (!job || !structuredReviewTarget) return;
+    if (!job || !structuredLaunchTarget) return;
     const page = job.pages.find(
-      (candidate) => candidate.pageNumber === structuredReviewTarget.pageNumber,
+      (candidate) => candidate.pageNumber === structuredLaunchTarget.pageNumber,
     );
-    const run = page?.engines?.[structuredReviewTarget.engineId];
+    const run = page?.engines?.[structuredLaunchTarget.engineId];
     if (!run || run.structuredOutputPending) return;
     if (run.structuredOutputError) {
-      setStructuredReviewTarget(null);
+      setStructuredLaunchTarget(null);
       return;
     }
     const selected = run.selectedStructuredHeadFamilies || [];
     if (
       JSON.stringify(selected) !==
-      JSON.stringify(structuredReviewTarget.families)
+        JSON.stringify(structuredLaunchTarget.families) ||
+      !run.artifactKinds?.includes("selected-heads-musicxml")
     )
       return;
-    setStructuredReviewReady({
-      pageNumber: structuredReviewTarget.pageNumber,
-      engineId: structuredReviewTarget.engineId,
-    });
-    setStructuredReviewTarget(null);
-    window.requestAnimationFrame(() =>
-      spotReviewRef.current?.scrollIntoView?.({
-        behavior: "smooth",
-        block: "start",
-      }),
-    );
-  }, [job, structuredReviewTarget]);
+    const pageNumber = structuredLaunchTarget.pageNumber;
+    const target =
+      structuredLaunchTarget.mode === "merge"
+        ? `/scanner/${encodeURIComponent(jobId)}/pages/${pageNumber}/compare?${new URLSearchParams(
+            {
+              base: "ots-homr-core",
+              candidate: "ots-homr-selected-heads",
+            },
+          ).toString()}`
+        : `/score-editor/index.html?${new URLSearchParams({
+            compareLeft: `${base}/pages/${pageNumber}/engines/ots-homr/structured-output/core`,
+            compareRight: `${base}/pages/${pageNumber}/engines/ots-homr/structured-output/selected-heads`,
+            leftLabel: "OTS-HOMR base",
+            rightLabel: `OTS-HOMR + ${selected.map(structuredHeadLabel).join(", ")}`,
+          }).toString()}`;
+    setStructuredLaunchTarget(null);
+    router.push(target);
+  }, [base, job, jobId, router, structuredLaunchTarget]);
 
   useEffect(() => {
     if (job?.status !== "ready" || pageSetupDirty) return;
@@ -299,20 +311,6 @@ export default function ScannerJobClient({
         );
       const nextJob: ScannerJob = await response.json();
       setJob(nextJob);
-      const nextRun = nextJob.pages.find(
-        (page) => page.pageNumber === pageNumber,
-      )?.engines?.[engineId];
-      if (
-        !nextRun?.structuredOutputPending &&
-        !nextRun?.structuredOutputError &&
-        JSON.stringify(nextRun?.selectedStructuredHeadFamilies || []) ===
-          JSON.stringify(families)
-      ) {
-        setStructuredReviewReady({ pageNumber, engineId });
-        setStructuredReviewTarget(null);
-      } else {
-        setStructuredReviewTarget({ pageNumber, engineId, families });
-      }
       // Rendered derivatives rebuild asynchronously; refresh once after the
       // worker has had a chance to replace them.
       window.setTimeout(() => void refresh().catch(() => undefined), 2_000);
@@ -325,27 +323,15 @@ export default function ScannerJobClient({
     }
   }
 
-  async function beginStructuredReview(
+  async function launchStructuredReview(
     pageNumber: number,
     engineId: string,
     families: string[],
-    appliedFamilies: string[],
-    requiresBackendRefresh: boolean,
+    mode: "compare" | "merge",
   ) {
-    const key = `${pageNumber}:${engineId}`;
-    setStructuredReviewFamilies((current) => ({
-      ...current,
-      [key]: families,
-    }));
-    setStructuredReviewReady({ pageNumber, engineId });
-    window.requestAnimationFrame(() =>
-      spotReviewRef.current?.scrollIntoView?.({
-        behavior: "smooth",
-        block: "start",
-      }),
-    );
-    if (requiresBackendRefresh) {
-      await selectStructuredOutput(pageNumber, engineId, appliedFamilies);
+    setStructuredLaunchTarget({ pageNumber, engineId, families, mode });
+    if (!(await selectStructuredOutput(pageNumber, engineId, families))) {
+      setStructuredLaunchTarget(null);
     }
   }
 
@@ -1093,18 +1079,6 @@ export default function ScannerJobClient({
                 const structuredDraftKey = `${selected.pageNumber}:${engineId}`;
                 const draftFamilies =
                   structuredDrafts[structuredDraftKey] || selectedFamilies;
-                const activeReviewFamilies =
-                  structuredReviewFamilies[structuredDraftKey] ||
-                  selectedFamilies;
-                const structuredDraftDirty =
-                  JSON.stringify(draftFamilies) !==
-                  JSON.stringify(activeReviewFamilies);
-                const structuredRetryable = Boolean(
-                  run?.structuredOutputRetryable,
-                );
-                const structuredReviewRefreshable = Boolean(
-                  run?.structuredReviewRefreshable,
-                );
                 return (
                   <div key={`downloads-${engineId}`} className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1198,54 +1172,55 @@ export default function ScannerJobClient({
                                     }))
                                   }
                                 />
-                                {family === "beam"
-                                  ? "Beams"
-                                  : family === "advance"
-                                    ? "Rhythmic spacing"
-                                    : family[0].toUpperCase() + family.slice(1)}
+                                {structuredHeadLabel(family)}
                               </label>
                             );
                           })}
                         </div>
                         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          Choose the heads you want to inspect. Each review card
-                          then lets you use that head or leave it out. Core
-                          recognition is reviewed separately. Dynamics remain
+                          Compare the base recognition with a version that uses
+                          these optional heads. Detailed uncertainty questions
+                          for optional heads are hidden for now. Dynamics remain
                           diagnostic only.
                         </p>
                         {!readOnly && (
-                          <button
-                            type="button"
-                            disabled={
-                              (!structuredDraftDirty &&
-                                !structuredRetryable &&
-                                !structuredReviewRefreshable) ||
-                              run?.structuredOutputPending ||
-                              busyAction ===
-                                `structured-${selected.pageNumber}-${engineId}`
-                            }
-                            onClick={() =>
-                              void beginStructuredReview(
-                                selected.pageNumber,
-                                engineId,
-                                draftFamilies,
-                                selectedFamilies,
-                                structuredRetryable ||
-                                  structuredReviewRefreshable,
-                              )
-                            }
-                            className="mt-3 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
-                          >
-                            {run?.structuredOutputPending ||
-                            busyAction ===
-                              `structured-${selected.pageNumber}-${engineId}`
-                              ? "Preparing review…"
-                              : "Review selected heads"}
-                          </button>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(["compare", "merge"] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                type="button"
+                                disabled={
+                                  draftFamilies.length === 0 ||
+                                  run?.structuredOutputPending ||
+                                  busyAction ===
+                                    `structured-${selected.pageNumber}-${engineId}`
+                                }
+                                onClick={() =>
+                                  void launchStructuredReview(
+                                    selected.pageNumber,
+                                    engineId,
+                                    draftFamilies,
+                                    mode,
+                                  )
+                                }
+                                className={
+                                  mode === "compare"
+                                    ? "rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
+                                    : "rounded-lg border border-amber-400 bg-white px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200"
+                                }
+                              >
+                                {run?.structuredOutputPending ||
+                                busyAction ===
+                                  `structured-${selected.pageNumber}-${engineId}`
+                                  ? "Preparing selected heads…"
+                                  : `Review selected heads (${mode})`}
+                              </button>
+                            ))}
+                          </div>
                         )}
                         {run?.structuredOutputPending && (
                           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-                            Preparing review questions…
+                            Preparing base and selected-heads scores…
                           </p>
                         )}
                         {run?.structuredOutputError && (
@@ -1321,54 +1296,17 @@ export default function ScannerJobClient({
           {selected.status === "succeeded" &&
             reviewableEngineIds.length > 0 &&
             !readOnly && (
-              <div ref={spotReviewRef} className="mt-4 scroll-mt-4 space-y-4">
-                {structuredReviewReady?.pageNumber === selected.pageNumber && (
-                  <p
-                    role="status"
-                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                  >
-                    Review questions are ready below. Open one card at a time;
-                    structured cards let you decide whether to use that head.
-                  </p>
-                )}
-                {reviewableEngineIds.flatMap((engineId) => {
-                  const run = selected.engines?.[engineId];
-                  const key = `${selected.pageNumber}:${engineId}`;
-                  const reviewFamilies =
-                    structuredReviewFamilies[key] ||
-                    run?.selectedStructuredHeadFamilies ||
-                    [];
-                  const cards = ["base", ...reviewFamilies];
-                  return cards.map((reviewGroup) => (
-                    <PageReview
-                      key={`${engineId}-${reviewGroup}`}
-                      jobId={jobId}
-                      pageNumber={selected.pageNumber}
-                      engineId={engineId}
-                      engineLabel={engineLabel(job, engineId)}
-                      reviewGroup={reviewGroup}
-                      onStructuredFamilyDecision={async (family, apply) => {
-                        const applied =
-                          selected.engines?.[engineId]
-                            ?.selectedStructuredHeadFamilies || [];
-                        const next = apply
-                          ? (run?.availableStructuredHeadFamilies || []).filter(
-                              (candidate) =>
-                                applied.includes(candidate) ||
-                                candidate === family,
-                            )
-                          : applied.filter((candidate) => candidate !== family);
-                        const saved = await selectStructuredOutput(
-                          selected.pageNumber,
-                          engineId,
-                          next,
-                        );
-                        if (!saved)
-                          throw new Error("structured head decision failed");
-                      }}
-                    />
-                  ));
-                })}
+              <div className="mt-4 space-y-4">
+                {reviewableEngineIds.map((engineId) => (
+                  <PageReview
+                    key={`${engineId}-base`}
+                    jobId={jobId}
+                    pageNumber={selected.pageNumber}
+                    engineId={engineId}
+                    engineLabel={engineLabel(job, engineId)}
+                    reviewGroup="base"
+                  />
+                ))}
               </div>
             )}
           {/*

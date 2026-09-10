@@ -3766,6 +3766,54 @@ describe('Scanner structured output selection', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('rebuilds a retained selection when its materialized comparison output is missing', async () => {
+    const { job, service } = setup();
+    const run = job.pages[0].engines['ots-homr'];
+    run.selectedStructuredHeadFamilies = ['beam'];
+
+    await service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam']);
+
+    expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(['beam']);
+  });
+
+  it('serves the retained base and selected-head readings for editor review', async () => {
+    const { job, service, storage } = setup();
+    const run = job.pages[0].engines['ots-homr'];
+    run.selectedStructuredHeadFamilies = ['beam'];
+    run.artifacts['selected-heads-musicxml'] = locator('selected.musicxml');
+    storage.getObjectBuffer.mockResolvedValue(xml);
+
+    await expect(
+      service.pageStructuredOutputReading('user-1', 'job-1', 1, 'core')
+    ).resolves.toMatchObject({ body: xml });
+    await expect(
+      service.pageStructuredOutputReading('user-1', 'job-1', 1, 'selected-heads')
+    ).resolves.toMatchObject({ body: xml });
+    await expect(
+      service.pageStructuredOutputReading('user-1', 'job-1', 1, 'unknown')
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('treats OTS-HOMR base and selected heads as two comparison readings', async () => {
+    const { job, service, storage } = setup();
+    const run = job.pages[0].engines['ots-homr'];
+    run.selectedStructuredHeadFamilies = ['beam', 'advance'];
+    run.artifacts['selected-heads-musicxml'] = locator('selected.musicxml');
+
+    await expect(
+      service.pageComparison('user-1', 'job-1', 1, 'ots-homr-core', 'ots-homr-selected-heads')
+    ).resolves.toMatchObject({
+      status: 'refused',
+      base: { engineId: 'ots-homr-core', displayName: 'OTS-HOMR base' },
+      candidate: {
+        engineId: 'ots-homr-selected-heads',
+        displayName: 'OTS-HOMR + Beams, Rhythmic spacing'
+      },
+      refusalReasons: [{ code: 'recognition-raster-unavailable' }]
+    });
+    expect(storage.getObjectBuffer).not.toHaveBeenCalled();
+  });
+
   it('queues the same selection when its review capture predates the pinned provider', async () => {
     expectedProviderRevision = 'ots-ots-homr-provider-v4';
     const { job, service } = setup();
