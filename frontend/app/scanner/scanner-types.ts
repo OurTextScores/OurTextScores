@@ -9,6 +9,21 @@ export type ScannerStatus =
   | "failed"
   | "cancelled";
 
+export interface ScannerScoreProfilePart {
+  stableId: string;
+  displayName?: string;
+  /** Generous on purpose: a cello reads in bass, tenor and treble alike. */
+  likelyClefs?: string[];
+  transpositionSemitones?: number;
+  expectedStaffCount?: number;
+}
+
+/** A prior a reviewer can reject, never a rule the pipeline enforces. */
+export interface ScannerScoreProfile {
+  schemaVersion: "homr.score-profile.v1";
+  parts: ScannerScoreProfilePart[];
+}
+
 export interface ScannerCrossStaffFinding {
   kind: string;
   message: string;

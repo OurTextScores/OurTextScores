@@ -1,4 +1,5 @@
 import { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
+import { scannerEnginePlan, scannerEnginePlanForJob } from './scanner-dual-engine';
 import {
   canonicalScoreProfileJson,
   isScannerOtsHomrEngineOptions,
@@ -188,5 +189,29 @@ describe('cross-staff findings from the provider', () => {
   it('is absent, not empty, when there is nothing to say', () => {
     expect(parse([])).toBeUndefined();
     expect(parse(undefined)).toBeUndefined();
+  });
+});
+
+describe('a profile survives being frozen into the plan and read back', () => {
+  it('is not dropped when a persisted plan is normalized', () => {
+    // The normalizer rebuilt ots-homr options from `textDetector` alone, so every
+    // other part of the frozen policy vanished on each read of a persisted job. For a
+    // profile that would mean the plan claiming a prior the run was never given.
+    const options = { textDetector: 'none' as const, scoreProfile: quartet() };
+    const plan = scannerEnginePlan(['ots-homr'], 'ots-homr', undefined, {
+      'ots-homr': options
+    });
+    expect(plan.engineOptions?.['ots-homr']).toEqual(options);
+
+    const readBack = scannerEnginePlanForJob({ enginePlan: plan }, ['ots-homr']);
+    expect(readBack.engineOptions?.['ots-homr']).toEqual(options);
+  });
+
+  it('a plan without a profile stays without one', () => {
+    const plan = scannerEnginePlan(['ots-homr'], 'ots-homr', undefined, {
+      'ots-homr': { textDetector: 'lyrics' as const }
+    });
+    const readBack = scannerEnginePlanForJob({ enginePlan: plan }, ['ots-homr']);
+    expect(readBack.engineOptions?.['ots-homr']).toEqual({ textDetector: 'lyrics' });
   });
 });

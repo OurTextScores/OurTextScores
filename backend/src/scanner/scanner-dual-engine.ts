@@ -366,12 +366,21 @@ export function scannerEnginePlanForJob(
       throw new Error('Invalid persisted scanner engine plan');
     }
     const persistedOtsHomr = plan.engineOptions?.['ots-homr'] as
-      | (Record<string, unknown> & { textDetector?: unknown })
+      | (Record<string, unknown> & { textDetector?: unknown; scoreProfile?: unknown })
       | undefined;
+    // Normalizing to a known shape, not to `textDetector` alone. Rebuilding this from
+    // one field silently dropped every other part of the frozen policy on each read of
+    // a persisted job, which for a score profile would mean the plan claimed a prior
+    // the run was never given.
     const normalizedEngineOptions = persistedOtsHomr
       ? {
           ...plan.engineOptions,
-          'ots-homr': { textDetector: persistedOtsHomr.textDetector }
+          'ots-homr': {
+            textDetector: persistedOtsHomr.textDetector,
+            ...(persistedOtsHomr.scoreProfile === undefined
+              ? {}
+              : { scoreProfile: persistedOtsHomr.scoreProfile })
+          }
         }
       : plan.engineOptions;
     const normalized = scannerEnginePlan(

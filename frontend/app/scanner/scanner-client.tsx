@@ -9,6 +9,7 @@ import {
   ScannerProviderOption,
   scannerStatusLabel,
 } from "./scanner-types";
+import { SCORE_PROFILE_PRESETS, presetById } from "./score-profiles";
 import { ElapsedTime } from "./elapsed-time";
 
 async function readError(response: Response): Promise<string> {
@@ -113,6 +114,14 @@ export default function ScannerClient() {
   const [detectTitle, setDetectTitle] = useState(false);
   const [firstProvider, setFirstProvider] = useState("");
   const [secondProvider, setSecondProvider] = useState("");
+  /**
+   * Which score shape the reader says this is, or "" for none.
+   *
+   * Held as a preset id rather than a profile so the payload is rebuilt from the
+   * presets at submit time: a profile stored in state could outlive a change to what
+   * the preset means, and be sent under a label that no longer describes it.
+   */
+  const [scoreProfileId, setScoreProfileId] = useState<string>("");
   const [otsTextDetector, setOtsTextDetector] = useState<
     "lyrics" | "non-lyric-text" | "none"
   >("lyrics");
@@ -227,10 +236,14 @@ export default function ScannerClient() {
         ),
       );
       if (usesOtsHomr) {
+        const preset = presetById(scoreProfileId);
         body.set(
           "otsHomr",
           JSON.stringify({
             textDetector: otsTextDetector,
+            // Omitted entirely rather than sent as null: the option is validated by
+            // an allowlist, and "no profile" is the absence of the field.
+            ...(preset ? { scoreProfile: preset.profile } : {}),
           }),
         );
       }
@@ -488,6 +501,31 @@ export default function ScannerClient() {
                 <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
                   Runs one experimental detector for diagnostics and provenance;
                   it does not yet change the returned MusicXML.
+                </span>
+              </label>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                What is this score?
+                <select
+                  aria-label="Score profile"
+                  data-testid="select-score-profile"
+                  value={scoreProfileId}
+                  onChange={(event) => setScoreProfileId(event.target.value)}
+                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+                >
+                  <option value="">Don&apos;t say — no expectations</option>
+                  {SCORE_PROFILE_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+                  {presetById(scoreProfileId)?.description ??
+                    "Naming the shape lets the scan flag a staff that disagrees with it."}{" "}
+                  This is a hint for review only: it never changes what is
+                  recognized, and anything it flags can be dismissed.
                 </span>
               </label>
             </div>

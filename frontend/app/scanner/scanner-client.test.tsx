@@ -159,29 +159,38 @@ describe("ScannerClient", () => {
   );
 
   it("keeps providers selectable when retained scan history fails", async () => {
-    global.fetch = jest.fn(
-      async (url: RequestInfo | URL) =>
-        String(url).includes("/engines")
-          ? ({ ok: true, status: 200, json: async () => ({ items: providers }) } as Response)
-          : ({
-              ok: false,
-              status: 500,
-              json: async () => ({ message: "Invalid retained scan" }),
-            } as Response),
+    global.fetch = jest.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("/engines")
+        ? ({
+            ok: true,
+            status: 200,
+            json: async () => ({ items: providers }),
+          } as Response)
+        : ({
+            ok: false,
+            status: 500,
+            json: async () => ({ message: "Invalid retained scan" }),
+          } as Response),
     );
 
     render(<ScannerClient />);
 
-    expect(await screen.findAllByRole("option", { name: "OTS-HOMR" })).toHaveLength(2);
+    expect(
+      await screen.findAllByRole("option", { name: "OTS-HOMR" }),
+    ).toHaveLength(2);
     expect(screen.getByText("Invalid retained scan")).toBeInTheDocument();
     expect(
-      screen.queryByText("This deployment does not currently have a provider available."),
+      screen.queryByText(
+        "This deployment does not currently have a provider available.",
+      ),
     ).not.toBeInTheDocument();
   });
 
   it("requires one provider and makes a second provider optional", async () => {
     render(<ScannerClient />);
-    expect(await screen.findAllByRole("option", { name: "OTS-HOMR" })).toHaveLength(2);
+    expect(
+      await screen.findAllByRole("option", { name: "OTS-HOMR" }),
+    ).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("Score files"), {
       target: {
         files: [new File(["score"], "page.png", { type: "image/png" })],
@@ -270,6 +279,61 @@ describe("ScannerClient", () => {
     expect(JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")))).toEqual({
       textDetector: "non-lyric-text",
     });
+  });
+
+  it("sends the chosen score profile", async () => {
+    // The picker is the only thing that supplies a profile; if it does not reach the
+    // payload the clef checks stay unreachable exactly as they were before the
+    // channel existed, and nothing anywhere would say so.
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: {
+        files: [new File(["score"], "page-1.png", { type: "image/png" })],
+      },
+    });
+    selectProviders("ots-homr");
+    fireEvent.change(screen.getByLabelText("Score profile"), {
+      target: { value: "string-quartet" },
+    });
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+
+    const sent = JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")));
+    expect(sent.scoreProfile.schemaVersion).toEqual("homr.score-profile.v1");
+    expect(
+      sent.scoreProfile.parts.map(
+        (part: { stableId: string }) => part.stableId,
+      ),
+    ).toEqual(["violin-1", "violin-2", "viola", "cello"]);
+    // Generous by design: a cello reading in tenor or treble is ordinary music, and a
+    // profile naming only bass would fire on the repertoire it is meant to help with.
+    expect(
+      sent.scoreProfile.parts.find(
+        (part: { stableId: string }) => part.stableId === "cello",
+      ).likelyClefs,
+    ).toEqual(["F4", "C4", "G2"]);
+  });
+
+  it("omits the profile entirely when the reader does not say", async () => {
+    // Absence of the field, not a null: the option is validated by an allowlist.
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: {
+        files: [new File(["score"], "page-1.png", { type: "image/png" })],
+      },
+    });
+    selectProviders("ots-homr");
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    const sent = JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")));
+    expect(sent).toEqual({ textDetector: "lyrics" });
+    expect("scoreProfile" in sent).toBe(false);
   });
 
   it("refuses an oversized selection before sending it", async () => {
