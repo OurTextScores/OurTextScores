@@ -86,6 +86,11 @@ describe('ScannerController provider selection', () => {
 
   it('requests review for the selected engine instead of silently choosing the first', () => {
     controller.review(user, 'job-1', 3, 'ots-homr');
-    expect(scanner.pageReview).toHaveBeenCalledWith('user-1', 'job-1', 3, 'ots-homr');
+    expect(scanner.pageReview).toHaveBeenCalledWith('user-1', 'job-1', 3, 'ots-homr', undefined);
+  });
+
+  it('passes an explicit review group through to the scanner service', () => {
+    controller.review(user, 'job-1', 3, 'ots-homr', 'stem');
+    expect(scanner.pageReview).toHaveBeenCalledWith('user-1', 'job-1', 3, 'ots-homr', 'stem');
   });
 });

@@ -28,6 +28,7 @@ interface Spot {
 interface Review {
   pageNumber: number;
   engineId: string;
+  reviewGroup?: string;
   contentSignature: string;
   structuredOutputPending?: boolean;
   spots: Spot[];
@@ -196,8 +197,14 @@ function readable(head: string, value: string): string {
         ? "at the same time"
         : `after ${describeDuration(value)}`;
   }
-  if (head === "stem.direction")
-    return value === "not_applicable" ? "no stem" : `${value} stem`;
+  if (head === "stem.direction") {
+    if (value === "not_applicable")
+      return "not a stem-bearing note (for example, a rest)";
+    if (value === "none") return "stemless note (for example, a whole note)";
+    if (value === "up") return "upward stem";
+    if (value === "down") return "downward stem";
+    if (value === "double") return "stems in both directions";
+  }
   if (head === "tie.state") return value.replaceAll("_", " ");
   if (head.startsWith("slur.slot.")) return value.replaceAll("_", " ");
   if (SYMBOL_NAMES[value]) return SYMBOL_NAMES[value];
@@ -261,31 +268,50 @@ export function mergeOptions(options: Option[]): Option[] {
   );
 }
 
+const REVIEW_GROUP_LABELS: Record<string, string> = {
+  base: "Base recognition",
+  beam: "Beams",
+  advance: "Rhythmic spacing",
+  stem: "Stem direction",
+  tie: "Ties",
+  slur: "Slurs",
+};
+
 export default function PageReview({
   jobId,
   pageNumber,
   engineId,
   engineLabel,
+  reviewGroup = "base",
+  onStructuredFamilyDecision,
 }: {
   jobId: string;
   pageNumber: number;
   engineId?: string;
   engineLabel?: string;
+  reviewGroup?: string;
+  onStructuredFamilyDecision?: (
+    family: string,
+    apply: boolean,
+  ) => Promise<void> | void;
 }) {
   const [review, setReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
   const [position, setPosition] = useState(0);
   const [level, setLevel] = useState<"staff" | "context">("staff");
   const [saving, setSaving] = useState(false);
+  const [deciding, setDeciding] = useState(false);
+  const [expanded, setExpanded] = useState(reviewGroup === "base");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setPosition(0);
-    const query = engineId
-      ? `?${new URLSearchParams({ engineId }).toString()}`
-      : "";
+    const query = `?${new URLSearchParams({
+      ...(engineId ? { engineId } : {}),
+      group: reviewGroup,
+    }).toString()}`;
     fetch(`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review${query}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
@@ -300,7 +326,7 @@ export default function PageReview({
     return () => {
       cancelled = true;
     };
-  }, [engineId, jobId, pageNumber]);
+  }, [engineId, jobId, pageNumber, reviewGroup]);
 
   // Reset the zoom when moving on: the previous spot's context says nothing
   // about the next one.
@@ -318,6 +344,24 @@ export default function PageReview({
     setError(null);
   }, []);
 
+  const finishStructuredFamily = useCallback(
+    async (apply: boolean) => {
+      if (reviewGroup === "base" || !onStructuredFamilyDecision) return;
+      setDeciding(true);
+      setError(null);
+      try {
+        await onStructuredFamilyDecision(reviewGroup, apply);
+        setPosition(review?.spots.length || 0);
+        setExpanded(false);
+      } catch {
+        setError("That head choice could not be saved. Please try again.");
+      } finally {
+        setDeciding(false);
+      }
+    },
+    [onStructuredFamilyDecision, review?.spots.length, reviewGroup],
+  );
+
   const choose = useCallback(
     async (spotId: number, value: string) => {
       setSaving(true);
@@ -333,6 +377,7 @@ export default function PageReview({
               chosen: value,
               engineId: review?.engineId,
               contentSignature: review?.contentSignature,
+              ...(reviewGroup === "base" ? {} : { reviewGroup }),
             }),
           },
         );
@@ -340,7 +385,10 @@ export default function PageReview({
           if (response.status === 409) {
             const refreshed = await fetch(
               `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review?${new URLSearchParams(
-                { engineId: review?.engineId || engineId || "" },
+                {
+                  engineId: review?.engineId || engineId || "",
+                  group: reviewGroup,
+                },
               ).toString()}`,
             );
             if (refreshed.ok) {
@@ -358,6 +406,7 @@ export default function PageReview({
         if (result.pending) {
           const query = new URLSearchParams({
             engineId: review?.engineId || engineId || "",
+            group: reviewGroup,
           }).toString();
           for (let attempt = 0; attempt < 60; attempt += 1) {
             await new Promise((resolve) => window.setTimeout(resolve, 2000));
@@ -404,6 +453,7 @@ export default function PageReview({
       pageNumber,
       review?.contentSignature,
       review?.engineId,
+      reviewGroup,
     ],
   );
 
@@ -416,60 +466,123 @@ export default function PageReview({
   }
   if (!review || review.spots.length === 0) {
     return (
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Nothing on this page looked uncertain.
-      </p>
+      <details className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {REVIEW_GROUP_LABELS[reviewGroup] || reviewGroup} · no uncertain
+          questions
+        </summary>
+        <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Nothing in this group looked uncertain.
+          </p>
+          {reviewGroup !== "base" && onStructuredFamilyDecision && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={deciding}
+                onClick={() => void finishStructuredFamily(true)}
+                className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                Use this head
+              </button>
+              <button
+                type="button"
+                disabled={deciding}
+                onClick={() => void finishStructuredFamily(false)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Leave this head out
+              </button>
+            </div>
+          )}
+          {error && (
+            <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+              {error}
+            </p>
+          )}
+        </div>
+      </details>
     );
   }
 
   const spot = review.spots[position];
   const remaining = review.spots.length - position;
+  const groupLabel = REVIEW_GROUP_LABELS[reviewGroup] || reviewGroup;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Check {engineLabel ? `${engineLabel}'s` : "the"} uncertain spots
-        </h3>
+    <details
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+      className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+    >
+      <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2 px-4 py-3 marker:hidden">
+        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {groupLabel} · {review.spots.length} uncertain
+        </span>
         {spot && (
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            spot {position + 1} of {review.spots.length}, least certain first
+            question {position + 1} of {review.spots.length}
           </span>
         )}
-      </div>
+      </summary>
+      <section className="border-t border-slate-200 p-4 dark:border-slate-800">
+        <h3 className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+          Check {engineLabel ? `${engineLabel}'s` : "the"}{" "}
+          {groupLabel.toLowerCase()}
+        </h3>
 
-      {review.suitability.unsuitable && (
-        // Say so rather than presenting hundreds of questions as though the page
-        // were nearly right. Never a gate: the queue is still below.
-        <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          The scanner was unsure about{" "}
-          {percent(review.suitability.askableRatio)} of this page, so it is
-          probably past what automatic recognition can do — handwritten or
-          heavily marked scores usually are. You can still work through the
-          list, but the Score Editor may be faster.
-        </p>
-      )}
-
-      {!spot ? (
-        <div className="text-sm text-slate-600 dark:text-slate-400">
-          <p>
-            {position >= review.spots.length
-              ? "That is everything flagged on this page."
-              : "Stopped here. The rest are listed above if you want them."}
+        {review.suitability.unsuitable && (
+          // Say so rather than presenting hundreds of questions as though the page
+          // were nearly right. Never a gate: the queue is still below.
+          <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            The scanner was unsure about{" "}
+            {percent(review.suitability.askableRatio)} of this page, so it is
+            probably past what automatic recognition can do — handwritten or
+            heavily marked scores usually are. You can still work through the
+            list, but the Score Editor may be faster.
           </p>
-          {position > 0 && (
-            <button
-              type="button"
-              onClick={goBack}
-              className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Back to the last one
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          {/*
+        )}
+
+        {!spot ? (
+          <div className="text-sm text-slate-600 dark:text-slate-400">
+            <p>
+              {position >= review.spots.length
+                ? "That is everything flagged on this page."
+                : "Stopped here. The rest are listed above if you want them."}
+            </p>
+            {position > 0 && (
+              <button
+                type="button"
+                onClick={goBack}
+                className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Back to the last one
+              </button>
+            )}
+            {reviewGroup !== "base" && onStructuredFamilyDecision && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={deciding}
+                  onClick={() => void finishStructuredFamily(true)}
+                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                >
+                  Use {groupLabel.toLowerCase()} output
+                </button>
+                <button
+                  type="button"
+                  disabled={deciding}
+                  onClick={() => void finishStructuredFamily(false)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Leave {groupLabel.toLowerCase()} out
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            {/*
             The container hugs the image rather than filling the row. The band
             below is positioned in percentages, and those are of *this* box — so
             with a full-width container and `object-contain` the picture would
@@ -477,151 +590,177 @@ export default function PageReview({
             moment the crop's aspect ratio changed, which is exactly what
             switching to the surrounding staves does.
           */}
-          <div className="relative mx-auto w-fit overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/crop/${spot.id}?${new URLSearchParams(
-                {
-                  level,
-                  engineId: review.engineId,
-                  contentSignature: review.contentSignature,
-                },
-              ).toString()}`}
-              alt={`Page ${pageNumber}, the passage the scanner was unsure about`}
-              className="block max-h-80 w-auto max-w-full"
-            />
-            {/* Without this the question is unanswerable: a staff crop can hold
+            <div className="relative mx-auto w-fit overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/crop/${spot.id}?${new URLSearchParams(
+                  {
+                    level,
+                    engineId: review.engineId,
+                    contentSignature: review.contentSignature,
+                    group: reviewGroup,
+                  },
+                ).toString()}`}
+                alt={`Page ${pageNumber}, the passage the scanner was unsure about`}
+                className="block max-h-80 w-auto max-w-full"
+              />
+              {/* Without this the question is unanswerable: a staff crop can hold
                 thirty notes, and "which duration is this?" needs to say which.
                 Drawn at both levels: the context crop grows only vertically, so
                 the band's horizontal position stays correct. */}
+              {spot.band && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute border-2 border-cyan-500 bg-cyan-400/20"
+                  style={{
+                    left: `${spot.band.start * 100}%`,
+                    width: `${Math.max(2, (spot.band.end - spot.band.start) * 100)}%`,
+                    // At `staff` the crop is the staff, so the band fills it. At
+                    // `context` the crop also holds the staves above and below,
+                    // and a full-height band would point at all three to ask
+                    // about a symbol on one.
+                    top:
+                      level === "context" && spot.band.contextTop !== undefined
+                        ? `${spot.band.contextTop * 100}%`
+                        : 0,
+                    height:
+                      level === "context" &&
+                      spot.band.contextHeight !== undefined
+                        ? `${spot.band.contextHeight * 100}%`
+                        : "100%",
+                  }}
+                />
+              )}
+            </div>
             {spot.band && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute border-2 border-cyan-500 bg-cyan-400/20"
-                style={{
-                  left: `${spot.band.start * 100}%`,
-                  width: `${Math.max(2, (spot.band.end - spot.band.start) * 100)}%`,
-                  // At `staff` the crop is the staff, so the band fills it. At
-                  // `context` the crop also holds the staves above and below,
-                  // and a full-height band would point at all three to ask
-                  // about a symbol on one.
-                  top:
-                    level === "context" && spot.band.contextTop !== undefined
-                      ? `${spot.band.contextTop * 100}%`
-                      : 0,
-                  height:
-                    level === "context" && spot.band.contextHeight !== undefined
-                      ? `${spot.band.contextHeight * 100}%`
-                      : "100%",
-                }}
-              />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {spot.band.basis === "note"
+                  ? "Highlighted: this symbol."
+                  : spot.band.basis === "measure"
+                    ? "Highlighted: the measure it is in — the exact position was unreliable here."
+                    : "Highlighted: roughly where it falls."}
+              </p>
             )}
-          </div>
-          {spot.band && (
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {spot.band.basis === "note"
-                ? "Highlighted: this symbol."
-                : spot.band.basis === "measure"
-                  ? "Highlighted: the measure it is in — the exact position was unreliable here."
-                  : "Highlighted: roughly where it falls."}
-            </p>
-          )}
-          <div className="mt-2 flex gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => setLevel(level === "staff" ? "context" : "staff")}
-              className="rounded border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              {level === "staff"
-                ? "Show the staves around it"
-                : "Back to this staff"}
-            </button>
-          </div>
-
-          <p className="mt-4 text-sm font-medium text-slate-900 dark:text-slate-100">
-            {questionFor(spot.head, [
-              spot.chosen,
-              ...spot.alternatives.map((alternative) => alternative.value),
-            ])}
-          </p>
-          <ul className="mt-2 space-y-1 text-sm">
-            {mergeOptions([
-              {
-                value: spot.chosen,
-                label: readable(spot.head, spot.chosen),
-                confidence: spot.confidence,
-                recognised: true,
-              },
-              ...spot.alternatives.map((alternative) => ({
-                value: alternative.value,
-                label: readable(spot.head, alternative.value),
-                confidence: alternative.confidence,
-                recognised: false,
-              })),
-            ]).map((option) => (
-              <li key={option.label}>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void choose(spot.id, option.value)}
-                  className="flex w-full items-center gap-2 rounded border border-slate-200 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/40"
-                >
-                  <span className="text-slate-900 dark:text-slate-100">
-                    {option.label}
-                  </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {percent(option.confidence)}
-                    {option.recognised ? " — what the scanner chose" : ""}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {error && (
-            <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            {/* The number that makes stopping a judgement rather than fatigue:
-                it rises as the queue is worked. */}
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {remaining - 1 > 0
-                ? `${remaining - 1} more after this, all at least ${percent(
-                    review.spots[position + 1]?.confidence ?? spot.confidence,
-                  )} confident`
-                : "This is the last one flagged."}
-            </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="mt-2 flex gap-2 text-xs">
               <button
                 type="button"
-                onClick={goBack}
-                disabled={saving || position === 0}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                onClick={() =>
+                  setLevel(level === "staff" ? "context" : "staff")
+                }
+                className="rounded border border-slate-300 px-2 py-1 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Previous
-              </button>
-              <button
-                type="button"
-                onClick={advance}
-                disabled={saving}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Skip
-              </button>
-              <button
-                type="button"
-                onClick={() => setPosition(review.spots.length)}
-                disabled={saving}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                Skip remaining
+                {level === "staff"
+                  ? "Show the staves around it"
+                  : "Back to this staff"}
               </button>
             </div>
-          </div>
-        </>
-      )}
-    </section>
+
+            <p className="mt-4 text-sm font-medium text-slate-900 dark:text-slate-100">
+              {questionFor(spot.head, [
+                spot.chosen,
+                ...spot.alternatives.map((alternative) => alternative.value),
+              ])}
+            </p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {mergeOptions([
+                {
+                  value: spot.chosen,
+                  label: readable(spot.head, spot.chosen),
+                  confidence: spot.confidence,
+                  recognised: true,
+                },
+                ...spot.alternatives.map((alternative) => ({
+                  value: alternative.value,
+                  label: readable(spot.head, alternative.value),
+                  confidence: alternative.confidence,
+                  recognised: false,
+                })),
+              ]).map((option) => (
+                <li key={option.label}>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void choose(spot.id, option.value)}
+                    className="flex w-full items-center gap-2 rounded border border-slate-200 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/40"
+                  >
+                    <span className="text-slate-900 dark:text-slate-100">
+                      {option.label}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {percent(option.confidence)}
+                      {option.recognised ? " — what the scanner chose" : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {error && (
+              <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              {/* The number that makes stopping a judgement rather than fatigue:
+                it rises as the queue is worked. */}
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {remaining - 1 > 0
+                  ? `${remaining - 1} more after this, all at least ${percent(
+                      review.spots[position + 1]?.confidence ?? spot.confidence,
+                    )} confident`
+                  : "This is the last one flagged."}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={goBack}
+                  disabled={saving || position === 0}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={advance}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Skip
+                </button>
+                {reviewGroup === "base" ? (
+                  <button
+                    type="button"
+                    onClick={() => setPosition(review.spots.length)}
+                    disabled={saving}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                  >
+                    Skip remaining base questions
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void finishStructuredFamily(true)}
+                      disabled={saving || deciding}
+                      className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
+                    >
+                      Skip remaining and use this head
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void finishStructuredFamily(false)}
+                      disabled={saving || deciding}
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Skip remaining and leave this head out
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+    </details>
   );
 }

@@ -3791,10 +3791,49 @@ describe('Scanner structured output selection', () => {
     expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(['beam']);
   });
 
+  it('returns base and structured review groups as separate queues', async () => {
+    const { job, service } = setup();
+    job.pages[0].engines['ots-homr'].review = {
+      staves: [
+        {
+          index: 0,
+          region: [0, 0, 100, 20],
+          tokens: [['note_1', 'C4', '_', '_', '_', 'upper']],
+          symbols: [
+            {
+              index: 0,
+              heads: {
+                pitch: {
+                  chosen: 'C4',
+                  confidence: 0.45,
+                  alternatives: [{ value: 'D4', confidence: 0.4 }]
+                },
+                'stem.direction': {
+                  chosen: 'none',
+                  confidence: 0.45,
+                  alternatives: [{ value: 'not_applicable', confidence: 0.4 }]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    const base = await service.pageReview('user-1', 'job-1', 1, 'ots-homr', 'base');
+    const stem = await service.pageReview('user-1', 'job-1', 1, 'ots-homr', 'stem');
+
+    expect(base.spots.map((spot: any) => spot.head)).toEqual(['pitch']);
+    expect(stem.spots.map((spot: any) => spot.head)).toEqual(['stem.direction']);
+    await expect(service.pageReview('user-1', 'job-1', 1, 'ots-homr', 'dynamic')).rejects.toThrow(
+      BadRequestException
+    );
+  });
+
   it('edits a reviewed structured choice in the retained proposal and queues materialization', async () => {
     const { job, jobsModel, service, storage } = setup();
     const run = job.pages[0].engines['ots-homr'];
-    run.selectedStructuredHeadFamilies = ['beam'];
+    run.selectedStructuredHeadFamilies = [];
     run.review = {
       staves: [
         {
@@ -3850,7 +3889,8 @@ describe('Scanner structured output selection', () => {
         0,
         'continue',
         'ots-homr',
-        scannerEngineReviewContentSignature(run)
+        scannerEngineReviewContentSignature(run),
+        'beam'
       )
     ).resolves.toMatchObject({ ok: true, pending: true, outcome: 'corrected' });
 
@@ -3859,7 +3899,7 @@ describe('Scanner structured output selection', () => {
     expect(run.review.staves[0].symbols[0].heads['beam.level.1'].chosen).toBe('begin');
     const writtenRun = jobsModel.updateOne.mock.calls[0][1].$set.pages[0].engines['ots-homr'];
     expect(writtenRun).toMatchObject({
-      requestedStructuredHeadFamilies: ['beam'],
+      requestedStructuredHeadFamilies: [],
       structuredProposalDirty: true
     });
     expect(writtenRun.review.staves[0].symbols[0].heads['beam.level.1']).toEqual({
@@ -3869,7 +3909,7 @@ describe('Scanner structured output selection', () => {
     });
 
     // A worker failure must be visible and retryable even though the page now
-    // has a correction (changing the selected family set remains forbidden).
+    // has a correction, and the family can be selected after review.
     job.pages = jobsModel.updateOne.mock.calls[0][1].$set.pages;
     delete writtenRun.requestedStructuredHeadFamilies;
     writtenRun.structuredOutputError = 'Unable to apply structured output: temporary failure';
@@ -3877,11 +3917,12 @@ describe('Scanner structured output selection', () => {
     expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(['beam']);
   });
 
-  it('requires selection before human corrections', async () => {
-    const { service } = setup({ corrected: true });
+  it('allows a reviewed OTS-HOMR proposal to choose its structured subset afterward', async () => {
+    const { job, service } = setup({ corrected: true });
     await expect(
       service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['beam'])
-    ).rejects.toThrow(/before correcting or reconciling/);
+    ).resolves.toBeDefined();
+    expect(job.pages[0].engines['ots-homr'].requestedStructuredHeadFamilies).toEqual(['beam']);
   });
 
   it('repairs an OTS-HOMR result hidden by an unplanned pending HOMR run', async () => {

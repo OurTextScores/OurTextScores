@@ -27,7 +27,12 @@ function review(overrides: Record<string, unknown> = {}) {
       },
     ],
     remainingFloor: 0.41,
-    suitability: { symbols: 40, spots: 2, askableRatio: 0.05, unsuitable: false },
+    suitability: {
+      symbols: 40,
+      spots: 2,
+      askableRatio: 0.05,
+      unsuitable: false,
+    },
     ...overrides,
   };
 }
@@ -44,7 +49,9 @@ describe("PageReview", () => {
     render(<PageReview jobId="job-1" pageNumber={3} />);
     expect(await screen.findByText("Which note is this?")).toBeInTheDocument();
     expect(screen.getByText("C4")).toBeInTheDocument();
-    expect(screen.getByText(/41% — what the scanner chose/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/41% — what the scanner chose/),
+    ).toBeInTheDocument();
     expect(screen.getByText("D4")).toBeInTheDocument();
   });
 
@@ -61,8 +68,12 @@ describe("PageReview", () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
-    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
-    expect(screen.getByText(/This is the last one flagged/)).toBeInTheDocument();
+    expect(
+      await screen.findByText("Which duration is this?"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/This is the last one flagged/),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(
       await screen.findByText(/That is everything flagged on this page/),
@@ -73,7 +84,7 @@ describe("PageReview", () => {
     mockReview(review({ spots: [], remainingFloor: null }));
     render(<PageReview jobId="job-1" pageNumber={3} />);
     expect(
-      await screen.findByText(/Nothing on this page looked uncertain/),
+      await screen.findByText(/Nothing in this group looked uncertain/),
     ).toBeInTheDocument();
   });
 
@@ -82,11 +93,18 @@ describe("PageReview", () => {
     // nearly right. The queue stays available: a signal, never a gate.
     mockReview(
       review({
-        suitability: { symbols: 899, spots: 621, askableRatio: 0.69, unsuitable: true },
+        suitability: {
+          symbols: 899,
+          spots: 621,
+          askableRatio: 0.69,
+          unsuitable: true,
+        },
       }),
     );
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    expect(await screen.findByText(/past what automatic recognition can do/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/past what automatic recognition can do/),
+    ).toBeInTheDocument();
     expect(screen.getByText("Which note is this?")).toBeInTheDocument();
   });
 
@@ -94,13 +112,23 @@ describe("PageReview", () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
     const image = await screen.findByRole("img");
-    expect(image).toHaveAttribute("src", expect.stringContaining("level=staff"));
-    expect(image).toHaveAttribute("src", expect.stringContaining("engineId=homr"));
     expect(image).toHaveAttribute(
       "src",
-      expect.stringContaining("contentSignature=scanner-engine-review-v1%3Abefore"),
+      expect.stringContaining("level=staff"),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Show the staves around it" }));
+    expect(image).toHaveAttribute(
+      "src",
+      expect.stringContaining("engineId=homr"),
+    );
+    expect(image).toHaveAttribute(
+      "src",
+      expect.stringContaining(
+        "contentSignature=scanner-engine-review-v1%3Abefore",
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the staves around it" }),
+    );
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
         "src",
@@ -115,14 +143,18 @@ describe("PageReview", () => {
     // exactly as unanswerable as the whole page was.
     mockReview(review());
     const { container } = render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Show the staves around it" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show the staves around it" }),
+    );
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
         "src",
         expect.stringContaining("level=context"),
       ),
     );
-    const overlay = container.querySelector('[aria-hidden="true"].absolute') as HTMLElement;
+    const overlay = container.querySelector(
+      '[aria-hidden="true"].absolute',
+    ) as HTMLElement;
     expect(overlay).not.toBeNull();
     expect(overlay.style.left).toBe("47%");
   });
@@ -131,7 +163,9 @@ describe("PageReview", () => {
     // The previous spot's zoom says nothing about the next one.
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Show the staves around it" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show the staves around it" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     await waitFor(() =>
       expect(screen.getByRole("img")).toHaveAttribute(
@@ -188,7 +222,10 @@ describe("PageReview", () => {
         calls.push(JSON.parse(init.body));
         return {
           ok: true,
-          json: async () => ({ ok: true, contentSignature: "scanner-engine-review-v1:after" }),
+          json: async () => ({
+            ok: true,
+            contentSignature: "scanner-engine-review-v1:after",
+          }),
         } as Response;
       }
       return { ok: true, json: async () => review() } as Response;
@@ -206,7 +243,9 @@ describe("PageReview", () => {
         },
       ]),
     );
-    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Which duration is this?"),
+    ).toBeInTheDocument();
   });
 
   it("confirming the recognised value is recorded too", async () => {
@@ -218,14 +257,19 @@ describe("PageReview", () => {
         calls.push(JSON.parse(init.body));
         return {
           ok: true,
-          json: async () => ({ ok: true, contentSignature: "scanner-engine-review-v1:after" }),
+          json: async () => ({
+            ok: true,
+            contentSignature: "scanner-engine-review-v1:after",
+          }),
         } as Response;
       }
       return { ok: true, json: async () => review() } as Response;
     }) as any;
 
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: /what the scanner chose/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /what the scanner chose/ }),
+    );
     await waitFor(() =>
       expect(calls).toEqual([
         {
@@ -256,7 +300,9 @@ describe("PageReview", () => {
 
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /sixteenth note/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /sixteenth note/ }),
+    );
 
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[1]).toMatchObject({
@@ -282,22 +328,29 @@ describe("PageReview", () => {
   it("refreshes the review when another change invalidates its signature", async () => {
     let gets = 0;
     global.fetch = jest.fn(async (_url: any, init: any) => {
-      if (init?.method === "POST") return { ok: false, status: 409 } as Response;
+      if (init?.method === "POST")
+        return { ok: false, status: 409 } as Response;
       gets += 1;
       return {
         ok: true,
         json: async () =>
-          review({ contentSignature: `scanner-engine-review-v1:version-${gets}` }),
+          review({
+            contentSignature: `scanner-engine-review-v1:version-${gets}`,
+          }),
       } as Response;
     }) as any;
 
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
 
-    expect(await screen.findByText(/page changed while you were reviewing/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/page changed while you were reviewing/),
+    ).toBeInTheDocument();
     expect(screen.getByRole("img")).toHaveAttribute(
       "src",
-      expect.stringContaining("contentSignature=scanner-engine-review-v1%3Aversion-2"),
+      expect.stringContaining(
+        "contentSignature=scanner-engine-review-v1%3Aversion-2",
+      ),
     );
   });
 
@@ -307,7 +360,9 @@ describe("PageReview", () => {
     mockReview(review());
     const { container } = render(<PageReview jobId="job-1" pageNumber={3} />);
     await screen.findByText("Which note is this?");
-    const overlay = container.querySelector('[aria-hidden="true"].absolute') as HTMLElement;
+    const overlay = container.querySelector(
+      '[aria-hidden="true"].absolute',
+    ) as HTMLElement;
     expect(overlay).not.toBeNull();
     expect(overlay.style.left).toBe("47%");
     expect(screen.getByText(/Highlighted: this symbol/)).toBeInTheDocument();
@@ -329,7 +384,9 @@ describe("PageReview", () => {
       }),
     );
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    expect(await screen.findByText(/roughly where it falls/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/roughly where it falls/),
+    ).toBeInTheDocument();
   });
 
   it("says when it could only narrow to the measure", async () => {
@@ -398,7 +455,9 @@ describe("PageReview", () => {
       }),
     );
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Which duration is this?"),
+    ).toBeInTheDocument();
   });
 
   it("can go back to fix an earlier answer", async () => {
@@ -407,7 +466,9 @@ describe("PageReview", () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
     fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
-    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Which duration is this?"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(await screen.findByText("Which note is this?")).toBeInTheDocument();
   });
@@ -415,17 +476,29 @@ describe("PageReview", () => {
   it("cannot go back past the first spot", async () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    expect(await screen.findByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Previous" }),
+    ).toBeDisabled();
   });
 
   it("skips the rest and still offers a way back", async () => {
     // Stopping early is a normal ending, not a dead end.
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Skip remaining" }));
-    expect(await screen.findByText(/everything flagged on this page/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Back to the last one" }));
-    expect(await screen.findByText("Which duration is this?")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Skip remaining base questions",
+      }),
+    );
+    expect(
+      await screen.findByText(/everything flagged on this page/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to the last one" }),
+    );
+    expect(
+      await screen.findByText("Which duration is this?"),
+    ).toBeInTheDocument();
   });
 
   it("does not offer the same answer twice", async () => {
@@ -463,7 +536,10 @@ describe("PageReview", () => {
         calls.push(JSON.parse(init.body));
         return {
           ok: true,
-          json: async () => ({ ok: true, contentSignature: "scanner-engine-review-v1:after" }),
+          json: async () => ({
+            ok: true,
+            contentSignature: "scanner-engine-review-v1:after",
+          }),
         } as Response;
       }
       return {
@@ -488,7 +564,9 @@ describe("PageReview", () => {
     }) as any;
 
     render(<PageReview jobId="job-1" pageNumber={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: /nothing here/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /nothing here/ }),
+    );
     // The higher-confidence member of the merged pair.
     await waitFor(() =>
       expect(calls).toEqual([
@@ -500,6 +578,52 @@ describe("PageReview", () => {
         },
       ]),
     );
+  });
+
+  it("separates stem review and explains stemless notes versus inapplicable positions", async () => {
+    const decide = jest.fn(async () => undefined);
+    mockReview(
+      review({
+        reviewGroup: "stem",
+        spots: [
+          {
+            id: 0,
+            head: "stem.direction",
+            chosen: "not_applicable",
+            confidence: 0.45,
+            alternatives: [{ value: "none", confidence: 0.4 }],
+          },
+        ],
+      }),
+    );
+    render(
+      <PageReview
+        jobId="job-1"
+        pageNumber={3}
+        engineId="ots-homr"
+        reviewGroup="stem"
+        onStructuredFamilyDecision={decide}
+      />,
+    );
+
+    const summary = (
+      await screen.findByText(/Stem direction · 1 uncertain/)
+    ).closest("summary");
+    fireEvent.click(summary!);
+    expect(
+      await screen.findByText(
+        /not a stem-bearing note \(for example, a rest\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/stemless note \(for example, a whole note\)/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Skip remaining and leave this head out",
+      }),
+    );
+    await waitFor(() => expect(decide).toHaveBeenCalledWith("stem", false));
   });
 });
 
@@ -527,7 +651,12 @@ describe("mergeOptions", () => {
   it("re-sorts so the likeliest answer leads", () => {
     const merged = mergeOptions([
       { value: "C4", label: "C4", confidence: 0.4, recognised: true },
-      { value: ".", label: "nothing here", confidence: 0.31, recognised: false },
+      {
+        value: ".",
+        label: "nothing here",
+        confidence: 0.31,
+        recognised: false,
+      },
       { value: "_", label: "nothing here", confidence: 0.2, recognised: false },
     ]);
     expect(merged[0].label).toBe("nothing here");

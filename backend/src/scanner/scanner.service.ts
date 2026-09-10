@@ -115,8 +115,10 @@ import {
   DEFAULT_REVIEW_THRESHOLDS,
   homrReviewVoicesForRegeneration,
   pageSuitability,
+  ReviewThresholds,
   remainingFloor,
-  selectSpots
+  selectSpots,
+  structuredFamilyForReviewHead
 } from './scanner-review';
 import { ScannerAlertService } from './scanner-alert.service';
 import { ScannerProviderService } from './scanner-provider.service';
@@ -653,12 +655,12 @@ export class ScannerService implements OnModuleInit {
     const reviewRefresh = this.structuredReviewNeedsRefresh(run);
     if (
       run.reviewedMusicXml ||
-      ((run.corrections?.length || 0) > 0 && !correctionRetry) ||
+      ((run.corrections?.length || 0) > 0 && engineId !== 'ots-homr' && !correctionRetry) ||
       page.mergedMusicXml ||
       page.mergedScore
     ) {
       throw new ConflictException(
-        'Choose structured output before correcting or reconciling this page'
+        'Structured output cannot change after this page has been finalized or reconciled'
       );
     }
     if (
@@ -998,7 +1000,8 @@ export class ScannerService implements OnModuleInit {
     userId: string,
     jobId: string,
     pageNumber: number,
-    engineId?: string
+    engineId?: string,
+    reviewGroup?: string
   ): Promise<any> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
@@ -1011,17 +1014,14 @@ export class ScannerService implements OnModuleInit {
     const reviewEngine = this.reviewEngineForPage(job, page, engineId);
     const staves = reviewEngine.run.review?.staves || [];
     const thresholds = this.reviewThresholds();
-    const spots = selectSpots(
-      staves,
-      thresholds,
-      reviewEngine.run.selectedStructuredHeadFamilies || []
-    );
+    const spots = this.spotsForReviewGroup(reviewEngine.run, staves, thresholds, reviewGroup);
     const suitability = pageSuitability(staves, spots);
 
     return {
       pageNumber,
       status: page.status,
       engineId: reviewEngine.engineId,
+      reviewGroup: reviewGroup || 'all',
       contentSignature: scannerEngineReviewContentSignature(reviewEngine.run),
       structuredOutputPending: Boolean(reviewEngine.run.requestedStructuredHeadFamilies),
       // No cap and no truncation: the reviewer stops when the remainder is good
@@ -2978,7 +2978,8 @@ export class ScannerService implements OnModuleInit {
     spotId: number,
     chosen: string,
     engineId: string,
-    contentSignature: string
+    contentSignature: string,
+    reviewGroup?: string
   ): Promise<any> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
@@ -2994,10 +2995,11 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Scanner review content changed; refresh and try again');
     }
     const staves = reviewEngine.run.review?.staves || [];
-    const spots = selectSpots(
+    const spots = this.spotsForReviewGroup(
+      reviewEngine.run,
       staves,
       this.reviewThresholds(),
-      reviewEngine.run.selectedStructuredHeadFamilies || []
+      reviewGroup
     );
     const spot = spots[spotId];
     if (!spot) throw new NotFoundException('Scanner review spot not found');
@@ -3378,7 +3380,8 @@ export class ScannerService implements OnModuleInit {
     spotId: number,
     level: CropLevel,
     engineId: string,
-    contentSignature: string
+    contentSignature: string,
+    reviewGroup?: string
   ): Promise<{ body: Buffer; contentType: string }> {
     this.assertAvailable(userId);
     const job = await this.ownedJob(userId, jobId);
@@ -3397,10 +3400,11 @@ export class ScannerService implements OnModuleInit {
       throw new ConflictException('Scanner review content changed; refresh and try again');
     }
     const staves = reviewEngine.run.review?.staves || [];
-    const spots = selectSpots(
+    const spots = this.spotsForReviewGroup(
+      reviewEngine.run,
       staves,
       this.reviewThresholds(),
-      reviewEngine.run.selectedStructuredHeadFamilies || []
+      reviewGroup
     );
     const spot = spots[spotId];
     if (!spot) throw new NotFoundException('Scanner review spot not found');
@@ -3439,6 +3443,29 @@ export class ScannerService implements OnModuleInit {
     const rect = cropForLevel(level, staff?.region, bounds, neighbours);
     const body = await sharp(source).extract(rect).png().toBuffer();
     return { body, contentType: 'image/png' };
+  }
+
+  private spotsForReviewGroup(
+    run: ScannerEngineRun,
+    staves: any[],
+    thresholds: ReviewThresholds,
+    requestedGroup?: string
+  ) {
+    const group = requestedGroup?.trim();
+    if (!group) {
+      return selectSpots(staves, thresholds, run.selectedStructuredHeadFamilies || []);
+    }
+    if (group === 'base') {
+      return selectSpots(staves, thresholds, []).filter(
+        (spot) => structuredFamilyForReviewHead(spot.head) === null
+      );
+    }
+    if (!run.availableStructuredHeadFamilies?.includes(group)) {
+      throw new BadRequestException('Invalid structured review group');
+    }
+    return selectSpots(staves, thresholds, [group]).filter(
+      (spot) => structuredFamilyForReviewHead(spot.head) === group
+    );
   }
 
   private float(key: string, fallback: number): number {

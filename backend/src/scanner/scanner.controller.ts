@@ -300,9 +300,10 @@ export class ScannerController {
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
-    @Query('engineId') engineId?: string
+    @Query('engineId') engineId?: string,
+    @Query('group') reviewGroup?: string
   ) {
-    return this.scanner.pageReview(user.userId, jobId, pageNumber, engineId);
+    return this.scanner.pageReview(user.userId, jobId, pageNumber, engineId, reviewGroup);
   }
 
   @Get(':jobId/pages/:pageNumber/comparison')
@@ -615,7 +616,13 @@ export class ScannerController {
     @Param('jobId') jobId: string,
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
     @Body()
-    body: { spotId?: number; chosen?: string; engineId?: string; contentSignature?: string }
+    body: {
+      spotId?: number;
+      chosen?: string;
+      engineId?: string;
+      contentSignature?: string;
+      reviewGroup?: string;
+    }
   ) {
     return this.scanner.applyCorrection(
       user.userId,
@@ -624,7 +631,8 @@ export class ScannerController {
       Number(body?.spotId),
       String(body?.chosen ?? ''),
       String(body?.engineId ?? ''),
-      String(body?.contentSignature ?? '')
+      String(body?.contentSignature ?? ''),
+      String(body?.reviewGroup ?? '') || undefined
     );
   }
 
@@ -638,6 +646,7 @@ export class ScannerController {
     level: 'staff' | 'context' | undefined,
     @Query('engineId') engineId: string | undefined,
     @Query('contentSignature') contentSignature: string | undefined,
+    @Query('group') reviewGroup: string | undefined,
     @Res({ passthrough: true }) response: Response
   ) {
     const crop = await this.scanner.pageCrop(
@@ -647,7 +656,8 @@ export class ScannerController {
       spotId,
       level || 'staff',
       String(engineId ?? ''),
-      String(contentSignature ?? '')
+      String(contentSignature ?? ''),
+      reviewGroup
     );
     response.setHeader('Content-Type', crop.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

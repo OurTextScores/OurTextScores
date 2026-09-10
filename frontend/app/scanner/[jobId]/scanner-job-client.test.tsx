@@ -977,9 +977,28 @@ describe("ScannerJobClient", () => {
     ).toBe(false);
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Apply and review selected heads",
+        name: "Review selected heads",
       }),
     );
+    expect(
+      fetchMock.mock.calls.some(([, init]) => init?.method === "PUT"),
+    ).toBe(false);
+    expect(
+      await screen.findByText(/Beams · no uncertain questions/),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Beams" })).toBeChecked(),
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "Rhythmic spacing" }),
+    ).not.toBeChecked();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Review questions are ready below.",
+    );
+    expect(
+      screen.getByText(/Dynamics remain diagnostic only/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Use this head" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
@@ -989,18 +1008,6 @@ describe("ScannerJobClient", () => {
         }),
       ),
     );
-    await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: "Beams" })).toBeChecked(),
-    );
-    expect(
-      screen.getByRole("checkbox", { name: "Rhythmic spacing" }),
-    ).not.toBeChecked();
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Selected heads applied. Review the uncertain multiple-choice questions below.",
-    );
-    expect(
-      screen.getByText(/Dynamics are shown only as diagnostic evidence/),
-    ).toBeInTheDocument();
   });
 
   it("offers review regeneration for a retained pre-review provider result", async () => {
@@ -1060,7 +1067,7 @@ describe("ScannerJobClient", () => {
     render(<ScannerJobClient jobId="job-1" />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Generate review questions" }),
+      await screen.findByRole("button", { name: "Review selected heads" }),
     );
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(

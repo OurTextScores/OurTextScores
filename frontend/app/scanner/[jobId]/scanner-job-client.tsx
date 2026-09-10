@@ -120,6 +120,9 @@ export default function ScannerJobClient({
   const [structuredDrafts, setStructuredDrafts] = useState<
     Record<string, string[]>
   >({});
+  const [structuredReviewFamilies, setStructuredReviewFamilies] = useState<
+    Record<string, string[]>
+  >({});
   const [structuredReviewTarget, setStructuredReviewTarget] = useState<{
     pageNumber: number;
     engineId: string;
@@ -313,10 +316,36 @@ export default function ScannerJobClient({
       // Rendered derivatives rebuild asynchronously; refresh once after the
       // worker has had a chance to replace them.
       window.setTimeout(() => void refresh().catch(() => undefined), 2_000);
+      return true;
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
+      return false;
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function beginStructuredReview(
+    pageNumber: number,
+    engineId: string,
+    families: string[],
+    appliedFamilies: string[],
+    requiresBackendRefresh: boolean,
+  ) {
+    const key = `${pageNumber}:${engineId}`;
+    setStructuredReviewFamilies((current) => ({
+      ...current,
+      [key]: families,
+    }));
+    setStructuredReviewReady({ pageNumber, engineId });
+    window.requestAnimationFrame(() =>
+      spotReviewRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      }),
+    );
+    if (requiresBackendRefresh) {
+      await selectStructuredOutput(pageNumber, engineId, appliedFamilies);
     }
   }
 
@@ -1064,9 +1093,12 @@ export default function ScannerJobClient({
                 const structuredDraftKey = `${selected.pageNumber}:${engineId}`;
                 const draftFamilies =
                   structuredDrafts[structuredDraftKey] || selectedFamilies;
+                const activeReviewFamilies =
+                  structuredReviewFamilies[structuredDraftKey] ||
+                  selectedFamilies;
                 const structuredDraftDirty =
                   JSON.stringify(draftFamilies) !==
-                  JSON.stringify(selectedFamilies);
+                  JSON.stringify(activeReviewFamilies);
                 const structuredRetryable = Boolean(
                   run?.structuredOutputRetryable,
                 );
@@ -1176,10 +1208,10 @@ export default function ScannerJobClient({
                           })}
                         </div>
                         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          Core output is used with no boxes checked. Changes
-                          regenerate MusicXML from stored predictions without
-                          rerunning recognition. Dynamics are shown only as
-                          diagnostic evidence and are never applied.
+                          Choose the heads you want to inspect. Each review card
+                          then lets you use that head or leave it out. Core
+                          recognition is reviewed separately. Dynamics remain
+                          diagnostic only.
                         </p>
                         {!readOnly && (
                           <button
@@ -1193,10 +1225,13 @@ export default function ScannerJobClient({
                                 `structured-${selected.pageNumber}-${engineId}`
                             }
                             onClick={() =>
-                              void selectStructuredOutput(
+                              void beginStructuredReview(
                                 selected.pageNumber,
                                 engineId,
                                 draftFamilies,
+                                selectedFamilies,
+                                structuredRetryable ||
+                                  structuredReviewRefreshable,
                               )
                             }
                             className="mt-3 rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
@@ -1204,17 +1239,13 @@ export default function ScannerJobClient({
                             {run?.structuredOutputPending ||
                             busyAction ===
                               `structured-${selected.pageNumber}-${engineId}`
-                              ? "Applying selected heads…"
-                              : structuredRetryable
-                                ? "Retry applying review choice"
-                                : structuredReviewRefreshable
-                                  ? "Generate review questions"
-                                  : "Apply and review selected heads"}
+                              ? "Preparing review…"
+                              : "Review selected heads"}
                           </button>
                         )}
                         {run?.structuredOutputPending && (
                           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-                            Applying selected heads…
+                            Preparing review questions…
                           </p>
                         )}
                         {run?.structuredOutputError && (
@@ -1296,22 +1327,48 @@ export default function ScannerJobClient({
                     role="status"
                     className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
                   >
-                    Selected heads applied. Review the uncertain multiple-choice
-                    questions below.
+                    Review questions are ready below. Open one card at a time;
+                    structured cards let you decide whether to use that head.
                   </p>
                 )}
-                {reviewableEngineIds.map((engineId) => (
-                  <PageReview
-                    key={`${engineId}-${(
-                      selected.engines?.[engineId]
-                        ?.selectedStructuredHeadFamilies || []
-                    ).join(",")}`}
-                    jobId={jobId}
-                    pageNumber={selected.pageNumber}
-                    engineId={engineId}
-                    engineLabel={engineLabel(job, engineId)}
-                  />
-                ))}
+                {reviewableEngineIds.flatMap((engineId) => {
+                  const run = selected.engines?.[engineId];
+                  const key = `${selected.pageNumber}:${engineId}`;
+                  const reviewFamilies =
+                    structuredReviewFamilies[key] ||
+                    run?.selectedStructuredHeadFamilies ||
+                    [];
+                  const cards = ["base", ...reviewFamilies];
+                  return cards.map((reviewGroup) => (
+                    <PageReview
+                      key={`${engineId}-${reviewGroup}`}
+                      jobId={jobId}
+                      pageNumber={selected.pageNumber}
+                      engineId={engineId}
+                      engineLabel={engineLabel(job, engineId)}
+                      reviewGroup={reviewGroup}
+                      onStructuredFamilyDecision={async (family, apply) => {
+                        const applied =
+                          selected.engines?.[engineId]
+                            ?.selectedStructuredHeadFamilies || [];
+                        const next = apply
+                          ? (run?.availableStructuredHeadFamilies || []).filter(
+                              (candidate) =>
+                                applied.includes(candidate) ||
+                                candidate === family,
+                            )
+                          : applied.filter((candidate) => candidate !== family);
+                        const saved = await selectStructuredOutput(
+                          selected.pageNumber,
+                          engineId,
+                          next,
+                        );
+                        if (!saved)
+                          throw new Error("structured head decision failed");
+                      }}
+                    />
+                  ));
+                })}
               </div>
             )}
           {/*
