@@ -889,6 +889,9 @@ describe('ScannerWorkerService', () => {
       provenance: { executionProvider: 'torch.cuda' },
       requestId: 'transcoda-request',
       inferenceMs: 25,
+      crossStaffFindings: [
+        { kind: 'clef_profile_mismatch', message: "staff 3 decoded 'G2'", system: 1 }
+      ],
       generation: {
         hitMaxLength: true,
         sawEos: false,
@@ -966,6 +969,20 @@ describe('ScannerWorkerService', () => {
     // And it survives into the finished run, as the start of the interval
     // `durationMs` measures.
     expect(result.page.engines.transcoda.startedAt).toBeInstanceOf(Date);
+
+    /*
+        Findings reach the stored run, not just the response.
+
+        They were briefly written as `scanned.result.crossStaffFindings ? [] :
+        undefined` -- an empty array whenever findings existed. Everything upstream
+        looked healthy: the provider returned seventeen, the adapter mapped
+        seventeen, telemetry counted seventeen, and the page stored none, so the
+        review surface correctly rendered nothing and the loss looked like a page
+        that simply had no disagreements.
+    */
+    expect(result.page.engines.transcoda.crossStaffFindings).toEqual([
+      { kind: 'clef_profile_mismatch', message: "staff 3 decoded 'G2'", system: 1 }
+    ]);
 
     expect(result.page).toMatchObject({
       status: 'succeeded',
