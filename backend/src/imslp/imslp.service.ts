@@ -416,7 +416,7 @@ print(json.dumps(payload))
         .exec();
 
       return updated ?? null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -625,7 +625,7 @@ print(json.dumps(meta))
         | (ImslpWork & { metadata?: Record<string, unknown> })
         | null;
       return updated ?? null;
-    } catch (e) {
+    } catch {
       return null;
     }
   }

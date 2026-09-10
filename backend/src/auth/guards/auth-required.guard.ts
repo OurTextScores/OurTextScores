@@ -28,7 +28,7 @@ export class AuthRequiredGuard implements CanActivate {
         (req as any).user = principal;
       }
       return true;
-    } catch (e) {
+    } catch {
       throw new UnauthorizedException('Authentication required');
     }
   }

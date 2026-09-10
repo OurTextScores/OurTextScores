@@ -3,10 +3,6 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { AuthUserClaims, RequestUser } from './types/auth-user';
 
-function base64UrlEncode(input: Buffer): string {
-  return input.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-}
-
 function base64UrlDecode(input: string): Buffer {
   const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
   const pad = normalized.length % 4 === 2 ? '==' : normalized.length % 4 === 3 ? '=' : '';

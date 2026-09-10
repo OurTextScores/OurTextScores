@@ -244,7 +244,7 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
       path: '/tmp/canonical.xml',
       buffer: Buffer.from('<xml/>')
     }));
-    const runSpy = jest.fn(async (cmd: string, args: string[]) => {
+    const runSpy = jest.fn(async (cmd: string, _args: string[]) => {
       if (cmd === 'musescore4') return { stdout: '', stderr: '' };
       return { stdout: '', stderr: '' };
     });

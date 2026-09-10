@@ -3,12 +3,6 @@ import type { Model } from 'mongoose';
 import { ChangeReviewsService } from './change-reviews.service';
 import { ChangeReview } from './schemas/change-review.schema';
 import { ChangeReviewPatchset } from './schemas/change-review-patchset.schema';
-import { ChangeReviewThread } from './schemas/change-review-thread.schema';
-import { ChangeReviewComment } from './schemas/change-review-comment.schema';
-import { Work } from '../works/schemas/work.schema';
-import { Source } from '../works/schemas/source.schema';
-import { SourceRevision } from '../works/schemas/source-revision.schema';
-import { SourceBranch } from '../branches/schemas/source-branch.schema';
 import { PUBLIC_CHANGE_REVIEW_ID } from '../auth/public-examples';
 
 function chain<T>(result: T) {

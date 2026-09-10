@@ -11,7 +11,6 @@ import { Model } from 'mongoose';
 import { createHash } from 'node:crypto';
 import { extname } from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
-import { join } from 'node:path';
 import { WorksService } from './works.service';
 import { Source, SourceDocument } from './schemas/source.schema';
 import { StorageService } from '../storage/storage.service';
@@ -208,7 +207,6 @@ export class UploadSourceService {
     const format = this.resolveFormat(file, request.formatHint);
     const originalMscz = this.normalizeOriginalMsczFile(originalMsczFile);
     const label = existing.label; // keep existing label
-    const sourceType = existing.sourceType;
     const requestedBranchName = this.sanitizeBranchName(request.branchName) || 'trunk';
 
     await this.assertBranchWritable(trimmedWorkId, trimmedSourceId, requestedBranchName);
@@ -276,8 +274,6 @@ export class UploadSourceService {
     const manifestData = derivativeOutcome.manifestData;
     let fossilArtifactId: string | undefined;
     let committedBranchName: string | undefined;
-    const currentCanonical = derivativeOutcome.derivatives.canonicalXml;
-    const previousCanonical = previousRevision?.derivatives?.canonicalXml;
 
     // Derivatives successfully generated -> validation passed
     if (!pendingStatus) {
@@ -737,8 +733,6 @@ export class UploadSourceService {
     const manifest = derivativeOutcome.manifest;
     const manifestData = derivativeOutcome.manifestData;
     let fossilArtifactId: string | undefined;
-    const currentCanonical = derivativeOutcome.derivatives.canonicalXml;
-    const previousCanonical = previousRevision?.derivatives?.canonicalXml;
 
     // Derivatives successfully generated -> validation passed
     if (!pendingStatus) {

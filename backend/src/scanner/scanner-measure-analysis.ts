@@ -6,7 +6,6 @@ import {
   contents,
   directEntries,
   directText,
-  entryText,
   firstEntry,
   type OrderedEntry
 } from './scanner-musicxml-tree';

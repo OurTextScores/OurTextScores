@@ -1,4 +1,4 @@
-import { ExecutionContext, createParamDecorator } from '@nestjs/common';
+import { ExecutionContext } from '@nestjs/common';
 import { RequestUser } from './types/auth-user';
 
 // Re-create the decorator logic for testing

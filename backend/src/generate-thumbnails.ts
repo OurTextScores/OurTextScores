@@ -1,10 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { WorksService } from './works/works.service';
-import { InjectModel } from '@nestjs/mongoose';
-import { SourceRevision, SourceRevisionDocument } from './works/schemas/source-revision.schema';
-import { Source, SourceDocument } from './works/schemas/source.schema';
-import { Model } from 'mongoose';
+import { SourceRevisionDocument } from './works/schemas/source-revision.schema';
+import { SourceDocument } from './works/schemas/source.schema';
+import type { Model } from 'mongoose';
 import { StorageService } from './storage/storage.service';
 import { DerivativePipelineService } from './works/derivative-pipeline.service';
 import { Logger } from '@nestjs/common';
