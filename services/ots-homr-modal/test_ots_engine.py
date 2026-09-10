@@ -36,8 +36,8 @@ class FakeCore:
     def is_ready(self):
         return self.ready
 
-    def transcribe_both(self, page, content_type, detect_title):
-        self.calls.append((page, content_type, detect_title))
+    def transcribe_both(self, page, content_type, detect_title, score_profile=None):
+        self.calls.append((page, content_type, detect_title, score_profile))
         result = {"musicxml": b"<score-partwise/>", "review": {"staves": []}}
         return {"core": result, "additional-heads": result}
 

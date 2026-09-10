@@ -80,15 +80,19 @@ class PatchedHomrCore:
         return self._plain.is_ready() and self._with_heads.is_ready()
 
     def transcribe_both(
-        self, page: bytes, content_type: str, detect_title: bool
+        self,
+        page: bytes,
+        content_type: str,
+        detect_title: bool,
+        score_profile: Any = None,
     ) -> dict[str, dict[str, Any]]:
         suffix = ".png" if content_type == "image/png" else ".jpg"
         # Both candidates are first-class outputs. Selection belongs to the
         # consuming Scanner job, so changing it never repeats GPU inference.
         return {
-            "core": self._plain.transcribe(page, suffix, detect_title),
+            "core": self._plain.transcribe(page, suffix, detect_title, score_profile),
             "additional-heads": self._with_heads.transcribe(
-                page, suffix, detect_title
+                page, suffix, detect_title, score_profile
             ),
         }
 

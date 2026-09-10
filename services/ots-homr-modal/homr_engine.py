@@ -350,16 +350,27 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                         CODE_INVALID_IMAGE, "The page image could not be decoded"
                     )
                 source_height, source_width = source_image.shape[:2]
+                # Keyword arguments, not nine positional booleans. The positional
+                # form is how `score_profile` came to be silently omitted for as long
+                # as it was: every optional field after the ninth simply never got a
+                # value, and nothing said so.
+                profile_data = request.get("score_profile")
+                score_profile = None
+                if profile_data:
+                    from homr.score_profile import ScoreProfile
+
+                    score_profile = ScoreProfile.from_dict(profile_data)
                 config = ProcessingConfig(
-                    False,  # enable_debug
-                    False,  # enable_cache
-                    False,  # write_staff_positions
-                    False,  # read_staff_positions
-                    -1,  # selected_staff
-                    use_gpu,  # transformer_use_gpu
-                    use_gpu,  # segnet_use_gpu
-                    False,  # coreml_encoder
-                    bool(request["detect_title"]),
+                    enable_debug=False,
+                    enable_cache=False,
+                    write_staff_positions=False,
+                    read_staff_positions=False,
+                    selected_staff=-1,
+                    transformer_use_gpu=use_gpu,
+                    segnet_use_gpu=use_gpu,
+                    coreml_encoder=False,
+                    title_detection=bool(request["detect_title"]),
+                    score_profile=score_profile,
                 )
                 # The capture only observes: it tees the decoder's per-step
                 # distributions and the staff geometry HOMR already computes,
@@ -627,8 +638,14 @@ class HomrEngine:
             )
 
     def transcribe(
-        self, page: bytes, suffix: str, detect_title: bool
+        self, page: bytes, suffix: str, detect_title: bool, score_profile: Any = None
     ) -> dict[str, Any]:
+        """`score_profile` is a plain dict in homr's own schema, or None.
+
+        Passed as JSON-shaped data rather than a parsed object because it crosses a
+        process boundary; the child rebuilds it with homr's own parser, which is also
+        where a schema mismatch is caught.
+        """
         with self._lock:
             self._ensure_child_locked()
             return self._request_locked(
@@ -637,6 +654,7 @@ class HomrEngine:
                     "page": page,
                     "suffix": suffix,
                     "detect_title": detect_title,
+                    "score_profile": score_profile,
                 },
                 timeout=self._hard_timeout,
             )

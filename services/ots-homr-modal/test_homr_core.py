@@ -22,8 +22,8 @@ class FakeHomrEngine:
     def is_ready(self):
         return self.ready
 
-    def transcribe(self, page, suffix, detect_title):
-        self.calls.append((page, suffix, detect_title))
+    def transcribe(self, page, suffix, detect_title, score_profile=None):
+        self.calls.append((page, suffix, detect_title, score_profile))
         kind = b"heads" if self.options["structured_heads_path"] else b"plain"
         return {"musicxml": kind, "review": {"staves": [{"index": 0}]}}
 
@@ -104,5 +104,28 @@ class HomrCoreTest(unittest.TestCase):
             self.assertEqual(heads.calls[-1][3:], (structured, ["beam"]))
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_a_score_profile_reaches_both_candidates_unchanged(self):
+        """The profile crosses four signatures and a process boundary before it can
+        reach ProcessingConfig. Every one of those defaults it away if not passed, and
+        nothing downstream would say so - it would simply act as though no prior was
+        given, which is indistinguishable from the feature not existing."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            core = PatchedHomrCore(
+                artifacts=self.artifacts(root),
+                homr_root=root / "homr",
+                engine_factory=FakeHomrEngine,
+            )
+            plain, heads = FakeHomrEngine.instances
+            profile = {
+                "schemaVersion": "homr.score-profile.v1",
+                "parts": [{"stableId": "cello"}],
+            }
+
+            core.transcribe_both(b"page", "image/png", False, profile)
+            self.assertEqual([call[3] for call in plain.calls], [profile])
+            self.assertEqual([call[3] for call in heads.calls], [profile])
+
+            core.transcribe_both(b"page", "image/png", False)
+            self.assertEqual([call[3] for call in plain.calls], [profile, None])
+            self.assertEqual([call[3] for call in heads.calls], [profile, None])

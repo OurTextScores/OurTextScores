@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import hmac
 import logging
 import time
@@ -186,6 +187,7 @@ def create_provider_app(
         page: UploadFile = File(...),
         detectTitle: bool = Form(False),
         textDetector: str = Form("lyrics"),
+        scoreProfile: str = Form(""),
         idempotency_key: str = Header(..., alias="Idempotency-Key"),
         authorization: str | None = Header(None, alias="Authorization"),
     ) -> Any:
@@ -204,6 +206,20 @@ def create_provider_app(
             )
         if textDetector not in TEXT_DETECTORS:
             return _error(request_id, "invalid_option", "Invalid OTS-HOMR policy")
+        # A profile is a prior, so a malformed one is refused rather than dropped:
+        # silently ignoring it would make the feature untestable from outside and
+        # would let a caller believe a prior was in force when it was not.
+        profile_data = None
+        if scoreProfile:
+            if len(scoreProfile) > MAX_SCORE_PROFILE_BYTES:
+                return _error(
+                    request_id, "invalid_option", "Score profile is too large"
+                )
+            try:
+                profile_data = json.loads(scoreProfile)
+                validate_score_profile(profile_data)
+            except (json.JSONDecodeError, ValueError) as error:
+                return _error(request_id, "invalid_option", f"Invalid score profile: {error}")
         content = await page.read(max_page_bytes + 1)
         if len(content) > max_page_bytes:
             return _error(
@@ -223,6 +239,9 @@ def create_provider_app(
                     content,
                     str(detectTitle).lower().encode(),
                     textDetector.encode(),
+                    # Same page, different prior, is a different request: the cache
+                    # must not answer one from the other.
+                    scoreProfile.encode(),
                 )
             )
         ).hexdigest()
@@ -257,6 +276,7 @@ def create_provider_app(
                 page.content_type,
                 detectTitle,
                 textDetector,
+                profile_data,
             )
             core_result = result["core"]
             heads_result = result["additional-heads"]

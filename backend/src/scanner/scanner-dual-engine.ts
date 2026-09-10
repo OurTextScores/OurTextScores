@@ -129,9 +129,119 @@ export interface ScannerEngineCapabilitySnapshot {
 }
 
 export type ScannerOtsHomrTextDetector = 'lyrics' | 'non-lyric-text' | 'none';
+
+export const SCORE_PROFILE_SCHEMA_VERSION = 'homr.score-profile.v1';
+/** The most parts a profile may declare; a page of music, not a catalogue. */
+export const MAX_SCORE_PROFILE_PARTS = 64;
+
+/**
+ * One expected part of a score, as a caller describes it before recognition runs.
+ *
+ * Mirrors `homr.score_profile.ScorePart`, which is deliberately schema-versioned and
+ * stdlib-only so a caller outside that package can serialize it. Every field but
+ * `stableId` is evidence rather than a requirement: an unknown clef or an instrument
+ * homr has never seen are both valid, since the caller may know less than the schema
+ * can name.
+ */
+export interface ScannerScoreProfilePart {
+  /** Scoped to this job, not a universal instrument registry. */
+  stableId: string;
+  displayName?: string;
+  /** e.g. `['F4', 'C4', 'G2']` for a cello, which legitimately uses all three. */
+  likelyClefs?: string[];
+  transpositionSemitones?: number;
+  expectedStaffCount?: number;
+}
+
+/**
+ * A prior a reviewer can see and reject, never an assertion the pipeline enforces.
+ *
+ * It may raise findings; it may not override a decode. A profile is supplied by a
+ * human who may be wrong about which edition they uploaded, so a wrong one must
+ * degrade to today's behaviour rather than corrupt a page.
+ */
+export interface ScannerScoreProfile {
+  schemaVersion: typeof SCORE_PROFILE_SCHEMA_VERSION;
+  parts: ScannerScoreProfilePart[];
+}
+
+/**
+ * The profile as one deterministic string, for hashing and for the wire.
+ *
+ * Key order is fixed and absent fields are omitted, so two callers describing the same
+ * profile produce the same bytes and therefore the same idempotency key. Part order is
+ * preserved rather than sorted: a profile is an ordered set, top to bottom the way a
+ * score prints, and reordering it describes a different score.
+ */
+export function canonicalScoreProfileJson(profile: ScannerScoreProfile): string {
+  return JSON.stringify({
+    schemaVersion: profile.schemaVersion,
+    parts: profile.parts.map((part) => ({
+      stableId: part.stableId,
+      ...(part.displayName === undefined ? {} : { displayName: part.displayName }),
+      ...(part.likelyClefs === undefined ? {} : { likelyClefs: [...part.likelyClefs] }),
+      ...(part.transpositionSemitones === undefined
+        ? {}
+        : { transpositionSemitones: part.transpositionSemitones }),
+      ...(part.expectedStaffCount === undefined
+        ? {}
+        : { expectedStaffCount: part.expectedStaffCount })
+    }))
+  });
+}
+
 /** Immutable, user-selected policy for one OTS-HOMR engine run. */
 export interface ScannerOtsHomrEngineOptions {
   textDetector: ScannerOtsHomrTextDetector;
+  scoreProfile?: ScannerScoreProfile;
+}
+
+function isScoreProfilePart(value: unknown): value is ScannerScoreProfilePart {
+  if (!value || typeof value !== 'object') return false;
+  const part = value as Record<string, unknown>;
+  const known = [
+    'stableId',
+    'displayName',
+    'likelyClefs',
+    'transpositionSemitones',
+    'expectedStaffCount'
+  ];
+  if (Object.keys(part).some((key) => !known.includes(key))) return false;
+  if (typeof part.stableId !== 'string' || !part.stableId.trim()) return false;
+  if (part.displayName !== undefined && typeof part.displayName !== 'string') return false;
+  if (
+    part.likelyClefs !== undefined &&
+    (!Array.isArray(part.likelyClefs) ||
+      part.likelyClefs.some((clef) => typeof clef !== 'string' || !clef.trim()))
+  ) {
+    return false;
+  }
+  if (
+    part.transpositionSemitones !== undefined &&
+    !Number.isInteger(part.transpositionSemitones)
+  ) {
+    return false;
+  }
+  return (
+    part.expectedStaffCount === undefined ||
+    (Number.isInteger(part.expectedStaffCount) && (part.expectedStaffCount as number) > 0)
+  );
+}
+
+export function isScannerScoreProfile(value: unknown): value is ScannerScoreProfile {
+  if (!value || typeof value !== 'object') return false;
+  const profile = value as Record<string, unknown>;
+  if (Object.keys(profile).some((key) => !['schemaVersion', 'parts'].includes(key))) {
+    return false;
+  }
+  if (profile.schemaVersion !== SCORE_PROFILE_SCHEMA_VERSION) return false;
+  if (!Array.isArray(profile.parts) || profile.parts.length === 0) return false;
+  if (profile.parts.length > MAX_SCORE_PROFILE_PARTS) return false;
+  if (!profile.parts.every(isScoreProfilePart)) return false;
+  // A duplicate stableId makes a finding unattributable to a part, which is the one
+  // thing the id exists to do.
+  const ids = profile.parts.map((part) => (part as ScannerScoreProfilePart).stableId);
+  return new Set(ids).size === ids.length;
 }
 
 export interface ScannerEnginePlan {
@@ -149,10 +259,14 @@ export function isScannerOtsHomrEngineOptions(
 ): value is ScannerOtsHomrEngineOptions {
   if (!value || typeof value !== 'object') return false;
   const options = value as ScannerOtsHomrEngineOptions;
-  return (
-    Object.keys(value).length === 1 &&
-    ['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector)
-  );
+  // An allowlist rather than a key count. The count was doing the same job when
+  // `textDetector` was the only option, and the point of it - reject policy this
+  // build does not understand rather than silently ignore it - survives widening.
+  if (Object.keys(value).some((key) => !['textDetector', 'scoreProfile'].includes(key))) {
+    return false;
+  }
+  if (!['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector)) return false;
+  return options.scoreProfile === undefined || isScannerScoreProfile(options.scoreProfile);
 }
 
 const BUILTIN_SCANNER_CAPABILITIES: Record<string, ScannerEngineCapabilitySnapshot> = {

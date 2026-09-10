@@ -56,6 +56,7 @@ class OtsHomrEngine:
         content_type: str,
         detect_title: bool,
         text_detector: str,
+        score_profile: Any = None,
     ) -> dict[str, dict[str, Any]]:
         if not self._ready:
             raise RuntimeError("OTS-HOMR engine is not ready")
@@ -63,7 +64,7 @@ class OtsHomrEngine:
         # under that exact policy; its boxes are private diagnostics for now.
         if text_detector != "none":
             self.artifacts.detectors[text_detector].detect(page)
-        return self.core.transcribe_both(page, content_type, detect_title)
+        return self.core.transcribe_both(page, content_type, detect_title, score_profile)
 
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes:
         return self.core.regenerate(staffs, title)

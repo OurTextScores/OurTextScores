@@ -13,7 +13,11 @@ import {
   ScannerProviderConnection,
   ScannerProviderHttpService
 } from './scanner-provider-http.service';
-import { isScannerOtsHomrEngineOptions, ScannerOtsHomrEngineOptions } from './scanner-dual-engine';
+import {
+  canonicalScoreProfileJson,
+  isScannerOtsHomrEngineOptions,
+  ScannerOtsHomrEngineOptions
+} from './scanner-dual-engine';
 import { normaliseReview } from './scanner-provider.service';
 
 /** Strict adapter for the private rareNum OTS-HOMR provider. */
@@ -107,7 +111,9 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       modelRevision: this.expectedRevision,
       modelArtifactSha256: this.text('SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256'),
       preprocessingRevision: 'ots-ots-homr-rare-num-v1',
-      decodingRevision: `detector=${options.textDetector};heads=always-v2`,
+      decodingRevision:
+        `detector=${options.textDetector};heads=always-v2` +
+        `;profile=${this.scoreProfileFingerprint(options)}`,
       engineOptions: options,
       ...input
     });
@@ -127,6 +133,9 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     );
     form.set('detectTitle', String(input.detectTitle));
     form.set('textDetector', options.textDetector);
+    if (options.scoreProfile) {
+      form.set('scoreProfile', canonicalScoreProfileJson(options.scoreProfile));
+    }
     const envelope: any = await this.http.postJson({
       connection: this.connection(),
       path: '/v1/scan-page',
@@ -209,6 +218,22 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         executionProvider: String(engine.executionProvider)
       }
     };
+  }
+
+  /**
+   * A stable digest of the profile, for the idempotency fingerprint.
+   *
+   * A profile change has to create a new attempt rather than relabel an existing
+   * result: the same page read against a different prior is a different reading, and
+   * the findings attached to it describe a profile that is no longer in force.
+   * `none` when absent, so adding a profile changes the key and removing it restores
+   * the old one.
+   */
+  private scoreProfileFingerprint(options: ScannerOtsHomrEngineOptions): string {
+    if (!options.scoreProfile) return 'none';
+    return createHash('sha256')
+      .update(canonicalScoreProfileJson(options.scoreProfile))
+      .digest('hex');
   }
 
   private options(value: unknown): ScannerOtsHomrEngineOptions {
