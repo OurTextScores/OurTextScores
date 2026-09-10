@@ -172,7 +172,7 @@ The provider must return `ots-ots-homr-provider.v2` and a response shaped like:
   "inputSha256": "<sha256 of page bytes>",
   "engine": {
     "name": "ots-homr",
-    "serviceRevision": "ots-ots-homr-provider-v6",
+    "serviceRevision": "ots-ots-homr-provider-v7",
     "core": { "repository": "jhlusko/OTS-homr", "revision": "...", "sha256": "..." },
     "textDetector": { "id": "lyrics", "revision": "...", "sha256": "..." },
     "structuredHeads": {
@@ -398,7 +398,7 @@ SCANNER_OTS_HOMR_MODAL_TOKEN_ID=<wk-...>
 SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET=<ws-...>
 SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED=false
 
-SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v6
+SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v7
 SCANNER_EXPECTED_OTS_HOMR_CORE_REPOSITORY=jhlusko/OTS-homr
 SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION=1dbc87399c70238136da0dfd412fff032d17b76c
 SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256=1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3

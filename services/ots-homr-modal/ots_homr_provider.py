@@ -21,6 +21,7 @@ from typing import Any, Protocol
 from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from homr_review import prune_staves
+from score_profile_policy import MAX_SCORE_PROFILE_BYTES, validate_score_profile
 
 SCHEMA_VERSION = "ots-ots-homr-provider.v2"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
