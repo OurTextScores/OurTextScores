@@ -141,6 +141,7 @@ export default function ScannerJobClient({
   // Advancing a page from the bottom of a long document otherwise leaves the
   // reader looking at the footer of a page they have already dealt with.
   const pageSectionRef = useRef<HTMLElement | null>(null);
+  const structuredCompareWindowRef = useRef<Window | null>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
   const refresh = useCallback(async () => {
@@ -191,6 +192,8 @@ export default function ScannerJobClient({
     const run = page?.engines?.[structuredLaunchTarget.engineId];
     if (!run || run.structuredOutputPending) return;
     if (run.structuredOutputError) {
+      structuredCompareWindowRef.current?.close();
+      structuredCompareWindowRef.current = null;
       setStructuredLaunchTarget(null);
       return;
     }
@@ -217,6 +220,18 @@ export default function ScannerJobClient({
             rightLabel: `OTS-HOMR + ${selected.map(structuredHeadLabel).join(", ")}`,
           }).toString()}`;
     setStructuredLaunchTarget(null);
+    if (structuredLaunchTarget.mode === "compare") {
+      const reviewWindow = structuredCompareWindowRef.current;
+      structuredCompareWindowRef.current = null;
+      if (!reviewWindow || reviewWindow.closed) {
+        setError(
+          "The comparison is ready, but its new tab was closed. Select Review selected heads (compare) to open it again.",
+        );
+        return;
+      }
+      reviewWindow.location.assign(target);
+      return;
+    }
     router.push(target);
   }, [base, job, jobId, router, structuredLaunchTarget]);
 
@@ -329,8 +344,21 @@ export default function ScannerJobClient({
     families: string[],
     mode: "compare" | "merge",
   ) {
+    if (mode === "compare") {
+      const reviewWindow = window.open("about:blank", "_blank");
+      if (!reviewWindow) {
+        setError(
+          "Your browser blocked the comparison tab. Allow pop-ups for this site and try again.",
+        );
+        return;
+      }
+      reviewWindow.opener = null;
+      structuredCompareWindowRef.current = reviewWindow;
+    }
     setStructuredLaunchTarget({ pageNumber, engineId, families, mode });
     if (!(await selectStructuredOutput(pageNumber, engineId, families))) {
+      structuredCompareWindowRef.current?.close();
+      structuredCompareWindowRef.current = null;
       setStructuredLaunchTarget(null);
     }
   }

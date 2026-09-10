@@ -232,7 +232,8 @@ function indistinguishableEdges(edges: CandidateEdge[]): boolean {
  */
 export function matchScannerMusicXmlParts(
   baseInput: ScannerPartDocumentInput,
-  candidateInput: ScannerPartDocumentInput
+  candidateInput: ScannerPartDocumentInput,
+  options: { sharedDocumentPartIdentity?: boolean } = {}
 ): ScannerPartMatchResult {
   if (baseInput.engineId === candidateInput.engineId) {
     throw new Error('Scanner comparison requires two distinct engines');
@@ -243,6 +244,60 @@ export function matchScannerMusicXmlParts(
   };
   const baseParts = readParts(baseInput);
   const candidateParts = readParts(candidateInput);
+  if (options.sharedDocumentPartIdentity) {
+    const candidatesById = new Map(
+      candidateParts.map((part) => [part.endpoint.documentPartId, part] as const)
+    );
+    const matchedCandidateIds = new Set<string>();
+    const matches: ScannerPartMatch[] = baseParts.map((base) => {
+      const candidate = candidatesById.get(base.endpoint.documentPartId);
+      const selected = candidate ? edge(base, candidate) : undefined;
+      if (
+        !selected ||
+        !selected.evidence.ordinalEqual ||
+        !selected.evidence.staffCountEqual ||
+        selected.evidence.structureAgreement! < 0.7
+      ) {
+        return {
+          outcome: 'unmatched',
+          base: base.endpoint,
+          candidate: candidate?.endpoint,
+          evidence: selected?.evidence || {},
+          refusalReason: `Part ${base.endpoint.ordinal! + 1} changed identity or structure between related readings`
+        };
+      }
+      matchedCandidateIds.add(candidate.endpoint.documentPartId);
+      return {
+        outcome: 'matched',
+        stablePartKey: stablePartKey(pair, selected),
+        base: base.endpoint,
+        candidate: candidate.endpoint,
+        evidence: selected.evidence
+      };
+    });
+    for (const candidate of candidateParts) {
+      if (matchedCandidateIds.has(candidate.endpoint.documentPartId)) continue;
+      matches.push({
+        outcome: 'unmatched',
+        candidate: candidate.endpoint,
+        evidence: {},
+        refusalReason: `Candidate part ${candidate.endpoint.ordinal! + 1} has no related base part`
+      });
+    }
+    const refusalReasons = matches.flatMap((match) =>
+      match.outcome === 'matched' ? [] : [match.refusalReason]
+    );
+    return {
+      version: SCANNER_PART_MATCH_VERSION,
+      pair,
+      matches,
+      comparisonAllowed:
+        refusalReasons.length === 0 &&
+        matches.length === baseParts.length &&
+        matches.length === candidateParts.length,
+      refusalReasons
+    };
+  }
   const allEdges = baseParts.flatMap((base) =>
     candidateParts.map((candidate) => edge(base, candidate))
   );

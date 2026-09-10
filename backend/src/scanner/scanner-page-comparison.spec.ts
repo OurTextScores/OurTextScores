@@ -197,6 +197,53 @@ describe('scanner page comparison pipeline', () => {
     });
   });
 
+  it('compares ambiguous-looking parts when both readings retain one parse identity', async () => {
+    const value = input();
+    const relatedScore = (voice: number) =>
+      Buffer.from(
+        '<score-partwise><part-list>' +
+          '<score-part id="P1"><part-name>Music</part-name></score-part>' +
+          '<score-part id="P2"><part-name>Music</part-name></score-part>' +
+          '</part-list>' +
+          ['P1', 'P2']
+            .map(
+              (id) =>
+                `<part id="${id}"><measure number="1"><note><pitch><step>C</step>` +
+                `<octave>4</octave></pitch><duration>1</duration><voice>${voice}</voice>` +
+                '<staff>1</staff></note></measure></part>'
+            )
+            .join('') +
+          '</score-partwise>'
+      );
+    value.base.engineId = 'ots-homr-core';
+    value.base.displayName = 'OTS-HOMR base';
+    value.base.musicXml = relatedScore(1);
+    value.base.artifactChecksumSha256 = sha(value.base.musicXml);
+    delete (value.base as any).measureGeometryProducer;
+    value.candidate.engineId = 'ots-homr-selected-heads';
+    value.candidate.displayName = 'OTS-HOMR + Beams';
+    value.candidate.musicXml = relatedScore(2);
+    value.candidate.artifactChecksumSha256 = sha(value.candidate.musicXml);
+
+    const result = await compareScannerPage({
+      ...value,
+      sharedDocumentPartIdentity: true
+    });
+
+    expect(result).toMatchObject({
+      analysis: {
+        status: 'succeeded',
+        blocks: [
+          { stablePartKey: expect.any(String), differenceClasses: ['voice'] },
+          { stablePartKey: expect.any(String), differenceClasses: ['voice'] }
+        ]
+      }
+    });
+    expect(result.refusalReasons).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'structural-comparison-refused' })])
+    );
+  });
+
   it('needs no geometry producer when the documents have no difference blocks', async () => {
     const value = input();
     value.candidate.musicXml = score('T9', 1);

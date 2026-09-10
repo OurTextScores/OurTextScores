@@ -1541,6 +1541,11 @@ export class ScannerService implements OnModuleInit {
       };
     };
     return compareScannerPage({
+      sharedDocumentPartIdentity:
+        (baseEngineId === OTS_HOMR_CORE_READING_ID &&
+          candidateEngineId === OTS_HOMR_SELECTED_HEADS_READING_ID) ||
+        (baseEngineId === OTS_HOMR_SELECTED_HEADS_READING_ID &&
+          candidateEngineId === OTS_HOMR_CORE_READING_ID),
       reportInternalError: (context, error) =>
         this.logger.error(
           `Scanner comparison ${context} for job ${job.jobId} page ${page.pageNumber}: ${

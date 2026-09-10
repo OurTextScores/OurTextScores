@@ -116,6 +116,30 @@ describe('scanner part matching', () => {
     );
   });
 
+  it('uses retained part IDs for deterministic variants of the same parse', () => {
+    const parts = [
+      { id: 'P1', name: 'Music', notes: 8 },
+      { id: 'P2', name: 'Music', notes: 8 }
+    ];
+    const result = matchScannerMusicXmlParts(
+      document('ots-homr-core', parts),
+      document('ots-homr-selected-heads', parts),
+      { sharedDocumentPartIdentity: true }
+    );
+
+    expect(result.comparisonAllowed).toBe(true);
+    expect(
+      result.matches.map((match: any) => [
+        match.outcome,
+        match.base.documentPartId,
+        match.candidate.documentPartId
+      ])
+    ).toEqual([
+      ['matched', 'P1', 'P1'],
+      ['matched', 'P2', 'P2']
+    ]);
+  });
+
   it('refuses a staff-count mismatch even when names and ordinals agree', () => {
     const result = matchScannerMusicXmlParts(
       document('engine-a', [{ id: 'A1', name: 'Piano', staves: 2 }]),

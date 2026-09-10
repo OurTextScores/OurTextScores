@@ -284,6 +284,8 @@ export async function compareScannerPage(input: {
   sourceImage: ScannerRasterIdentity;
   base: ScannerPageComparisonSideInput;
   candidate: ScannerPageComparisonSideInput;
+  /** The two documents are deterministic variants of one parse and retain part IDs. */
+  sharedDocumentPartIdentity?: boolean;
   /** Records an unexpected internal failure without exposing it to the client. */
   reportInternalError?: (context: string, error: unknown) => void;
 }): Promise<ScannerPageComparisonResult> {
@@ -352,7 +354,8 @@ export async function compareScannerPage(input: {
         artifactChecksumSha256: candidate.artifactChecksumSha256,
         musicXml: candidateXml,
         contentChecksumSha256: layout.applied ? layout.contentChecksumSha256 : undefined
-      }
+      },
+      { sharedDocumentPartIdentity: input.sharedDocumentPartIdentity }
     );
     baseParts = describeScannerMusicXmlMeasures(base.musicXml);
     candidateParts = describeScannerMusicXmlMeasures(candidateXml);

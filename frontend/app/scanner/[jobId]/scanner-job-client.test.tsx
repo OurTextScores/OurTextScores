@@ -55,9 +55,20 @@ const partialJob: ScannerJob = {
 
 describe("ScannerJobClient", () => {
   const push = jest.fn();
+  const assignComparisonTab = jest.fn();
+  const closeComparisonTab = jest.fn();
 
   beforeEach(() => {
     (useRouter as jest.Mock).mockReturnValue({ push });
+    window.open = jest.fn(
+      () =>
+        ({
+          closed: false,
+          opener: window,
+          location: { assign: assignComparisonTab },
+          close: closeComparisonTab,
+        }) as unknown as Window,
+    );
     globalThis.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => partialJob,
@@ -994,8 +1005,13 @@ describe("ScannerJobClient", () => {
         }),
       ),
     );
-    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
-    const target = new URL(push.mock.calls[0][0], "http://localhost");
+    await waitFor(() => expect(assignComparisonTab).toHaveBeenCalledTimes(1));
+    expect(window.open).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(push).not.toHaveBeenCalled();
+    const target = new URL(
+      assignComparisonTab.mock.calls[0][0],
+      "http://localhost",
+    );
     expect(target.pathname).toBe("/score-editor/index.html");
     expect(target.searchParams.get("compareLeft")).toBe(
       "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output/core",
