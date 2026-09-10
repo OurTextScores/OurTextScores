@@ -19,6 +19,7 @@ import unittest
 MODULES = [
     "ots_homr_provider.py",
     "score_profile_policy.py",
+    "fusion_policy.py",
     "ots_engine.py",
     "homr_core.py",
     "homr_engine.py",
