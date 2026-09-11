@@ -46,6 +46,7 @@ function parseEditedMeasures(value: string | undefined):
   | Array<{
       measureIndex: number;
       stablePartKey?: string;
+      source?: 'comparison' | 'finding';
     }>
   | undefined {
   if (value === undefined) return undefined;
@@ -54,11 +55,26 @@ function parseEditedMeasures(value: string | undefined):
     if (!Array.isArray(parsed)) throw new Error('not an array');
     return parsed.map((entry) => ({
       measureIndex: Number(entry?.measureIndex),
-      ...(typeof entry?.stablePartKey === 'string' ? { stablePartKey: entry.stablePartKey } : {})
+      ...(typeof entry?.stablePartKey === 'string' ? { stablePartKey: entry.stablePartKey } : {}),
+      // Rebuilt field by field, so anything not named here is dropped in silence. An
+      // edit whose `source` went missing would be filed as a comparison edit and assert
+      // that two engines disagreed where only one was ever consulted. Unknown values are
+      // refused rather than coerced, for the same reason.
+      ...(entry?.source === undefined
+        ? {}
+        : { source: assertEditSource(entry.source) })
     }));
-  } catch {
+  } catch (error) {
+    if (error instanceof BadRequestException) throw error;
     throw new BadRequestException('Edited measures must be a JSON array');
   }
+}
+
+function assertEditSource(value: unknown): 'comparison' | 'finding' {
+  if (value !== 'comparison' && value !== 'finding') {
+    throw new BadRequestException('Edited measure source must be "comparison" or "finding"');
+  }
+  return value;
 }
 
 /** Multipart fields are strings: refuse malformed engine policy before staging a job. */
@@ -564,7 +580,9 @@ export class ScannerController {
     @Query('revision') revision: string | undefined,
     @Query('edited') edited: string | undefined,
     @Query('editedMeasures') editedMeasures: string | undefined,
-    @Query('acceptStale') acceptStale: string | undefined
+    @Query('acceptStale') acceptStale: string | undefined,
+    @Query('findingKind') findingKind: string | undefined,
+    @Query('findingPart') findingPart: string | undefined
   ) {
     return this.scanner.saveMergedScore(user.userId, jobId, pageNumber, {
       musicXml: typeof musicXml === 'string' ? musicXml : '',
@@ -573,7 +591,9 @@ export class ScannerController {
       revision: revision === undefined ? Number.NaN : Number(revision),
       edited: edited === 'true',
       editedMeasures: parseEditedMeasures(editedMeasures),
-      acceptStale: acceptStale === 'true'
+      acceptStale: acceptStale === 'true',
+      ...(findingKind ? { findingKind: String(findingKind) } : {}),
+      ...(findingPart ? { findingPart: String(findingPart) } : {})
     });
   }
 
