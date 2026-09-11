@@ -1,4 +1,4 @@
-import { findingCrop, FindingStaff } from './scanner-finding-crop';
+import { findingCrop, findingSystems, FindingStaff } from './scanner-finding-crop';
 
 /**
  * The raster and staves below are the real ones from job `cc2ce56d` (quartet profile,
@@ -153,5 +153,76 @@ describe('refusing rather than guessing', () => {
 
   it('survives an empty staff list', () => {
     expect(findingCrop({ kind: 'x', system: 0 }, [], RASTER).reason).toBe('unknown-system');
+  });
+});
+
+describe('findingSystems', () => {
+  it('groups the real defect page into the eleven systems HOMR reported', () => {
+    // Not four systems of four. The crop must show what HOMR called a system, because
+    // that is the evidence a reviewer needs to see the grouping is wrong.
+    const systems = findingSystems(REAL_STAVES, RASTER);
+    expect(systems).toHaveLength(11);
+    expect(systems.map((system) => system.staffIndexes)).toEqual(
+      Array.from({ length: 11 }, (_, index) => [index]),
+    );
+  });
+
+  it('unions a healthy four-staff system into one strip', () => {
+    const systems = findingSystems(QUARTET, RASTER);
+    expect(systems).toHaveLength(2);
+    expect(systems[0].staffIndexes).toEqual([0, 1, 2, 3]);
+    expect(systems[0].region).toEqual([50, 100, 950, 530]);
+  });
+
+  it('clamps the crop rectangle to the raster', () => {
+    const systems = findingSystems(REAL_STAVES, RASTER);
+    for (const system of systems) {
+      expect(system.cropRegion[0]).toBeGreaterThanOrEqual(0);
+      expect(system.cropRegion[1]).toBeGreaterThanOrEqual(0);
+      expect(system.cropRegion[2]).toBeLessThanOrEqual(RASTER.width);
+      expect(system.cropRegion[3]).toBeLessThanOrEqual(RASTER.height);
+    }
+  });
+
+  it('agrees with findingCrop on the same system', () => {
+    // Both read the same staff geometry, so a finding's system addresses this list by
+    // construction. A divergence would put the strip and the crop in different places.
+    const systems = findingSystems(QUARTET, RASTER);
+    const crop = findingCrop({ kind: 'x', system: 0 }, QUARTET, RASTER);
+    expect(systems[0].cropRegion).toEqual([
+      crop.rect!.left,
+      crop.rect!.top,
+      crop.rect!.left + crop.rect!.width,
+      crop.rect!.top + crop.rect!.height,
+    ]);
+  });
+
+  it('leaves measure indexes empty, because no geometry manifest exists here', () => {
+    // A findings review has one engine; the measure-geometry manifest is derived during
+    // a comparison and needs part matching between two. Inventing a self-matched one
+    // would re-derive the comparison pipeline against itself.
+    for (const system of findingSystems(QUARTET, RASTER)) {
+      expect(system.leftMeasureIndexes).toEqual([]);
+      expect(system.rightMeasureIndexes).toEqual([]);
+    }
+  });
+
+  it('orders systems down the page and staves down the system', () => {
+    const shuffled = [QUARTET[3], QUARTET[4], QUARTET[0], QUARTET[2], QUARTET[1]];
+    const systems = findingSystems(shuffled, RASTER);
+    expect(systems.map((system) => system.systemIndex)).toEqual([0, 1]);
+    expect(systems[0].staffIndexes).toEqual([0, 1, 2, 3]);
+  });
+
+  it('ignores malformed staves rather than cropping to NaN', () => {
+    const systems = findingSystems(
+      [...QUARTET, { index: 9, systemIndex: 5, region: [Number.NaN, 0, 1, 1] }],
+      RASTER,
+    );
+    expect(systems.map((system) => system.systemIndex)).toEqual([0, 1]);
+  });
+
+  it('survives an empty staff list', () => {
+    expect(findingSystems([], RASTER)).toEqual([]);
   });
 });

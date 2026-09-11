@@ -141,3 +141,68 @@ export function findingCrop(
     staffIndexes: banded.map((staff) => staff.index)
   };
 }
+
+
+/** One scanned system, for the findings review view. */
+export interface FindingSystem {
+  systemIndex: number;
+  region: [number, number, number, number];
+  cropRegion: [number, number, number, number];
+  /** Page-wide staff indexes this system covers, top to bottom. */
+  staffIndexes: number[];
+  /**
+   * Always empty here, and the emptiness is the point.
+   *
+   * The comparison view fills this from the measure-geometry manifest, which is derived
+   * during a comparison and needs part matching between two engines. A findings review
+   * has one engine, so that manifest does not exist, and inventing a self-matched one
+   * would mean re-deriving the comparison pipeline against itself to answer a question
+   * nobody asked. The consumer reflows onto the scan's systems when it has these and
+   * renders the document whole when it does not.
+   */
+  leftMeasureIndexes: number[];
+  rightMeasureIndexes: number[];
+}
+
+/**
+ * The page's systems as the scan has them, from the engine's own staff geometry.
+ *
+ * Same source as `findingCrop`, so a finding's `system` addresses this list by
+ * construction rather than by coincidence.
+ */
+export function findingSystems(
+  staves: FindingStaff[],
+  raster: { width: number; height: number },
+  padding = 12
+): FindingSystem[] {
+  const bySystem = new Map<number, FindingStaff[]>();
+  for (const staff of staves || []) {
+    if (!usable(staff) || !Number.isInteger(staff?.systemIndex)) continue;
+    bySystem.set(staff.systemIndex, [...(bySystem.get(staff.systemIndex) ?? []), staff]);
+  }
+  return [...bySystem.entries()]
+    .sort(([first], [second]) => first - second)
+    .map(([systemIndex, group]) => {
+      const ordered = [...group].sort((first, second) => first.index - second.index);
+      const region = union(ordered.map((staff) => staff.region)) as [
+        number,
+        number,
+        number,
+        number
+      ];
+      const rect = padAndClamp(region, padding, raster);
+      return {
+        systemIndex,
+        region,
+        cropRegion: [
+          rect.left,
+          rect.top,
+          rect.left + rect.width,
+          rect.top + rect.height
+        ] as [number, number, number, number],
+        staffIndexes: ordered.map((staff) => staff.index),
+        leftMeasureIndexes: [],
+        rightMeasureIndexes: []
+      };
+    });
+}

@@ -452,6 +452,41 @@ export class ScannerController {
     );
   }
 
+  /** Everything the findings review embed needs: systems, the reading, and the findings. */
+  @Get(':jobId/pages/:pageNumber/engines/:engineId/findings/regions')
+  async findingRegions(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('engineId') engineId: string
+  ) {
+    return this.scanner.pageFindingsRegions(user.userId, jobId, pageNumber, engineId);
+  }
+
+  @Get(':jobId/pages/:pageNumber/engines/:engineId/systems/:systemIndex/crop')
+  async findingSystemCrop(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('engineId') engineId: string,
+    @Param('systemIndex', ParseIntPipe) systemIndex: number,
+    @Query('statusVersion', ParseIntPipe) statusVersion: number,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const crop = await this.scanner.pageFindingSystemCrop(
+      user.userId,
+      jobId,
+      pageNumber,
+      engineId,
+      systemIndex,
+      statusVersion
+    );
+    response.setHeader('Content-Type', crop.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(crop.body);
+  }
+
   @Get(':jobId/pages/:pageNumber/engines/:engineId/findings/:findingIndex/crop')
   async findingCrop(
     @CurrentUser() user: RequestUser,

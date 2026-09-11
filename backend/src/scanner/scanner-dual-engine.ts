@@ -600,7 +600,7 @@ export function scannerMergedScoreBasis(page: { engines?: ScannerPageEngines }):
       engineId,
       // The reviewed artifact is what the comparison shows when it exists, so
       // it is what the merge was made against.
-      run?.reviewedMusicXml?.checksumSha256 || run?.artifacts.musicXml?.checksumSha256 || null
+      run?.reviewedMusicXml?.checksumSha256 || run?.artifacts?.musicXml?.checksumSha256 || null
     ])
     // Engine insertion order is a worker detail, not content.
     .sort((a, b) => String(a[0]).localeCompare(String(b[0])));

@@ -17,7 +17,7 @@ import {
   SCANNER_FINDING_DISPOSITIONS,
   ScannerFindingDisposition
 } from './schemas/scanner-finding-disposition.schema';
-import { findingCrop } from './scanner-finding-crop';
+import { findingCrop, findingSystems } from './scanner-finding-crop';
 import {
   BadRequestException,
   ConflictException,
@@ -3185,6 +3185,31 @@ export class ScannerService implements OnModuleInit {
     const run = page.engines?.[engineId as ScannerEngineId];
     const finding = run?.crossStaffFindings?.[findingIndex];
     if (!finding) throw new NotFoundException('Scanner finding not found');
+    return this.extractFindingCrop(userId, jobId, pageNumber, engineId, statusVersion, finding);
+  }
+
+  /**
+   * Cut one rectangle out of the page for a locatable finding.
+   *
+   * Shared by the per-finding and per-system crops so their geometry cannot drift: the
+   * strip above the reading and the crop beside a finding must be the same rectangle, or
+   * stepping between issues moves the picture for no reason a reviewer can see.
+   */
+  private async extractFindingCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId: string,
+    statusVersion: number,
+    finding: { kind: string; system?: number; staffIndices?: number[] }
+  ): Promise<{ body: Buffer; contentType: 'image/png' }> {
+    const job = await this.ownedJob(userId, jobId);
+    if ((job.statusVersion || 1) !== statusVersion) {
+      throw new ConflictException('Scanner job changed; refresh and try again');
+    }
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const run = page.engines?.[engineId as ScannerEngineId];
     if (!page.recognitionRaster?.storage) {
       throw new NotFoundException('Scanner recognition raster is not available');
     }
@@ -3930,6 +3955,103 @@ export class ScannerService implements OnModuleInit {
       }
     }
     return total;
+  }
+
+  /**
+   * Everything the findings review embed needs, in one document.
+   *
+   * Design: `docs/private/SCANNER_FINDINGS_REVIEW_EDITOR_DESIGN_2026-09-10.md`.
+   *
+   * Findings travel with the systems they point at rather than in a document of their
+   * own: two documents could disagree about `statusVersion`, and a finding pointing at a
+   * system from a different revision of the page points somewhere wrong.
+   *
+   * Systems come from the engine's own `review.staves`, the same source `findingCrop`
+   * reads, so a finding's `system` addresses this list by construction. They deliberately
+   * carry no measure indexes -- see `findingSystems`.
+   */
+  async pageFindingsRegions(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId: string
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    if (!isScannerEngineId(engineId)) {
+      throw new BadRequestException('Scanner engine is invalid');
+    }
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const run = page.engines?.[engineId as ScannerEngineId];
+    if (!run || run.status !== 'succeeded') {
+      throw new NotFoundException('Scanner engine reading is not available');
+    }
+    if (!page.recognitionRaster) {
+      throw new NotFoundException('Scanner recognition raster is not available');
+    }
+
+    const statusVersion = job.statusVersion || 1;
+    const systems = findingSystems((run.review?.staves || []) as never, {
+      width: page.recognitionRaster.width,
+      height: page.recognitionRaster.height
+    });
+    const plan = this.enginePlanForJob(job);
+    return {
+      version: SCANNER_COMPARE_REGIONS_VERSION,
+      statusVersion,
+      // The merged score travels here for the same reason it does in the comparison
+      // document: the embed reaches this process only through the frontend's proxy and
+      // cannot construct scanner URLs of its own.
+      merged: { ...this.mergedScoreState(job, page), ...this.mergedScoreLinks(page) },
+      left: {
+        engineId,
+        displayName:
+          plan.capabilitySnapshots?.[engineId as ScannerEngineId]?.displayName || engineId,
+        artifactChecksumSha256: run.artifacts?.musicXml?.checksumSha256,
+        completeness: run.completeness,
+        unsupportedSemanticClasses: []
+      },
+      // No right side, and none is coming. A findings review has one reading; the embed
+      // refuses `compareRight` for that reason.
+      systems: systems.map((system) => ({
+        ...system,
+        // Built here rather than by the client because the crop is status-version bound,
+        // and a consumer assembling it would be one refactor away from pinning the wrong
+        // revision.
+        cropUrl:
+          `engines/${encodeURIComponent(engineId)}/systems/${system.systemIndex}/crop?` +
+          new URLSearchParams({ statusVersion: String(statusVersion) }).toString()
+      })),
+      findings: run.crossStaffFindings || [],
+      regions: [] as any[],
+      analysisStatus: 'succeeded'
+    };
+  }
+
+  /**
+   * The scan strip for one system of the findings review.
+   *
+   * The same geometry a finding's own crop uses, addressed by system rather than by
+   * finding: the strips above the reading are per system, and a reviewer stepping
+   * between issues should see the same rectangle either way.
+   */
+  async pageFindingSystemCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId: string,
+    systemIndex: number,
+    statusVersion: number
+  ): Promise<{ body: Buffer; contentType: 'image/png' }> {
+    if (!Number.isInteger(systemIndex) || systemIndex < 0) {
+      throw new BadRequestException('Scanner system index is invalid');
+    }
+    // A system-wide crop is exactly a finding with that system and no staff positions.
+    return this.extractFindingCrop(userId, jobId, pageNumber, engineId, statusVersion, {
+      kind: 'system',
+      system: systemIndex
+    });
   }
 
   private async ownedJob(userId: string, jobId: string): Promise<ScannerJobDocument> {
