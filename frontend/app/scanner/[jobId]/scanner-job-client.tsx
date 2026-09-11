@@ -11,10 +11,8 @@ import {
   scannerStatusLabel,
 } from "../scanner-types";
 import { ElapsedTime } from "../elapsed-time";
-import {
-  CrossStaffFindings,
-  type StandingFindingDisposition,
-} from "../cross-staff-findings";
+import { type StandingFindingDisposition } from "../cross-staff-findings";
+import { FindingReview } from "../finding-review";
 
 async function responseError(
   response: Response,
@@ -1474,23 +1472,32 @@ export default function ScannerJobClient({
             that disagrees with the profile changes how you read everything below it.
             It still gates nothing: the page is complete either way.
           */}
-          <CrossStaffFindings
-            dispositions={findingDispositions}
-            onDecide={decideFinding}
-            onWithdraw={withdrawFinding}
-            editorUrlFor={(engineId, finding) =>
-              editorUrl(selected.pageNumber, engineId, finding)
-            }
-            jobId={jobId}
-            pageNumber={selected.pageNumber}
-            statusVersion={job.statusVersion}
-            sources={Object.entries(selected.engines || {}).map(
-              ([engineId, run]) => ({
-                engineId,
-                findings: run?.crossStaffFindings || [],
-              }),
-            )}
-          />
+          {(() => {
+            // One engine's findings, reviewed in its own reading. Findings are an
+            // engine's own consistency check, so the review has to happen against the
+            // reading that raised them -- not against a merge of several.
+            const raising = Object.entries(selected.engines || {}).find(
+              ([, run]) => (run?.crossStaffFindings || []).length > 0,
+            );
+            if (!raising) return null;
+            const [raisingEngineId, raisingRun] = raising;
+            return (
+              <FindingReview
+                jobId={jobId}
+                pageNumber={selected.pageNumber}
+                engineId={raisingEngineId}
+                readingUrl={artifactUrl(
+                  "musicxml",
+                  selected.pageNumber,
+                  raisingEngineId,
+                )}
+                findings={raisingRun?.crossStaffFindings || []}
+                dispositions={findingDispositions}
+                onDecide={decideFinding}
+                onWithdraw={withdrawFinding}
+              />
+            );
+          })()}
 
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">

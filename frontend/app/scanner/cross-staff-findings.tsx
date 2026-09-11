@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { amendmentFor } from "./finding-amendment";
 import type { ScannerCrossStaffFinding } from "./scanner-types";
@@ -176,6 +176,50 @@ function FindingCrop({
       </button>
     </div>
   );
+}
+
+/**
+ * The issue the embed is currently showing.
+ *
+ * The embed navigates; the host decides. Keeping the controls here rather than inside
+ * the editor is deliberate -- a disposition is a scanner concept with a scanner API
+ * behind it, and the embed reaches that process only through this host's proxy. The
+ * price is that the host must be told what is on screen, or its controls would answer a
+ * different question from the one being shown.
+ */
+export interface CurrentIssue {
+  kind: string;
+  part: string | null;
+  /** The first finding's own words; the profile amendment is derived from it. */
+  message: string;
+  index: number;
+  total: number;
+  places: number;
+}
+
+export function useCurrentFindingIssue(): CurrentIssue | null {
+  const [issue, setIssue] = useState<CurrentIssue | null>(null);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      // Same-origin only: the embed is served from this site, and an issue from anywhere
+      // else is not this editor talking.
+      if (event.origin !== window.location.origin) return;
+      const value = (event.data as (CurrentIssue & { type?: string }) | null) || null;
+      if (value?.type !== "ots-finding-issue") return;
+      if (typeof value.kind !== "string" || !value.kind) return;
+      setIssue({
+        kind: value.kind,
+        part: typeof value.part === "string" ? value.part : null,
+        message: typeof value.message === "string" ? value.message : "",
+        index: Number(value.index) || 0,
+        total: Number(value.total) || 0,
+        places: Number(value.places) || 0,
+      });
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  return issue;
 }
 
 export function CrossStaffFindings({
