@@ -54,8 +54,9 @@ describe("FindingReview", () => {
     expect(query.get("compareMode")).toBe("findings");
     expect(query.get("compareLeft")).toBe(PROPS.readingUrl);
     expect(query.get("compareRight")).toBeNull();
+    // Depth matters: the document addresses its crops and `../merged` relatively.
     expect(query.get("compareRegions")).toBe(
-      "/api/proxy/scanner/jobs/job-1/pages/3/engines/ots-homr/findings/regions",
+      "/api/proxy/scanner/jobs/job-1/pages/3/findings/regions?engine=ots-homr",
     );
   });
 
@@ -183,5 +184,72 @@ describe("FindingReview", () => {
     render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
     sendIssue({ ...CLEF_ISSUE, kind: "" });
     expect(screen.queryByTestId("finding-review-decision")).toBeNull();
+  });
+});
+
+describe("flagging every example of an issue", () => {
+  it("records the decision kind-wide, not against the example's part", () => {
+    // Part-specific and kind-wide are different rows on the server, and the narrower one
+    // wins when both exist. "All examples" has to write the wider one or it would only
+    // answer for the part on screen.
+    const onDecide = jest.fn();
+    render(<FindingReview {...PROPS} onDecide={onDecide} />);
+    sendIssue(CLEF_ISSUE);
+    fireEvent.click(screen.getByTestId("finding-review-flag-all"));
+    expect(onDecide).toHaveBeenCalledWith({
+      kind: "clef_profile_mismatch",
+      part: null,
+      disposition: "reading-flagged",
+    });
+  });
+
+  it("still offers the narrower answer beside it", () => {
+    const onDecide = jest.fn();
+    render(<FindingReview {...PROPS} onDecide={onDecide} />);
+    sendIssue(CLEF_ISSUE);
+    fireEvent.click(screen.getByTestId("finding-review-flag"));
+    expect(onDecide).toHaveBeenCalledWith({
+      kind: "clef_profile_mismatch",
+      part: "cello",
+      disposition: "reading-flagged",
+    });
+  });
+
+  it("names how many examples it covers", () => {
+    render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
+    sendIssue(CLEF_ISSUE);
+    expect(screen.getByTestId("finding-review-flag-all")).toHaveTextContent(
+      "Flag all 2 examples",
+    );
+  });
+
+  it("is absent when the finding names no part", () => {
+    // With no part, "this example" and "all of them" are the same decision, and two
+    // buttons for one outcome is what the removed Dismiss/Expected pair did.
+    render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
+    sendIssue({ ...CLEF_ISSUE, part: null });
+    expect(screen.queryByTestId("finding-review-flag-all")).toBeNull();
+    expect(screen.getByTestId("finding-review-flag")).toBeInTheDocument();
+  });
+
+  it("is absent when there is only one example", () => {
+    render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
+    sendIssue({ ...CLEF_ISSUE, places: 1 });
+    expect(screen.queryByTestId("finding-review-flag-all")).toBeNull();
+  });
+
+  it("offers controls as buttons, not links", () => {
+    render(
+      <FindingReview
+        {...PROPS}
+        onDecide={jest.fn()}
+        onWithdraw={jest.fn()}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "acknowledged" },
+        ]}
+      />,
+    );
+    sendIssue(CLEF_ISSUE);
+    expect(screen.getByTestId("finding-review-withdraw").tagName).toBe("BUTTON");
   });
 });
