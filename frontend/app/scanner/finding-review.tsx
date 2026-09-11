@@ -101,7 +101,10 @@ export function FindingReview({
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}/pages/${pageNumber}`;
   const src = `/score-editor/index.html?${new URLSearchParams({
     compareLeft: readingUrl,
-    compareRegions: `${base}/engines/${encodeURIComponent(engineId)}/findings/regions`,
+    // Depth matters: everything inside the regions document addresses siblings
+    // relatively, including `../merged` for the save. A deeper path resolved both to
+    // nonsense.
+    compareRegions: `${base}/findings/regions?engine=${encodeURIComponent(engineId)}`,
     // Findings, not a comparison. The embed refuses `compareRight` in this mode: a
     // second reading would mean the caller wanted the comparison view.
     compareMode: "findings",

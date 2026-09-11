@@ -4019,9 +4019,17 @@ export class ScannerService implements OnModuleInit {
         // Built here rather than by the client because the crop is status-version bound,
         // and a consumer assembling it would be one refactor away from pinning the wrong
         // revision.
+        // Relative to this document, which sits at `pages/N/findings/regions` -- the
+        // same depth as the comparison's, so `mergedScoreLinks`' own `../merged`
+        // resolves correctly too. Putting it deeper made both resolve to nonsense: the
+        // crop doubled its path segments and the merge target moved under the engine,
+        // which would have failed every save.
         cropUrl:
-          `engines/${encodeURIComponent(engineId)}/systems/${system.systemIndex}/crop?` +
-          new URLSearchParams({ statusVersion: String(statusVersion) }).toString()
+          `systems/${system.systemIndex}/crop?` +
+          new URLSearchParams({
+            engine: engineId,
+            statusVersion: String(statusVersion)
+          }).toString()
       })),
       findings: run.crossStaffFindings || [],
       regions: [] as any[],

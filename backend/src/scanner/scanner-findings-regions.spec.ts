@@ -109,7 +109,7 @@ describe('pageFindingsRegions', () => {
     expect(doc.right).toBeUndefined();
     expect(doc.left).toMatchObject({ engineId: 'ots-homr', displayName: 'OTS-HOMR' });
     expect(doc.systems[0].cropUrl).toBe(
-      'engines/ots-homr/systems/0/crop?statusVersion=4'
+      'systems/0/crop?engine=ots-homr&statusVersion=4'
     );
   });
 

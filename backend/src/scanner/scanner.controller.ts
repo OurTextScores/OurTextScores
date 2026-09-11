@@ -453,22 +453,27 @@ export class ScannerController {
   }
 
   /** Everything the findings review embed needs: systems, the reading, and the findings. */
-  @Get(':jobId/pages/:pageNumber/engines/:engineId/findings/regions')
+  /**
+   * Sits at the same depth as the comparison's regions document on purpose. Everything
+   * inside it addresses siblings relatively -- the crops, and `../merged` for the save --
+   * so the depth is part of the contract, not an arrangement of the route table.
+   */
+  @Get(':jobId/pages/:pageNumber/findings/regions')
   async findingRegions(
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
-    @Param('engineId') engineId: string
+    @Query('engine') engine: string | undefined
   ) {
-    return this.scanner.pageFindingsRegions(user.userId, jobId, pageNumber, engineId);
+    return this.scanner.pageFindingsRegions(user.userId, jobId, pageNumber, String(engine ?? ''));
   }
 
-  @Get(':jobId/pages/:pageNumber/engines/:engineId/systems/:systemIndex/crop')
+  @Get(':jobId/pages/:pageNumber/findings/systems/:systemIndex/crop')
   async findingSystemCrop(
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
-    @Param('engineId') engineId: string,
+    @Query('engine') engineId: string | undefined,
     @Param('systemIndex', ParseIntPipe) systemIndex: number,
     @Query('statusVersion', ParseIntPipe) statusVersion: number,
     @Res({ passthrough: true }) response: Response
@@ -477,7 +482,7 @@ export class ScannerController {
       user.userId,
       jobId,
       pageNumber,
-      engineId,
+      String(engineId ?? ''),
       systemIndex,
       statusVersion
     );
