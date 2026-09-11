@@ -108,6 +108,18 @@ export interface ScannerEngineRun {
   availableStructuredHeadFamilies?: string[];
   /** Cross-staff disagreements, surfaced to the reviewer rather than logged. */
   crossStaffFindings?: ScannerCrossStaffFinding[];
+  /**
+   * Which score-profile revision this run was decoded against.
+   *
+   * A reviewer can widen the profile mid-job, which is the intended way to answer a
+   * `clef_profile_mismatch`. The profile is fingerprinted into the provider's
+   * idempotency key, so pages either side of an amendment saw different priors and the
+   * job stops being homogeneous. Without this stamp nothing can say which prior produced
+   * a given page, and neither a re-run nor an explanation of a finding is possible.
+   *
+   * Absent on jobs with no profile, and on runs that predate the stamp.
+   */
+  scoreProfileRevision?: number;
   /** The currently effective structured subset; empty means core output. */
   selectedStructuredHeadFamilies?: string[];
   /** A worker-only materialization request waiting to become effective. */

@@ -1,6 +1,9 @@
 import { canonicalScoreProfileJson, ScannerScoreProfile } from './scanner-dual-engine';
 import {
   amendProfile,
+  effectiveEngineOptions,
+  effectiveScoreProfile,
+  ensureScoreProfileHistory,
   currentRevision,
   originalRevision,
   ProfileAmendmentError,
@@ -151,5 +154,136 @@ describe('currentRevision', () => {
 
   it('throws on an empty history rather than returning undefined', () => {
     expect(() => currentRevision([])).toThrow(ProfileAmendmentError);
+  });
+});
+
+
+describe('effectiveScoreProfile', () => {
+  const plan = { engineOptions: { 'ots-homr': { textDetector: 'none', scoreProfile: QUARTET } } };
+
+  it('derives revision 1 from the plan when no history has been written', () => {
+    // No migration: every job created before revisions existed still reports a coherent
+    // revision rather than none.
+    expect(effectiveScoreProfile({ enginePlan: plan })).toEqual({ profile: QUARTET, revision: 1 });
+  });
+
+  it('prefers the highest stored revision once history exists', () => {
+    const rows = amendProfile(history(), { stableId: 'viola', addClefs: ['F4'] }, 'hash');
+    const result = effectiveScoreProfile({ enginePlan: plan, scoreProfileRevisions: rows });
+    expect(result!.revision).toBe(2);
+    expect(result!.profile.parts[2].likelyClefs).toEqual(['C3', 'G2', 'F4']);
+  });
+
+  it('returns undefined for a job with no profile, rather than an empty one', () => {
+    // An empty profile is not the same as no profile: it would claim the score has no
+    // parts, and most jobs supply none at all.
+    expect(effectiveScoreProfile({})).toBeUndefined();
+    expect(effectiveScoreProfile({ enginePlan: { engineOptions: {} } })).toBeUndefined();
+    expect(effectiveScoreProfile({ enginePlan: { engineOptions: { 'ots-homr': {} } } }))
+      .toBeUndefined();
+  });
+
+  it('ignores an empty revisions array and falls back to the plan', () => {
+    expect(effectiveScoreProfile({ enginePlan: plan, scoreProfileRevisions: [] })!.revision)
+      .toBe(1);
+  });
+});
+
+describe('ensureScoreProfileHistory', () => {
+  const plan = { engineOptions: { 'ots-homr': { textDetector: 'none', scoreProfile: QUARTET } } };
+
+  it('seeds revision 1 from the plan', () => {
+    expect(ensureScoreProfileHistory({ enginePlan: plan })).toEqual([
+      { revision: 1, profile: QUARTET }
+    ]);
+  });
+
+  it('returns existing history untouched, by identity', () => {
+    const rows = history();
+    expect(ensureScoreProfileHistory({ enginePlan: plan, scoreProfileRevisions: rows }))
+      .toBe(rows);
+  });
+
+  it('refuses when the job never had a profile', () => {
+    expect(() => ensureScoreProfileHistory({})).toThrow(ProfileAmendmentError);
+  });
+
+  it('composes with amendProfile to leave the user’s original intact', () => {
+    const seeded = ensureScoreProfileHistory({ enginePlan: plan });
+    const amended = amendProfile(seeded, { stableId: 'violin-1', addClefs: ['C3'] }, 'hash');
+    expect(amended[0].profile).toBe(QUARTET);
+    expect(originalRevision(amended).profile.parts[0].likelyClefs).toEqual(['G2']);
+    expect(currentRevision(amended).profile.parts[0].likelyClefs).toEqual(['G2', 'C3']);
+  });
+});
+
+
+describe('effectiveEngineOptions', () => {
+  const job = () => ({
+    enginePlan: { engineOptions: { 'ots-homr': { textDetector: 'none', scoreProfile: QUARTET } } }
+  });
+
+  it('returns the identical object when nothing was amended', () => {
+    // Identity, so an unamended job produces byte-identical options and the same
+    // provider fingerprint it always did.
+    const j = job();
+    expect(effectiveEngineOptions(j, 'ots-homr')).toBe(j.enginePlan.engineOptions['ots-homr']);
+  });
+
+  it('substitutes the amended profile, leaving the plan untouched', () => {
+    const j = {
+      ...job(),
+      scoreProfileRevisions: amendProfile(history(), { stableId: 'viola', addClefs: ['F4'] }, 'h')
+    };
+    const options = effectiveEngineOptions(j, 'ots-homr') as { scoreProfile: ScannerScoreProfile };
+    expect(options.scoreProfile.parts[2].likelyClefs).toEqual(['C3', 'G2', 'F4']);
+    // The plan still records what the user originally chose.
+    expect(j.enginePlan.engineOptions['ots-homr'].scoreProfile.parts[2].likelyClefs)
+      .toEqual(['C3', 'G2']);
+  });
+
+  it('changes the canonical JSON, so the idempotency fingerprint moves', () => {
+    // The whole point: pages after an amendment must not reuse the earlier cached run.
+    const j = {
+      ...job(),
+      scoreProfileRevisions: amendProfile(history(), { stableId: 'viola', addClefs: ['F4'] }, 'h')
+    };
+    const before = canonicalScoreProfileJson(QUARTET);
+    const after = canonicalScoreProfileJson(
+      (effectiveEngineOptions(j, 'ots-homr') as { scoreProfile: ScannerScoreProfile }).scoreProfile
+    );
+    expect(after).not.toBe(before);
+  });
+
+  it('keeps every other option', () => {
+    const j = {
+      ...job(),
+      scoreProfileRevisions: amendProfile(history(), { stableId: 'viola', addClefs: ['F4'] }, 'h')
+    };
+    expect(effectiveEngineOptions(j, 'ots-homr')).toMatchObject({ textDetector: 'none' });
+  });
+
+  it('never adds a profile to a run that was given none', () => {
+    // Handing a prior to a run the user never gave one to would change what it decodes.
+    const bare = { enginePlan: { engineOptions: { 'ots-homr': { textDetector: 'none' } } } };
+    expect(effectiveEngineOptions(bare, 'ots-homr')).toBe(
+      bare.enginePlan.engineOptions['ots-homr']
+    );
+  });
+
+  it('passes through an engine with no options at all', () => {
+    expect(effectiveEngineOptions({ enginePlan: { engineOptions: {} } }, 'other')).toBeUndefined();
+    expect(effectiveEngineOptions({}, 'ots-homr')).toBeUndefined();
+  });
+
+  it('gives the same answer to both worker call sites', () => {
+    // The normal path and the orphan-recovery path each build an idempotency key. If they
+    // disagreed, recovery would re-run a page that had already succeeded.
+    const j = {
+      ...job(),
+      scoreProfileRevisions: amendProfile(history(), { stableId: 'cello', addClefs: ['C3'] }, 'h')
+    };
+    expect(JSON.stringify(effectiveEngineOptions(j, 'ots-homr')))
+      .toBe(JSON.stringify(effectiveEngineOptions(j, 'ots-homr')));
   });
 });

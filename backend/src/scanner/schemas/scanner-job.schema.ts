@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { ScoreProfileRevision } from '../scanner-score-profile-amendment';
 import { HydratedDocument } from 'mongoose';
 import type { ScannerEnginePlan, ScannerPageEngines } from '../scanner-dual-engine';
 
@@ -283,6 +284,22 @@ export class ScannerJob {
   /** Immutable engine selection and capability semantics for this job. */
   @Prop({ type: Object })
   enginePlan?: ScannerEnginePlan;
+
+  /**
+   * Every version of this job's score profile, oldest first.
+   *
+   * Beside the plan rather than inside it, because the plan is the *user's* selection
+   * and is documented as immutable - `scannerEnginePlanForJob` rejects any key outside
+   * `textDetector` and `scoreProfile` for that reason. Review can widen a profile to
+   * answer a `clef_profile_mismatch`, and after three such amendments a reviewer still
+   * needs to see what was originally claimed about the score. An edited plan could not
+   * tell them.
+   *
+   * Absent until the first amendment: revision 1 is the plan's own profile, derived
+   * lazily by `effectiveScoreProfile`, so existing jobs need no migration.
+   */
+  @Prop({ type: [Object] })
+  scoreProfileRevisions?: ScoreProfileRevision[];
 
   @Prop({ type: [Number] })
   retryPageNumbers?: number[];

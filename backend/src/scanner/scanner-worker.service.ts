@@ -1,4 +1,8 @@
 import {
+  effectiveEngineOptions,
+  effectiveScoreProfile
+} from './scanner-score-profile-amendment';
+import {
   Inject,
   Injectable,
   Logger,
@@ -387,7 +391,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
                 raster.storage.bucket,
                 raster.storage.objectKey
               );
-              const engineOptions = job.enginePlan?.engineOptions?.[engineId];
+              // Effective, not the plan's own: a profile amended during review must
+              // reach recovery too, or recovery derives a different idempotency key and
+              // re-runs a page that already succeeded.
+              const engineOptions = effectiveEngineOptions(job, engineId);
               const detectTitle =
                 Boolean(job.options?.detectTitle) && (page.ordinal || page.pageNumber) === 1;
               const idempotencyKey = adapter.createIdempotencyKey({
@@ -1117,7 +1124,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   }): Promise<{ page: ScannerPageResult; providerMs: number }> {
     const { definition } = input;
     const prior = input.page.engines?.[definition.id];
-    const engineOptions = input.job.enginePlan?.engineOptions?.[definition.id];
+    const engineOptions = effectiveEngineOptions(input.job, definition.id);
     const inputSha256 = createHash('sha256').update(input.image).digest('hex');
     if (
       input.recognitionRaster.checksumSha256 !== inputSha256 ||
@@ -1327,6 +1334,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         availableStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies,
         selectedStructuredHeadFamilies: scanned.result.availableStructuredHeadFamilies,
         crossStaffFindings: scanned.result.crossStaffFindings,
+        // Which prior this page actually saw. Pages either side of an amendment saw
+        // different ones, and without the stamp nothing can say which.
+        scoreProfileRevision: effectiveScoreProfile(input.job)?.revision,
         providerRevision: scanned.result.providerRevision,
         modelRevision: scanned.result.modelRevision,
         provenance: scanned.result.provenance,
