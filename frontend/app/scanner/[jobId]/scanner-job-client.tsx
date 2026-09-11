@@ -273,7 +273,18 @@ export default function ScannerJobClient({
     return page.hasThumbnail ? artifactUrl("thumbnail", page.pageNumber) : null;
   };
 
-  const editorUrl = (pageNumber?: number, engineId?: string) => {
+  const editorUrl = (
+    pageNumber?: number,
+    engineId?: string,
+    /**
+     * The finding this editor is being opened to answer, when it is.
+     *
+     * Travels in the launch context so the save can say *why* a bar changed. Absent,
+     * the scanner files the edit as a comparison edit — which claims two engines
+     * disagreed, and findings arrive on single-engine jobs where only one read the page.
+     */
+    finding?: { kind: string; part?: string },
+  ) => {
     const scoreUrl = artifactUrl("musicxml", pageNumber, engineId);
     const displayPage = job?.pages.find(
       (page) => page.pageNumber === pageNumber,
@@ -290,6 +301,12 @@ export default function ScannerJobClient({
           ? `${job?.originalFilename} — page ${displayPage || pageNumber}${engineSuffix}`
           : `${job?.originalFilename}${engineSuffix}`,
         canonicalXmlUrl: scoreUrl,
+        ...(finding
+          ? {
+              findingKind: finding.kind,
+              ...(finding.part ? { findingPart: finding.part } : {}),
+            }
+          : {}),
       }),
     });
     return `/score-editor/index.html?${params.toString()}`;
@@ -1384,6 +1401,9 @@ export default function ScannerJobClient({
             It still gates nothing: the page is complete either way.
           */}
           <CrossStaffFindings
+            editorUrlFor={(engineId, finding) =>
+              editorUrl(selected.pageNumber, engineId, finding)
+            }
             jobId={jobId}
             pageNumber={selected.pageNumber}
             statusVersion={job.statusVersion}

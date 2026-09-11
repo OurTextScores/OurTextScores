@@ -147,3 +147,84 @@ describe("locating a finding on the page", () => {
     expect(screen.getByTestId("cross-staff-finding-show")).toBeInTheDocument();
   });
 });
+
+describe("fixing the reading", () => {
+  const editorUrlFor = (engineId: string, finding: { kind: string; part?: string }) =>
+    `/score-editor/index.html?engine=${engineId}&kind=${finding.kind}` +
+    (finding.part ? `&part=${finding.part}` : "");
+
+  it("carries the finding's kind and part to the editor", () => {
+    // The save is attributed from this, so losing it here files the edit as a
+    // disagreement between engines that never happened.
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        editorUrlFor={editorUrlFor}
+        sources={from([
+          {
+            kind: "clef_profile_mismatch",
+            message: "decoded 'G2'",
+            system: 2,
+            part: "cello",
+          },
+        ])}
+      />,
+    );
+    expect(screen.getByTestId("cross-staff-finding-fix")).toHaveAttribute(
+      "href",
+      "/score-editor/index.html?engine=ots-homr&kind=clef_profile_mismatch&part=cello",
+    );
+  });
+
+  it("omits the part when the finding named none", () => {
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        editorUrlFor={editorUrlFor}
+        sources={from([{ kind: "dangling_slur_start", message: "y", system: 0 }])}
+      />,
+    );
+    expect(screen.getByTestId("cross-staff-finding-fix")).toHaveAttribute(
+      "href",
+      "/score-editor/index.html?engine=ots-homr&kind=dangling_slur_start",
+    );
+  });
+
+  it("names the engine that raised it, not the first engine on the page", () => {
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        editorUrlFor={editorUrlFor}
+        sources={[
+          { engineId: "transcoda", findings: [] },
+          {
+            engineId: "ots-homr",
+            findings: [{ kind: "time_signature_mismatch", message: "z", system: 1 }],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("cross-staff-finding-fix")).toHaveAttribute(
+      "href",
+      expect.stringContaining("engine=ots-homr") as unknown as string,
+    );
+  });
+
+  it("offers the fix for a page-level finding, which has no crop but is still real", () => {
+    // Not locatable is not the same as not actionable: the reading can still be wrong.
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        editorUrlFor={editorUrlFor}
+        sources={from([{ kind: "page_staff_count_mismatch", message: "w" }])}
+      />,
+    );
+    expect(screen.queryAllByTestId("cross-staff-finding-show")).toHaveLength(0);
+    expect(screen.getByTestId("cross-staff-finding-fix")).toBeInTheDocument();
+  });
+
+  it("offers nothing when the host cannot build an editor URL", () => {
+    render(<CrossStaffFindings {...LOCATABLE} sources={from([deviation(0)])} />);
+    expect(screen.queryAllByTestId("cross-staff-finding-fix")).toHaveLength(0);
+  });
+});

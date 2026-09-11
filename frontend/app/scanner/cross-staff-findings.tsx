@@ -137,11 +137,20 @@ export function CrossStaffFindings({
   jobId,
   pageNumber,
   statusVersion,
+  editorUrlFor,
 }: {
   sources: CrossStaffFindingSource[];
   jobId?: string;
   pageNumber?: number;
   statusVersion?: number;
+  /**
+   * Opens the editor to answer this finding, carrying its identity so the save is
+   * attributed to the finding rather than to a disagreement between engines.
+   */
+  editorUrlFor?: (
+    engineId: string,
+    finding: { kind: string; part?: string },
+  ) => string;
 }) {
   // Flattened for display but each entry keeps its engine and its index within that
   // engine's list, because that pair is the crop's address.
@@ -210,6 +219,20 @@ export function CrossStaffFindings({
                       statusVersion={statusVersion!}
                       located={entry}
                     />
+                  )}
+                  {editorUrlFor && (
+                    <a
+                      data-testid="cross-staff-finding-fix"
+                      href={editorUrlFor(entry.engineId, {
+                        kind: entry.finding.kind,
+                        ...(entry.finding.part ? { part: entry.finding.part } : {}),
+                      })}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-2 text-xs font-medium text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-400 dark:hover:text-sky-300"
+                    >
+                      Fix the reading
+                    </a>
                   )}
                 </li>
               ))}
