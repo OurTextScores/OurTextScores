@@ -36,6 +36,8 @@ export interface FindingStaff {
   systemIndex: number;
   region: number[];
   partIndex?: number;
+  /** Decoded symbols, used only to count this staff's bars. */
+  tokens?: unknown[];
 }
 
 /** Only the fields of a cross-staff finding that bear on where it points. */
@@ -151,14 +153,20 @@ export interface FindingSystem {
   /** Page-wide staff indexes this system covers, top to bottom. */
   staffIndexes: number[];
   /**
-   * Always empty here, and the emptiness is the point.
+   * The document measures this system contains, zero-based.
    *
-   * The comparison view fills this from the measure-geometry manifest, which is derived
-   * during a comparison and needs part matching between two engines. A findings review
-   * has one engine, so that manifest does not exist, and inventing a self-matched one
-   * would mean re-deriving the comparison pipeline against itself to answer a question
-   * nobody asked. The consumer reflows onto the scan's systems when it has these and
-   * renders the document whole when it does not.
+   * The comparison view gets these from the measure-geometry manifest, which is derived
+   * during a comparison and needs part matching between two engines — so it does not
+   * exist for a single-engine findings review. They are counted instead from the
+   * engine's own decoded tokens: a `barline` token ends a bar, so the bars in a system
+   * are the barlines in one of its staves, and the ranges accumulate down the page.
+   *
+   * Verified against the real artifact before being relied on: on the page that
+   * motivated this, the eleven staves carry 3,3,3,4,4,4,4,4,3,3,3 barlines — 38 — and
+   * the MusicXML has exactly 38 measures.
+   *
+   * Empty when the tokens are absent, and the consumer then draws the document whole
+   * rather than scoping to a range it had to guess.
    */
   leftMeasureIndexes: number[];
   rightMeasureIndexes: number[];
@@ -170,6 +178,22 @@ export interface FindingSystem {
  * Same source as `findingCrop`, so a finding's `system` addresses this list by
  * construction rather than by coincidence.
  */
+/**
+ * How many bars a staff holds, from its decoded tokens.
+ *
+ * A `barline` token *ends* a bar, so a staff that finishes on one holds exactly as many
+ * bars as it has barlines. One that does not has a final bar still open at the system
+ * break, which counts too — otherwise the last bar of such a system would belong to no
+ * system at all and every range after it would be short by one.
+ */
+export function barsInStaff(staff: FindingStaff): number {
+  const tokens = Array.isArray(staff?.tokens) ? staff.tokens : [];
+  const name = (token: unknown) => (Array.isArray(token) ? String(token[0]) : '');
+  const barlines = tokens.filter((token) => name(token) === 'barline').length;
+  if (tokens.length === 0) return 0;
+  return name(tokens[tokens.length - 1]) === 'barline' ? barlines : barlines + 1;
+}
+
 export function findingSystems(
   staves: FindingStaff[],
   raster: { width: number; height: number },
@@ -180,10 +204,17 @@ export function findingSystems(
     if (!usable(staff) || !Number.isInteger(staff?.systemIndex)) continue;
     bySystem.set(staff.systemIndex, [...(bySystem.get(staff.systemIndex) ?? []), staff]);
   }
+  // Ranges accumulate down the page, so the map must be walked in page order.
+  let measureCursor = 0;
   return [...bySystem.entries()]
     .sort(([first], [second]) => first - second)
     .map(([systemIndex, group]) => {
       const ordered = [...group].sort((first, second) => first.index - second.index);
+      // The bars of a *system*, not of its staves added up: every staff of a system
+      // spans the same bars, so summing them would multiply the page by its staff count.
+      // The widest staff wins, so a staff whose tail the decoder dropped cannot shorten
+      // the system and shift every range after it.
+      const bars = Math.max(0, ...ordered.map(barsInStaff));
       const region = union(ordered.map((staff) => staff.region)) as [
         number,
         number,
@@ -191,6 +222,8 @@ export function findingSystems(
         number
       ];
       const rect = padAndClamp(region, padding, raster);
+      const measures = Array.from({ length: bars }, (_, offset) => measureCursor + offset);
+      measureCursor += bars;
       return {
         systemIndex,
         region,
@@ -201,7 +234,7 @@ export function findingSystems(
           rect.top + rect.height
         ] as [number, number, number, number],
         staffIndexes: ordered.map((staff) => staff.index),
-        leftMeasureIndexes: [],
+        leftMeasureIndexes: measures,
         rightMeasureIndexes: []
       };
     });

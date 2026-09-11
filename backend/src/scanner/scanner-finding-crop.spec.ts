@@ -1,4 +1,9 @@
-import { findingCrop, findingSystems, FindingStaff } from './scanner-finding-crop';
+import {
+  barsInStaff,
+  findingCrop,
+  findingSystems,
+  FindingStaff
+} from './scanner-finding-crop';
 
 /**
  * The raster and staves below are the real ones from job `cc2ce56d` (quartet profile,
@@ -197,13 +202,11 @@ describe('findingSystems', () => {
     ]);
   });
 
-  it('leaves measure indexes empty, because no geometry manifest exists here', () => {
-    // A findings review has one engine; the measure-geometry manifest is derived during
-    // a comparison and needs part matching between two. Inventing a self-matched one
-    // would re-derive the comparison pipeline against itself.
+  it('leaves measure indexes empty when there are no tokens to count', () => {
+    // Guessing a range would scope the editor to the wrong bars, which is worse than
+    // showing all of them.
     for (const system of findingSystems(QUARTET, RASTER)) {
       expect(system.leftMeasureIndexes).toEqual([]);
-      expect(system.rightMeasureIndexes).toEqual([]);
     }
   });
 
@@ -224,5 +227,79 @@ describe('findingSystems', () => {
 
   it('survives an empty staff list', () => {
     expect(findingSystems([], RASTER)).toEqual([]);
+  });
+});
+
+const bar = ['barline', '.', '.', '.', '.', '.'];
+const note = ['note_4', 'C4', '_', '_', '_', 'upper'];
+
+describe('barsInStaff', () => {
+  it('counts a staff that ends on a barline as its barlines', () => {
+    // The real page: every staff ends on one.
+    expect(barsInStaff({ index: 0, systemIndex: 0, region: [0, 0, 1, 1], tokens: [note, bar, note, bar] }))
+      .toBe(2);
+  });
+
+  it('counts an unclosed final bar too', () => {
+    // A bar still open at the system break is a bar. Dropping it would leave it in no
+    // system at all and shorten every range after it.
+    expect(barsInStaff({ index: 0, systemIndex: 0, region: [0, 0, 1, 1], tokens: [note, bar, note] }))
+      .toBe(2);
+  });
+
+  it('counts nothing for a staff with no tokens', () => {
+    expect(barsInStaff({ index: 0, systemIndex: 0, region: [0, 0, 1, 1] })).toBe(0);
+    expect(barsInStaff({ index: 0, systemIndex: 0, region: [0, 0, 1, 1], tokens: [] })).toBe(0);
+  });
+});
+
+describe('measure ranges derived from tokens', () => {
+  /** The real page: eleven one-staff systems with 3,3,3,4,4,4,4,4,3,3,3 barlines. */
+  const REAL_BARS = [3, 3, 3, 4, 4, 4, 4, 4, 3, 3, 3];
+  const withTokens = REAL_STAVES.map((staff, index) => ({
+    ...staff,
+    tokens: Array.from({ length: REAL_BARS[index] }, () => [note, bar]).flat(),
+  }));
+
+  it('reproduces the artifact: 38 bars across eleven systems', () => {
+    // Checked against the page's own MusicXML, which has exactly 38 measures.
+    const systems = findingSystems(withTokens, RASTER);
+    expect(systems.reduce((total, s) => total + s.leftMeasureIndexes.length, 0)).toBe(38);
+  });
+
+  it('gives each system a contiguous range, accumulating down the page', () => {
+    const systems = findingSystems(withTokens, RASTER);
+    expect(systems[0].leftMeasureIndexes).toEqual([0, 1, 2]);
+    expect(systems[1].leftMeasureIndexes).toEqual([3, 4, 5]);
+    expect(systems[3].leftMeasureIndexes).toEqual([9, 10, 11, 12]);
+    expect(systems[10].leftMeasureIndexes).toEqual([35, 36, 37]);
+  });
+
+  it('leaves no gap and no overlap between systems', () => {
+    // The property that matters: every bar belongs to exactly one system.
+    const all = findingSystems(withTokens, RASTER).flatMap((s) => s.leftMeasureIndexes);
+    expect(all).toEqual(Array.from({ length: 38 }, (_, i) => i));
+  });
+
+  it('counts a multi-staff system once, not once per staff', () => {
+    // Every staff of a system spans the same bars. Summing them would multiply the page
+    // by its staff count — four bars of a quartet becoming sixteen.
+    const quartet = QUARTET.map((staff) => ({
+      ...staff,
+      tokens: [note, bar, note, bar, note, bar, note, bar],
+    }));
+    const systems = findingSystems(quartet, RASTER);
+    expect(systems[0].leftMeasureIndexes).toEqual([0, 1, 2, 3]);
+    expect(systems[1].leftMeasureIndexes).toEqual([4, 5, 6, 7]);
+  });
+
+  it('takes the widest staff when one is short', () => {
+    // A staff whose tail the decoder dropped must not shorten its system and shift
+    // every range after it.
+    const system = [
+      { ...QUARTET[0], tokens: [note, bar, note, bar, note, bar] },
+      { ...QUARTET[1], tokens: [note, bar] },
+    ];
+    expect(findingSystems(system, RASTER)[0].leftMeasureIndexes).toEqual([0, 1, 2]);
   });
 });
