@@ -157,13 +157,27 @@ export function FindingReview({
         recognized.
       </p>
 
-      <iframe
-        data-testid="finding-review-embed"
-        src={src}
-        title="Review a cross-staff finding"
-        className="mt-3 w-full rounded border border-slate-200 bg-white dark:border-slate-700"
-        style={{ height }}
-      />
+      {/*
+        The border lives on the wrapper, never on the frame.
+        
+        A bordered iframe sized to its content's height is two pixels short inside,
+        because the height is the border box and the viewport is the content box. The
+        content then overflows by exactly those two pixels for ever, so the frame keeps
+        its own scrollbar — and a scrollbar that takes width (most browsers other than
+        headless Chromium) narrows the pane, which changes the drawing's scale, which
+        changes the reported height. That is a loop with no end and it is invisible to a
+        browser with overlay scrollbars. The comparison frame reached the same
+        conclusion; its own note says only "no border".
+      */}
+      <div className="mt-3 overflow-hidden rounded border border-slate-200 bg-white dark:border-slate-700">
+        <iframe
+          data-testid="finding-review-embed"
+          src={src}
+          title="Review a cross-staff finding"
+          className="block w-full bg-white"
+          style={{ height }}
+        />
+      </div>
 
       {issue && (
         <div
@@ -231,43 +245,46 @@ export function FindingReview({
                 >
                   Checked — reads correctly
                 </button>
-                <button
-                  type="button"
-                  data-testid="finding-review-flag"
-                  onClick={() =>
-                    onDecide({
-                      kind: issue.kind,
-                      part: issue.part,
-                      disposition: "reading-flagged",
-                    })
-                  }
-                  className="rounded-md border border-amber-300 px-2 py-1.5 text-xs text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
-                >
-                  Misread — flag it
-                  {issue.part ? ` (${issue.part})` : ""}
-                </button>
                 {/*
-                  The kind-wide answer, offered only when there is a narrower one to
-                  distinguish it from. With no part in play "this example" and "all of
-                  them" are the same decision, and two buttons for one outcome is the
-                  kind of thing the removed Dismiss/Expected pair did.
+                  A decision is recorded against a kind *and part*, so a finding with no
+                  part can only be answered for the whole kind -- clicking once flags
+                  every example of it. The narrower button is therefore offered only
+                  when there is a part to narrow to, and the wider one always says how
+                  many it covers, because "flag it" beside eleven identical findings
+                  reads as flagging the one on screen.
                 */}
-                {issue.part && issue.places > 1 && (
+                {issue.part && (
                   <button
                     type="button"
-                    data-testid="finding-review-flag-all"
+                    data-testid="finding-review-flag"
                     onClick={() =>
                       onDecide({
                         kind: issue.kind,
-                        part: null,
+                        part: issue.part,
                         disposition: "reading-flagged",
                       })
                     }
                     className="rounded-md border border-amber-300 px-2 py-1.5 text-xs text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
                   >
-                    Flag all {issue.places} examples
+                    Misread — flag {issue.part}
                   </button>
                 )}
+                <button
+                  type="button"
+                  data-testid="finding-review-flag-all"
+                  onClick={() =>
+                    onDecide({
+                      kind: issue.kind,
+                      part: null,
+                      disposition: "reading-flagged",
+                    })
+                  }
+                  className="rounded-md border border-amber-300 px-2 py-1.5 text-xs text-amber-800 hover:bg-amber-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                >
+                  {issue.places > 1
+                    ? `Flag all ${issue.places} examples of this issue as misread`
+                    : "Flag as misread"}
+                </button>
               </>
             )
           )}

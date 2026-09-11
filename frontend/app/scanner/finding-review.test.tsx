@@ -83,7 +83,8 @@ describe("FindingReview", () => {
     render(<FindingReview {...PROPS} onDecide={onDecide} />);
     sendIssue(CLEF_ISSUE);
     sendIssue({ ...CLEF_ISSUE, kind: "dangling_slur_start", part: null, index: 1 });
-    fireEvent.click(screen.getByTestId("finding-review-flag"));
+    // Part-less, so the kind-wide flag is the only one offered.
+    fireEvent.click(screen.getByTestId("finding-review-flag-all"));
     expect(onDecide).toHaveBeenCalledWith({
       kind: "dangling_slur_start",
       part: null,
@@ -219,23 +220,35 @@ describe("flagging every example of an issue", () => {
     render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
     sendIssue(CLEF_ISSUE);
     expect(screen.getByTestId("finding-review-flag-all")).toHaveTextContent(
-      "Flag all 2 examples",
+      "Flag all 2 examples of this issue as misread",
     );
   });
 
-  it("is absent when the finding names no part", () => {
-    // With no part, "this example" and "all of them" are the same decision, and two
-    // buttons for one outcome is what the removed Dismiss/Expected pair did.
-    render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
-    sendIssue({ ...CLEF_ISSUE, part: null });
-    expect(screen.queryByTestId("finding-review-flag-all")).toBeNull();
-    expect(screen.getByTestId("finding-review-flag")).toBeInTheDocument();
+  it("is the only flag offered when the finding names no part", () => {
+    // A decision is recorded against a kind *and* part, so a part-less finding can only
+    // be answered kind-wide. Offering "flag it" there would flag all eleven while
+    // reading as flagging the one on screen.
+    const onDecide = jest.fn();
+    render(<FindingReview {...PROPS} onDecide={onDecide} />);
+    sendIssue({ ...CLEF_ISSUE, part: null, places: 11 });
+    expect(screen.queryByTestId("finding-review-flag")).toBeNull();
+    expect(screen.getByTestId("finding-review-flag-all")).toHaveTextContent(
+      "Flag all 11 examples of this issue as misread",
+    );
+    fireEvent.click(screen.getByTestId("finding-review-flag-all"));
+    expect(onDecide).toHaveBeenCalledWith({
+      kind: "clef_profile_mismatch",
+      part: null,
+      disposition: "reading-flagged",
+    });
   });
 
-  it("is absent when there is only one example", () => {
+  it("drops the count when there is only one example", () => {
     render(<FindingReview {...PROPS} onDecide={jest.fn()} />);
     sendIssue({ ...CLEF_ISSUE, places: 1 });
-    expect(screen.queryByTestId("finding-review-flag-all")).toBeNull();
+    expect(screen.getByTestId("finding-review-flag-all")).toHaveTextContent(
+      "Flag as misread",
+    );
   });
 
   it("offers controls as buttons, not links", () => {
