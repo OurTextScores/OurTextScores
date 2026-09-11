@@ -23,6 +23,12 @@ import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.se
 import { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
 import { ScannerEngineRegistry } from './scanner-engine.registry';
 
+import {
+  ScannerFindingDisposition_,
+  ScannerFindingDispositionSchema
+} from './schemas/scanner-finding-disposition.schema';
+import { ScannerFindingDispositionService } from './scanner-finding-disposition.service';
+
 @Module({
   imports: [
     AnalyticsModule,
@@ -33,7 +39,11 @@ import { ScannerEngineRegistry } from './scanner-engine.registry';
     MongooseModule.forFeature([
       { name: ScannerJob.name, schema: ScannerJobSchema },
       { name: ScannerCorrection.name, schema: ScannerCorrectionSchema },
-      { name: ScannerMergeDecision.name, schema: ScannerMergeDecisionSchema }
+      { name: ScannerMergeDecision.name, schema: ScannerMergeDecisionSchema },
+      {
+        name: ScannerFindingDisposition_.name,
+        schema: ScannerFindingDispositionSchema
+      }
     ])
   ],
   controllers: [ScannerController],
@@ -41,6 +51,7 @@ import { ScannerEngineRegistry } from './scanner-engine.registry';
     ScannerService,
     ScannerAlertService,
     ScannerMergeService,
+    ScannerFindingDispositionService,
     ScannerProviderHttpService,
     ScannerProviderService,
     ScannerTranscodaProviderService,
