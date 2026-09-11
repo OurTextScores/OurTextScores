@@ -11,7 +11,10 @@ import {
   scannerStatusLabel,
 } from "../scanner-types";
 import { ElapsedTime } from "../elapsed-time";
-import { CrossStaffFindings } from "../cross-staff-findings";
+import {
+  CrossStaffFindings,
+  type StandingFindingDisposition,
+} from "../cross-staff-findings";
 
 async function responseError(
   response: Response,
@@ -132,6 +135,15 @@ export default function ScannerJobClient({
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [draftPages, setDraftPages] = useState<ScannerJob["pages"]>([]);
+  /**
+   * Standing decisions about findings, from the server rather than this browser.
+   *
+   * The point of recording them at all: a disposition has to be visible to every
+   * reviewer of the scan, not to whoever happened to click it.
+   */
+  const [findingDispositions, setFindingDispositions] = useState<
+    StandingFindingDisposition[]
+  >([]);
   const [pageSetupDirty, setPageSetupDirty] = useState(false);
   // Which reading sits in each pane. Defaulting to scan-versus-first-engine
   // keeps the old view as the starting point; the reader can put the two
@@ -153,6 +165,62 @@ export default function ScannerJobClient({
   const structuredCompareWindowRef = useRef<Window | null>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
+  const loadFindingDispositions = useCallback(async () => {
+    try {
+      const response = await fetch(`${base}/findings/dispositions`);
+      if (!response.ok) return;
+      const body = await response.json();
+      setFindingDispositions(
+        Array.isArray(body?.dispositions) ? body.dispositions : [],
+      );
+    } catch {
+      // A panel that cannot read decisions still shows the findings; it must not take
+      // the page down with it.
+    }
+  }, [base]);
+
+  const decideFinding = useCallback(
+    async (input: {
+      kind: string;
+      part: string | null;
+      disposition: string;
+      amendment?: { stableId: string; addClefs: string[] };
+    }) => {
+      setError(null);
+      const response = await fetch(`${base}/findings/dispositions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setError(
+          typeof body?.message === "string"
+            ? body.message
+            : "That decision could not be recorded.",
+        );
+        return;
+      }
+      // Re-read rather than assume: amending a profile mints a revision, and the server
+      // is the only thing that knows which.
+      await loadFindingDispositions();
+      await refresh();
+    },
+    [base, loadFindingDispositions],
+  );
+
+  const withdrawFinding = useCallback(
+    async (input: { kind: string; part: string | null }) => {
+      const query = new URLSearchParams({ kind: input.kind });
+      if (input.part) query.set("part", input.part);
+      await fetch(`${base}/findings/dispositions?${query.toString()}`, {
+        method: "DELETE",
+      });
+      await loadFindingDispositions();
+    },
+    [base, loadFindingDispositions],
+  );
+
   const refresh = useCallback(async () => {
     const response = await fetch(base, { cache: "no-store" });
     if (!response.ok)
@@ -167,6 +235,12 @@ export default function ScannerJobClient({
       setError(value instanceof Error ? value.message : String(value)),
     );
   }, [refresh]);
+
+  // Standing decisions are server-side so every reviewer sees the same ones; without
+  // this the panel would show none until somebody made one in this browser.
+  useEffect(() => {
+    loadFindingDispositions();
+  }, [loadFindingDispositions]);
 
   useEffect(() => {
     if (
@@ -1401,6 +1475,9 @@ export default function ScannerJobClient({
             It still gates nothing: the page is complete either way.
           */}
           <CrossStaffFindings
+            dispositions={findingDispositions}
+            onDecide={decideFinding}
+            onWithdraw={withdrawFinding}
             editorUrlFor={(engineId, finding) =>
               editorUrl(selected.pageNumber, engineId, finding)
             }

@@ -228,3 +228,202 @@ describe("fixing the reading", () => {
     expect(screen.queryAllByTestId("cross-staff-finding-fix")).toHaveLength(0);
   });
 });
+
+describe("recording a decision", () => {
+  const clef = {
+    kind: "clef_profile_mismatch",
+    message:
+      "staff 3 decoded clef 'C3', profile part 'cello' expects one of ['F4']",
+    system: 2,
+    part: "cello",
+  };
+
+  it("offers nothing without somewhere to record it", () => {
+    // The rule the removed buttons broke: a control claiming a consequence it does not
+    // have is worse than no control.
+    render(<CrossStaffFindings {...LOCATABLE} sources={from([clef])} />);
+    expect(screen.queryAllByTestId("cross-staff-finding-acknowledge")).toHaveLength(0);
+    expect(screen.queryAllByTestId("cross-staff-finding-amend")).toHaveLength(0);
+  });
+
+  it("widens the profile by the clef that was decoded", () => {
+    const onDecide = jest.fn();
+    render(
+      <CrossStaffFindings {...LOCATABLE} onDecide={onDecide} sources={from([clef])} />,
+    );
+    fireEvent.click(screen.getByTestId("cross-staff-finding-amend"));
+    expect(onDecide).toHaveBeenCalledWith({
+      kind: "clef_profile_mismatch",
+      part: "cello",
+      disposition: "profile-amended",
+      amendment: { stableId: "cello", addClefs: ["C3"] },
+    });
+  });
+
+  it("names the clef in the control, so the consequence is visible before clicking", () => {
+    render(
+      <CrossStaffFindings {...LOCATABLE} onDecide={jest.fn()} sources={from([clef])} />,
+    );
+    expect(screen.getByTestId("cross-staff-finding-amend")).toHaveTextContent(
+      "widen the profile to C3",
+    );
+  });
+
+  it("offers no amendment where none can be derived", () => {
+    // Refuse rather than guess: an amendment built from an unrecognised message would
+    // change what every later page is decoded against.
+    const onDecide = jest.fn();
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        onDecide={onDecide}
+        sources={from([deviation(0)])}
+      />,
+    );
+    expect(screen.queryAllByTestId("cross-staff-finding-amend")).toHaveLength(0);
+    // The other two still stand: the finding can be checked or flagged regardless.
+    expect(screen.getByTestId("cross-staff-finding-acknowledge")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-staff-finding-flag")).toBeInTheDocument();
+  });
+
+  it("decides for the whole kind and part at once, never per page", () => {
+    // The same disagreement recurs on every page of a movement; asking per page trains
+    // reviewers to dismiss the category unread.
+    const onDecide = jest.fn();
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        onDecide={onDecide}
+        sources={from([deviation(0), deviation(1), deviation(2)])}
+      />,
+    );
+    expect(screen.getAllByTestId("cross-staff-finding-acknowledge")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("cross-staff-finding-acknowledge"));
+    expect(onDecide).toHaveBeenCalledWith({
+      kind: "profile_layout_deviation",
+      part: null,
+      disposition: "acknowledged",
+    });
+  });
+});
+
+describe("showing a standing decision", () => {
+  const clef = {
+    kind: "clef_profile_mismatch",
+    message: "staff 3 decoded clef 'C3', profile part 'cello' expects one of ['F4']",
+    system: 2,
+    part: "cello",
+  };
+
+  it("states the decision and hides the controls", () => {
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        onDecide={jest.fn()}
+        sources={from([clef])}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "profile-amended" },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("cross-staff-finding-disposition")).toHaveTextContent(
+      "Profile widened to expect this",
+    );
+    expect(screen.queryAllByTestId("cross-staff-finding-amend")).toHaveLength(0);
+  });
+
+  it("keeps a flagged finding visible as open work", () => {
+    // Hiding it because someone noticed it would lose the only record that anything is
+    // wrong.
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        sources={from([clef])}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "reading-flagged" },
+        ]}
+      />,
+    );
+    const row = screen.getByTestId("cross-staff-finding-disposition");
+    expect(row).toHaveAttribute("data-disposition", "reading-flagged");
+    expect(row).toHaveTextContent("Flagged as misread");
+  });
+
+  it("never removes a finding — suppression is a view, not a deletion", () => {
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        sources={from([clef, deviation(0)])}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "acknowledged" },
+        ]}
+      />,
+    );
+    expect(screen.getAllByTestId("cross-staff-finding")).toHaveLength(2);
+  });
+
+  it("sorts answered groups below open ones", () => {
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        sources={from([clef, deviation(0)])}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "acknowledged" },
+        ]}
+      />,
+    );
+    const rows = screen.getAllByTestId("cross-staff-finding");
+    expect(rows[0]).toHaveAttribute("data-kind", "profile_layout_deviation");
+    expect(rows[1]).toHaveAttribute("data-kind", "clef_profile_mismatch");
+  });
+
+  it("prefers a part-specific decision over a kind-wide one", () => {
+    // The narrower statement is the more considered one, matching the server.
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        sources={from([clef])}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: null, disposition: "reading-flagged" },
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "acknowledged" },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("cross-staff-finding-disposition")).toHaveAttribute(
+      "data-disposition",
+      "acknowledged",
+    );
+  });
+
+  it("does not apply another part's decision to a finding with no part", () => {
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        sources={from([deviation(0)])}
+        dispositions={[
+          { kind: "profile_layout_deviation", part: "cello", disposition: "acknowledged" },
+        ]}
+      />,
+    );
+    expect(screen.queryAllByTestId("cross-staff-finding-disposition")).toHaveLength(0);
+  });
+
+  it("can be withdrawn, returning the finding to open work", () => {
+    const onWithdraw = jest.fn();
+    render(
+      <CrossStaffFindings
+        {...LOCATABLE}
+        onWithdraw={onWithdraw}
+        sources={from([clef])}
+        dispositions={[
+          { kind: "clef_profile_mismatch", part: "cello", disposition: "acknowledged" },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("cross-staff-finding-withdraw"));
+    expect(onWithdraw).toHaveBeenCalledWith({
+      kind: "clef_profile_mismatch",
+      part: "cello",
+    });
+  });
+});

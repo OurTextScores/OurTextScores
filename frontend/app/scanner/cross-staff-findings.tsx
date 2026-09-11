@@ -2,7 +2,53 @@
 
 import { useState } from "react";
 
+import { amendmentFor } from "./finding-amendment";
 import type { ScannerCrossStaffFinding } from "./scanner-types";
+
+export type FindingDisposition =
+  | "profile-amended"
+  | "acknowledged"
+  | "reading-flagged";
+
+export interface StandingFindingDisposition {
+  kind: string;
+  part: string | null;
+  disposition: FindingDisposition;
+}
+
+/**
+ * What a standing decision means to a reader.
+ *
+ * `reading-flagged` is absent from the suppressing set on purpose: a flagged finding is
+ * an unresolved problem, and hiding it because someone noticed it would lose the only
+ * record that anything is wrong.
+ */
+const DISPOSITION_LABELS: Record<FindingDisposition, string> = {
+  "profile-amended": "Profile widened to expect this",
+  acknowledged: "Checked — reads correctly",
+  "reading-flagged": "Flagged as misread",
+};
+
+const SUPPRESSING: FindingDisposition[] = ["profile-amended", "acknowledged"];
+
+/**
+ * The standing decision covering a finding.
+ *
+ * Part-specific beats kind-wide, matching the server: the narrower statement is the more
+ * considered one, and is the one a reviewer would be surprised to lose. A finding with no
+ * part can only be matched kind-wide, never by some other part's decision.
+ */
+function dispositionFor(
+  finding: ScannerCrossStaffFinding,
+  dispositions: StandingFindingDisposition[],
+): StandingFindingDisposition | undefined {
+  const forKind = (dispositions || []).filter((entry) => entry.kind === finding.kind);
+  if (finding.part) {
+    const specific = forKind.find((entry) => entry.part === finding.part);
+    if (specific) return specific;
+  }
+  return forKind.find((entry) => entry.part === null);
+}
 
 /** One engine's findings, kept engine-scoped because a crop needs both the engine and
  *  the finding's index within *that* engine's list to address it. */
@@ -138,6 +184,9 @@ export function CrossStaffFindings({
   pageNumber,
   statusVersion,
   editorUrlFor,
+  dispositions,
+  onDecide,
+  onWithdraw,
 }: {
   sources: CrossStaffFindingSource[];
   jobId?: string;
@@ -151,6 +200,20 @@ export function CrossStaffFindings({
     engineId: string,
     finding: { kind: string; part?: string },
   ) => string;
+  /** Standing decisions, from the server so every reviewer sees the same ones. */
+  dispositions?: StandingFindingDisposition[];
+  /**
+   * Record a decision. Only offered once it has somewhere to go: a control claiming a
+   * consequence it does not have is worse than no control, which is why the original
+   * Dismiss and Expected buttons were removed rather than relabelled.
+   */
+  onDecide?: (input: {
+    kind: string;
+    part: string | null;
+    disposition: FindingDisposition;
+    amendment?: { stableId: string; addClefs: string[] };
+  }) => void | Promise<void>;
+  onWithdraw?: (input: { kind: string; part: string | null }) => void | Promise<void>;
 }) {
   // Flattened for display but each entry keeps its engine and its index within that
   // engine's list, because that pair is the crop's address.
@@ -175,6 +238,16 @@ export function CrossStaffFindings({
     ]);
   }
 
+  // Answered groups are folded away, never deleted. The findings are exactly as the
+  // engine reported them; this is a view over them, and it stays reversible.
+  const isSuppressed = (group: LocatedFinding[]) => {
+    const standing = dispositionFor(group[0].finding, dispositions || []);
+    return standing ? SUPPRESSING.includes(standing.disposition) : false;
+  };
+  const groups = [...byKind.entries()];
+  const openGroups = groups.filter(([, group]) => !isSuppressed(group));
+  const suppressedGroups = groups.filter(([, group]) => isSuppressed(group));
+
   return (
     <section
       data-testid="cross-staff-findings"
@@ -189,7 +262,7 @@ export function CrossStaffFindings({
         anything, and none of it has changed what was recognized.
       </p>
       <ul className="mt-3 space-y-2">
-        {[...byKind.entries()].map(([kind, group]) => (
+        {[...openGroups, ...suppressedGroups].map(([kind, group]) => (
           <li
             key={kind}
             data-testid="cross-staff-finding"
@@ -201,6 +274,33 @@ export function CrossStaffFindings({
               {titleFor(kind)}
               {group.length > 1 ? ` · ${group.length} places` : ""}
             </div>
+            {(() => {
+              const first = group[0].finding;
+              const standing = dispositionFor(first, dispositions || []);
+              if (!standing) return null;
+              return (
+                <p
+                  data-testid="cross-staff-finding-disposition"
+                  data-disposition={standing.disposition}
+                  className="mt-1 text-xs text-slate-500"
+                >
+                  {DISPOSITION_LABELS[standing.disposition]}
+                  {standing.part === null ? " (all parts)" : ""}
+                  {onWithdraw && (
+                    <button
+                      type="button"
+                      data-testid="cross-staff-finding-withdraw"
+                      onClick={() =>
+                        onWithdraw({ kind: first.kind, part: standing.part })
+                      }
+                      className="ml-2 underline underline-offset-2 hover:text-slate-700 dark:hover:text-slate-300"
+                    >
+                      Undo
+                    </button>
+                  )}
+                </p>
+              );
+            })()}
             <ul className="mt-1 space-y-0.5 text-slate-600 dark:text-slate-400">
               {group.slice(0, 4).map((entry, index) => (
                 <li
@@ -242,6 +342,57 @@ export function CrossStaffFindings({
                 </li>
               )}
             </ul>
+            {onDecide &&
+              !dispositionFor(group[0].finding, dispositions || []) &&
+              (() => {
+                const first = group[0].finding;
+                const amendment = amendmentFor(first);
+                // Decided for the whole kind and part at once, never per page: the same
+                // disagreement recurs on every page of a movement, and asking per page
+                // trains reviewers to dismiss the category unread.
+                const part = first.part ?? null;
+                return (
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    {amendment && (
+                      <button
+                        type="button"
+                        data-testid="cross-staff-finding-amend"
+                        onClick={() =>
+                          onDecide({
+                            kind: first.kind,
+                            part,
+                            disposition: "profile-amended",
+                            amendment,
+                          })
+                        }
+                        className="text-xs font-medium text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-400"
+                      >
+                        Expected — widen the profile to {amendment.addClefs.join(", ")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-testid="cross-staff-finding-acknowledge"
+                      onClick={() =>
+                        onDecide({ kind: first.kind, part, disposition: "acknowledged" })
+                      }
+                      className="text-xs font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900 dark:text-slate-400"
+                    >
+                      Checked — reads correctly
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="cross-staff-finding-flag"
+                      onClick={() =>
+                        onDecide({ kind: first.kind, part, disposition: "reading-flagged" })
+                      }
+                      className="text-xs font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 dark:text-amber-500"
+                    >
+                      Misread — flag it
+                    </button>
+                  </div>
+                );
+              })()}
           </li>
         ))}
       </ul>
