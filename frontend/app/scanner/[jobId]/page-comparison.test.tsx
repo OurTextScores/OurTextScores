@@ -273,6 +273,40 @@ describe("PageComparison", () => {
     await waitFor(() => expect(frame).toHaveStyle({ height: "2400px" }));
   });
 
+  it("ignores a height a pixel or two from the one it already has", async () => {
+    /*
+     * The frame's height is reported by its own content, so a height it did not ask for
+     * comes straight back as a new measurement. Rounding up hands it exactly that, and
+     * the two can settle into a ping-pong with no end: measured on the findings embed,
+     * which shares this code, the frame alternated between 480 and 481 for as long as
+     * the page was open, keeping an observer and a message handler busy on a page
+     * sitting still.
+     */
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    const frame = await screen.findByTitle(/Reconciling differences on page 1/);
+    const post = (height: number) =>
+      fireEvent(
+        window,
+        new MessageEvent("message", {
+          data: { type: "ots-compare-height", height },
+          origin: window.location.origin,
+        }),
+      );
+
+    post(2400);
+    await waitFor(() => expect(frame).toHaveStyle({ height: "2400px" }));
+
+    // The pixel back, which is what the loop was made of.
+    post(2401);
+    expect(frame).toHaveStyle({ height: "2400px" });
+    post(2399);
+    expect(frame).toHaveStyle({ height: "2400px" });
+
+    // A real change still lands.
+    post(2600);
+    await waitFor(() => expect(frame).toHaveStyle({ height: "2600px" }));
+  });
+
   it("ignores a height from anywhere but this site", async () => {
     render(<PageComparison jobId="job-1" job={job} page={page} open />);
     const frame = await screen.findByTitle(/Reconciling differences on page 1/);

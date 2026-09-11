@@ -118,6 +118,8 @@ const FULL_BLEED_GUTTER = 16;
  * and a maximum is deliberately absent: the page's own scrollbar is the point.
  */
 function useEmbeddedCompareHeight(): number | null {
+  // Smallest change worth acting on; see the note in the handler below.
+  const HYSTERESIS_PX = 2;
   const [height, setHeight] = useState<number | null>(null);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -129,7 +131,24 @@ function useEmbeddedCompareHeight(): number | null {
       if (value?.type !== "ots-compare-height") return;
       if (typeof value.height !== "number" || !Number.isFinite(value.height))
         return;
-      setHeight(Math.max(480, Math.ceil(value.height)));
+      /*
+       * Ignore changes of a pixel or two.
+       *
+       * Rounding up hands the frame a pixel the content did not ask for; inside the
+       * frame that pixel changes the body height, which is reported straight back, and
+       * the two can settle into a ping-pong that never ends. Measured on the findings
+       * embed, which shares this code path: the frame alternated between 480 and 481
+       * for as long as the page was open, keeping a resize observer and a message
+       * handler busy on a page sitting still.
+       *
+       * Not reported here, where the content is tall enough that a pixel rarely lands
+       * on the boundary — but it is the same arithmetic, so it gets the same guard.
+       */
+      const next = Math.max(480, Math.ceil(value.height));
+      setHeight((current) =>
+        // The first height is always taken; there is nothing to compare it against.
+        current === null || Math.abs(current - next) >= HYSTERESIS_PX ? next : current,
+      );
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
