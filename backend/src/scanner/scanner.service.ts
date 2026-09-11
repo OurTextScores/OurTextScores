@@ -1,8 +1,13 @@
+import {
+  ScannerFindingEdit,
+  ScannerFindingEditDocument
+} from './schemas/scanner-finding-edit.schema';
 import { ScannerFindingDispositionService } from './scanner-finding-disposition.service';
 import { StandingDisposition } from './scanner-finding-dispositions';
 import {
   amendProfile,
   currentRevision,
+  effectiveScoreProfile,
   ensureScoreProfileHistory,
   ProfileAmendment,
   ProfileAmendmentError,
@@ -303,7 +308,10 @@ export class ScannerService implements OnModuleInit {
     // Optional for the same reason as the model above: a missing service records
     // nothing rather than breaking every existing construction of this class.
     @Optional()
-    private readonly findingDispositions?: ScannerFindingDispositionService
+    private readonly findingDispositions?: ScannerFindingDispositionService,
+    @Optional()
+    @InjectModel(ScannerFindingEdit.name)
+    private readonly findingEdits?: Model<ScannerFindingEditDocument>
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1824,6 +1832,9 @@ export class ScannerService implements OnModuleInit {
       edited?: boolean;
       editedMeasures?: ScannerMergedEditedMeasure[];
       acceptStale?: boolean;
+      /** Set when this save came from the findings editor; recorded, never inferred. */
+      findingKind?: string;
+      findingPart?: string;
     }
   ): Promise<any> {
     this.assertAvailable(userId);
@@ -1937,13 +1948,34 @@ export class ScannerService implements OnModuleInit {
     // one of them having been right. Emitted once, when the edit first lands.
     const priorEditedKeys = new Set(priorEdited.map(editedKey));
     const newlyEdited = editedMeasures.filter((entry) => !priorEditedKeys.has(editedKey(entry)));
-    if (newlyEdited.length > 0) {
+    // Split by what prompted the edit. A comparison edit says both engines were wrong
+    // here; a finding edit says one engine flagged itself and a human agreed. Filing the
+    // second as the first would assert a disagreement that never happened -- and on a
+    // single-engine job, where findings live, there is no second reading to disagree
+    // with at all.
+    const newlyFromFinding = newlyEdited.filter((entry) => entry.source === 'finding');
+    const newlyFromComparison = newlyEdited.filter((entry) => entry.source !== 'finding');
+
+    for (const entry of newlyFromFinding) {
+      await this.recordFindingEdit({
+        page,
+        userId,
+        engineId: input.sourceEngineId,
+        findingKind: input.findingKind || 'unspecified',
+        part: input.findingPart,
+        stablePartKey: entry.stablePartKey,
+        measureIndex: entry.measureIndex,
+        scoreProfileRevision: effectiveScoreProfile(job)?.revision
+      });
+    }
+
+    if (newlyFromComparison.length > 0) {
       const plan = this.enginePlanForJob(job);
       const structuredPair = isOtsHomrStructuredReadingId(input.sourceEngineId);
       const [baseEngineId, candidateEngineId] = structuredPair
         ? [OTS_HOMR_CORE_READING_ID, OTS_HOMR_SELECTED_HEADS_READING_ID]
         : plan.engineIds;
-      for (const entry of newlyEdited) {
+      for (const entry of newlyFromComparison) {
         await this.recordMergeDecision({
           page,
           userId,
@@ -2717,6 +2749,55 @@ export class ScannerService implements OnModuleInit {
    * Best-effort, like a correction: a training record that fails to write must
    * never fail the decision the reviewer just made.
    */
+  /**
+   * A bar rewritten because one engine flagged its own reading.
+   *
+   * Its own collection rather than `scanner_merge_decisions`, which asserts that two
+   * readings disagreed, or `scanner_corrections`, which is symbol-level. Neither shape
+   * fits, and making one fit would mean writing something untrue into the corpus.
+   */
+  private async recordFindingEdit(input: {
+    page: ScannerPageResult;
+    userId: string;
+    engineId: string;
+    findingKind: string;
+    part?: string;
+    stablePartKey?: string;
+    measureIndex: number;
+    scoreProfileRevision?: number;
+  }): Promise<void> {
+    if (!this.findingEdits) return;
+    try {
+      const pageSha256 =
+        input.page.recognitionRaster?.storage?.checksumSha256 ||
+        input.page.sourceImage?.checksumSha256;
+      if (!pageSha256) return;
+      const actualEngineId = isOtsHomrStructuredReadingId(input.engineId)
+        ? 'ots-homr'
+        : input.engineId;
+      const run = input.page.engines?.[actualEngineId as ScannerEngineId];
+      await this.findingEdits.create({
+        pageSha256,
+        userHash: this.telemetry.userHash(input.userId),
+        engineId: input.engineId,
+        findingKind: input.findingKind,
+        part: input.part,
+        measureIndex: input.measureIndex,
+        stablePartKey: input.stablePartKey,
+        engineArtifactSha256:
+          run?.reviewedMusicXml?.checksumSha256 || run?.artifacts?.musicXml?.checksumSha256,
+        modelRevision: run?.modelRevision,
+        providerRevision: run?.providerRevision,
+        scoreProfileRevision: input.scoreProfileRevision,
+        policyVersion: this.config.get<string>('SCANNER_TRAINING_POLICY_VERSION', 'unset')
+      });
+    } catch (error) {
+      // Same posture as a merge decision: losing a training sample must not fail the
+      // reviewer's save.
+      this.logger.warn(`Scanner finding edit not recorded for training: ${this.messageOf(error)}`);
+    }
+  }
+
   private async recordMergeDecision(input: {
     page: ScannerPageResult;
     userId: string;

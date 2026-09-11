@@ -27,6 +27,10 @@ import {
   ScannerFindingDisposition_,
   ScannerFindingDispositionSchema
 } from './schemas/scanner-finding-disposition.schema';
+import {
+  ScannerFindingEdit,
+  ScannerFindingEditSchema
+} from './schemas/scanner-finding-edit.schema';
 import { ScannerFindingDispositionService } from './scanner-finding-disposition.service';
 
 @Module({
@@ -43,7 +47,8 @@ import { ScannerFindingDispositionService } from './scanner-finding-disposition.
       {
         name: ScannerFindingDisposition_.name,
         schema: ScannerFindingDispositionSchema
-      }
+      },
+      { name: ScannerFindingEdit.name, schema: ScannerFindingEditSchema }
     ])
   ],
   controllers: [ScannerController],

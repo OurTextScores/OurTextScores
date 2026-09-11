@@ -114,6 +114,19 @@ export interface ScannerMergedDecision {
 export interface ScannerMergedEditedMeasure {
   measureIndex: number;
   stablePartKey?: string;
+  /**
+   * What prompted the edit, so a consumer cannot over-read it.
+   *
+   * `comparison` is the original meaning and the default: two engines disagreed and a
+   * human rewrote the bar, which is evidence that *both* were wrong there. `finding` is
+   * weaker on purpose - one engine flagged its own reading and a human agreed. It says
+   * nothing about any other engine, which may have read the bar correctly and never been
+   * consulted.
+   *
+   * Absent on every record written before this existed, and absent means `comparison`,
+   * so no stored edit changes meaning.
+   */
+  source?: 'comparison' | 'finding';
 }
 
 export interface ScannerMergedScore {
