@@ -386,6 +386,56 @@ export class ScannerController {
     return new StreamableFile(reading.body);
   }
 
+  @Get(':jobId/findings/dispositions')
+  async findingDispositions(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string
+  ) {
+    return { dispositions: await this.scanner.listFindingDispositions(user.userId, jobId) };
+  }
+
+  /**
+   * Record a decision about a class of finding.
+   *
+   * Keyed by kind and part rather than by page: the same disagreement recurs on every
+   * page of a movement, and asking per page trains reviewers to dismiss the category
+   * unread.
+   */
+  @Put(':jobId/findings/dispositions')
+  async setFindingDisposition(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Body()
+    body: {
+      kind?: string;
+      part?: string | null;
+      disposition?: string;
+      amendment?: { stableId?: string; addClefs?: string[]; expectedStaffCount?: number };
+    }
+  ) {
+    return this.scanner.setFindingDisposition(user.userId, jobId, {
+      kind: String(body?.kind ?? ''),
+      part: body?.part ?? null,
+      disposition: body?.disposition as never,
+      amendment: body?.amendment as never
+    });
+  }
+
+  @Delete(':jobId/findings/dispositions')
+  async clearFindingDisposition(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Query('kind') kind: string | undefined,
+    @Query('part') part: string | undefined
+  ) {
+    return this.scanner.clearFindingDisposition(
+      user.userId,
+      jobId,
+      String(kind ?? ''),
+      part ?? null
+    );
+  }
+
   @Get(':jobId/pages/:pageNumber/engines/:engineId/findings/:findingIndex/crop')
   async findingCrop(
     @CurrentUser() user: RequestUser,

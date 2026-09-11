@@ -1,3 +1,17 @@
+import { ScannerFindingDispositionService } from './scanner-finding-disposition.service';
+import { StandingDisposition } from './scanner-finding-dispositions';
+import {
+  amendProfile,
+  currentRevision,
+  ensureScoreProfileHistory,
+  ProfileAmendment,
+  ProfileAmendmentError,
+  ScoreProfileRevision
+} from './scanner-score-profile-amendment';
+import {
+  SCANNER_FINDING_DISPOSITIONS,
+  ScannerFindingDisposition
+} from './schemas/scanner-finding-disposition.schema';
 import { findingCrop } from './scanner-finding-crop';
 import {
   BadRequestException,
@@ -285,7 +299,11 @@ export class ScannerService implements OnModuleInit {
     // many, in tests — keeps working; a missing model simply records nothing.
     @Optional()
     @InjectModel(ScannerMergeDecision.name)
-    private readonly mergeDecisions?: Model<ScannerMergeDecisionDocument>
+    private readonly mergeDecisions?: Model<ScannerMergeDecisionDocument>,
+    // Optional for the same reason as the model above: a missing service records
+    // nothing rather than breaking every existing construction of this class.
+    @Optional()
+    private readonly findingDispositions?: ScannerFindingDispositionService
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -3698,6 +3716,139 @@ export class ScannerService implements OnModuleInit {
       ),
       minimum: this.float('SCANNER_REVIEW_CONFIDENCE_MIN', DEFAULT_REVIEW_THRESHOLDS.minimum)
     };
+  }
+
+  /**
+   * The standing review decisions for a job's findings.
+   *
+   * Design: `docs/private/SCANNER_FINDINGS_REVIEW_EDITOR_DESIGN_2026-09-10.md`.
+   */
+  async listFindingDispositions(userId: string, jobId: string): Promise<StandingDisposition[]> {
+    this.assertAvailable(userId);
+    await this.ownedJob(userId, jobId);
+    return this.findingDispositions ? this.findingDispositions.list(jobId) : [];
+  }
+
+  /**
+   * Record what a reviewer decided about a class of finding.
+   *
+   * `profile-amended` is the one that does more than record: it widens the job's score
+   * profile, which is the whole point of distinguishing it from "acknowledged". A cello
+   * that legitimately reads in tenor should stop raising the finding on later pages, and
+   * the only way that happens is for the prior itself to change.
+   *
+   * The amendment is applied *before* the disposition is stored, so a rejected amendment
+   * -- an unknown part, a job with no profile -- leaves no decision claiming an effect it
+   * did not have. That ordering is the same lesson as the buttons this replaces.
+   */
+  async setFindingDisposition(
+    userId: string,
+    jobId: string,
+    input: {
+      kind: string;
+      part?: string | null;
+      disposition: ScannerFindingDisposition;
+      amendment?: ProfileAmendment;
+    }
+  ): Promise<{ disposition: ScannerFindingDisposition; profileRevision?: number }> {
+    this.assertAvailable(userId);
+    if (!input?.kind || typeof input.kind !== 'string') {
+      throw new BadRequestException('Scanner finding kind is required');
+    }
+    if (!SCANNER_FINDING_DISPOSITIONS.includes(input.disposition)) {
+      throw new BadRequestException('Scanner finding disposition is invalid');
+    }
+    const job = await this.ownedJob(userId, jobId);
+
+    let profileRevision: number | undefined;
+    if (input.disposition === 'profile-amended') {
+      if (!input.amendment?.stableId) {
+        // "The profile is wrong" without saying how is not a decision anything can act
+        // on, and storing it would leave the finding recurring with a record claiming
+        // it had been answered.
+        throw new BadRequestException('A profile amendment must name the part it widens');
+      }
+      try {
+        const seeded = ensureScoreProfileHistory(job);
+        const amended = amendProfile(
+          seeded,
+          input.amendment,
+          this.userHash(userId)
+        );
+        if (amended !== seeded) {
+          job.scoreProfileRevisions = amended;
+          job.markModified('scoreProfileRevisions');
+          await job.save();
+        } else if (!job.scoreProfileRevisions?.length) {
+          // A no-op amendment on a job with no stored history: nothing changed, and
+          // seeding a revision nobody asked for would move the provider fingerprint for
+          // no reason.
+          job.scoreProfileRevisions = seeded;
+          job.markModified('scoreProfileRevisions');
+          await job.save();
+        }
+        profileRevision = currentRevision(
+          job.scoreProfileRevisions as ScoreProfileRevision[]
+        ).revision;
+      } catch (error) {
+        if (error instanceof ProfileAmendmentError) {
+          throw new BadRequestException(error.message);
+        }
+        throw error;
+      }
+    }
+
+    if (this.findingDispositions) {
+      await this.findingDispositions.set({
+        jobId,
+        kind: input.kind,
+        part: input.part ?? null,
+        disposition: input.disposition,
+        userHash: this.userHash(userId),
+        profileRevision,
+        findingCount: this.countFindings(job, input.kind, input.part ?? null)
+      });
+    }
+    return { disposition: input.disposition, ...(profileRevision ? { profileRevision } : {}) };
+  }
+
+  /**
+   * Withdraw a decision, returning the finding to open work.
+   *
+   * Deliberately does not undo a profile amendment. The widened profile has already
+   * decoded later pages, and narrowing it again would leave those pages decoded against
+   * a prior the job no longer claims -- and could not re-narrow what it produced. The
+   * decision is withdrawn; its consequence stays, visible in the revision history.
+   */
+  async clearFindingDisposition(
+    userId: string,
+    jobId: string,
+    kind: string,
+    part?: string | null
+  ): Promise<{ cleared: boolean }> {
+    this.assertAvailable(userId);
+    await this.ownedJob(userId, jobId);
+    if (!this.findingDispositions) return { cleared: false };
+    return { cleared: await this.findingDispositions.clear(jobId, kind, part ?? null) };
+  }
+
+  /** How many open findings this decision covers, recorded as context at the time. */
+  private countFindings(
+    job: { pages?: ScannerPageResult[] },
+    kind: string,
+    part: string | null
+  ): number {
+    let total = 0;
+    for (const page of job.pages || []) {
+      for (const run of Object.values(page.engines || {})) {
+        for (const finding of run?.crossStaffFindings || []) {
+          if (finding.kind !== kind) continue;
+          if (part !== null && finding.part !== part) continue;
+          total += 1;
+        }
+      }
+    }
+    return total;
   }
 
   private async ownedJob(userId: string, jobId: string): Promise<ScannerJobDocument> {
