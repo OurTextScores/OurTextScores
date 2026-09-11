@@ -50,7 +50,18 @@ function titleFor(kind: string): string {
   return KIND_TITLES[kind] ?? kind.replace(/_/g, " ");
 }
 
-/** Sized by the embed, which reports its own height; see `ots-compare-height`. */
+/**
+ * Sized by the embed, which reports its own height; see `ots-compare-height`.
+ *
+ * Changes under a couple of pixels are ignored, and that hysteresis is the whole point
+ * rather than a tidy-up. Rounding the reported height up gives the frame a pixel the
+ * content did not ask for; inside the frame that pixel changes the body height, which is
+ * reported back, and the two settle into a permanent 480/481 ping-pong. Measured: the
+ * frame never stopped resizing, and the observer and message handler ran for as long as
+ * the page was open, which is what made the machine work for a page sitting still.
+ */
+const HEIGHT_HYSTERESIS_PX = 2;
+
 function useEmbedHeight(): number {
   const [height, setHeight] = useState(640);
   useEffect(() => {
@@ -59,7 +70,10 @@ function useEmbedHeight(): number {
       const value = (event.data as { type?: string; height?: number } | null) || null;
       if (value?.type !== "ots-compare-height") return;
       if (typeof value.height !== "number" || !Number.isFinite(value.height)) return;
-      setHeight(Math.max(480, Math.ceil(value.height)));
+      const next = Math.max(480, Math.ceil(value.height));
+      setHeight((current) =>
+        Math.abs(current - next) >= HEIGHT_HYSTERESIS_PX ? next : current,
+      );
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
