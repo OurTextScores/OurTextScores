@@ -1,3 +1,4 @@
+import { findingCrop } from './scanner-finding-crop';
 import {
   BadRequestException,
   ConflictException,
@@ -3037,6 +3038,88 @@ export class ScannerService implements OnModuleInit {
       body: await this.renderComparisonBlockCrop(source, comparison.sourceImage, [
         { systemIndex: system.systemIndex, staffIndices: [], region: system.region }
       ]),
+      contentType: 'image/png'
+    };
+  }
+
+  /**
+   * The bit of the page a cross-staff finding is talking about.
+   *
+   * Design: `docs/private/SCANNER_FINDINGS_REVIEW_EDITOR_DESIGN_2026-09-10.md`.
+   *
+   * Deliberately not routed through the comparison crop. A comparison needs two engines
+   * and does not exist on a single-engine job, and single-engine is exactly where
+   * findings live -- the job that motivated this ran `ots-homr` alone. Geometry comes
+   * from the engine's own `review.staves`, which carries `systemIndex` and `region` per
+   * staff, so the finding and its rectangle come out of the same HOMR pass and correspond
+   * by construction rather than by coincidence.
+   *
+   * Refuses rather than guesses. A page-level finding and an unknown system have no
+   * rectangle, and inventing one would show a reviewer a plausible-looking wrong place
+   * that they have no way to detect -- one music system looks much like the next.
+   */
+  async pageFindingCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    engineId: string,
+    findingIndex: number,
+    statusVersion: number
+  ): Promise<{ body: Buffer; contentType: 'image/png' }> {
+    this.assertAvailable(userId);
+    if (!isScannerEngineId(engineId)) {
+      throw new BadRequestException('Scanner engine is invalid');
+    }
+    if (!Number.isInteger(findingIndex) || findingIndex < 0) {
+      throw new BadRequestException('Scanner finding index is invalid');
+    }
+    if (!Number.isInteger(statusVersion) || statusVersion < 1) {
+      throw new BadRequestException('Scanner job status version is required');
+    }
+
+    const job = await this.ownedJob(userId, jobId);
+    if ((job.statusVersion || 1) !== statusVersion) {
+      throw new ConflictException('Scanner job changed; refresh and try again');
+    }
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const run = page.engines?.[engineId as ScannerEngineId];
+    const finding = run?.crossStaffFindings?.[findingIndex];
+    if (!finding) throw new NotFoundException('Scanner finding not found');
+    if (!page.recognitionRaster?.storage) {
+      throw new NotFoundException('Scanner recognition raster is not available');
+    }
+
+    const crop = findingCrop(finding, (run?.review?.staves || []) as never, {
+      width: page.recognitionRaster.width,
+      height: page.recognitionRaster.height
+    });
+    if (!crop.rect) {
+      // `page-level` and `unknown-system` both land here. The reason is the useful part
+      // of the answer, so it is carried rather than flattened to a bare 404.
+      throw new NotFoundException(`Scanner finding is not locatable: ${crop.reason}`);
+    }
+
+    const source = await this.storage.getObjectBuffer(
+      page.recognitionRaster.storage.bucket,
+      page.recognitionRaster.storage.objectKey
+    );
+    const metadata = await sharp(source).metadata();
+    // Same identity check the comparison crop makes: a raster that changed under us would
+    // produce a correct-looking crop of the wrong pixels.
+    if (
+      createHash('sha256').update(source).digest('hex') !==
+        page.recognitionRaster.checksumSha256 ||
+      Number(metadata.width || 0) !== page.recognitionRaster.width ||
+      Number(metadata.height || 0) !== page.recognitionRaster.height
+    ) {
+      throw new ConflictException('Scanner recognition raster changed; refresh and try again');
+    }
+    if (crop.rect.width * crop.rect.height > MAX_SCANNER_COMPARISON_CROP_PIXELS) {
+      throw new PayloadTooLargeException('Scanner finding crop is too large');
+    }
+    return {
+      body: await sharp(source).extract(crop.rect).png().toBuffer(),
       contentType: 'image/png'
     };
   }

@@ -1384,8 +1384,14 @@ export default function ScannerJobClient({
             It still gates nothing: the page is complete either way.
           */}
           <CrossStaffFindings
-            findings={Object.values(selected.engines || {}).flatMap(
-              (run) => run?.crossStaffFindings || [],
+            jobId={jobId}
+            pageNumber={selected.pageNumber}
+            statusVersion={job.statusVersion}
+            sources={Object.entries(selected.engines || {}).map(
+              ([engineId, run]) => ({
+                engineId,
+                findings: run?.crossStaffFindings || [],
+              }),
             )}
           />
 

@@ -386,6 +386,30 @@ export class ScannerController {
     return new StreamableFile(reading.body);
   }
 
+  @Get(':jobId/pages/:pageNumber/engines/:engineId/findings/:findingIndex/crop')
+  async findingCrop(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('engineId') engineId: string,
+    @Param('findingIndex', ParseIntPipe) findingIndex: number,
+    @Query('statusVersion', ParseIntPipe) statusVersion: number,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const crop = await this.scanner.pageFindingCrop(
+      user.userId,
+      jobId,
+      pageNumber,
+      engineId,
+      findingIndex,
+      statusVersion
+    );
+    response.setHeader('Content-Type', crop.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(crop.body);
+  }
+
   @Get(':jobId/pages/:pageNumber/comparison/systems/:systemIndex/crop')
   async comparisonSystemCrop(
     @CurrentUser() user: RequestUser,

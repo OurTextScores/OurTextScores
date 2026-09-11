@@ -1,4 +1,21 @@
+"use client";
+
+import { useState } from "react";
+
 import type { ScannerCrossStaffFinding } from "./scanner-types";
+
+/** One engine's findings, kept engine-scoped because a crop needs both the engine and
+ *  the finding's index within *that* engine's list to address it. */
+export interface CrossStaffFindingSource {
+  engineId: string;
+  findings: ScannerCrossStaffFinding[];
+}
+
+interface LocatedFinding {
+  finding: ScannerCrossStaffFinding;
+  engineId: string;
+  index: number;
+}
 
 /**
  * Cross-staff disagreements, shown to a reader before they compare the engines.
@@ -33,18 +50,120 @@ function titleFor(kind: string): string {
   return KIND_TITLES[kind] ?? kind.replace(/_/g, " ");
 }
 
-export function CrossStaffFindings({
-  findings,
+/**
+ * A finding with no system is about the page, not a place on it.
+ *
+ * `page_staff_count_mismatch` and `part_order_mismatch` are raised with staff positions
+ * and no system at all. Offering "show me" for those would promise a crop the server
+ * will refuse, so the control is simply absent rather than present and broken.
+ */
+function isLocatable(finding: ScannerCrossStaffFinding): boolean {
+  return Number.isInteger(finding.system);
+}
+
+/**
+ * The strip of page this finding is talking about, fetched only when asked for.
+ *
+ * Not eagerly: a page can carry seventeen findings, and rendering seventeen crops to
+ * answer a question nobody asked costs seventeen server-side image extractions.
+ */
+function FindingCrop({
+  jobId,
+  pageNumber,
+  statusVersion,
+  located,
 }: {
-  findings: ScannerCrossStaffFinding[];
+  jobId: string;
+  pageNumber: number;
+  statusVersion: number;
+  located: LocatedFinding;
 }) {
-  if (findings.length === 0) return null;
+  const [shown, setShown] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  if (!shown) {
+    return (
+      <button
+        type="button"
+        data-testid="cross-staff-finding-show"
+        onClick={() => setShown(true)}
+        className="mt-1 text-xs font-medium text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-400 dark:hover:text-sky-300"
+      >
+        Show me
+      </button>
+    );
+  }
+
+  const src = `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/engines/${located.engineId}/findings/${located.index}/crop?${new URLSearchParams(
+    { statusVersion: String(statusVersion) },
+  ).toString()}`;
+
+  return (
+    <div className="mt-2">
+      {failed ? (
+        // The server refuses a crop it cannot place rather than guessing, so this is a
+        // real answer: we do not know where this is. Saying so beats an empty frame.
+        <p
+          data-testid="cross-staff-finding-crop-unavailable"
+          className="text-xs text-slate-500"
+        >
+          This one could not be located on the page.
+        </p>
+      ) : (
+        <div className="w-fit overflow-hidden rounded border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            data-testid="cross-staff-finding-crop"
+            alt={`The passage on page ${pageNumber} that this concerns`}
+            className="block max-h-64 w-auto max-w-full"
+            onError={() => setFailed(true)}
+          />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setShown(false)}
+        className="mt-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700 dark:hover:text-slate-300"
+      >
+        Hide
+      </button>
+    </div>
+  );
+}
+
+export function CrossStaffFindings({
+  sources,
+  jobId,
+  pageNumber,
+  statusVersion,
+}: {
+  sources: CrossStaffFindingSource[];
+  jobId?: string;
+  pageNumber?: number;
+  statusVersion?: number;
+}) {
+  // Flattened for display but each entry keeps its engine and its index within that
+  // engine's list, because that pair is the crop's address.
+  const located: LocatedFinding[] = (sources || []).flatMap((source) =>
+    (source.findings || []).map((finding, index) => ({
+      finding,
+      engineId: source.engineId,
+      index,
+    })),
+  );
+  if (located.length === 0) return null;
+  const canLocate =
+    jobId !== undefined && pageNumber !== undefined && statusVersion !== undefined;
 
   // Grouped by kind so eleven repetitions of one disagreement read as one thing with a
   // count, rather than eleven rows that bury everything else.
-  const byKind = new Map<string, ScannerCrossStaffFinding[]>();
-  for (const finding of findings) {
-    byKind.set(finding.kind, [...(byKind.get(finding.kind) ?? []), finding]);
+  const byKind = new Map<string, LocatedFinding[]>();
+  for (const entry of located) {
+    byKind.set(entry.finding.kind, [
+      ...(byKind.get(entry.finding.kind) ?? []),
+      entry,
+    ]);
   }
 
   return (
@@ -74,13 +193,24 @@ export function CrossStaffFindings({
               {group.length > 1 ? ` · ${group.length} places` : ""}
             </div>
             <ul className="mt-1 space-y-0.5 text-slate-600 dark:text-slate-400">
-              {group.slice(0, 4).map((finding, index) => (
-                <li key={`${kind}-${finding.system ?? "page"}-${index}`}>
-                  {finding.system !== undefined
-                    ? `System ${finding.system + 1}: `
+              {group.slice(0, 4).map((entry, index) => (
+                <li
+                  key={`${kind}-${entry.engineId}-${entry.index}-${index}`}
+                  data-testid="cross-staff-finding-item"
+                >
+                  {entry.finding.system !== undefined
+                    ? `System ${entry.finding.system + 1}: `
                     : ""}
-                  {finding.part ? `${finding.part} — ` : ""}
-                  {finding.message}
+                  {entry.finding.part ? `${entry.finding.part} — ` : ""}
+                  {entry.finding.message}
+                  {canLocate && isLocatable(entry.finding) && (
+                    <FindingCrop
+                      jobId={jobId!}
+                      pageNumber={pageNumber!}
+                      statusVersion={statusVersion!}
+                      located={entry}
+                    />
+                  )}
                 </li>
               ))}
               {group.length > 4 && (
