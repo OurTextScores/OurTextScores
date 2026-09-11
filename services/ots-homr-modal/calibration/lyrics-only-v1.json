@@ -1,0 +1,88 @@
+{
+ "accept": {
+  "lyrics": {
+   "Dynamic": null,
+   "Lyrics": 0.7857
+  }
+ },
+ "acceptNote": "0.7857 is the calibrated value of raw confidence 0.70, the operating point chosen from the measured table: 92.3% precision at 64.7% corrected recall, and 0.67 spurious boxes per page known to contain no lyrics. Expressed as a calibrated threshold rather than a raw one because the design forbids deciding on raw confidence; the two are interchangeable here only because the calibration is monotone by construction. Dynamic has no threshold and stays review-only: the rareNum core remains the sole automatic authority on dynamics.",
+ "calibration": {
+  "lyrics": {
+   "Dynamic": null,
+   "Lyrics": {
+    "belowLowestEdge": null,
+    "binLowerEdges": [
+     0.5,
+     0.6,
+     0.7,
+     0.8,
+     0.9
+    ],
+    "binValues": [
+     0.5833,
+     0.5833,
+     0.7857,
+     0.8929,
+     0.9268
+    ],
+    "kind": "isotonic-binned",
+    "note": "Raw confidence is a mean pixel probability and may never decide anything. These bins map it to an estimated probability that the box is a real lyric, fitted by pool-adjacent-violators to 145 human judgements. The first two bands were pooled because the observed rates were non-monotone (0.600 then 0.571), which is sampling noise rather than a real inversion."
+   }
+  }
+ },
+ "corpus": {
+  "falsePositive": {
+   "note": "String quartet pages. Lyrics are absent by construction, so every Lyrics box is a false positive and needs no adjudication.",
+   "pages": 45,
+   "scores": 2,
+   "source": "homr-artifacts/ground_truth/ossq_boxes"
+  },
+  "precision": {
+   "boxesSampled": 150,
+   "judged": 145,
+   "note": "Unmatched boxes at or above 0.5 only. Matched boxes are true by construction and are not sampled.",
+   "source": "homr-artifacts/review/lyrics_precision_judgments.json",
+   "unsure": 5
+  },
+  "recall": {
+   "note": "Score-disjoint sample; recall is trustworthy because a box exists only where OCR read text and it matched the score's own MusicXML.",
+   "ocrConfirmedLyricBoxes": 545,
+   "pages": 45,
+   "scores": 11,
+   "source": "homr-artifacts/datasets/lieder_vocal_text"
+  }
+ },
+ "createdAt": "2026-09-11",
+ "detectors": {
+  "lyrics": {
+   "artifact": "detector_vocal_e2.onnx",
+   "classAllowlist": [
+    "Lyrics",
+    "Dynamic"
+   ],
+   "repository": "jhlusko/lyrics",
+   "revision": "142d4f42d3a6bbc90477fc41851df5e60cc7603f",
+   "sha256": "deafed32b69e4367ab548439e1eabd1c0b83726d80012811f33fadae250c4bdd"
+  }
+ },
+ "geometry": {
+  "containmentThreshold": 0.6,
+  "iouThreshold": 0.3,
+  "note": "For surfacing overlaps as review work, not for deciding them. With one detector and one automatic class, a conflict can only be Lyrics against Dynamic, and Dynamic can never win because it has no threshold -- so every such overlap is review work whatever these numbers are."
+ },
+ "groundTruthCaveat": "The vocal corpus understates lyric coverage by roughly half: 545 OCR-confirmed against an estimated 1143 real. Any future measurement against it inherits that, including any judgement of a retrained detector.",
+ "metrics": {
+  "atRawThreshold": 0.7,
+  "falsePositivesPerInstrumentalPage": 0.67,
+  "note": "Corrected recall extrapolates each band's measured precision to every unmatched box in it -- a modelling assumption, not a measurement, with wide per-band intervals. Only boxes at or above 0.5 were sampled, so the true lyric total is a lower bound and corrected recall an upper bound.",
+  "precision": 0.923,
+  "recallAgainstOcrGroundTruth": 0.528,
+  "recallCorrected": 0.647
+ },
+ "minimumWinnerMargin": 0.0,
+ "minimumWinnerMarginNote": "No margin is meaningful with one automatic class: nothing it could out-score is ever eligible to win. Recorded as zero rather than omitted so a reader can see it was considered.",
+ "note": "A single-detector policy, selected by name. It is not a fallback for fusion-v1: invariant 8 requires that a failure of either detector fails a fusion request rather than degrading to this.",
+ "policy": "lyrics-only-v1",
+ "policyRevision": "7f6253fd444c3d94824424d1860d8b059778555a0c0ee5f405e190469b9f42ce",
+ "schemaVersion": "ots.text-fusion-calibration.v1"
+}
