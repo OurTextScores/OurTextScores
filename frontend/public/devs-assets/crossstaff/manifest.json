@@ -1,0 +1,34 @@
+[
+  {
+    "id": "01_sq8796660:0016_system2",
+    "source": "/workspace/b0/ossq-omr/scores/Haydn,_Joseph/String_Quartet_in_A_major,_Hob.III36,_Op.20_No.6/images/scanned/original/sq8796660:0016.png",
+    "system": 2,
+    "before_findings": 2,
+    "after_findings": 0,
+    "reduction": 2
+  },
+  {
+    "id": "02_sq8461409:0007_system3",
+    "source": "/workspace/b0/ossq-omr/scores/Haydn,_Joseph/String_Quartet_in_B-flat_major_(\u201cLa_Chasse\u201d),_Hob._III1,_Op.1_No.1/images/scanned/original/sq8461409:0007.png",
+    "system": 3,
+    "before_findings": 2,
+    "after_findings": 0,
+    "reduction": 2
+  },
+  {
+    "id": "03_sq7093885:0007_system1",
+    "source": "/workspace/b0/ossq-omr/scores/Mozart,_Wolfgang_Amadeus/String_Quartet_No.18_in_A_major,_K.464_(Op._10,_No._5)/images/scanned/original/sq7093885:0007.png",
+    "system": 1,
+    "before_findings": 2,
+    "after_findings": 1,
+    "reduction": 1
+  },
+  {
+    "id": "04_sq10502527:0013_system5",
+    "source": "/workspace/b0/ossq-omr/scores/Beethoven,_Ludwig_van/Grosse_Fuge_in_B-flat_major,_Op.133/images/scanned/original/sq10502527:0013.png",
+    "system": 5,
+    "before_findings": 2,
+    "after_findings": 1,
+    "reduction": 1
+  }
+]

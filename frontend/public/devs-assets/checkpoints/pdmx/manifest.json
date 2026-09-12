@@ -1,0 +1,37 @@
+[
+  {
+    "id": "QmbzWpzJuMYWmAysKtk713sxQ68eiSUzHpwHvC9yXccusG-v0-w2",
+    "delta": 0.9583333333333334,
+    "base": 0.041666666666666664,
+    "arma": 1.0,
+    "crop": "QmbzWpzJuMYWmAysKtk713sxQ68eiSUzHpwHvC9yXccusG-v0-w2.jpg"
+  },
+  {
+    "id": "QmbzWpzJuMYWmAysKtk713sxQ68eiSUzHpwHvC9yXccusG-v0-w1",
+    "delta": 0.9524608501118568,
+    "base": 0.04753914988814318,
+    "arma": 1.0,
+    "crop": "QmbzWpzJuMYWmAysKtk713sxQ68eiSUzHpwHvC9yXccusG-v0-w1.jpg"
+  },
+  {
+    "id": "QmRgmsaAdyW7SYQvF9jiZc2HNznZTr6g4Ac6JhmUz58oBF-v0-w1",
+    "delta": 0.9504504504504504,
+    "base": 0.04954954954954955,
+    "arma": 1.0,
+    "crop": "QmRgmsaAdyW7SYQvF9jiZc2HNznZTr6g4Ac6JhmUz58oBF-v0-w1.jpg"
+  },
+  {
+    "id": "QmbXYvZvLRwHZXRtZcgxw9pejNejwAwip8Kw4iMUBLooua-v0-w5",
+    "delta": 0.944327731092437,
+    "base": 0.05567226890756303,
+    "arma": 1.0,
+    "crop": "QmbXYvZvLRwHZXRtZcgxw9pejNejwAwip8Kw4iMUBLooua-v0-w5.jpg"
+  },
+  {
+    "id": "QmNkxWHD14ff9DEqspXiKT5GiiKoX6kedCoA6zLWYXMkR2-v1-w6",
+    "delta": 0.938034188034188,
+    "base": 0.06196581196581197,
+    "arma": 1.0,
+    "crop": "QmNkxWHD14ff9DEqspXiKT5GiiKoX6kedCoA6zLWYXMkR2-v1-w6.jpg"
+  }
+]

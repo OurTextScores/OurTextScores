@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sq8075304_0010_0003_1",
+    "runtime": "rareNum ONNX + matched exported structured heads",
+    "with_beams": 111,
+    "without_beams": 0,
+    "changed": true
+  },
+  {
+    "id": "sq8806134_0007_0001_1",
+    "runtime": "rareNum ONNX + matched exported structured heads",
+    "with_beams": 104,
+    "without_beams": 0,
+    "changed": true
+  },
+  {
+    "id": "sq8806881_0008_0005_1",
+    "runtime": "rareNum ONNX + matched exported structured heads",
+    "with_beams": 110,
+    "without_beams": 0,
+    "changed": true
+  },
+  {
+    "id": "sq8907120_0011_0004_2",
+    "runtime": "rareNum ONNX + matched exported structured heads",
+    "with_beams": 135,
+    "without_beams": 0,
+    "changed": true
+  },
+  {
+    "id": "sq8907120_0011_0004_3",
+    "runtime": "rareNum ONNX + matched exported structured heads",
+    "with_beams": 135,
+    "without_beams": 0,
+    "changed": true
+  }
+]

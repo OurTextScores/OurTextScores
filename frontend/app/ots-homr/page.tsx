@@ -109,6 +109,48 @@ function Table({
   );
 }
 
+/* The galleries are the original static pages, served from `public/`, because they
+   build their own compare embeds against the score editor and rewriting them in React
+   would be transcription with a chance of error and no gain. They reference
+   `/devs-assets/...` absolutely, which is why those live at the public root.
+
+   `page-delta-gallery` is deliberately not here: it is 70MB of whole-page renders, and
+   its own text says it ranks the magnitude of output change rather than correctness -
+   the largest asset for the weakest claim. */
+const GALLERIES = [
+  {
+    title: "Beams",
+    caption:
+      "identical decoded symbols, without and with emitted beam references",
+    src: "/beam-gallery.html",
+  },
+  {
+    title: "Cross-staff reranking",
+    caption: "systems where agreeing with the siblings changed the reading",
+    src: "/crossstaff-gallery.html",
+  },
+  {
+    title: "Structured heads",
+    caption: "the same crop with one structured field cleared, then emitted",
+    src: "/structured-head-gallery.html",
+  },
+  {
+    title: "Tuplet repair",
+    caption: "bars that overflowed their metre, before and after",
+    src: "/tuplet-gallery.html",
+  },
+  {
+    title: "Page text",
+    caption: "what the text detector finds, isolated from recognition",
+    src: "/stage3-gallery.html",
+  },
+  {
+    title: "Checkpoint comparison",
+    caption: "held-out pages read by the upstream checkpoint and by ours",
+    src: "/checkpoint-gallery.html",
+  },
+];
+
 export default function OtsHomrPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
@@ -399,6 +441,37 @@ export default function OtsHomrPage() {
           the identical code path and behave, which points at the checkpoint
           rather than the plumbing, but that is evidence and not yet proof.
         </p>
+      </Section>
+
+      <Section id="examples" title="Worked examples">
+        <p>
+          Every claim above is a number. These are the pages behind them — real
+          held-out material, each pair showing the same decode with one thing
+          changed, so what you are looking at is the effect of that one thing
+          rather than two different readings of a page.
+        </p>
+        <p className="text-slate-600 dark:text-slate-400">
+          The comparisons open in the score editor, the same one the scanner
+          review tools use, so you can page through a system at a time.
+        </p>
+        {GALLERIES.map((gallery) => (
+          <figure key={gallery.src} className="mt-6">
+            <figcaption className="mb-2">
+              <span className="font-semibold text-slate-900 dark:text-slate-100">
+                {gallery.title}
+              </span>
+              <span className="ml-2 text-slate-600 dark:text-slate-400">
+                {gallery.caption}
+              </span>
+            </figcaption>
+            <iframe
+              src={gallery.src}
+              title={gallery.title}
+              loading="lazy"
+              className="h-[620px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
+            />
+          </figure>
+        ))}
       </Section>
 
       <Section id="limits" title="What it does not do">

@@ -1,0 +1,23 @@
+[
+  {
+    "file": "stage3_1.jpg",
+    "source": "/workspace/b0/mbox/6499366_p2-s3/6499366_p2-s3-1.png",
+    "delta": 1.245492221997035,
+    "lyric_delta": 0.2704104635390139,
+    "dynamic_delta": 0.975081758458021
+  },
+  {
+    "file": "stage3_2.jpg",
+    "source": "/workspace/b0/mbox/6598624_p2-s4/6598624_p2-s4-1.png",
+    "delta": 1.1186856895052686,
+    "lyric_delta": 0.1337541826559534,
+    "dynamic_delta": 0.9849315068493151
+  },
+  {
+    "file": "stage3_3.jpg",
+    "source": "/workspace/b0/mbox/6641170_p2-s4/6641170_p2-s4-1.png",
+    "delta": 1.0859351100462882,
+    "lyric_delta": 0.10379225290343119,
+    "dynamic_delta": 0.9821428571428571
+  }
+]
