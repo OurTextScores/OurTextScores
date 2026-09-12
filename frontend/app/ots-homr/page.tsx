@@ -42,17 +42,26 @@ function Section({
   id,
   title,
   children,
+  wide = false,
 }: {
   id: string;
   title: string;
   children: React.ReactNode;
+  /* Prose is capped for readability; a section of full-bleed embeds must not be, because
+     the breakout below measures from its parent's centre and a left-aligned capped
+     parent is not centred - which lands the embeds off to one side. */
+  wide?: boolean;
 }) {
   return (
     <section id={id} className="mt-12 scroll-mt-8">
       <h2 className="border-b border-slate-200 pb-1.5 text-xl font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100">
         {title}
       </h2>
-      <div className="mt-3 max-w-5xl space-y-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
+      <div
+        className={`mt-3 space-y-3 text-sm leading-6 text-slate-700 dark:text-slate-300 ${
+          wide ? "" : "max-w-5xl"
+        }`}
+      >
         {children}
       </div>
     </section>
@@ -443,20 +452,34 @@ export default function OtsHomrPage() {
         </p>
       </Section>
 
-      <Section id="examples" title="Worked examples">
-        <p>
+      <Section id="examples" title="Worked examples" wide>
+        <p className="max-w-5xl">
           Every claim above is a number. These are the pages behind them — real
           held-out material, each pair showing the same decode with one thing
           changed, so what you are looking at is the effect of that one thing
           rather than two different readings of a page.
         </p>
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="max-w-5xl text-slate-600 dark:text-slate-400">
           The comparisons open in the score editor, the same one the scanner
           review tools use, so you can page through a system at a time.
         </p>
         {GALLERIES.map((gallery) => (
-          <figure key={gallery.src} className="mt-6 max-w-none">
-            <figcaption className="mb-2">
+          /* Full-bleed: `50% - 50vw` is measured from this element's own centred
+             parent, so it lands on the viewport edge whatever the ancestors cap the
+             width at - which matters here because the section's prose is deliberately
+             capped and these are not prose. `100vw` counts the scrollbar, so the width
+             subtracts it back out rather than causing a horizontal scroll. */
+          <figure
+            key={gallery.src}
+            className="mt-8"
+            style={{
+              width: "100vw",
+              marginLeft: "calc(50% - 50vw)",
+              marginRight: "calc(50% - 50vw)",
+              maxWidth: "100vw",
+            }}
+          >
+            <figcaption className="mb-2 px-6 lg:px-10">
               <span className="font-semibold text-slate-900 dark:text-slate-100">
                 {gallery.title}
               </span>
@@ -468,7 +491,7 @@ export default function OtsHomrPage() {
               src={gallery.src}
               title={gallery.title}
               loading="lazy"
-              className="h-[78vh] min-h-[620px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
+              className="h-[88vh] min-h-[700px] w-full border-y border-slate-200 bg-white dark:border-slate-700"
             />
           </figure>
         ))}
