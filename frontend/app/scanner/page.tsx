@@ -46,7 +46,8 @@ export default async function ScannerPage() {
             className="text-blue-600 hover:underline dark:text-blue-400"
           >
             HOMR
-          </a>,{" "}
+          </a>
+          ,{" "}
           <a
             href="https://huggingface.co/btrkeks/transcoda-59M-zeroshot-v1"
             target="_blank"
@@ -55,7 +56,14 @@ export default async function ScannerPage() {
           >
             Transcoda
           </a>
-          , and OTS-HOMR.
+          , and{" "}
+          <Link
+            href="/ots-homr"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            OTS-HOMR
+          </Link>
+          .
         </p>
         <div className="mt-4 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           Scanner output is a draft and may contain significant notation errors.
