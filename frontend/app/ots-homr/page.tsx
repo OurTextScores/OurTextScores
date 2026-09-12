@@ -329,13 +329,33 @@ export default function OtsHomrPage() {
         </p>
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           <span className="font-semibold">
-            Dynamics are built and deliberately withheld.
+            There is a seventh head for dynamics, and it is blocked.
           </span>{" "}
-          The head exists and is trained, but scores macro-F1 .105 on 935
-          examples — barely above chance on a class that matters. It is blocked
-          at the service boundary rather than shipped with a warning label. We
-          would rather return nothing than return a confident{" "}
-          <em>pianissimo</em> that isn&rsquo;t there.
+          It is trained, but scores macro-F1 .105 on 935 examples — barely above
+          chance on a class that matters. It is prohibited at the service
+          boundary rather than shipped with a warning label. We would rather
+          return nothing than a confident <em>pianissimo</em> that isn&rsquo;t
+          there.
+        </p>
+        <p>
+          Dynamics are not meant to arrive this way in the end. Reading{" "}
+          <em>pp</em> out of the decoder&rsquo;s hidden state asks it to infer a
+          marking from the notes; the marking is{" "}
+          <span className="font-semibold">printed on the page</span>, and{" "}
+          <Link
+            href="#lyrics"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            the text detector
+          </Link>{" "}
+          can see it — at 84.0 F1 on 429 held-out boxes, against the
+          head&rsquo;s .105. That is the intended route, and it is not open yet:
+          it needs both text detectors running in one pass, and the non-lyric
+          detector currently fails at page level in a way a calibration pass
+          cannot repair. Even once it opens, dynamics are expected to reach you
+          as <span className="font-semibold">review suggestions</span> rather
+          than automatic output — 429 examples may never support the confidence
+          threshold that automatic emission requires.
         </p>
       </Section>
 
@@ -358,8 +378,26 @@ export default function OtsHomrPage() {
           misreading — accents, and curly versus straight apostrophes.
         </p>
         <p>
-          One practical limit: a single pass detects either lyrics or non-lyric
-          text, not both.
+          The same detector finds non-lyric text — dynamics at 84.0 F1 (429
+          boxes) and measure numbers at 84.1 (78) on the same held-out pages.
+          Both are far better read off the page than inferred from the notes,
+          which is why they are the intended source for{" "}
+          <Link
+            href="#heads"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            dynamics
+          </Link>{" "}
+          rather than the notation head.
+        </p>
+        <p>
+          Two limits keep that from shipping today. A single pass detects either
+          lyrics or non-lyric text, not both — and the non-lyric detector, on
+          re-evaluation at full-page level, returns the whole page as one
+          enormous region. That is a detector failure, not a threshold that
+          wants tuning: calibrating it would calibrate noise. Lyrics run through
+          the identical code path and behave, which points at the checkpoint
+          rather than the plumbing, but that is evidence and not yet proof.
         </p>
       </Section>
 
