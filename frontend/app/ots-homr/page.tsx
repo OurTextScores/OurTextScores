@@ -52,7 +52,7 @@ function Section({
       <h2 className="border-b border-slate-200 pb-1.5 text-xl font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100">
         {title}
       </h2>
-      <div className="mt-3 space-y-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
+      <div className="mt-3 max-w-5xl space-y-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
         {children}
       </div>
     </section>
@@ -153,14 +153,14 @@ const GALLERIES = [
 
 export default function OtsHomrPage() {
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
+    <main className="mx-auto w-full max-w-[110rem] px-6 py-10 lg:px-10">
       <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Scanner engines
       </p>
       <h1 className="mt-1 text-3xl font-semibold text-slate-900 dark:text-slate-100">
         OTS-HOMR
       </h1>
-      <p className="mt-3 max-w-2xl text-base leading-7 text-slate-700 dark:text-slate-300">
+      <p className="mt-3 max-w-3xl text-base leading-7 text-slate-700 dark:text-slate-300">
         A fork of{" "}
         <a
           href="https://github.com/liebharc/homr"
@@ -455,7 +455,7 @@ export default function OtsHomrPage() {
           review tools use, so you can page through a system at a time.
         </p>
         {GALLERIES.map((gallery) => (
-          <figure key={gallery.src} className="mt-6">
+          <figure key={gallery.src} className="mt-6 max-w-none">
             <figcaption className="mb-2">
               <span className="font-semibold text-slate-900 dark:text-slate-100">
                 {gallery.title}
@@ -468,7 +468,7 @@ export default function OtsHomrPage() {
               src={gallery.src}
               title={gallery.title}
               loading="lazy"
-              className="h-[620px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
+              className="h-[78vh] min-h-[620px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-700"
             />
           </figure>
         ))}
