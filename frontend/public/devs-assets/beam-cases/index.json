@@ -1,0 +1,276 @@
+{
+ "buckets": {
+  "primary_longer_engraved": 43352,
+  "primary_shorter_engraved": 43272,
+  "crosses_beat": 24525,
+  "hook_vs_flag": 14100,
+  "beams_over_rest": 12082,
+  "unbeamed_exception": 7604,
+  "primary_shifted": 2338,
+  "other_grouping": 1711,
+  "other_engraved_beam": 249,
+  "secondary_subdivision": 226
+ },
+ "chosen": {
+  "hook_vs_flag": [
+   {
+    "score": "sq7313978",
+    "part": "P1",
+    "measure": "3",
+    "voice": "1",
+    "onset": 21,
+    "rule": [
+     "end",
+     "flag",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "end",
+     "backward_hook",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "hook_vs_flag_0"
+   }
+  ],
+  "unbeamed_exception": [
+   {
+    "score": "sq7313978",
+    "part": "P1",
+    "measure": "7",
+    "voice": "1",
+    "onset": 30,
+    "rule": [
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "flag",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "unbeamed_exception_0"
+   }
+  ],
+  "primary_longer_engraved": [
+   {
+    "score": "sq7313978",
+    "part": "P1",
+    "measure": "7",
+    "voice": "1",
+    "onset": 36,
+    "rule": [
+     "end",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "primary_longer_engraved_0"
+   }
+  ],
+  "crosses_beat": [
+   {
+    "score": "sq7313978",
+    "part": "P1",
+    "measure": "28",
+    "voice": "1",
+    "onset": 45,
+    "rule": [
+     "flag",
+     "flag",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "end",
+     "backward_hook",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "crosses_beat_0"
+   }
+  ],
+  "primary_shorter_engraved": [
+   {
+    "score": "sq7313978",
+    "part": "P1",
+    "measure": "38",
+    "voice": "1",
+    "onset": 30,
+    "rule": [
+     "continue",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "primary_shorter_engraved_0"
+   }
+  ],
+  "beams_over_rest": [
+   {
+    "score": "sq7313978",
+    "part": "P1",
+    "measure": "26",
+    "voice": "1",
+    "onset": 0,
+    "rule": [
+     "flag",
+     "flag",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "begin",
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "beams_over_rest_0"
+   }
+  ],
+  "primary_shifted": [
+   {
+    "score": "sq13744399",
+    "part": "P1",
+    "measure": "144",
+    "voice": "1",
+    "onset": 480,
+    "rule": [
+     "end",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "primary_shifted_0"
+   }
+  ],
+  "other_grouping": [
+   {
+    "score": "sq13744399",
+    "part": "P1",
+    "measure": "4",
+    "voice": "1",
+    "onset": 840,
+    "rule": [
+     "end",
+     "flag",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "continue",
+     "forward_hook",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "other_grouping_0"
+   }
+  ],
+  "secondary_subdivision": [
+   {
+    "score": "sq13744399",
+    "part": "P1",
+    "measure": "42",
+    "voice": "1",
+    "onset": 720,
+    "rule": [
+     "continue",
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "continue",
+     "continue",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "secondary_subdivision_0"
+   }
+  ],
+  "other_engraved_beam": [
+   {
+    "score": "sq7295726",
+    "part": "P1",
+    "measure": "171",
+    "voice": "1",
+    "onset": 120,
+    "rule": [
+     "flag",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "engraved": [
+     "begin",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable",
+     "not_applicable"
+    ],
+    "name": "other_engraved_beam_0"
+   }
+  ]
+ }
+}
