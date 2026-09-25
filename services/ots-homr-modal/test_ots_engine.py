@@ -1,6 +1,11 @@
 import unittest
 from types import SimpleNamespace
 
+import cv2
+import numpy as np
+
+from calibration_manifest import CalibrationManifest, DetectorIdentity
+from fusion_policy import CLASS_ALLOWLIST
 from ots_engine import OtsHomrEngine
 from pins import (
     CORE_ARTIFACT_SHA256,
@@ -18,9 +23,13 @@ class FakeDetector:
         self.revision = revision
         self.sha256 = sha256
         self.calls = []
+        self.fail = False
 
     def detect(self, page):
         self.calls.append(page)
+        if self.fail:
+            raise RuntimeError("private detector detail")
+        return []
 
 
 class FakeCore:
@@ -109,6 +118,65 @@ class OtsHomrEngineTest(unittest.TestCase):
         engine.execution_provider = "CPUExecutionProvider"
         with self.assertRaisesRegex(RuntimeError, "requires CUDA"):
             engine.warm_up()
+
+    def test_fusion_runs_both_detectors_and_preserves_core_xml(self):
+        engine, detectors, core = self.make_engine()
+        engine.fusion_manifest = CalibrationManifest(
+            policy="fusion-v1",
+            policy_revision="test",
+            detectors={
+                detector_id: DetectorIdentity("test", revision, "test.pth", digest)
+                for detector_id, (_repo, revision, _filename, digest) in DETECTORS.items()
+            },
+            class_allowlist=CLASS_ALLOWLIST,
+            calibration={},
+            accept={},
+            iou_threshold=0.3,
+            containment_threshold=0.6,
+            minimum_winner_margin=0.1,
+        )
+        engine.warm_up()
+        ok, encoded = cv2.imencode(".png", np.full((10, 10, 3), 255, dtype=np.uint8))
+        self.assertTrue(ok)
+        page = encoded.tobytes()
+        result = engine.transcribe_fusion(page, "image/png", False)
+        self.assertEqual(result["fusion"].summary["accepted"], 0)
+        self.assertEqual(result["core"]["musicxml"], b"<score-partwise/>")
+        self.assertEqual(detectors["lyrics"].calls, [page])
+        self.assertEqual(detectors["non-lyric-text"].calls, [page])
+        self.assertEqual(len(core.calls), 1)
+
+    def test_fusion_without_calibration_fails_before_inference(self):
+        engine, detectors, core = self.make_engine()
+        engine.warm_up()
+        with self.assertRaisesRegex(RuntimeError, "failed at calibration"):
+            engine.transcribe_fusion(b"page", "image/png", False)
+        self.assertEqual(core.calls, [])
+        self.assertEqual(detectors["lyrics"].calls, [])
+
+    def test_detector_failure_does_not_fall_back_to_one_detector(self):
+        engine, detectors, core = self.make_engine()
+        engine.fusion_manifest = CalibrationManifest(
+            policy="fusion-v1",
+            policy_revision="test",
+            detectors={
+                detector_id: DetectorIdentity("test", revision, "test.pth", digest)
+                for detector_id, (_repo, revision, _filename, digest) in DETECTORS.items()
+            },
+            class_allowlist=CLASS_ALLOWLIST,
+            calibration={},
+            accept={},
+            iou_threshold=0.3,
+            containment_threshold=0.6,
+            minimum_winner_margin=0.1,
+        )
+        engine.warm_up()
+        ok, encoded = cv2.imencode(".png", np.full((10, 10, 3), 255, dtype=np.uint8))
+        self.assertTrue(ok)
+        detectors["non-lyric-text"].fail = True
+        with self.assertRaisesRegex(RuntimeError, "non-lyric-text-detector"):
+            engine.transcribe_fusion(encoded.tobytes(), "image/png", False)
+        self.assertEqual(core.calls, [])
 
 
 if __name__ == "__main__":

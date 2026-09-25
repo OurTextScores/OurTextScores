@@ -122,6 +122,7 @@ def ots_homr_api():
     from pathlib import Path
 
     from bootstrap import bootstrap
+    from calibration_manifest import load_calibration_manifest
     from homr_core import PatchedHomrCore
     from ots_engine import OtsHomrEngine
     from ots_homr_provider import create_provider_app
@@ -132,7 +133,22 @@ def ots_homr_api():
         artifacts=artifacts,
         hard_timeout_seconds=HARD_TIMEOUT_SECONDS,
     )
-    engine = OtsHomrEngine(artifacts=artifacts, core=core)
+    fusion_manifest = None
+    if os.environ.get("OTS_HOMR_FUSION_ENABLED") == "1":
+        # The manifest is deliberately absent until both models have a
+        # score-disjoint calibration. Enabling fusion before it lands prevents
+        # readiness rather than silently using lyrics-only calibration.
+        fusion_manifest = load_calibration_manifest(
+            HERE / "calibration" / "fusion-v1.json"
+        )
+        if fusion_manifest.policy != "fusion-v1":
+            raise RuntimeError("Fusion needs its own pinned calibration")
+        for detector_id in ("lyrics", "non-lyric-text"):
+            detector = artifacts.detectors[detector_id]
+            fusion_manifest.assert_detector_matches(
+                detector_id, revision=detector.revision, sha256=detector.sha256
+            )
+    engine = OtsHomrEngine(artifacts=artifacts, core=core, fusion_manifest=fusion_manifest)
     return create_provider_app(
         engine=engine,
         service_revision=SERVICE_REVISION,

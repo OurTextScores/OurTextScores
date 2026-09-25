@@ -24,23 +24,28 @@ const quartet = (): ScannerScoreProfile => ({
 describe('score profile option', () => {
   it('accepts a profile alongside the detector, and without one', () => {
     expect(isScannerOtsHomrEngineOptions({ textDetector: 'none' })).toBe(true);
-    expect(
-      isScannerOtsHomrEngineOptions({ textDetector: 'lyrics', scoreProfile: quartet() })
-    ).toBe(true);
+    expect(isScannerOtsHomrEngineOptions({ textDetector: 'lyrics', scoreProfile: quartet() })).toBe(
+      true
+    );
   });
 
   it('still rejects policy this build does not understand', () => {
     // The old check counted keys; widening it must not turn into accepting anything.
-    expect(
-      isScannerOtsHomrEngineOptions({ textDetector: 'none', somethingElse: true })
-    ).toBe(false);
+    expect(isScannerOtsHomrEngineOptions({ textDetector: 'none', somethingElse: true })).toBe(
+      false
+    );
     expect(isScannerOtsHomrEngineOptions({ textDetector: 'nope' })).toBe(false);
+    expect(isScannerOtsHomrEngineOptions({ textPolicy: { mode: 'fusion-v1' } })).toBe(true);
+    expect(isScannerOtsHomrEngineOptions({ textPolicy: { mode: 'fusion-v2' } })).toBe(false);
+    expect(
+      isScannerOtsHomrEngineOptions({ textPolicy: { mode: 'fusion-v1' }, textDetector: 'lyrics' })
+    ).toBe(false);
   });
 
   it('refuses a schema version it cannot read rather than guessing at the shape', () => {
-    expect(
-      isScannerScoreProfile({ ...quartet(), schemaVersion: 'homr.score-profile.v2' })
-    ).toBe(false);
+    expect(isScannerScoreProfile({ ...quartet(), schemaVersion: 'homr.score-profile.v2' })).toBe(
+      false
+    );
   });
 
   it('refuses duplicate part ids, which make a finding unattributable', () => {
@@ -73,12 +78,14 @@ describe('score profile option', () => {
 
   describe('canonical form', () => {
     it('is stable across key order, so the same profile hashes the same', () => {
-      const a: any = { schemaVersion: SCORE_PROFILE_SCHEMA_VERSION, parts: [
-        { stableId: 'cello', likelyClefs: ['F4'], displayName: 'Cello' }
-      ] };
-      const b: any = { parts: [
-        { displayName: 'Cello', stableId: 'cello', likelyClefs: ['F4'] }
-      ], schemaVersion: SCORE_PROFILE_SCHEMA_VERSION };
+      const a: any = {
+        schemaVersion: SCORE_PROFILE_SCHEMA_VERSION,
+        parts: [{ stableId: 'cello', likelyClefs: ['F4'], displayName: 'Cello' }]
+      };
+      const b: any = {
+        parts: [{ displayName: 'Cello', stableId: 'cello', likelyClefs: ['F4'] }],
+        schemaVersion: SCORE_PROFILE_SCHEMA_VERSION
+      };
       expect(canonicalScoreProfileJson(a)).toEqual(canonicalScoreProfileJson(b));
     });
 
@@ -88,16 +95,17 @@ describe('score profile option', () => {
         parts: [{ stableId: 'cello' }]
       });
       expect(json).toEqual(
-        JSON.stringify({ schemaVersion: SCORE_PROFILE_SCHEMA_VERSION, parts: [{ stableId: 'cello' }] })
+        JSON.stringify({
+          schemaVersion: SCORE_PROFILE_SCHEMA_VERSION,
+          parts: [{ stableId: 'cello' }]
+        })
       );
     });
 
     it('keeps part order, because a reordered score is a different score', () => {
       const profile = quartet();
       const reversed = { ...profile, parts: [...profile.parts].reverse() };
-      expect(canonicalScoreProfileJson(profile)).not.toEqual(
-        canonicalScoreProfileJson(reversed)
-      );
+      expect(canonicalScoreProfileJson(profile)).not.toEqual(canonicalScoreProfileJson(reversed));
     });
   });
 });
@@ -213,5 +221,26 @@ describe('a profile survives being frozen into the plan and read back', () => {
     });
     const readBack = scannerEnginePlanForJob({ enginePlan: plan }, ['ots-homr']);
     expect(readBack.engineOptions?.['ots-homr']).toEqual({ textDetector: 'lyrics' });
+  });
+
+  it('preserves the explicit fusion policy in a persisted plan', () => {
+    const options = { textPolicy: { mode: 'fusion-v1' as const } };
+    const plan = scannerEnginePlan(['ots-homr'], 'ots-homr', undefined, { 'ots-homr': options });
+    expect(
+      scannerEnginePlanForJob({ enginePlan: plan }, ['ots-homr']).engineOptions?.['ots-homr']
+    ).toEqual(options);
+  });
+
+  it('does not silently drop a conflicting detector from a persisted fusion plan', () => {
+    const plan = scannerEnginePlan(['ots-homr'], 'ots-homr', undefined, {
+      'ots-homr': { textPolicy: { mode: 'fusion-v1' as const } }
+    });
+    const corrupt = {
+      ...plan,
+      engineOptions: {
+        'ots-homr': { textPolicy: { mode: 'fusion-v1' }, textDetector: 'lyrics' }
+      }
+    };
+    expect(() => scannerEnginePlanForJob({ enginePlan: corrupt as any }, ['ots-homr'])).toThrow();
   });
 });

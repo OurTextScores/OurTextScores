@@ -177,6 +177,7 @@ export class ScannerEngineRegistry {
             'musicxml',
             'additional-heads-musicxml',
             'structured-heads',
+            'text-fusion-review',
             'selected-heads-musicxml',
             'pdf'
           ],
@@ -214,6 +215,12 @@ export class ScannerEngineRegistry {
             extension: 'heads.json',
             maxBytes: 10_485_760,
             requiredProviderOutput: true
+          },
+          'text-fusion-review': {
+            contentType: 'application/json',
+            extension: 'text-fusion.json',
+            maxBytes: 1_048_576,
+            requiredProviderOutput: false
           },
           'selected-heads-musicxml': {
             contentType: 'application/vnd.recordare.musicxml+xml',

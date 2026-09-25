@@ -3,6 +3,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 from ots_homr_provider import create_provider_app
+from fusion_v1 import FusionResult
 
 
 class FakeEngine:
@@ -19,7 +20,7 @@ class FakeEngine:
     def shutdown(self):
         self.ready = False
 
-    def transcribe(self, page, content_type, detect_title, detector):
+    def transcribe(self, page, content_type, detect_title, detector, score_profile=None):
         self.calls.append((page, content_type, detect_title, detector))
         core = {
             "musicxml": b'<score-partwise version="4.0"><part-list/><part id="P1"><measure number="1"/></part></score-partwise>',
@@ -88,7 +89,7 @@ class FakeEngine:
 
 
 class TimeoutEngine(FakeEngine):
-    def transcribe(self, page, content_type, detect_title, detector):
+    def transcribe(self, page, content_type, detect_title, detector, score_profile=None):
         error = RuntimeError("private provider detail")
         error.code = "inference_timeout"
         raise error
@@ -97,6 +98,32 @@ class TimeoutEngine(FakeEngine):
 class WarmFailureEngine(FakeEngine):
     def warm_up(self):
         raise RuntimeError("diagnostic warm-up detail")
+
+
+class FusionEngine(FakeEngine):
+    fusion_manifest = object()
+
+    def transcribe_fusion(self, page, content_type, detect_title, score_profile=None):
+        result = self.transcribe(page, content_type, detect_title, "fusion-v1", score_profile)
+        result["fusion"] = FusionResult(
+            regions=[],
+            summary={"accepted": 0, "review": 0, "rejected": 0, "byClass": {}},
+        )
+        return result
+
+    def identity(self, detector):
+        value = super().identity("none" if detector == "fusion-v1" else detector)
+        if detector == "fusion-v1":
+            value["textPolicy"] = {
+                "mode": "fusion-v1",
+                "fusionRevision": "fusion-v1",
+                "calibrationRevision": "calibration",
+                "detectors": [
+                    {"id": "lyrics", "revision": "lyric", "sha256": "a" * 64},
+                    {"id": "non-lyric-text", "revision": "non-lyric", "sha256": "b" * 64},
+                ],
+            }
+        return value
 
 
 class ProviderTest(unittest.TestCase):
@@ -214,6 +241,45 @@ class ProviderTest(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 400)
             self.assertEqual(response.json()["error"]["code"], "invalid_option")
+
+    def test_fusion_needs_explicit_mode_and_calibration_before_inference(self):
+        engine = FakeEngine()
+        with TestClient(create_provider_app(engine=engine, service_revision="service")) as client:
+            page = b"\x89PNG\r\n\x1a\npage"
+            data = {"textPolicy": '{"mode":"fusion-v1"}'}
+            response = client.post(
+                "/v1/scan-page",
+                headers={"Idempotency-Key": "e" * 64},
+                files={"page": ("page.png", page, "image/png")},
+                data=data,
+            )
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json()["error"]["code"], "model_not_ready")
+            self.assertEqual(engine.calls, [])
+            conflicting = client.post(
+                "/v1/scan-page",
+                headers={"Idempotency-Key": "f" * 64},
+                files={"page": ("page.png", page, "image/png")},
+                data={**data, "textDetector": "lyrics"},
+            )
+            self.assertEqual(conflicting.status_code, 400)
+
+    def test_empty_fusion_runs_both_components_and_preserves_core_xml(self):
+        engine = FusionEngine()
+        with TestClient(create_provider_app(engine=engine, service_revision="service")) as client:
+            response = client.post(
+                "/v1/scan-page",
+                headers={"Idempotency-Key": "e" * 64},
+                files={"page": ("page.png", b"\x89PNG\r\n\x1a\npage", "image/png")},
+                data={"textPolicy": '{"mode":"fusion-v1"}'},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            body = response.json()
+            self.assertEqual(body["result"]["fusionSummary"]["accepted"], 0)
+            self.assertEqual(body["result"]["fusedRegions"], [])
+            self.assertEqual(body["engine"]["textPolicy"]["mode"], "fusion-v1")
+            self.assertNotIn("textDetector", body["engine"])
+            self.assertEqual(len(engine.calls), 1)
 
     def test_rejects_image_bytes_that_do_not_match_content_type(self):
         with TestClient(

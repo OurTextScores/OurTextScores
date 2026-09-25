@@ -79,6 +79,13 @@ describe('ScannerController provider selection', () => {
     );
   });
 
+  it('rejects a fusion job before staging while the feature flag is off', async () => {
+    await expect(
+      create(['ots-homr'], { textPolicy: { mode: 'fusion-v1' } })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(scanner.createJob).not.toHaveBeenCalled();
+  });
+
   it('exposes only the service-provided safe selector metadata', () => {
     controller.engines(user);
     expect(scanner.listNewJobEngines).toHaveBeenCalledWith('user-1');

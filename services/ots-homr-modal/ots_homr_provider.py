@@ -26,6 +26,7 @@ from score_profile_policy import MAX_SCORE_PROFILE_BYTES, validate_score_profile
 SCHEMA_VERSION = "ots-ots-homr-provider.v2"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
 TEXT_DETECTORS = {"lyrics", "non-lyric-text", "none"}
+MAX_FUSED_REGIONS = 500
 STRUCTURED_FAMILIES = {"beam", "advance", "stem", "tie", "slur"}
 #: A page with more disagreements than this has a bigger problem than a review queue.
 MAX_CROSS_STAFF_FINDINGS = 200
@@ -39,6 +40,7 @@ ERROR_STATUS = {
     "model_not_ready": 503,
     "inference_timeout": 504,
     "inference_failed": 500,
+    "fusion_failed": 500,
 }
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,13 @@ class Engine(Protocol):
         detect_title: bool,
         text_detector: str,
     ) -> dict[str, dict[str, Any]]: ...
+    def transcribe_fusion(
+        self,
+        page: bytes,
+        content_type: str,
+        detect_title: bool,
+        score_profile: Any = None,
+    ) -> dict[str, Any]: ...
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes: ...
     def identity(self, text_detector: str) -> dict[str, Any]: ...
     def materialize_structured(
@@ -189,7 +198,8 @@ def create_provider_app(
     async def scan_page(
         page: UploadFile = File(...),
         detectTitle: bool = Form(False),
-        textDetector: str = Form("lyrics"),
+        textDetector: str = Form(""),
+        textPolicy: str = Form(""),
         scoreProfile: str = Form(""),
         idempotency_key: str = Header(..., alias="Idempotency-Key"),
         authorization: str | None = Header(None, alias="Authorization"),
@@ -207,8 +217,20 @@ def create_provider_app(
                 "Only PNG and JPEG pages are supported",
                 415,
             )
-        if textDetector not in TEXT_DETECTORS:
-            return _error(request_id, "invalid_option", "Invalid OTS-HOMR policy")
+        fusion = False
+        if textPolicy:
+            try:
+                fusion = json.loads(textPolicy) == {"mode": "fusion-v1"}
+            except json.JSONDecodeError:
+                pass
+            if not fusion or textDetector:
+                return _error(request_id, "invalid_option", "Invalid OTS-HOMR text policy")
+            if getattr(engine, "fusion_manifest", None) is None:
+                return _error(request_id, "model_not_ready", "Text fusion is unavailable", 503)
+        else:
+            textDetector = textDetector or "lyrics"
+            if textDetector not in TEXT_DETECTORS:
+                return _error(request_id, "invalid_option", "Invalid OTS-HOMR policy")
         # A profile is a prior, so a malformed one is refused rather than dropped:
         # silently ignoring it would make the feature untestable from outside and
         # would let a caller believe a prior was in force when it was not.
@@ -241,7 +263,7 @@ def create_provider_app(
                 (
                     content,
                     str(detectTitle).lower().encode(),
-                    textDetector.encode(),
+                    (textPolicy if fusion else textDetector).encode(),
                     # Same page, different prior, is a different request: the cache
                     # must not answer one from the other.
                     scoreProfile.encode(),
@@ -273,26 +295,50 @@ def create_provider_app(
             )
         started = time.monotonic()
         try:
-            result = await asyncio.to_thread(
-                engine.transcribe,
-                content,
-                page.content_type,
-                detectTitle,
-                textDetector,
-                profile_data,
-            )
+            if fusion:
+                result = await asyncio.to_thread(
+                    engine.transcribe_fusion,
+                    content,
+                    page.content_type,
+                    detectTitle,
+                    profile_data,
+                )
+            else:
+                result = await asyncio.to_thread(
+                    engine.transcribe,
+                    content,
+                    page.content_type,
+                    detectTitle,
+                    textDetector,
+                    profile_data,
+                )
             core_result = result["core"]
             heads_result = result["additional-heads"]
         except Exception as error:
             code = str(getattr(error, "code", "inference_failed"))
             if code not in ERROR_STATUS:
                 code = "inference_failed"
+            if fusion:
+                stage = getattr(error, "stage", "fusion")
+                if stage not in {
+                    "lyrics-detector",
+                    "non-lyric-text-detector",
+                    "calibration",
+                    "fusion",
+                    "recognition",
+                }:
+                    stage = "fusion"
+                return _error(
+                    request_id,
+                    "fusion_failed",
+                    f"OTS-HOMR text fusion failed at {stage}",
+                )
             return _error(
                 request_id,
                 code,
                 "OTS-HOMR could not process this page",
             )
-        identity = engine.identity(textDetector)
+        identity = engine.identity("fusion-v1" if fusion else textDetector)
         heads = identity.get("structuredHeads")
         if heads and "dynamic.mark" in heads.get("emittedHeadFamilies", []):
             return _error(
@@ -344,6 +390,12 @@ def create_provider_app(
             },
             "timing": {"inferenceMs": int((time.monotonic() - started) * 1000)},
         }
+        if fusion:
+            fused = result["fusion"]
+            if len(fused.regions) > MAX_FUSED_REGIONS:
+                return _error(request_id, "inference_failed", "Text fusion exceeded review limit")
+            response["result"]["fusionSummary"] = fused.summary
+            response["result"]["fusedRegions"] = fused.regions
         app.state.result_cache[idempotency_key] = {
             "requestFingerprint": request_fingerprint,
             "response": response,

@@ -107,13 +107,20 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     engineOptions?: unknown;
   }): string {
     const options = this.options(input.engineOptions);
+    const policy = options.textPolicy ? 'fusion-v1' : options.textDetector;
+    const fusionIdentity = options.textPolicy
+      ? `;lyrics=${this.text('SCANNER_EXPECTED_OTS_HOMR_LYRICS_REVISION')}:${this.text('SCANNER_EXPECTED_OTS_HOMR_LYRICS_SHA256')}` +
+        `;nonLyric=${this.text('SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION')}:${this.text('SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256')}` +
+        `;calibration=${this.text('SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION')}` +
+        ';materializer=review-only-v1'
+      : '';
     return scannerProviderIdempotencyKey({
       engine: this.engine,
       modelRevision: this.expectedRevision,
       modelArtifactSha256: this.text('SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256'),
       preprocessingRevision: 'ots-ots-homr-rare-num-v1',
       decodingRevision:
-        `detector=${options.textDetector};heads=always-v2` +
+        `detector=${policy}${fusionIdentity};heads=always-v2` +
         `;profile=${this.scoreProfileFingerprint(options)}`,
       engineOptions: options,
       ...input
@@ -122,6 +129,9 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
 
   async scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult> {
     const options = this.options(input.engineOptions);
+    if (options.textPolicy && this.text('SCANNER_OTS_HOMR_FUSION_ENABLED') !== '1') {
+      throw this.invalid('OTS-HOMR text fusion is not enabled');
+    }
     const kind = this.text('SCANNER_OTS_HOMR_PROVIDER_KIND', 'modal');
     if (kind === 'fake') return this.fake(input, options);
     this.assertPins(options);
@@ -133,7 +143,8 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       input.filename
     );
     form.set('detectTitle', String(input.detectTitle));
-    form.set('textDetector', options.textDetector);
+    if (options.textPolicy) form.set('textPolicy', JSON.stringify(options.textPolicy));
+    else form.set('textDetector', options.textDetector);
     if (options.scoreProfile) {
       form.set('scoreProfile', canonicalScoreProfileJson(options.scoreProfile));
     }
@@ -186,6 +197,32 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       );
     }
     this.verifySelectedComponents(engine, options);
+    let fusionArtifact: Buffer | undefined;
+    if (options.textPolicy) {
+      const summary = envelope?.result?.fusionSummary;
+      const regions = envelope?.result?.fusedRegions;
+      if (
+        !summary ||
+        !Array.isArray(regions) ||
+        regions.length > 500 ||
+        !['accepted', 'review', 'rejected'].every(
+          (key) => Number.isInteger(summary[key]) && summary[key] >= 0
+        ) ||
+        summary.accepted + summary.review + summary.rejected !== regions.length ||
+        !summary.byClass ||
+        typeof summary.byClass !== 'object'
+      )
+        throw this.invalid('Scanner OTS-HOMR text fusion contract verification failed');
+      fusionArtifact = Buffer.from(
+        JSON.stringify({
+          textPolicy: engine.textPolicy,
+          fusionSummary: summary,
+          fusedRegions: regions
+        })
+      );
+      if (fusionArtifact.length > 1_048_576)
+        throw this.invalid('Scanner OTS-HOMR text fusion review is too large');
+    }
     const candidates = envelope?.result?.candidates;
     const coreCandidate = this.candidate(candidates?.core, 'core');
     const headsCandidate = this.candidate(candidates?.['additional-heads'], 'additional-heads');
@@ -197,7 +234,8 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       review: coreCandidate.review,
       nativeArtifacts: {
         'additional-heads-musicxml': headsCandidate.musicXml,
-        'structured-heads': proposals
+        'structured-heads': proposals,
+        ...(fusionArtifact ? { 'text-fusion-review': fusionArtifact } : {})
       },
       outputCandidates: {
         core: { artifactKind: 'musicxml', review: coreCandidate.review },
@@ -280,7 +318,39 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
   }
 
   private verifySelectedComponents(engine: any, options: ScannerOtsHomrEngineOptions): void {
-    if (options.textDetector !== 'none') {
+    if (options.textPolicy) {
+      const policy = engine?.textPolicy;
+      if (
+        policy?.mode !== 'fusion-v1' ||
+        policy?.fusionRevision !== 'fusion-v1' ||
+        engine?.textDetector !== undefined ||
+        !Array.isArray(policy.detectors) ||
+        policy.detectors.length !== 2
+      )
+        throw this.invalid('Scanner OTS-HOMR text fusion identity is invalid');
+      this.expect(
+        policy.calibrationRevision,
+        'SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION',
+        'provider_model_revision_mismatch'
+      );
+      for (const [id, suffix] of [
+        ['lyrics', 'LYRICS'],
+        ['non-lyric-text', 'NON_LYRIC_TEXT']
+      ] as const) {
+        const detector = policy.detectors.find((entry: any) => entry?.id === id);
+        if (!detector) throw this.invalid('Scanner OTS-HOMR text fusion detector is absent');
+        this.expect(
+          detector.revision,
+          `SCANNER_EXPECTED_OTS_HOMR_${suffix}_REVISION`,
+          'provider_model_revision_mismatch'
+        );
+        this.expectSha(
+          detector.sha256,
+          `SCANNER_EXPECTED_OTS_HOMR_${suffix}_SHA256`,
+          'provider_model_artifact_mismatch'
+        );
+      }
+    } else if (options.textDetector !== 'none') {
       const detector = engine?.textDetector;
       if (detector?.id !== options.textDetector)
         throw this.invalid('Scanner OTS-HOMR detector verification failed');
@@ -344,7 +414,15 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       'SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256',
       'SCANNER_EXPECTED_OTS_HOMR_EXECUTION_PROVIDER'
     ];
-    if (options.textDetector !== 'none')
+    if (options.textPolicy) {
+      keys.push(
+        'SCANNER_EXPECTED_OTS_HOMR_LYRICS_REVISION',
+        'SCANNER_EXPECTED_OTS_HOMR_LYRICS_SHA256',
+        'SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION',
+        'SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256',
+        'SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION'
+      );
+    } else if (options.textDetector !== 'none')
       keys.push(
         `SCANNER_EXPECTED_OTS_HOMR_${options.textDetector === 'lyrics' ? 'LYRICS' : 'NON_LYRIC_TEXT'}_REVISION`,
         `SCANNER_EXPECTED_OTS_HOMR_${options.textDetector === 'lyrics' ? 'LYRICS' : 'NON_LYRIC_TEXT'}_SHA256`

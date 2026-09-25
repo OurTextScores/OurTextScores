@@ -281,6 +281,28 @@ describe("ScannerClient", () => {
     });
   });
 
+  it("sends an explicit fusion policy from the gated lyrics checkbox", async () => {
+    process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED = "1";
+    try {
+      render(<ScannerClient />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText("Score files"), {
+        target: { files: [new File(["score"], "page-1.png", { type: "image/png" })] },
+      });
+      selectProviders("ots-homr");
+      fireEvent.click(screen.getByLabelText("This score has lyrics"));
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+      );
+      await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+      expect(JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")))).toEqual({
+        textPolicy: { mode: "fusion-v1" },
+      });
+    } finally {
+      delete process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED;
+    }
+  });
+
   it("sends the chosen score profile", async () => {
     // The picker is the only thing that supplies a profile; if it does not reach the
     // payload the clef checks stay unreachable exactly as they were before the

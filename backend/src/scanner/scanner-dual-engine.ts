@@ -144,6 +144,7 @@ export interface ScannerEngineCapabilitySnapshot {
 }
 
 export type ScannerOtsHomrTextDetector = 'lyrics' | 'non-lyric-text' | 'none';
+export type ScannerOtsHomrTextPolicy = { mode: 'fusion-v1' };
 
 export const SCORE_PROFILE_SCHEMA_VERSION = 'homr.score-profile.v1';
 /** The most parts a profile may declare; a page of music, not a catalogue. */
@@ -206,10 +207,17 @@ export function canonicalScoreProfileJson(profile: ScannerScoreProfile): string 
 }
 
 /** Immutable, user-selected policy for one OTS-HOMR engine run. */
-export interface ScannerOtsHomrEngineOptions {
-  textDetector: ScannerOtsHomrTextDetector;
-  scoreProfile?: ScannerScoreProfile;
-}
+export type ScannerOtsHomrEngineOptions =
+  | {
+      textDetector: ScannerOtsHomrTextDetector;
+      textPolicy?: never;
+      scoreProfile?: ScannerScoreProfile;
+    }
+  | {
+      textPolicy: ScannerOtsHomrTextPolicy;
+      textDetector?: never;
+      scoreProfile?: ScannerScoreProfile;
+    };
 
 function isScoreProfilePart(value: unknown): value is ScannerScoreProfilePart {
   if (!value || typeof value !== 'object') return false;
@@ -231,10 +239,7 @@ function isScoreProfilePart(value: unknown): value is ScannerScoreProfilePart {
   ) {
     return false;
   }
-  if (
-    part.transpositionSemitones !== undefined &&
-    !Number.isInteger(part.transpositionSemitones)
-  ) {
+  if (part.transpositionSemitones !== undefined && !Number.isInteger(part.transpositionSemitones)) {
     return false;
   }
   return (
@@ -277,10 +282,24 @@ export function isScannerOtsHomrEngineOptions(
   // An allowlist rather than a key count. The count was doing the same job when
   // `textDetector` was the only option, and the point of it - reject policy this
   // build does not understand rather than silently ignore it - survives widening.
-  if (Object.keys(value).some((key) => !['textDetector', 'scoreProfile'].includes(key))) {
+  if (
+    Object.keys(value).some((key) => !['textDetector', 'textPolicy', 'scoreProfile'].includes(key))
+  ) {
     return false;
   }
-  if (!['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector)) return false;
+  if (options.textPolicy !== undefined) {
+    const policy = options.textPolicy as { mode?: unknown };
+    if (options.textDetector !== undefined) return false;
+    if (
+      !policy ||
+      typeof policy !== 'object' ||
+      Object.keys(policy).length !== 1 ||
+      policy.mode !== 'fusion-v1'
+    )
+      return false;
+  } else if (!['lyrics', 'non-lyric-text', 'none'].includes(options.textDetector as string)) {
+    return false;
+  }
   return options.scoreProfile === undefined || isScannerScoreProfile(options.scoreProfile);
 }
 
@@ -378,7 +397,11 @@ export function scannerEnginePlanForJob(
       throw new Error('Invalid persisted scanner engine plan');
     }
     const persistedOtsHomr = plan.engineOptions?.['ots-homr'] as
-      | (Record<string, unknown> & { textDetector?: unknown; scoreProfile?: unknown })
+      | (Record<string, unknown> & {
+          textDetector?: unknown;
+          textPolicy?: unknown;
+          scoreProfile?: unknown;
+        })
       | undefined;
     // Normalizing to a known shape, not to `textDetector` alone. Rebuilding this from
     // one field silently dropped every other part of the frozen policy on each read of
@@ -388,7 +411,12 @@ export function scannerEnginePlanForJob(
       ? {
           ...plan.engineOptions,
           'ots-homr': {
-            textDetector: persistedOtsHomr.textDetector,
+            ...(persistedOtsHomr.textDetector === undefined
+              ? {}
+              : { textDetector: persistedOtsHomr.textDetector }),
+            ...(persistedOtsHomr.textPolicy === undefined
+              ? {}
+              : { textPolicy: persistedOtsHomr.textPolicy }),
             ...(persistedOtsHomr.scoreProfile === undefined
               ? {}
               : { scoreProfile: persistedOtsHomr.scoreProfile })

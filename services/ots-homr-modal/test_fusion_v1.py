@@ -1,0 +1,84 @@
+import unittest
+
+from calibration_manifest import CalibrationManifest, DetectorIdentity
+from fusion_policy import CLASS_ALLOWLIST, FusionPolicyError
+from fusion_v1 import fuse_page
+
+
+def manifest():
+    return CalibrationManifest(
+        policy="fusion-v1",
+        policy_revision="test",
+        detectors={
+            detector_id: DetectorIdentity("test", detector_id, "test.pth", detector_id)
+            for detector_id in CLASS_ALLOWLIST
+        },
+        class_allowlist=CLASS_ALLOWLIST,
+        calibration={
+            "lyrics": {"Lyrics": {"binLowerEdges": [0.0], "binValues": [0.9]}},
+            "non-lyric-text": {"Tempo": {"binLowerEdges": [0.0], "binValues": [0.8]}},
+        },
+        accept={"lyrics": {"Lyrics": 0.7}, "non-lyric-text": {"Tempo": 0.7}},
+        iou_threshold=0.3,
+        containment_threshold=0.6,
+        minimum_winner_margin=0.1,
+    )
+
+
+IDENTITIES = {detector_id: (detector_id, detector_id) for detector_id in CLASS_ALLOWLIST}
+
+
+def box(label, left, top, right, bottom, confidence=0.9):
+    return dict(label=label, left=left, top=top, right=right, bottom=bottom, confidence=confidence)
+
+
+def run(detections, **kwargs):
+    return fuse_page(
+        page_sha256="page",
+        page_size=(100, 100),
+        detections=detections,
+        detector_identities=kwargs.pop("identities", IDENTITIES),
+        manifest=kwargs.pop("calibration", manifest()),
+    )
+
+
+class FusionV1Test(unittest.TestCase):
+    def test_empty_page_is_success_but_missing_detector_fails(self):
+        result = run({"lyrics": [], "non-lyric-text": []})
+        self.assertEqual(result.summary, {"accepted": 0, "review": 0, "rejected": 0, "byClass": {}})
+        with self.assertRaisesRegex(FusionPolicyError, "both detector runs"):
+            run({"lyrics": []})
+
+    def test_independent_boxes_survive_and_unsupported_class_is_rejected(self):
+        result = run({
+            "lyrics": [box("Lyrics", 0, 0, 10, 10), box("MeasureNumber", 80, 0, 90, 10)],
+            "non-lyric-text": [box("Tempo", 30, 0, 40, 10)],
+        })
+        self.assertEqual(result.summary, {"accepted": 2, "review": 0, "rejected": 1, "byClass": {"Lyrics": 1, "Tempo": 1}})
+
+    def test_uncalibrated_overlap_is_review_not_raw_confidence_winner(self):
+        result = run({
+            "lyrics": [box("Lyrics", 0, 0, 10, 10, 0.51)],
+            "non-lyric-text": [box("Dynamic", 0, 0, 10, 10, 0.99)],
+        })
+        self.assertEqual(result.summary["accepted"], 0)
+        self.assertEqual(result.regions[0]["reason"], "uncalibrated-conflict")
+
+    def test_fusion_is_independent_of_detector_box_order(self):
+        lyrics = [box("Lyrics", 0, 0, 10, 10), box("Lyrics", 50, 0, 60, 10)]
+        non_lyric = [box("Tempo", 0, 0, 10, 10), box("Tempo", 75, 0, 85, 10)]
+        first = run({"lyrics": lyrics, "non-lyric-text": non_lyric})
+        second = run({"lyrics": list(reversed(lyrics)), "non-lyric-text": list(reversed(non_lyric))})
+        self.assertEqual(first, second)
+
+    def test_model_identity_and_policy_must_match(self):
+        with self.assertRaisesRegex(Exception, "refusing fusion-v1"):
+            run({"lyrics": [], "non-lyric-text": []}, identities={"lyrics": ("lyrics", "wrong"), "non-lyric-text": IDENTITIES["non-lyric-text"]})
+        wrong = manifest()
+        object.__setattr__(wrong, "policy", "lyrics-only-v1")
+        with self.assertRaisesRegex(FusionPolicyError, "own calibration"):
+            run({"lyrics": [], "non-lyric-text": []}, calibration=wrong)
+
+
+if __name__ == "__main__":
+    unittest.main()

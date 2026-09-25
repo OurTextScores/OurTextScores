@@ -60,9 +60,7 @@ function parseEditedMeasures(value: string | undefined):
       // edit whose `source` went missing would be filed as a comparison edit and assert
       // that two engines disagreed where only one was ever consulted. Unknown values are
       // refused rather than coerced, for the same reason.
-      ...(entry?.source === undefined
-        ? {}
-        : { source: assertEditSource(entry.source) })
+      ...(entry?.source === undefined ? {} : { source: assertEditSource(entry.source) })
     }));
   } catch (error) {
     if (error instanceof BadRequestException) throw error;
@@ -164,6 +162,9 @@ export class ScannerController {
     try {
       const requestedEngineIds = parseEngineIds(engineIds);
       const otsHomrOptions = parseOtsHomrOptions(otsHomr);
+      if (otsHomrOptions?.textPolicy && process.env.SCANNER_OTS_HOMR_FUSION_ENABLED !== '1') {
+        throw new BadRequestException('OTS-HOMR text fusion is not enabled');
+      }
       if (requestedEngineIds.includes('ots-homr') !== Boolean(otsHomrOptions)) {
         throw new BadRequestException(
           'OTS-HOMR options must be supplied exactly when OTS-HOMR is selected'
@@ -403,10 +404,7 @@ export class ScannerController {
   }
 
   @Get(':jobId/findings/dispositions')
-  async findingDispositions(
-    @CurrentUser() user: RequestUser,
-    @Param('jobId') jobId: string
-  ) {
+  async findingDispositions(@CurrentUser() user: RequestUser, @Param('jobId') jobId: string) {
     return { dispositions: await this.scanner.listFindingDispositions(user.userId, jobId) };
   }
 

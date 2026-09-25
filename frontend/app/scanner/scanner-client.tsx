@@ -125,6 +125,11 @@ export default function ScannerClient() {
   const [otsTextDetector, setOtsTextDetector] = useState<
     "lyrics" | "non-lyric-text" | "none"
   >("lyrics");
+  const [includeLyrics, setIncludeLyrics] = useState(false);
+  // Enabled only after the provider has pinned a two-detector calibration and
+  // the backend has enabled the matching policy. It is review-only until the
+  // lyric reading/attachment gate is separately passed.
+  const fusionEnabled = process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED === "1";
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -240,7 +245,11 @@ export default function ScannerClient() {
         body.set(
           "otsHomr",
           JSON.stringify({
-            textDetector: otsTextDetector,
+            ...(fusionEnabled
+              ? includeLyrics
+                ? { textPolicy: { mode: "fusion-v1" } }
+                : { textDetector: "non-lyric-text" }
+              : { textDetector: otsTextDetector }),
             // Omitted entirely rather than sent as null: the option is validated by
             // an allowlist, and "no profile" is the absence of the field.
             ...(preset ? { scoreProfile: preset.profile } : {}),
@@ -480,6 +489,22 @@ export default function ScannerClient() {
             <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
               OTS-HOMR options
             </legend>
+            {fusionEnabled ? (
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={includeLyrics}
+                    onChange={(event) => setIncludeLyrics(event.target.checked)}
+                  />
+                  This score has lyrics
+                </label>
+                <p className="ml-6 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Includes lyric detection in the calibrated text review. The
+                  core score and its dynamics stay unchanged.
+                </p>
+              </div>
+            ) : (
             <div>
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 Text detector
@@ -504,6 +529,7 @@ export default function ScannerClient() {
                 </span>
               </label>
             </div>
+            )}
             <div className="mt-3">
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
                 What is this score?

@@ -184,6 +184,80 @@ describe('ScannerOtsHomrProviderService', () => {
     );
   });
 
+  it('fails a fusion request closed until the server flag and pins are configured', async () => {
+    const service = new ScannerOtsHomrProviderService(config);
+    const base = { inputSha256: 'f'.repeat(64), pageNumber: 1, detectTitle: false, generation: 1 };
+    expect(
+      service.createIdempotencyKey({
+        ...base,
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })
+    ).not.toBe(service.createIdempotencyKey({ ...base, engineOptions: options }));
+    await expect(
+      service.scanPage({
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'e'.repeat(64),
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })
+    ).rejects.toMatchObject({ code: 'provider_invalid_response' });
+  });
+
+  it('verifies both fusion detector pins and retains bounded review evidence', async () => {
+    Object.assign(values, {
+      SCANNER_OTS_HOMR_FUSION_ENABLED: '1',
+      SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION: 'non-lyric-revision',
+      SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256: 'e'.repeat(64),
+      SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION: 'fusion-calibration'
+    });
+    try {
+      const base = envelope();
+      const fused = envelope({
+        engine: {
+          ...base.engine,
+          textDetector: undefined,
+          textPolicy: {
+            mode: 'fusion-v1',
+            fusionRevision: 'fusion-v1',
+            calibrationRevision: 'fusion-calibration',
+            detectors: [
+              { id: 'lyrics', revision: 'lyrics-revision', sha256: 'b'.repeat(64) },
+              { id: 'non-lyric-text', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) }
+            ]
+          }
+        },
+        result: {
+          ...base.result,
+          fusionSummary: { accepted: 0, review: 0, rejected: 0, byClass: {} },
+          fusedRegions: []
+        }
+      });
+      jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+        expect((init?.body as FormData).get('textPolicy')).toBe('{"mode":"fusion-v1"}');
+        expect((init?.body as FormData).get('textDetector')).toBeNull();
+        return new Response(JSON.stringify(fused), { status: 200 });
+      });
+      const result = await new ScannerOtsHomrProviderService(config).scanPage({
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'e'.repeat(64),
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      });
+      expect(
+        JSON.parse(result.nativeArtifacts!['text-fusion-review'].toString('utf8'))
+      ).toMatchObject({ fusionSummary: { accepted: 0, review: 0, rejected: 0 } });
+    } finally {
+      delete values.SCANNER_OTS_HOMR_FUSION_ENABLED;
+      delete values.SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION;
+      delete values.SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256;
+      delete values.SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION;
+    }
+  });
+
   it('regenerates reviewed OTS-HOMR tokens through its own provider', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ result: { musicXmlBase64: musicXml.toString('base64') } }), {
