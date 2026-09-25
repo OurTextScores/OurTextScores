@@ -8,6 +8,7 @@ services:
         NEXT_PUBLIC_SCORE_EDITOR_URL: ${NEXT_PUBLIC_SCORE_EDITOR_URL:-http://localhost:3000/score-editor}
         SCORE_EDITOR_API_ORIGIN: ${SCORE_EDITOR_API_ORIGIN:-http://score_editor_api:3000}
         NEXT_PUBLIC_SCANNER_ENABLED: ${NEXT_PUBLIC_SCANNER_ENABLED:-false}
+        NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED: ${NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED:-false}
     environment:
       - NEXT_PUBLIC_API_URL=/api
       - INTERNAL_API_URL=http://backend:4000/api
