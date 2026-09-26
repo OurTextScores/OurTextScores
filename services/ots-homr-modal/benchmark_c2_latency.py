@@ -20,6 +20,7 @@ from pathlib import Path
 
 
 def percentile(values: list[float], fraction: float) -> float:
+    """Use the conservative higher-sample quantile (p95 is the maximum at n=20)."""
     ordered = sorted(values)
     if not ordered:
         raise ValueError("No pages were measured")
@@ -133,6 +134,7 @@ def main() -> None:
         "pageCount": len(samples),
         "failedPages": len(failures),
         "latencyGateEligible": len(samples) >= 20,
+        "p95Method": "higher-sample: ceil((n-1)*0.95); maximum at n=20",
         "hardTimeoutSeconds": 280,
         "p50Seconds": {
             "baseline": statistics.median(baselines) if baselines else None,
