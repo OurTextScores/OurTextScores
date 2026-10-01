@@ -60,9 +60,10 @@ class TestGate(unittest.TestCase):
         self.assertEqual([c.label for c in accepted], ["Lyrics", "Tempo"])
         self.assertEqual([reason for _, reason in rejected], ["unsupported-class"] * 2)
 
-    def test_dynamics_are_admissible_from_both_as_evidence(self) -> None:
-        for detector in ("lyrics", "non-lyric-text"):
-            self.assertIn("Dynamic", CLASS_ALLOWLIST[detector])
+    def test_dynamics_have_one_logical_owner(self) -> None:
+        self.assertEqual(CLASS_ALLOWLIST['dynamics'], frozenset({'Dynamic'}))
+        for detector in ('lyrics', 'non-lyric-text'):
+            self.assertNotIn('Dynamic', CLASS_ALLOWLIST[detector])
 
     def test_an_unknown_detector_contributes_nothing(self) -> None:
         _, rejected = gate([box(0, 0, 10, 10, detector_id="something-else")], PAGE)

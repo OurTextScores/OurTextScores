@@ -23,6 +23,15 @@ DETECTORS = {
         "fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82",
     ),
 }
+# Logical ownership is separate from physical checkpoints. While directions and
+# dynamics share e4, bootstrap loads it once and fusion runs it once per page.
+DETECTOR_ROUTES = {
+    "lyrics": "lyrics",
+    "non-lyric-text": "non-lyric-text",
+    "dynamics": "non-lyric-text",
+}
+FUSION_DETECTORS = tuple(DETECTOR_ROUTES)
+LOGICAL_DETECTORS = {logical: DETECTORS[physical] for logical, physical in DETECTOR_ROUTES.items()}
 HEADS_REPOSITORY = "jhlusko/OTS-homr-additonal-heads"
 HEADS_REVISION = "c3d4bb0430f0516665897c618f2e971d197630cc"
 HEADS_CHECKPOINT_SHA256 = (

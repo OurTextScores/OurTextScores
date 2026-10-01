@@ -325,7 +325,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         policy?.fusionRevision !== 'fusion-v1' ||
         engine?.textDetector !== undefined ||
         !Array.isArray(policy.detectors) ||
-        policy.detectors.length !== 2
+        policy.detectors.length !== 3
       )
         throw this.invalid('Scanner OTS-HOMR text fusion identity is invalid');
       this.expect(
@@ -335,7 +335,8 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       );
       for (const [id, suffix] of [
         ['lyrics', 'LYRICS'],
-        ['non-lyric-text', 'NON_LYRIC_TEXT']
+        ['non-lyric-text', 'NON_LYRIC_TEXT'],
+        ['dynamics', 'DYNAMICS']
       ] as const) {
         const detector = policy.detectors.find((entry: any) => entry?.id === id);
         if (!detector) throw this.invalid('Scanner OTS-HOMR text fusion detector is absent');

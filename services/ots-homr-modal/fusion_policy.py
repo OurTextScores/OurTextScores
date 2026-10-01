@@ -28,14 +28,19 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-DetectorId = Literal["lyrics", "non-lyric-text"]
+DetectorId = Literal["lyrics", "non-lyric-text", "dynamics"]
 
 #: What each checkpoint's loss actually trained, per the design's capability table.
-#: `Dynamic` appears for both and is review-only evidence downstream: the rareNum core
-#: remains the sole automatic authority on dynamics.
+#: A logical route has sole ownership of its classes. Dynamic is review-only;
+#: the experimental structured dynamics head is never an automatic authority.
 CLASS_ALLOWLIST: dict[str, frozenset[str]] = {
-    "lyrics": frozenset({"Lyrics", "Dynamic"}),
-    "non-lyric-text": frozenset({"Tempo", "StaffText", "Expression", "Dynamic"}),
+    "lyrics": frozenset({"Lyrics"}),
+    "non-lyric-text": frozenset({"Tempo", "StaffText", "Expression"}),
+    "dynamics": frozenset({"Dynamic"}),
+}
+SEMANTIC_FAMILY = {
+    "Lyrics": "Lyrics", "Dynamic": "Dynamic",
+    "Tempo": "DirectionText", "StaffText": "DirectionText", "Expression": "DirectionText",
 }
 
 #: Never emitted, never requested, and fatal if a response advertises it.
@@ -91,7 +96,8 @@ def is_valid_box(box: object, page: tuple[int, int]) -> bool:
 
 
 def gate(
-    candidates: Sequence[DetectorCandidate], page: tuple[int, int]
+    candidates: Sequence[DetectorCandidate], page: tuple[int, int],
+    *, class_allowlist: dict[str, frozenset[str]] | None = None,
 ) -> tuple[list[DetectorCandidate], list[tuple[DetectorCandidate, str]]]:
     """Split candidates into those a detector may contribute and those it may not.
 
@@ -101,7 +107,7 @@ def gate(
     accepted: list[DetectorCandidate] = []
     rejected: list[tuple[DetectorCandidate, str]] = []
     for candidate in candidates:
-        allowed = CLASS_ALLOWLIST.get(candidate.detector_id)
+        allowed = (CLASS_ALLOWLIST if class_allowlist is None else class_allowlist).get(candidate.detector_id)
         if allowed is None:
             rejected.append((candidate, "unknown-detector"))
         elif candidate.label not in allowed:

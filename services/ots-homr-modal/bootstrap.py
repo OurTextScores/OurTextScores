@@ -14,6 +14,7 @@ from pins import (
     CORE_REVISION,
     CORE_SHA256,
     DETECTORS,
+    DETECTOR_ROUTES,
     HEADS_CHECKPOINT_SHA256,
     HEADS_ONNX_SHA256,
     HEADS_REPOSITORY,
@@ -107,6 +108,7 @@ def bootstrap(*, root: Path, device: str) -> RuntimeArtifacts:
             sha256=digest,
             device=device,
         )
+    detectors = {logical: detectors[physical] for logical, physical in DETECTOR_ROUTES.items()}
     # No subsequent inference path may resolve a moving HF revision.
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"

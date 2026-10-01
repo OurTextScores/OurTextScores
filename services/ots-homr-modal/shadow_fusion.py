@@ -100,7 +100,9 @@ def shadow_page(
         for index, (label, box, confidence) in enumerate(boxes)
     ]
 
-    accepted_candidates, rejected = gate(candidates, page_size)
+    # Single-detector historical diagnostics retain their immutable manifest's
+    # class ownership; they are not the new three-route fusion policy.
+    accepted_candidates, rejected = gate(candidates, page_size, class_allowlist=manifest.class_allowlist)
     components = conflict_components(
         accepted_candidates,
         iou_threshold=manifest.iou_threshold,

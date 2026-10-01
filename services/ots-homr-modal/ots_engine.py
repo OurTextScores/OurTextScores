@@ -12,6 +12,7 @@ import numpy as np
 from calibration_manifest import CalibrationManifest
 from fusion_v1 import fuse_page
 from fusion_policy import CLASS_ALLOWLIST
+from detector_routes import route_detections
 
 from pins import (
     CORE_ARTIFACT_SHA256,
@@ -21,6 +22,8 @@ from pins import (
     HEADS_ONNX_SHA256,
     HEADS_REVISION,
     MANIFEST_SHA256,
+    DETECTOR_ROUTES,
+    FUSION_DETECTORS,
 )
 from runtime_identity import selected_components
 
@@ -104,10 +107,13 @@ class OtsHomrEngine:
         if self.fusion_manifest.policy != "fusion-v1":
             raise TextFusionError("calibration")
         identities = {}
-        for detector_id in ("lyrics", "non-lyric-text"):
+        for detector_id in FUSION_DETECTORS:
             detector = self.artifacts.detectors.get(detector_id)
             if detector is None:
                 raise TextFusionError(f"{detector_id}-detector")
+            physical = self.artifacts.detectors.get(DETECTOR_ROUTES[detector_id])
+            if physical is None or (physical.revision, physical.sha256) != (detector.revision, detector.sha256):
+                raise TextFusionError("calibration")
             identities[detector_id] = (detector.revision, detector.sha256)
             try:
                 self.fusion_manifest.assert_detector_matches(
@@ -122,7 +128,8 @@ class OtsHomrEngine:
             raise TextFusionError("fusion")
         height, width = decoded.shape[:2]
         detections = {}
-        for detector_id in ("lyrics", "non-lyric-text"):
+        # Run each physical checkpoint once, then partition its class outputs.
+        for detector_id in dict.fromkeys(DETECTOR_ROUTES.values()):
             try:
                 detections[detector_id] = self.artifacts.detectors[detector_id].detect(page)
             except Exception as error:
@@ -131,7 +138,7 @@ class OtsHomrEngine:
             fusion = fuse_page(
                 page_sha256=hashlib.sha256(decoded.tobytes()).hexdigest(),
                 page_size=(width, height),
-                detections=detections,
+                detections=route_detections(detections),
                 detector_identities=identities,
                 manifest=self.fusion_manifest,
             )
@@ -196,7 +203,7 @@ class OtsHomrEngine:
                         "revision": self.artifacts.detectors[detector_id].revision,
                         "sha256": self.artifacts.detectors[detector_id].sha256,
                     }
-                    for detector_id in ("lyrics", "non-lyric-text")
+                    for detector_id in FUSION_DETECTORS
                 ],
             }
         return identity

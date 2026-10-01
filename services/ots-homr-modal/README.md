@@ -58,3 +58,13 @@ separate `site-packages` copy.
 The deployed capabilities response links to this directory at the exact
 OurTextScores source commit, including the corresponding HOMR source archive
 and runtime patch.
+
+## Local text-fusion calibration preparation (2026-10-01)
+
+Three logical routes share two physical checkpoints: lyrics/e2, directions/e4, and review-only dynamics from e4's Dynamic channel. `pins.py` distinguishes physical `DETECTORS` from logical `DETECTOR_ROUTES`/`LOGICAL_DETECTORS`. Only two models are loaded and run. DirectionText is a semantic family for legacy Tempo/StaffText/Expression labels, not a reordered training channel.
+
+`prepare_fusion_calibration.py --workspace WORKSPACE --out OUT` preserves known positive evidence, groups same-score duplicate pixels and assigns all pages of each score to one deterministic calibration/test partition. Supply `--exclude-scores VERIFIED_TRAINING_IDS.json` once exact released-detector training identities have been recovered. Partial annotations do not establish negative truth; instrumental OSSQ establishes absence of lyrics. Oversized originals above the explicit 30MP preparation budget are deferred without changing pixels/coordinates. The output is an adjudication index, **not** a runtime calibration manifest.
+
+`collect_fusion_calibration.py --pages OUT/calibration-pages.jsonl --models-root MODELS --out OUT/detections --device cpu --threads 2 --batch-size 2` uses the production TextDetector path on original bytes with exact pinned model hashes, no resized input. It verifies input and implementation identities on resume and truncates only incomplete final writes. The provider's connected-component postprocessing differs from older evaluation scripts: do not reuse their raw confidence tables. `build_fusion_review.py --detections OUT/detections/detections.jsonl --out OUT/review` generates an original-page overlay preview for calibration-only records.
+
+Adjudicate unknown predictions/overlaps and freeze region matching and selection criteria before fitting calibration or examining test predictions. Independently prove detector-training exclusions before calling the test partition independent. The immutable lyrics-only manifest cannot be repurposed. No fusion-v1 manifest is supplied by these preparation scripts. Automatic dynamics remains prohibited even with a calibrated score. C1 read/verse/note attachment and final-path latency remain separate release gates. Scanner fusion responses require three logical pin expectations, including `SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION` and `SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256` (currently equal e4).

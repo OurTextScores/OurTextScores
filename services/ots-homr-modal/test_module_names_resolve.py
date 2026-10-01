@@ -27,6 +27,10 @@ MODULES = [
     "onnx_core.py",
     "bootstrap.py",
     "pins.py",
+    "detector_routes.py",
+    "collect_fusion_calibration.py",
+    "prepare_fusion_calibration.py",
+    "build_fusion_review.py",
 ]
 
 

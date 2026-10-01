@@ -205,11 +205,13 @@ describe('ScannerOtsHomrProviderService', () => {
     ).rejects.toMatchObject({ code: 'provider_invalid_response' });
   });
 
-  it('verifies both fusion detector pins and retains bounded review evidence', async () => {
+  it('verifies all three logical fusion pins and retains bounded review evidence', async () => {
     Object.assign(values, {
       SCANNER_OTS_HOMR_FUSION_ENABLED: '1',
       SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION: 'non-lyric-revision',
       SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256: 'e'.repeat(64),
+      SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION: 'non-lyric-revision',
+      SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256: 'e'.repeat(64),
       SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION: 'fusion-calibration'
     });
     try {
@@ -224,7 +226,8 @@ describe('ScannerOtsHomrProviderService', () => {
             calibrationRevision: 'fusion-calibration',
             detectors: [
               { id: 'lyrics', revision: 'lyrics-revision', sha256: 'b'.repeat(64) },
-              { id: 'non-lyric-text', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) }
+              { id: 'non-lyric-text', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) },
+              { id: 'dynamics', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) }
             ]
           }
         },
@@ -250,10 +253,22 @@ describe('ScannerOtsHomrProviderService', () => {
       expect(
         JSON.parse(result.nativeArtifacts!['text-fusion-review'].toString('utf8'))
       ).toMatchObject({ fusionSummary: { accepted: 0, review: 0, rejected: 0 } });
+      (fused.engine as any).textPolicy.detectors[2].sha256 = 'f'.repeat(64);
+      await expect(new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: 'f'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })).rejects.toMatchObject({ code: 'provider_model_artifact_mismatch' });
+      (fused.engine as any).textPolicy.detectors.pop();
+      await expect(new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: 'f'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
     } finally {
       delete values.SCANNER_OTS_HOMR_FUSION_ENABLED;
       delete values.SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION;
       delete values.SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256;
+      delete values.SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION;
+      delete values.SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256;
       delete values.SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION;
     }
   });

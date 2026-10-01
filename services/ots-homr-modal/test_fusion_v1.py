@@ -33,6 +33,7 @@ def box(label, left, top, right, bottom, confidence=0.9):
 
 
 def run(detections, **kwargs):
+    detections = {'dynamics': [], **detections}
     return fuse_page(
         page_sha256="page",
         page_size=(100, 100),
@@ -46,7 +47,7 @@ class FusionV1Test(unittest.TestCase):
     def test_empty_page_is_success_but_missing_detector_fails(self):
         result = run({"lyrics": [], "non-lyric-text": []})
         self.assertEqual(result.summary, {"accepted": 0, "review": 0, "rejected": 0, "byClass": {}})
-        with self.assertRaisesRegex(FusionPolicyError, "both detector runs"):
+        with self.assertRaisesRegex(FusionPolicyError, "all three logical detector runs"):
             run({"lyrics": []})
 
     def test_independent_boxes_survive_and_unsupported_class_is_rejected(self):
@@ -59,7 +60,8 @@ class FusionV1Test(unittest.TestCase):
     def test_uncalibrated_overlap_is_review_not_raw_confidence_winner(self):
         result = run({
             "lyrics": [box("Lyrics", 0, 0, 10, 10, 0.51)],
-            "non-lyric-text": [box("Dynamic", 0, 0, 10, 10, 0.99)],
+            "non-lyric-text": [],
+            "dynamics": [box("Dynamic", 0, 0, 10, 10, 0.99)],
         })
         self.assertEqual(result.summary["accepted"], 0)
         self.assertEqual(result.regions[0]["reason"], "uncalibrated-conflict")
@@ -73,11 +75,33 @@ class FusionV1Test(unittest.TestCase):
 
     def test_model_identity_and_policy_must_match(self):
         with self.assertRaisesRegex(Exception, "refusing fusion-v1"):
-            run({"lyrics": [], "non-lyric-text": []}, identities={"lyrics": ("lyrics", "wrong"), "non-lyric-text": IDENTITIES["non-lyric-text"]})
+            run({"lyrics": [], "non-lyric-text": []}, identities={**IDENTITIES, "lyrics": ("lyrics", "wrong")})
         wrong = manifest()
         object.__setattr__(wrong, "policy", "lyrics-only-v1")
         with self.assertRaisesRegex(FusionPolicyError, "own calibration"):
             run({"lyrics": [], "non-lyric-text": []}, calibration=wrong)
+
+    def test_missing_dynamics_route_fails_even_when_other_runs_are_empty(self):
+        with self.assertRaisesRegex(FusionPolicyError, 'all three logical detector runs'):
+            fuse_page(page_sha256='page', page_size=(100, 100),
+                      detections={'lyrics': [], 'non-lyric-text': []},
+                      detector_identities=IDENTITIES, manifest=manifest())
+
+    def test_calibrated_dynamic_is_still_review_only(self):
+        calibration = manifest()
+        calibration.calibration['dynamics'] = {'Dynamic': {'binLowerEdges': [0.0], 'binValues': [1.0]}}
+        calibration.accept['dynamics'] = {'Dynamic': 0.1}
+        result = run({'lyrics': [], 'non-lyric-text': [],
+                      'dynamics': [box('Dynamic', 0, 0, 10, 10)]}, calibration=calibration)
+        self.assertEqual(result.summary['accepted'], 0)
+        self.assertEqual(result.regions[0]['reason'], 'dynamic-review-only')
+        self.assertEqual(result.regions[0]['candidates'][0]['physicalDetectorId'], 'non-lyric-text')
+
+    def test_calibration_cannot_silently_add_a_detector(self):
+        calibration = manifest()
+        calibration.detectors['unexpected'] = calibration.detectors['dynamics']
+        with self.assertRaisesRegex(FusionPolicyError, 'exactly three logical routes'):
+            run({'lyrics': [], 'non-lyric-text': []}, calibration=calibration)
 
 
 if __name__ == "__main__":

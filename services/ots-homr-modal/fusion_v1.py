@@ -1,4 +1,4 @@
-"""Pinned, fail-closed fusion of the two page-text detector outputs.
+"""Pinned, fail-closed fusion of three logical page-text detector outputs.
 
 This produces box decisions for review. It does not attach text to MusicXML:
 recognition and attachment have separate release gates in the fusion design.
@@ -14,15 +14,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from calibration_manifest import CalibrationManifest
+from pins import FUSION_DETECTORS, DETECTOR_ROUTES
 from fusion_policy import (
     CLASS_ALLOWLIST,
+    SEMANTIC_FAMILY,
     DetectorCandidate,
     FusionPolicyError,
     conflict_components,
     gate,
 )
 
-REQUIRED_DETECTORS = ("lyrics", "non-lyric-text")
+REQUIRED_DETECTORS = FUSION_DETECTORS
 
 
 @dataclass(frozen=True)
@@ -46,17 +48,19 @@ def fuse_page(
     detector_identities: Mapping[str, tuple[str, str]],
     manifest: CalibrationManifest,
 ) -> FusionResult:
-    """Fuse two *completed* detector runs; an empty run is valid, an absent run is not.
+    """Fuse three completed logical routes; empty is valid, absent is not.
 
-    ``detections`` must contain both detector keys even for an empty page. Each
+    ``detections`` must contain every logical key even for an empty page. Each
     identity is ``(revision, sha256)`` and must match the immutable calibration.
     """
     if manifest.policy != "fusion-v1":
         raise FusionPolicyError("fusion-v1 requires its own calibration manifest")
     if set(detections) != set(REQUIRED_DETECTORS):
-        raise FusionPolicyError("both detector runs are required for fusion-v1")
+        raise FusionPolicyError("all three logical detector runs are required for fusion-v1")
     if set(detector_identities) != set(REQUIRED_DETECTORS):
-        raise FusionPolicyError("both detector identities are required for fusion-v1")
+        raise FusionPolicyError("all three logical detector identities are required for fusion-v1")
+    if set(manifest.detectors) != set(REQUIRED_DETECTORS):
+        raise FusionPolicyError("fusion-v1 calibration must identify exactly three logical routes")
     for detector_id in REQUIRED_DETECTORS:
         revision, digest = detector_identities[detector_id]
         manifest.assert_detector_matches(detector_id, revision=revision, sha256=digest)
@@ -150,7 +154,9 @@ def fuse_page(
                     {
                         "id": candidate.candidate_id,
                         "detectorId": candidate.detector_id,
+                        "physicalDetectorId": DETECTOR_ROUTES[candidate.detector_id],
                         "label": candidate.label,
+                        "semanticFamily": SEMANTIC_FAMILY.get(candidate.label),
                         "box": list(candidate.box),
                         "rawConfidence": candidate.raw_confidence,
                         "calibratedConfidence": candidate.calibrated_confidence,
@@ -170,7 +176,9 @@ def fuse_page(
                     {
                         "id": candidate.candidate_id,
                         "detectorId": candidate.detector_id,
+                        "physicalDetectorId": DETECTOR_ROUTES.get(candidate.detector_id),
                         "label": candidate.label,
+                        "semanticFamily": SEMANTIC_FAMILY.get(candidate.label),
                         "box": list(candidate.box),
                     }
                 ],
