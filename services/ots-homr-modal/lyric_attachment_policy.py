@@ -16,6 +16,7 @@ class NoteAnchor:
     center_x: float
     staff_top: float
     staff_bottom: float
+    physical_measure: int
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ def attach_nearest_x(
                 text=box.text,
                 verse=box.verse,
                 source_part=chosen.source_part,
+                physical_measure=chosen.physical_measure,
                 source_note_ordinal=chosen.source_note_ordinal,
                 onset_quarters=chosen.onset_quarters,
                 confidence=box.confidence,

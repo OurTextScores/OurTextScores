@@ -18,6 +18,7 @@ class LyricAttachment:
     text: str
     verse: str
     source_part: str
+    physical_measure: int
     source_note_ordinal: int
     onset_quarters: str
     confidence: float
@@ -29,7 +30,9 @@ class LyricAttachment:
             raise ValueError("attachment text is required")
         if not self.verse:
             raise ValueError("attachment verse is required")
-        if self.source_note_ordinal < 1:
+        if type(self.physical_measure) is not int or self.physical_measure < 1:
+            raise ValueError("physical measure must be a positive integer")
+        if type(self.source_note_ordinal) is not int or self.source_note_ordinal < 1:
             raise ValueError("source note ordinal must be positive")
         Fraction(self.onset_quarters)
         if not 0.0 <= self.confidence <= 1.0:
@@ -42,6 +45,7 @@ class LyricAttachment:
             "text": self.text,
             "verse": self.verse,
             "source_part": self.source_part,
+            "physical_measure": self.physical_measure,
             "source_note_ordinal": self.source_note_ordinal,
             "onset_quarters": self.onset_quarters,
             "confidence": self.confidence,

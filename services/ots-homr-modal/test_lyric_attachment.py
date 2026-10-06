@@ -10,6 +10,7 @@ def record(**overrides):
         "text": "Hal",
         "verse": "1",
         "source_part": "P1",
+        "physical_measure": 4,
         "source_note_ordinal": 12,
         "onset_quarters": "3/2",
         "confidence": 0.8,
@@ -30,7 +31,8 @@ def test_validation_preserves_order_and_duplicates():
 
 @pytest.mark.parametrize(
     "field,value",
-    [("source_note_ordinal", 0), ("confidence", 1.1), ("onset_quarters", "bad")],
+    [("physical_measure", 0), ("physical_measure", True), ("source_note_ordinal", 0),
+     ("confidence", 1.1), ("onset_quarters", "bad")],
 )
 def test_invalid_native_attachment_fields_fail_closed(field, value):
     with pytest.raises(ValueError):

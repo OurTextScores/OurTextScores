@@ -2,7 +2,7 @@ from lyric_attachment_policy import LyricBox, NoteAnchor, attach_nearest_x
 
 
 def note(ordinal, x, top=100, bottom=130):
-    return NoteAnchor("P1", ordinal, str(ordinal - 1), x, top, bottom)
+    return NoteAnchor("P1", ordinal, str(ordinal - 1), x, top, bottom, 4)
 
 
 def box(identifier, x, y=115):
