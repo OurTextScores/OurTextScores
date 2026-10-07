@@ -85,7 +85,9 @@ class OtsHomrEngine:
         # under that exact policy; its boxes are private diagnostics for now.
         if text_detector != "none":
             self.artifacts.detectors[text_detector].detect(page)
-        return self.core.transcribe_both(page, content_type, detect_title, score_profile)
+        return self.core.transcribe_both(
+            page, content_type, detect_title, score_profile
+        )
 
     def transcribe_fusion(
         self,
@@ -112,7 +114,10 @@ class OtsHomrEngine:
             if detector is None:
                 raise TextFusionError(f"{detector_id}-detector")
             physical = self.artifacts.detectors.get(DETECTOR_ROUTES[detector_id])
-            if physical is None or (physical.revision, physical.sha256) != (detector.revision, detector.sha256):
+            if physical is None or (physical.revision, physical.sha256) != (
+                detector.revision,
+                detector.sha256,
+            ):
                 raise TextFusionError("calibration")
             identities[detector_id] = (detector.revision, detector.sha256)
             try:
@@ -121,7 +126,10 @@ class OtsHomrEngine:
                 )
             except Exception as error:
                 raise TextFusionError("calibration") from error
-            if self.fusion_manifest.class_allowlist.get(detector_id) != CLASS_ALLOWLIST[detector_id]:
+            if (
+                self.fusion_manifest.class_allowlist.get(detector_id)
+                != CLASS_ALLOWLIST[detector_id]
+            ):
                 raise TextFusionError("calibration")
         decoded = cv2.imdecode(np.frombuffer(page, dtype=np.uint8), cv2.IMREAD_COLOR)
         if decoded is None:
@@ -131,7 +139,9 @@ class OtsHomrEngine:
         # Run each physical checkpoint once, then partition its class outputs.
         for detector_id in dict.fromkeys(DETECTOR_ROUTES.values()):
             try:
-                detections[detector_id] = self.artifacts.detectors[detector_id].detect(page)
+                detections[detector_id] = self.artifacts.detectors[detector_id].detect(
+                    page
+                )
             except Exception as error:
                 raise TextFusionError(f"{detector_id}-detector") from error
         try:
@@ -145,7 +155,9 @@ class OtsHomrEngine:
         except Exception as error:
             raise TextFusionError("fusion") from error
         try:
-            result = self.core.transcribe_both(page, content_type, detect_title, score_profile)
+            result = self.core.transcribe_both(
+                page, content_type, detect_title, score_profile
+            )
         except Exception as error:
             raise TextFusionError("recognition") from error
         result["fusion"] = fusion
@@ -185,6 +197,11 @@ class OtsHomrEngine:
             heads_sha256=HEADS_CHECKPOINT_SHA256,
             manifest_sha256=MANIFEST_SHA256,
         )
+        notation_identity = getattr(self.core, "notation_policy_identity", None)
+        if notation_identity:
+            policies = notation_identity()
+            if policies:
+                identity["notationPolicies"] = policies
         identity["core"]["runtimeArtifacts"] = {
             "encoderOnnxSha256": CORE_SHA256["encoder.onnx"],
             "decoderOnnxSha256": CORE_SHA256["decoder.onnx"],

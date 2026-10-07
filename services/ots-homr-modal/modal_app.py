@@ -132,6 +132,7 @@ def ots_homr_api():
     core = PatchedHomrCore(
         artifacts=artifacts,
         hard_timeout_seconds=HARD_TIMEOUT_SECONDS,
+        paired_tremolo_timing=os.environ.get("OTS_HOMR_PAIRED_TREMOLO_TIMING") == "1",
     )
     fusion_manifest = None
     if os.environ.get("OTS_HOMR_FUSION_ENABLED") == "1":
@@ -145,14 +146,22 @@ def ots_homr_api():
             raise RuntimeError("Fusion needs its own pinned calibration")
         from pins import FUSION_DETECTORS
         from fusion_policy import CLASS_ALLOWLIST
+
         for detector_id in FUSION_DETECTORS:
             detector = artifacts.detectors[detector_id]
             fusion_manifest.assert_detector_matches(
                 detector_id, revision=detector.revision, sha256=detector.sha256
             )
-            if fusion_manifest.class_allowlist.get(detector_id) != CLASS_ALLOWLIST[detector_id]:
-                raise RuntimeError("Fusion calibration has incompatible logical class ownership")
-    engine = OtsHomrEngine(artifacts=artifacts, core=core, fusion_manifest=fusion_manifest)
+            if (
+                fusion_manifest.class_allowlist.get(detector_id)
+                != CLASS_ALLOWLIST[detector_id]
+            ):
+                raise RuntimeError(
+                    "Fusion calibration has incompatible logical class ownership"
+                )
+    engine = OtsHomrEngine(
+        artifacts=artifacts, core=core, fusion_manifest=fusion_manifest
+    )
     return create_provider_app(
         engine=engine,
         service_revision=SERVICE_REVISION,

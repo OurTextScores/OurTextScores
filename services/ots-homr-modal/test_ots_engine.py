@@ -69,7 +69,9 @@ class OtsHomrEngineTest(unittest.TestCase):
             detector_id: FakeDetector(revision, digest)
             for detector_id, (_repo, revision, _filename, digest) in DETECTORS.items()
         }
-        detectors = {logical: detectors[source] for logical, source in DETECTOR_ROUTES.items()}
+        detectors = {
+            logical: detectors[source] for logical, source in DETECTOR_ROUTES.items()
+        }
         core = FakeCore()
         artifacts = SimpleNamespace(detectors=detectors)
         return OtsHomrEngine(artifacts=artifacts, core=core), detectors, core
@@ -84,7 +86,10 @@ class OtsHomrEngineTest(unittest.TestCase):
         self.assertEqual(detectors["lyrics"].calls, [b"lyrics-page"])
         self.assertEqual(detectors["non-lyric-text"].calls, [])
 
-        self.assertEqual(engine.regenerate([[['note_4', 'C4', '_', '_', '_', 'upper']]]), b"<score-partwise/>")
+        self.assertEqual(
+            engine.regenerate([[["note_4", "C4", "_", "_", "_", "upper"]]]),
+            b"<score-partwise/>",
+        )
         engine.transcribe(b"plain-page", "image/jpeg", False, "none")
         self.assertEqual(detectors["lyrics"].calls, [b"lyrics-page"])
         self.assertEqual(detectors["non-lyric-text"].calls, [])
@@ -122,6 +127,14 @@ class OtsHomrEngineTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "requires CUDA"):
             engine.warm_up()
 
+    def test_notation_policy_is_reported_only_when_enabled(self):
+        engine, _detectors, core = self.make_engine()
+        self.assertNotIn("notationPolicies", engine.identity("none"))
+        core.notation_policy_identity = lambda: {"pairedTremoloTiming": "peer-span-v1"}
+        expected = {"pairedTremoloTiming": "peer-span-v1"}
+        self.assertEqual(engine.identity("none")["notationPolicies"], expected)
+        self.assertEqual(engine.capabilities_identity()["notationPolicies"], expected)
+
     def test_fusion_runs_both_detectors_and_preserves_core_xml(self):
         engine, detectors, core = self.make_engine()
         engine.fusion_manifest = CalibrationManifest(
@@ -129,7 +142,12 @@ class OtsHomrEngineTest(unittest.TestCase):
             policy_revision="test",
             detectors={
                 detector_id: DetectorIdentity("test", revision, "test.pth", digest)
-                for detector_id, (_repo, revision, _filename, digest) in LOGICAL_DETECTORS.items()
+                for detector_id, (
+                    _repo,
+                    revision,
+                    _filename,
+                    digest,
+                ) in LOGICAL_DETECTORS.items()
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
@@ -164,7 +182,12 @@ class OtsHomrEngineTest(unittest.TestCase):
             policy_revision="test",
             detectors={
                 detector_id: DetectorIdentity("test", revision, "test.pth", digest)
-                for detector_id, (_repo, revision, _filename, digest) in LOGICAL_DETECTORS.items()
+                for detector_id, (
+                    _repo,
+                    revision,
+                    _filename,
+                    digest,
+                ) in LOGICAL_DETECTORS.items()
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
@@ -184,57 +207,85 @@ class OtsHomrEngineTest(unittest.TestCase):
     def test_shared_e4_runs_once_and_dynamic_has_sole_review_ownership(self):
         engine, detectors, core = self.make_engine()
         engine.fusion_manifest = CalibrationManifest(
-            policy='fusion-v1', policy_revision='test',
-            detectors={k: DetectorIdentity(repo, revision, filename, digest)
-                       for k, (repo, revision, filename, digest) in LOGICAL_DETECTORS.items()},
-            class_allowlist=CLASS_ALLOWLIST, calibration={}, accept={},
-            iou_threshold=.3, containment_threshold=.6, minimum_winner_margin=.1)
-        dynamics = dict(label='Dynamic', left=0, top=0, right=5, bottom=5, confidence=.99)
-        detector = detectors['non-lyric-text']
+            policy="fusion-v1",
+            policy_revision="test",
+            detectors={
+                k: DetectorIdentity(repo, revision, filename, digest)
+                for k, (repo, revision, filename, digest) in LOGICAL_DETECTORS.items()
+            },
+            class_allowlist=CLASS_ALLOWLIST,
+            calibration={},
+            accept={},
+            iou_threshold=0.3,
+            containment_threshold=0.6,
+            minimum_winner_margin=0.1,
+        )
+        dynamics = dict(
+            label="Dynamic", left=0, top=0, right=5, bottom=5, confidence=0.99
+        )
+        detector = detectors["non-lyric-text"]
         original = detector.detect
+
         def detect(page):
             original(page)
             return [dynamics]
+
         detector.detect = detect
         engine.warm_up()
-        _, encoded = cv2.imencode('.png', np.full((10, 10, 3), 255, dtype=np.uint8))
-        result = engine.transcribe_fusion(encoded.tobytes(), 'image/png', False)
-        self.assertIs(detectors['dynamics'], detector)
+        _, encoded = cv2.imencode(".png", np.full((10, 10, 3), 255, dtype=np.uint8))
+        result = engine.transcribe_fusion(encoded.tobytes(), "image/png", False)
+        self.assertIs(detectors["dynamics"], detector)
         self.assertEqual(len(detector.calls), 1)
         self.assertEqual(len(core.calls), 1)
-        regions = result['fusion'].regions
+        regions = result["fusion"].regions
         self.assertEqual(len(regions), 1)
-        self.assertEqual(regions[0]['reason'], 'dynamic-review-only')
-        self.assertEqual(regions[0]['candidates'][0]['detectorId'], 'dynamics')
+        self.assertEqual(regions[0]["reason"], "dynamic-review-only")
+        self.assertEqual(regions[0]["candidates"][0]["detectorId"], "dynamics")
 
     def test_missing_logical_dynamic_identity_fails_before_any_inference(self):
         engine, detectors, core = self.make_engine()
         engine.fusion_manifest = CalibrationManifest(
-            policy='fusion-v1', policy_revision='test',
-            detectors={k: DetectorIdentity(repo, revision, filename, digest)
-                       for k, (repo, revision, filename, digest) in LOGICAL_DETECTORS.items()},
-            class_allowlist=CLASS_ALLOWLIST, calibration={}, accept={},
-            iou_threshold=.3, containment_threshold=.6, minimum_winner_margin=.1)
-        del detectors['dynamics']
+            policy="fusion-v1",
+            policy_revision="test",
+            detectors={
+                k: DetectorIdentity(repo, revision, filename, digest)
+                for k, (repo, revision, filename, digest) in LOGICAL_DETECTORS.items()
+            },
+            class_allowlist=CLASS_ALLOWLIST,
+            calibration={},
+            accept={},
+            iou_threshold=0.3,
+            containment_threshold=0.6,
+            minimum_winner_margin=0.1,
+        )
+        del detectors["dynamics"]
         engine.warm_up()
-        with self.assertRaisesRegex(RuntimeError, 'dynamics-detector'):
-            engine.transcribe_fusion(b'page', 'image/png', False)
-        self.assertEqual(detectors['lyrics'].calls, [])
+        with self.assertRaisesRegex(RuntimeError, "dynamics-detector"):
+            engine.transcribe_fusion(b"page", "image/png", False)
+        self.assertEqual(detectors["lyrics"].calls, [])
         self.assertEqual(core.calls, [])
 
     def test_shared_route_cannot_claim_another_checkpoint_identity(self):
         engine, detectors, core = self.make_engine()
-        detectors['dynamics'] = FakeDetector('another-model', 'another-sha')
+        detectors["dynamics"] = FakeDetector("another-model", "another-sha")
         engine.fusion_manifest = CalibrationManifest(
-            policy='fusion-v1', policy_revision='test',
-            detectors={k: DetectorIdentity('test', d.revision, 'test.pth', d.sha256)
-                       for k, d in detectors.items()}, class_allowlist=CLASS_ALLOWLIST,
-            calibration={}, accept={}, iou_threshold=.3, containment_threshold=.6,
-            minimum_winner_margin=.1)
+            policy="fusion-v1",
+            policy_revision="test",
+            detectors={
+                k: DetectorIdentity("test", d.revision, "test.pth", d.sha256)
+                for k, d in detectors.items()
+            },
+            class_allowlist=CLASS_ALLOWLIST,
+            calibration={},
+            accept={},
+            iou_threshold=0.3,
+            containment_threshold=0.6,
+            minimum_winner_margin=0.1,
+        )
         engine.warm_up()
-        with self.assertRaisesRegex(RuntimeError, 'failed at calibration'):
-            engine.transcribe_fusion(b'page', 'image/png', False)
-        self.assertEqual(detectors['lyrics'].calls, [])
+        with self.assertRaisesRegex(RuntimeError, "failed at calibration"):
+            engine.transcribe_fusion(b"page", "image/png", False)
+        self.assertEqual(detectors["lyrics"].calls, [])
         self.assertEqual(core.calls, [])
 
 

@@ -44,7 +44,9 @@ class PatchedHomrCore:
         hard_timeout_seconds: int = 280,
         startup_timeout_seconds: int = 240,
         engine_factory: Callable[..., Any] | None = None,
+        paired_tremolo_timing: bool = False,
     ) -> None:
+        self._paired_tremolo_timing = paired_tremolo_timing
         install_runtime_artifacts(artifacts, homr_root=homr_root)
         # Import only after HOMR_MODEL_NAME and graph paths have been installed;
         # default_config snapshots these paths at module import time.
@@ -55,6 +57,7 @@ class PatchedHomrCore:
 
         common = {
             "use_gpu": True,
+            "paired_tremolo_timing": paired_tremolo_timing,
             "homr_commit": TRAINING_REVISION,
             "hard_timeout_seconds": hard_timeout_seconds,
             "startup_timeout_seconds": startup_timeout_seconds,
@@ -70,6 +73,13 @@ class PatchedHomrCore:
         self._plain = engine_factory(**common, structured_heads_path="")
         self._with_heads = engine_factory(
             **common, structured_heads_path=str(heads_path)
+        )
+
+    def notation_policy_identity(self) -> dict[str, str]:
+        return (
+            {"pairedTremoloTiming": "peer-span-v1"}
+            if self._paired_tremolo_timing
+            else {}
         )
 
     def warm_up(self) -> None:

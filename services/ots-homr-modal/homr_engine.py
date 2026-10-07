@@ -13,6 +13,7 @@ child can. A killed child is replaced on the next request.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import multiprocessing
 import os
 import tempfile
@@ -158,7 +159,24 @@ def _synthetic_warmup_page() -> bytes:
     return bytes(encoded.tobytes())
 
 
-def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> None:
+def xml_generator_arguments(factory: Any, paired_tremolo_timing: bool) -> Any:
+    """Keep old runtimes usable when off; refuse an unsupported opt-in."""
+    if "paired_tremolo_timing" in inspect.signature(factory).parameters:
+        return factory(paired_tremolo_timing=paired_tremolo_timing)
+    if paired_tremolo_timing:
+        raise InferenceError(
+            CODE_NOT_READY,
+            "The configured HOMR runtime lacks paired-tremolo timing support",
+        )
+    return factory()
+
+
+def _child_main(
+    connection: Any,
+    use_gpu: bool,
+    structured_heads_path: str,
+    paired_tremolo_timing: bool = False,
+) -> None:
     """Long-lived inference loop. Owns the cached ONNX sessions."""
     warnings: list[str] = []
     try:
@@ -177,6 +195,9 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
         from homr.transformer.configs import default_config
         from homr_confidence import capture_page
 
+        # Validate before any weight loading; explicit service policy wins over ambient env.
+        xml_generator_arguments(XmlGeneratorArguments, paired_tremolo_timing)
+        os.environ["HOMR_PAIRED_TREMOLO_TIMING"] = "1" if paired_tremolo_timing else "0"
         ort.set_default_logger_severity(3)
         # The images bake the weights in, so this verifies rather than downloads.
         download_weights(use_gpu, use_gpu, False)
@@ -245,7 +266,9 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                 )
 
                 def notation(staff_index: int, token_index: int) -> NoteNotation | None:
-                    if not isinstance(structured, list) or staff_index >= len(structured):
+                    if not isinstance(structured, list) or staff_index >= len(
+                        structured
+                    ):
                         return None
                     staff = structured[staff_index]
                     if not isinstance(staff, list) or token_index >= len(staff):
@@ -289,7 +312,11 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                     if isinstance(families, list):
                         os.environ["HOMR_STRUCTURED_EXPORT"] = ",".join(families)
                     xml = generate_xml(
-                        XmlGeneratorArguments(), staffs, request.get("title", "")
+                        xml_generator_arguments(
+                            XmlGeneratorArguments, paired_tremolo_timing
+                        ),
+                        staffs,
+                        request.get("title", ""),
                     )
                 finally:
                     if previous_export is None:
@@ -387,11 +414,23 @@ def _child_main(connection: Any, use_gpu: bool, structured_heads_path: str) -> N
                 findings: list[Any] = []
                 if collect_findings is None:
                     with capture_page() as captured:
-                        process_image(str(source), config, XmlGeneratorArguments())
+                        process_image(
+                            str(source),
+                            config,
+                            xml_generator_arguments(
+                                XmlGeneratorArguments, paired_tremolo_timing
+                            ),
+                        )
                 else:
                     with collect_findings() as collected:
                         with capture_page() as captured:
-                            process_image(str(source), config, XmlGeneratorArguments())
+                            process_image(
+                                str(source),
+                                config,
+                                xml_generator_arguments(
+                                    XmlGeneratorArguments, paired_tremolo_timing
+                                ),
+                            )
                     findings = list(collected)
                 review = captured.as_dict(int(source_width), int(source_height))
                 output = source.with_suffix(".musicxml")
@@ -444,12 +483,14 @@ class HomrEngine:
         startup_timeout_seconds: int = 600,
         expected_model_sha256: dict[str, str] | None = None,
         structured_heads_path: str = "",
+        paired_tremolo_timing: bool = False,
     ) -> None:
         self._use_gpu = use_gpu
         self._homr_commit = homr_commit
         self._hard_timeout = hard_timeout_seconds
         self._startup_timeout = startup_timeout_seconds
         self._structured_heads_path = structured_heads_path
+        self._paired_tremolo_timing = paired_tremolo_timing
         # Optional supply-chain pin (design section 9.5). Empty means unpinned.
         self._expected_model_sha256 = {
             key: value for key, value in (expected_model_sha256 or {}).items() if value
@@ -507,7 +548,12 @@ class HomrEngine:
         parent_connection, child_connection = self._context.Pipe(duplex=True)
         process = self._context.Process(
             target=_child_main,
-            args=(child_connection, self._use_gpu, self._structured_heads_path),
+            args=(
+                child_connection,
+                self._use_gpu,
+                self._structured_heads_path,
+                self._paired_tremolo_timing,
+            ),
             daemon=True,
         )
         process.start()

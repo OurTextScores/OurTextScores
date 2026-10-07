@@ -68,3 +68,18 @@ Three logical routes share two physical checkpoints: lyrics/e2, directions/e4, a
 `collect_fusion_calibration.py --pages OUT/calibration-pages.jsonl --models-root MODELS --out OUT/detections --device cpu --threads 2 --batch-size 2` uses the production TextDetector path on original bytes with exact pinned model hashes, no resized input. It verifies input and implementation identities on resume and truncates only incomplete final writes. The provider's connected-component postprocessing differs from older evaluation scripts: do not reuse their raw confidence tables. `build_fusion_review.py --detections OUT/detections/detections.jsonl --out OUT/review` generates an original-page overlay preview for calibration-only records.
 
 Adjudicate unknown predictions/overlaps and freeze region matching and selection criteria before fitting calibration or examining test predictions. Independently prove detector-training exclusions before calling the test partition independent. The immutable lyrics-only manifest cannot be repurposed. No fusion-v1 manifest is supplied by these preparation scripts. Automatic dynamics remains prohibited even with a calibrated score. C1 read/verse/note attachment and final-path latency remain separate release gates. Scanner fusion responses require three logical pin expectations, including `SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION` and `SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256` (currently equal e4).
+
+## Candidate paired-tremolo timing policy
+
+`OTS_HOMR_PAIRED_TREMOLO_TIMING=1` in the provider process requests the default-off
+peer-span-v1 timing rule for both initial scans and review regeneration. Explicit
+service configuration overrides the ambient HOMR runtime flag. Enabled identity
+and capabilities report `notationPolicies.pairedTremoloTiming`; disabled responses
+retain the old shape. The worker rejects unsupported opt-in before weight loading.
+
+The currently pinned archive above lacks the new rule. Enabling this setting
+requires a qualified runtime-source candidate and provider revision first; the
+setting alone does not update a deployed image. No new model weights are required.
+The 26 focused service checks include real runtime XML generation through HTTP
+TestClient, not live model-loaded scanner inference or full latency qualification.
+See `/home/jhlusko/workspace/homr/docs/TREMOLO_SERVICE_WIRING_2026-10-07.md`.

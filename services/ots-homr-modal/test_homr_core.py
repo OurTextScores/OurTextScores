@@ -49,6 +49,25 @@ class HomrCoreTest(unittest.TestCase):
             path.write_bytes(path.name.encode())
         return SimpleNamespace(encoder=encoder, decoder=decoder, heads=heads)
 
+    def test_tremolo_policy_reaches_both_workers_and_identity(self):
+        for enabled in (False, True):
+            FakeHomrEngine.instances = []
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                core = PatchedHomrCore(
+                    artifacts=self.artifacts(root),
+                    homr_root=root / "homr",
+                    engine_factory=FakeHomrEngine,
+                    paired_tremolo_timing=enabled,
+                )
+                self.assertEqual(len(FakeHomrEngine.instances), 2)
+                for worker in FakeHomrEngine.instances:
+                    self.assertEqual(worker.options["paired_tremolo_timing"], enabled)
+                self.assertEqual(
+                    core.notation_policy_identity(),
+                    {"pairedTremoloTiming": "peer-span-v1"} if enabled else {},
+                )
+
     def test_installs_all_graphs_under_patched_homr_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -90,11 +109,14 @@ class HomrCoreTest(unittest.TestCase):
             self.assertEqual(candidates["additional-heads"]["musicxml"], b"heads")
             self.assertEqual([call[0] for call in plain.calls], [b"page"])
             self.assertEqual([call[0] for call in heads.calls], [b"page"])
-            self.assertEqual(core.regenerate([[['note_4', 'C4', '_', '_', '_', 'upper']]]), b"regenerated")
+            self.assertEqual(
+                core.regenerate([[["note_4", "C4", "_", "_", "_", "upper"]]]),
+                b"regenerated",
+            )
             structured = [[{"beamLevels": ["none"]}]]
             self.assertEqual(
                 core.materialize_structured(
-                    [[['note_4', 'C4', '_', '_', '_', 'upper']]],
+                    [[["note_4", "C4", "_", "_", "_", "upper"]]],
                     structured,
                     ["beam"],
                     "Title",
@@ -102,7 +124,6 @@ class HomrCoreTest(unittest.TestCase):
                 b"regenerated",
             )
             self.assertEqual(heads.calls[-1][3:], (structured, ["beam"]))
-
 
     def test_a_score_profile_reaches_both_candidates_unchanged(self):
         """The profile crosses four signatures and a process boundary before it can
