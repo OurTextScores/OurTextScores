@@ -58,7 +58,12 @@ def build(report, created_at):
             "non-lyric-text": {label: None for label in sorted(CLASS_ALLOWLIST["non-lyric-text"])},
             "dynamics": {"Dynamic": None},
         },
-        "geometry": {"iouThreshold": 0.3, "containmentThreshold": 0.6},
+        "geometry": {
+            "iouThreshold": 0.3,
+            "containmentThreshold": 0.6,
+            "minBoxArea": report["sizeGate"]["minBoxArea"],
+            "maxPageAreaFraction": report["sizeGate"]["maxPageAreaFraction"],
+        },
         "minimumWinnerMargin": 0.0,
         "fit": {
             "targetPrecision": report["targetPrecision"],

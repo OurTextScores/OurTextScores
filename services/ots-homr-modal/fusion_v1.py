@@ -103,7 +103,12 @@ def fuse_page(
                 )
             )
 
-    candidates, rejected = gate(raw_candidates, page_size)
+    candidates, rejected = gate(
+        raw_candidates,
+        page_size,
+        min_box_area=manifest.min_box_area,
+        max_page_area_fraction=manifest.max_page_area_fraction,
+    )
     candidates.sort(key=lambda c: (c.detector_id, c.label, c.box, c.candidate_id))
     regions: list[dict[str, Any]] = []
     tally: Counter[str] = Counter()

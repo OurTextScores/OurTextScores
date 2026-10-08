@@ -98,6 +98,8 @@ def is_valid_box(box: object, page: tuple[int, int]) -> bool:
 def gate(
     candidates: Sequence[DetectorCandidate], page: tuple[int, int],
     *, class_allowlist: dict[str, frozenset[str]] | None = None,
+    min_box_area: dict[str, int] | None = None,
+    max_page_area_fraction: float | None = None,
 ) -> tuple[list[DetectorCandidate], list[tuple[DetectorCandidate, str]]]:
     """Split candidates into those a detector may contribute and those it may not.
 
@@ -114,6 +116,17 @@ def gate(
             rejected.append((candidate, "unsupported-class"))
         elif not is_valid_box(candidate.box, page):
             rejected.append((candidate, "invalid-box"))
+        elif min_box_area and candidate.area < min_box_area.get(candidate.label, 0):
+            # Foreground specks: a real page yields thousands, and they chain unrelated boxes
+            # into one conflict component.
+            rejected.append((candidate, "below-minimum-area"))
+        elif (
+            max_page_area_fraction is not None
+            and candidate.area > max_page_area_fraction * page[0] * page[1]
+        ):
+            # A box covering a large part of the page is a detector artifact, not a text region,
+            # and it overlaps (and so chains) every real box beneath it.
+            rejected.append((candidate, "implausible-size"))
         else:
             accepted.append(candidate)
     return accepted, rejected

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,8 @@ class CalibrationManifest:
     iou_threshold: float
     containment_threshold: float
     minimum_winner_margin: float
+    min_box_area: dict[str, int] = field(default_factory=dict)
+    max_page_area_fraction: float | None = None
 
     def calibrate(self, detector_id: str, label: str, raw_confidence: float) -> float | None:
         """Raw confidence to an estimated probability, or None where none is defined.
@@ -153,4 +155,10 @@ def load_calibration_manifest(path: str | Path) -> CalibrationManifest:
         iou_threshold=float(geometry.get("iouThreshold", 0.3)),
         containment_threshold=float(geometry.get("containmentThreshold", 0.6)),
         minimum_winner_margin=float(data.get("minimumWinnerMargin", 0.0)),
+        min_box_area={str(k): int(v) for k, v in (geometry.get("minBoxArea") or {}).items()},
+        max_page_area_fraction=(
+            float(geometry["maxPageAreaFraction"])
+            if geometry.get("maxPageAreaFraction") is not None
+            else None
+        ),
     )

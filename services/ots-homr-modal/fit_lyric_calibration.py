@@ -15,7 +15,22 @@ from pathlib import Path
 from lyric_calibration_sample import EDGES, candidates, fit
 
 TARGET_PRECISION = 0.90
+#: The same size gate the manifest pins (geometry.minBoxArea / maxPageAreaFraction). Lyrics area 200
+#: follows the component-area sweep proposal; the fit sees exactly the boxes fusion will.
+MIN_BOX_AREA = {"Lyrics": 200, "Tempo": 200, "StaffText": 200, "Expression": 200, "Dynamic": 50}
+MAX_PAGE_AREA_FRACTION = 0.25
 BOOTSTRAPS = 500
+
+
+def apply_size_gate(pages):
+    """Drop e2 boxes the fusion size gate would reject; returns (pages, dropped count)."""
+    dropped = 0
+    gated = []
+    for page in pages:
+        kept = [b for b in page["boxes"] if b["area"] >= MIN_BOX_AREA["Lyrics"]]
+        dropped += len(page["boxes"]) - len(kept)
+        gated.append({**page, "boxes": kept})
+    return gated, dropped
 
 
 def load_pages(directory):
@@ -103,7 +118,7 @@ def main():
     parser.add_argument("--sample-key", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    pages = load_pages(args.detections)
+    pages, dropped = apply_size_gate(load_pages(args.detections))
     rows = list(candidates(pages))
     key = {r["id"]: r for r in json.loads(args.sample_key.read_text())}
     export = json.loads(args.judgements.read_text())
@@ -136,6 +151,11 @@ def main():
             "or stacked lyric lines still counts as lyric text; the judging could not separate them."
         ),
         "tallBoxProxy": tall_box_rate(pages),
+        "sizeGate": {
+            "minBoxArea": MIN_BOX_AREA,
+            "maxPageAreaFraction": MAX_PAGE_AREA_FRACTION,
+            "lyricBoxesDropped": dropped,
+        },
         "caveats": [
             "Detector training membership of these pages is unverified; precision may be optimistic.",
             "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",

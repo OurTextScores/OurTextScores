@@ -16,6 +16,7 @@ def report(accept=0.7):
         "schemaVersion": "ots.lyric-calibration-fit.v1", "targetPrecision": 0.9, "bands": bands,
         "acceptLowerEdge": 0.8, "pages": {}, "negativeRates": [], "caveats": ["c"],
         "definition": "d", "tallBoxProxy": {},
+        "sizeGate": {"minBoxArea": {"Lyrics": 200}, "maxPageAreaFraction": 0.25},
     }
 
 
@@ -25,6 +26,7 @@ def test_manifest_loads_calibrates_lyrics_and_leaves_e4_in_review(tmp_path):
     manifest = load_calibration_manifest(path)
     lyrics = DETECTORS["lyrics"]
     manifest.assert_detector_matches("lyrics", sha256=lyrics[3], revision=lyrics[1])
+    assert manifest.min_box_area == {"Lyrics": 200} and manifest.max_page_area_fraction == 0.25
     assert manifest.calibrate("lyrics", "Lyrics", 0.85) == 0.91
     assert manifest.calibrate("lyrics", "Lyrics", 0.4) is None
     assert manifest.accept_threshold("lyrics")("Lyrics") == 0.91

@@ -44,6 +44,26 @@ def run(detections, **kwargs):
 
 
 class FusionV1Test(unittest.TestCase):
+    def test_specks_and_page_sized_boxes_cannot_chain_a_real_lyric_into_a_conflict(self):
+        from dataclasses import replace
+
+        gated = replace(manifest(), min_box_area={"Tempo": 20, "Lyrics": 20}, max_page_area_fraction=0.25)
+        detections = {
+            "lyrics": [box("Lyrics", 10, 10, 40, 20, 0.95)],
+            "non-lyric-text": [
+                box("Tempo", 0, 0, 100, 100, 0.6),  # whole page: implausible
+                box("Tempo", 12, 12, 14, 14, 0.6),  # speck inside the lyric box
+            ],
+        }
+        ungated = run(detections)
+        self.assertEqual(ungated.summary["accepted"], 0)  # chained into one conflict
+        result = run(detections, calibration=gated)
+        self.assertEqual(result.summary["accepted"], 1)
+        self.assertEqual(
+            result.summary["rejectedByReason"], {"below-minimum-area": 1, "implausible-size": 1}
+        )
+
+
     def test_empty_page_is_success_but_missing_detector_fails(self):
         result = run({"lyrics": [], "non-lyric-text": []})
         self.assertEqual(result.summary, {"accepted": 0, "review": 0, "rejected": 0, "rejectedByReason": {}, "rejectedByClass": {}, "byClass": {}})

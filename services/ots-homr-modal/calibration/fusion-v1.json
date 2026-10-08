@@ -4,7 +4,7 @@
    "Dynamic": null
   },
   "lyrics": {
-   "Lyrics": 0.9333
+   "Lyrics": 0.9326
   },
   "non-lyric-text": {
    "Expression": null,
@@ -24,10 +24,10 @@
      0.9
     ],
     "binValues": [
-     0.7604,
-     0.9333,
-     0.9333,
-     0.9333,
+     0.7776,
+     0.9326,
+     0.9326,
+     0.9326,
      0.9869
     ],
     "kind": "isotonic-binned",
@@ -77,13 +77,13 @@
   "definition": "Precision is P(box contains lyric text) on a vocal page. A box that spans several words or stacked lyric lines still counts as lyric text; the judging could not separate them.",
   "negativeRates": [
    {
-    "falsePositives": 84,
-    "perInstrumentalPage": 1.8666666666666667,
+    "falsePositives": 70,
+    "perInstrumentalPage": 1.5555555555555556,
     "rawAtLeast": 0.5
    },
    {
-    "falsePositives": 48,
-    "perInstrumentalPage": 1.0666666666666667,
+    "falsePositives": 44,
+    "perInstrumentalPage": 0.9777777777777777,
     "rawAtLeast": 0.6
    },
    {
@@ -107,8 +107,8 @@
    "vocal": 173
   },
   "tallBoxProxy": {
-   "boxes": 3129,
-   "rate": 0.0364333652924257,
+   "boxes": 3098,
+   "rate": 0.036797934151065206,
    "ratio": 1.6,
    "rawAtLeast": 0.6,
    "taller": 114
@@ -117,11 +117,19 @@
  },
  "geometry": {
   "containmentThreshold": 0.6,
-  "iouThreshold": 0.3
+  "iouThreshold": 0.3,
+  "maxPageAreaFraction": 0.25,
+  "minBoxArea": {
+   "Dynamic": 50,
+   "Expression": 200,
+   "Lyrics": 200,
+   "StaffText": 200,
+   "Tempo": 200
+  }
  },
  "minimumWinnerMargin": 0.0,
  "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
  "policy": "fusion-v1",
- "policyRevision": "2d8104dd516247eb8286ce9ae3e0371fa9d87991179ce9fba3e2134e1f9ddb17",
+ "policyRevision": "fb1e5902c22e3608af8c830a0047a76e7226ae514093ea0b17b68a0f72308b14",
  "schemaVersion": "ots.text-fusion-calibration.v1"
 }
