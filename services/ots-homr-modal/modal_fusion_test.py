@@ -58,16 +58,36 @@ def ots_homr_api():
             raise RuntimeError("Fusion manifest has incompatible class ownership")
 
     class LoggingEngine(OtsHomrEngine):
-        """Test-only: report how many regions fusion produced before the provider's cap."""
+        """Test-only: a real page yields >500 gated-out boxes, which the provider caps.
+
+        Log the full tally (by reason), then drop rejected regions so the response fits
+        the provider's review cap and the backend's summary contract. The drop is a
+        test accommodation, not a fusion-policy decision.
+        """
 
         def transcribe_fusion(self, *args, **kwargs):
+            from collections import Counter
+
+            from fusion_v1 import FusionResult
+
             result = super().transcribe_fusion(*args, **kwargs)
             fused = result["fusion"]
+            reasons = Counter(
+                (r["status"], r["reason"], r["candidates"][0]["label"])
+                for r in fused.regions
+            )
             print(
-                "FUSION-LOCALTEST regions=%d summary=%s"
-                % (len(fused.regions), json.dumps(fused.summary)),
+                "FUSION-LOCALTEST regions=%d summary=%s reasons=%s"
+                % (
+                    len(fused.regions),
+                    json.dumps(fused.summary),
+                    json.dumps({"|".join(k): v for k, v in sorted(reasons.items())}),
+                ),
                 flush=True,
             )
+            kept = [r for r in fused.regions if r["status"] != "rejected"]
+            summary = {**fused.summary, "rejected": 0}
+            result["fusion"] = FusionResult(regions=kept, summary=summary)
             return result
 
     engine = LoggingEngine(artifacts=artifacts, core=core, fusion_manifest=manifest)
