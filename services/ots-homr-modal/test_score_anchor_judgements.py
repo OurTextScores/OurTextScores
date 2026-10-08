@@ -33,3 +33,30 @@ def test_incomplete_review_refused():
     del review["judgements"]["1"]
     with pytest.raises(ValueError):
         score_review(items, key, review)
+
+
+def test_explicit_correction_is_preserved_without_approving_note_placement():
+    items, key, review = inputs()
+    key[0]["text"] = "pourton"
+    review["syllableCorrections"] = {
+        "0": {"originalText": "pourton", "correctedText": "ton"}
+    }
+    row = score_review(items, key, review)["reviewedSyllableCorrections"][0]
+    assert row["correctedText"] == "ton"
+    assert row["positionRefreshRequired"]
+    assert row["notePlacementConfirmed"] is False
+
+
+@pytest.mark.parametrize(
+    "correction",
+    [
+        {"originalText": "forged", "correctedText": "ton"},
+        {"originalText": "pourton", "correctedText": ""},
+    ],
+)
+def test_stale_or_empty_correction_refused(correction):
+    items, key, review = inputs()
+    key[0]["text"] = "pourton"
+    review["syllableCorrections"] = {"0": correction}
+    with pytest.raises(ValueError):
+        score_review(items, key, review)

@@ -33,6 +33,30 @@ def score_review(items, key, review):
         value not in ("correct", "wrong", "unsure") for value in judgements.values()
     ):
         raise ValueError("Invalid judgement")
+    corrections = review.get("syllableCorrections", {})
+    if not isinstance(corrections, dict):
+        raise TypeError("Invalid correction map")
+    validated_corrections = []
+    for identity, correction in corrections.items():
+        if identity not in keyed or not isinstance(correction, dict):
+            raise ValueError("Unknown or malformed syllable correction")
+        original = keyed[identity]
+        if correction.get("originalText") != original.get("text"):
+            raise ValueError("Corrected candidate evidence differs")
+        text = correction.get("correctedText")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Corrected syllable is empty or invalid")
+        validated_corrections.append(
+            {
+                "id": identity,
+                "score": original["score"],
+                "originalText": original["text"],
+                "correctedText": text,
+                "positionRefreshRequired": text != original["text"],
+                "notePlacementConfirmed": False,
+                "automaticAttachment": False,
+            }
+        )
     n = len(ids)
     if not n:
         raise ValueError("Empty review")
@@ -55,6 +79,7 @@ def score_review(items, key, review):
     return {
         "schemaVersion": "ots.lyric-anchor-fresh-evaluation.v2",
         "items": n,
+        "reviewedSyllableCorrections": validated_corrections,
         "pages": len(pages),
         "judgements": dict(counts),
         "unsureTreatedAsWrong": {
