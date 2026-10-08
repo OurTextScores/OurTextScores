@@ -9,7 +9,7 @@ def manifest(tmp_path):
     report = {
         "schemaVersion": "ots.lyric-calibration-fit.v1", "targetPrecision": 0.9, "acceptLowerEdge": 0.6,
         "bands": [{"lowerEdge": e, "calibrated": c} for e, c in zip([0.5, 0.6, 0.7, 0.8, 0.9], [0.7, 0.93, 0.93, 0.93, 0.98])],
-        "pages": {}, "negativeRates": [], "caveats": [], "definition": "d", "tallBoxProxy": {},
+        "pages": {}, "negativeRates": [], "caveats": [], "acceptChoice": {"rule": "t"}, "definition": "d", "tallBoxProxy": {},
         "sizeGate": {"minBoxArea": {"Lyrics": 200}, "maxPageAreaFraction": 0.25},
     }
     path = tmp_path / "m.json"

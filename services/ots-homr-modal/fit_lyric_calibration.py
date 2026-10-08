@@ -117,6 +117,11 @@ def main():
     parser.add_argument("--judgements", type=Path, required=True)
     parser.add_argument("--sample-key", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--accept-lower-edge",
+        type=float,
+        help="Owner override of the prespecified accept line; recorded as a post-hoc choice",
+    )
     args = parser.parse_args()
     pages, dropped = apply_size_gate(load_pages(args.detections))
     rows = list(candidates(pages))
@@ -130,11 +135,31 @@ def main():
     if set(key) - set(judgements):
         raise ValueError("Sample items without a judgement; finish judging before fitting")
     vocal = [r for r in rows if r["status"] != "negative"]
+    if args.accept_lower_edge is not None:
+        # An accept line inside a pooled band cannot bind (every raw score in the band maps to
+        # one calibrated value). Pool everything below the chosen line into the lowest band so the
+        # line is a real boundary of the calibration.
+        cut = EDGES.index(args.accept_lower_edge)
+        for r in vocal:  # vocal rows only: negative rates keep their own raw bands
+            if r["band"] < cut:
+                r["band"] = 0
     bands = fit(vocal, judgements)
     intervals = bootstrap(vocal, judgements)
     for band, interval in zip(bands, intervals):
         band["calibratedInterval90"] = interval
-    accept = choose_accept(bands)
+    prespecified = choose_accept(bands)
+    accept = prespecified
+    choice = {"rule": "prespecified-target", "target": TARGET_PRECISION}
+    if args.accept_lower_edge is not None:
+        accept = next((b for b in bands if b["lowerEdge"] == args.accept_lower_edge), None)
+        if accept is None or accept.get("calibrated") is None:
+            raise ValueError("Override edge is not a populated band")
+        choice = {
+            "rule": "owner-override-post-hoc",
+            "prespecifiedLowerEdge": prespecified["lowerEdge"] if prespecified else None,
+            "reason": "Lower instrumental-page false positives at the same calibrated precision; "
+            "chosen after seeing held-out results, not before.",
+        }
     negative_pages = len({p["id"] for p in pages if p["corpus"] == "ossq"})
     report = {
         "schemaVersion": "ots.lyric-calibration-fit.v1",
@@ -144,6 +169,7 @@ def main():
         "scores": {"vocal": len({p["score"] for p in pages if p["corpus"] != "ossq"})},
         "bands": bands,
         "negativeRates": negative_rates(rows, negative_pages),
+        "acceptChoice": choice,
         "acceptLowerEdge": accept["lowerEdge"] if accept else None,
         "acceptCalibrated": accept["calibrated"] if accept else None,
         "definition": (

@@ -1,22 +1,22 @@
 {
- "policyRevision": "fb1e5902c22e3608af8c830a0047a76e7226ae514093ea0b17b68a0f72308b14",
- "acceptThreshold": 0.9326,
+ "policyRevision": "c2bfa72e10543e1b4e1818056c5f404da1c643bb6c1f2a66ec5a24e1d6e1d31e",
+ "acceptThreshold": 0.9315,
  "pages": {
   "vocal": 128,
   "instrumental": 15
  },
- "acceptedVocalBoxes": 2264,
- "matched": 1166,
- "unmatched": 1098,
- "matchedShare": 0.515017667844523,
- "projectedPrecision": 0.9547897825956759,
- "judgedLyricRateAssumed": 0.9067796610169492,
- "instrumentalFalsePositives": 19,
- "falsePositivesPerInstrumentalPage": 1.2666666666666666,
+ "acceptedVocalBoxes": 1941,
+ "matched": 1045,
+ "unmatched": 896,
+ "matchedShare": 0.538382277176713,
+ "projectedPrecision": 0.9580347524706102,
+ "judgedLyricRateAssumed": 0.9090909090909091,
+ "instrumentalFalsePositives": 12,
+ "falsePositivesPerInstrumentalPage": 0.8,
  "perScoreMatchedShare": {
-  "scores": 64,
+  "scores": 63,
   "min": 0.0,
-  "median": 0.515625,
+  "median": 0.5454545454545454,
   "max": 1.0
  },
  "tallBoxProxy": {

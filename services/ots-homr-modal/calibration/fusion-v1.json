@@ -4,7 +4,7 @@
    "Dynamic": null
   },
   "lyrics": {
-   "Lyrics": 0.9326
+   "Lyrics": 0.9315
   },
   "non-lyric-text": {
    "Expression": null,
@@ -18,16 +18,14 @@
     "belowLowestEdge": null,
     "binLowerEdges": [
      0.5,
-     0.6,
      0.7,
      0.8,
      0.9
     ],
     "binValues": [
-     0.7776,
-     0.9326,
-     0.9326,
-     0.9326,
+     0.8612,
+     0.9315,
+     0.9315,
      0.9869
     ],
     "kind": "isotonic-binned",
@@ -68,7 +66,12 @@
   }
  },
  "fit": {
-  "acceptRawLowerEdge": 0.6,
+  "acceptChoice": {
+   "prespecifiedLowerEdge": 0.7,
+   "reason": "Lower instrumental-page false positives at the same calibrated precision; chosen after seeing held-out results, not before.",
+   "rule": "owner-override-post-hoc"
+  },
+  "acceptRawLowerEdge": 0.7,
   "caveats": [
    "Detector training membership of these pages is unverified; precision may be optimistic.",
    "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
@@ -130,6 +133,6 @@
  "minimumWinnerMargin": 0.0,
  "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
  "policy": "fusion-v1",
- "policyRevision": "fb1e5902c22e3608af8c830a0047a76e7226ae514093ea0b17b68a0f72308b14",
+ "policyRevision": "c2bfa72e10543e1b4e1818056c5f404da1c643bb6c1f2a66ec5a24e1d6e1d31e",
  "schemaVersion": "ots.text-fusion-calibration.v1"
 }

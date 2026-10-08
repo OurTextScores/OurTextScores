@@ -68,6 +68,7 @@ def build(report, created_at):
         "fit": {
             "targetPrecision": report["targetPrecision"],
             "acceptRawLowerEdge": report["acceptLowerEdge"],
+            "acceptChoice": report["acceptChoice"],
             "pages": report["pages"],
             "negativeRates": report["negativeRates"],
             "definition": report["definition"],
