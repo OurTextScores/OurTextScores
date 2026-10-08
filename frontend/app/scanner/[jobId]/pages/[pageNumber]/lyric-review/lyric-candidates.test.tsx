@@ -65,6 +65,13 @@ const ocrInventory: Inventory = {
       semantic: "Lyrics",
       semanticScore: 0.84,
       proposedLyric: true,
+      anchor: {
+        staffIndex: 0,
+        printedLine: 1,
+        syllables: [
+          { text: "kind", measureInStaff: 2, noteOrdinalInMeasure: 3, notePitch: "C4", position: "attention" as const },
+        ],
+      },
     },
     {
       id: "ocr-2",
@@ -98,6 +105,15 @@ describe("OCR rows", () => {
       proposedLyric: true,
     });
     expect(out.decisions[1]).toMatchObject({ text: "a tempo.", state: "pending", proposedLyric: false });
+  });
+
+  it("describes an anchor as an unconfirmed placement and exports it as a proposal", () => {
+    const [first, second] = reviewItems(ocrInventory);
+    expect(first.placement).toBe("Staff 1, printed line 1, measure 3 of the staff: kind→C4 (note 3)");
+    expect(second.placement).toBeNull();
+    const out = buildCandidateExport("job-1", ocrInventory, {});
+    expect(out.decisions[0].proposedPlacement).toMatchObject({ printedLine: 1 });
+    expect(out.decisions[1].proposedPlacement).toBeNull();
   });
 
   it("falls back to detector boxes when OCR found nothing", () => {

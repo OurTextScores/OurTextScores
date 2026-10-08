@@ -12,6 +12,20 @@ export type Candidate = {
   competingText: boolean;
 };
 
+export type SyllableAnchor = {
+  text: string;
+  measureInStaff: number;
+  noteOrdinalInMeasure: number | null;
+  notePitch: string | null;
+  position: "attention" | "interpolated" | "none";
+};
+
+export type RowAnchor = {
+  staffIndex: number;
+  printedLine: number;
+  syllables: SyllableAnchor[];
+};
+
 export type OcrRow = {
   id: string;
   box: [number, number, number, number];
@@ -21,6 +35,7 @@ export type OcrRow = {
   semantic: "Lyrics" | "DirectionText" | "Unknown";
   semanticScore: number | null;
   proposedLyric: boolean;
+  anchor?: RowAnchor | null;
 };
 
 /** One thing to review: a detector box with no text, or an OCR row with its unreviewed text. */
@@ -32,6 +47,9 @@ export type ReviewItem = {
   /** The semantic gate's suggestion; null for a bare detector box. */
   proposedLyric: boolean | null;
   note: string;
+  /** Where the row sits in the recognised score; geometry only, unconfirmed. */
+  placement: string | null;
+  anchor: RowAnchor | null;
 };
 
 export type Inventory = {
@@ -51,6 +69,19 @@ export type CandidateDecision = {
 };
 
 /** OCR rows when the provider read the page; otherwise the bare detector boxes. */
+export function describePlacement(anchor: RowAnchor | null | undefined): string | null {
+  if (!anchor) return null;
+  const notes = anchor.syllables
+    .map((s) =>
+      s.noteOrdinalInMeasure === null
+        ? `${s.text}→?`
+        : `${s.text}→${s.notePitch ?? "?"} (note ${s.noteOrdinalInMeasure}${s.position === "interpolated" ? ", estimated" : ""})`,
+    )
+    .join(", ");
+  const measures = [...new Set(anchor.syllables.map((s) => s.measureInStaff + 1))].join("–");
+  return `Staff ${anchor.staffIndex + 1}, printed line ${anchor.printedLine}, measure ${measures} of the staff: ${notes}`;
+}
+
 export function reviewItems(inventory: Inventory): ReviewItem[] {
   if (inventory.ocrRows && inventory.ocrRows.length > 0)
     return inventory.ocrRows.map((r) => ({
@@ -62,6 +93,8 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
       note: r.proposedLyric
         ? "Suggested lyric (text read by OCR, not yet checked)"
         : "Withheld: reads like a direction or unclear. You can still accept it.",
+      placement: describePlacement(r.anchor),
+      anchor: r.anchor ?? null,
     }));
   return inventory.candidates.map((c) => ({
     id: c.id,
@@ -74,6 +107,8 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
         ? `Needs review (${c.reason})`
         : "Detected") +
       (c.competingText ? " — may be a direction or dynamic" : ""),
+    placement: null,
+    anchor: null,
   }));
 }
 
@@ -114,6 +149,7 @@ export function buildCandidateExport(
       source: c.kind === "ocr" ? "ocr-row" : "detector-box",
       originalOcrText: c.kind === "ocr" ? c.initialText : null,
       proposedLyric: c.proposedLyric,
+      proposedPlacement: c.anchor,
     })),
   };
 }

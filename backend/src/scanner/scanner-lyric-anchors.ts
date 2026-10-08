@@ -120,18 +120,28 @@ export function noteXPositions(
   return result;
 }
 
+/**
+ * The staff a lyric row belongs to. Lyrics hang under their staff and a staff's detected region can
+ * already include the lines beneath it, so a row may sit inside its own staff's region or just
+ * below it. Among staves with notes whose region reaches the row (top above the row, bottom within
+ * one staff height under it), the one whose bottom edge is nearest the row wins.
+ */
 function staffForRow(staves: AnchorStaff[], box: number[]): AnchorStaff | null {
   const centreY = (box[1] + box[3]) / 2;
   let best: AnchorStaff | null = null;
+  let bestDistance = Infinity;
   for (const staff of staves) {
     if (!staff.tokens.some(isNoteLike)) continue;
-    const bottom = staff.region[3];
-    if (bottom > centreY) continue;
-    if (!best || bottom > best.region[3]) best = staff;
+    const [, top, , bottom] = staff.region;
+    const height = bottom - top;
+    if (centreY < top || centreY > bottom + MAX_STAFF_GAP_FACTOR * height) continue;
+    const distance = Math.abs(bottom - centreY);
+    if (distance < bestDistance) {
+      best = staff;
+      bestDistance = distance;
+    }
   }
-  if (!best) return null;
-  const height = best.region[3] - best.region[1];
-  return centreY - best.region[3] <= MAX_STAFF_GAP_FACTOR * height ? best : null;
+  return best;
 }
 
 export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<string, RowAnchor> {

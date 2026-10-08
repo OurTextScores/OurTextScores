@@ -25,6 +25,8 @@ export default async function SettingsPage() {
   };
   const roles: string[] = Array.isArray(user?.roles) ? user.roles as string[] : [];
   const roleLabel = roles.length ? roles.join(", ") : "user";
+  // This points to a local-only review packet and is absent in deployed environments.
+  const d1ReviewUrl = process.env.D1_REVIEW_URL;
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -63,6 +65,20 @@ export default async function SettingsPage() {
           <section className="mt-6 rounded border border-rose-200 bg-rose-50 p-5 text-sm dark:border-rose-900 dark:bg-rose-950/30">
             <h2 className="mb-3 text-lg font-semibold text-rose-900 dark:text-rose-100">Admin Tools</h2>
             <div className="space-y-2">
+              <Link
+                href="/ots-homr"
+                className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+              >
+                OTS-HOMR worked examples
+              </Link>
+              {d1ReviewUrl && (
+                <a
+                  href={d1ReviewUrl}
+                  className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"
+                >
+                  D1 stem and slur review (v6 vs v7)
+                </a>
+              )}
               <Link
                 href="/admin/flagged-comments"
                 className="block text-rose-700 underline-offset-2 hover:underline dark:text-rose-300"

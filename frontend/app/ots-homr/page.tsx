@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BeamCaseList } from "./beam-cases";
+
 export const metadata: Metadata = {
   title: "OTS-HOMR | OurTextScores",
   description:
@@ -180,26 +182,27 @@ export default function OtsHomrPage() {
           HOMR
         </a>{" "}
         specialised for scores where several staves sound at once — string
-        quartets, piano trios, voice and piano. It reads the same pages upstream
-        HOMR reads, and reads them better, mostly because it can use the fact
-        that a system&rsquo;s staves have to agree with each other.
+        quartets, piano trios, voice and piano. A new recognition core rebuilt
+        from published training corpora makes fewer symbol errors than upstream
+        on all three validation sets. The scanner also uses agreement between
+        a system&rsquo;s staves to check and repair readings.
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Figure
-          value="+3.6 pp"
+          value="14.47% → 5.22%"
           label="String quartet scans"
-          detail="91.5 → 95.1, 792 held-out staves"
+          detail="Symbol error rate; 792 staves, 9 scores"
         />
         <Figure
-          value="+7.3 pp"
+          value="7.44% → 4.69%"
+          label="Mixed repertoire (PDMX)"
+          detail="Symbol error rate; 3,422 staves, 632 scores"
+        />
+        <Figure
+          value="5.76% → 2.53%"
           label="Voice and piano scans"
-          detail="87.2 → 94.5, 300 held-out staves"
-        />
-        <Figure
-          value="−20.8%"
-          label="Cross-staff disagreements"
-          detail="428 → 339 findings over 200 pages"
+          detail="Symbol error rate; 300 staves, 13 scores"
         />
       </div>
 
@@ -236,10 +239,72 @@ export default function OtsHomrPage() {
         </p>
       </Section>
 
-      <Section id="what-it-reads-better" title="What it reads better">
+      <Section id="what-it-reads-better" title="The core rebuilt from public data">
         <p>
-          Measured against the pinned upstream checkpoint, free-running, with a
-          paired bootstrap over held-out staves. The interval is 95%.
+          On 28 September 2026 we compared upstream HOMR checkpoint 426, the
+          pinned OTS core, and <code>public-rareNum-20260927</code> on identical
+          staff crops. All three used the same decoder and preprocessing, with
+          their native vocabularies. This isolates core recognition: cross-staff
+          repair and structured heads were disabled.
+        </p>
+        <p>
+          The table measures symbol edit errors: insertions, deletions and
+          substitutions per reference symbol. A symbol includes its pitch,
+          rhythm, accidental, articulation, slur and staff position. Lower is
+          better. Time-signature numerator symbols are excluded from both
+          readings so the shared-vocabulary comparison is fair. The paired 95%
+          intervals resample whole scores, rather than treating related staves
+          as independent samples.
+        </p>
+        <Table
+          head={["Validation set", "Staves / scores", "Upstream error", "Public core error", "Change (95% CI)"]}
+          rows={[
+            ["String quartet scans", "792 / 9", "14.47%", "5.22%", "−9.25 pp (−12.13, −7.23)"],
+            ["Mixed repertoire (PDMX)", "3,422 / 632", "7.44%", "4.69%", "−2.75 pp (−3.81, −1.95)"],
+            ["Voice and piano scans", "300 / 13", "5.76%", "2.53%", "−3.23 pp (−5.02, −1.71)"],
+          ]}
+        />
+        <p>
+          The improvement holds across all six symbol attributes on every set.
+          Pitch-and-accidental note errors fall from 9.59% to 0.92% on quartet
+          scans, 7.32% to 4.47% on PDMX, and 5.93% to 1.20% on Lieder. All
+          13,542 staff readings completed; failures were not filtered out.
+        </p>
+        <p>
+          The expanded vocabulary also recognizes uncommon time signatures.
+          On PDMX it identifies 5/x at the correct sequence position in 45 of
+          84 cases, and 12/x in 60 of 115. Upstream identifies none of these
+          explicit numerator symbols. This is an added capability; it is
+          separate from the shared-symbol error improvement above.
+        </p>
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+          <span className="font-semibold">Candidate, not yet the scanner default.</span>{" "}
+          Its error-rate differences from the pinned OTS core are inconclusive
+          on all three sets. The new core&rsquo;s structured-head refits still
+          need to pass their checks. The build uses published corpora, but
+          omits 226 unavailable historical replay rows; it is not an exact
+          reconstruction of the old training run. These are previously
+          inspected validation sets, not a fresh test set, and the results
+          measure staff recognition rather than complete page or MusicXML
+          correctness. OSSQ contains only nine scores.
+        </p>
+        <p>
+          <a href="/benchmarks/public-core-vs-upstream-20260928.md" className="text-blue-600 hover:underline dark:text-blue-400">
+            Full three-model results and confidence intervals
+          </a>{" "}
+          &middot;{" "}
+          <a href="/benchmarks/public-core-vs-upstream-20260928-protocol.md" className="text-blue-600 hover:underline dark:text-blue-400">
+            Evaluation protocol
+          </a>
+        </p>
+      </Section>
+
+      <Section id="historical-recognition" title="Earlier deployed-model comparison">
+        <p>
+          These earlier positional-accuracy measurements concern the deployed
+          model, with older evaluation inputs. Higher is better. They use a
+          paired bootstrap over staves and 95% intervals, and should not be
+          mixed with the new core&rsquo;s symbol edit-error rates above.
         </p>
         <Table
           head={["Held-out set", "Staves", "HOMR", "OTS-HOMR", "Difference"]}
@@ -275,10 +340,10 @@ export default function OtsHomrPage() {
         </p>
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
           <span className="font-semibold">One caveat we keep attached.</span>{" "}
-          The upstream checkpoint we compare against predates part of our
-          vocabulary, so a missing early class can shift later tokens. This is
-          end-to-end evidence that the pipelines differ by this much — it is not
-          an attribution of the gain to any single change.
+          Upstream checkpoint 426 predates the explicit numerator vocabulary;
+          numerator symbols were suppressed in these comparisons. It already
+          includes natural signs. These earlier figures do not attribute the
+          gain to any single change or establish the new candidate&rsquo;s performance.
         </p>
       </Section>
 
@@ -449,6 +514,38 @@ export default function OtsHomrPage() {
           wants tuning: calibrating it would calibrate noise. Lyrics run through
           the identical code path and behave, which points at the checkpoint
           rather than the plumbing, but that is evidence and not yet proof.
+        </p>
+      </Section>
+
+      <Section id="beaming" title="Where beaming actually differs" wide>
+        <p className="max-w-5xl">
+          Most beaming is not a choice. Given a metre and a run of short notes,
+          a deterministic rule reproduces what an engraver would write, and any
+          program can do that without looking at the page. So the interesting
+          question is not how often a model agrees with the engraving — it is
+          what the disagreements are made of.
+        </p>
+        <p className="max-w-5xl">
+          Measured over 122 OpenScore string quartets, 823,217 notes carrying at
+          least one flag: the rule already matches the engraving on{" "}
+          <span className="font-semibold">81.8%</span> of them. Below is every
+          way the remaining 149,459 differ, largest first, with one real example
+          of each.
+        </p>
+        <p className="max-w-5xl text-slate-600 dark:text-slate-400">
+          In each comparison the notes are identical and only the beams move: on
+          the left what the rule produces, on the right what the engraver wrote.
+        </p>
+        <BeamCaseList />
+        <p className="mt-6 max-w-5xl">
+          Two of these are worth singling out. The{" "}
+          <span className="font-semibold">hooks</span> case is not visual
+          information at all — which of a flag or a partial beam applies follows
+          from the durations, so a rule that writes a flag there simply has not
+          implemented that part of the rule. And a{" "}
+          <span className="font-semibold">beam running over a rest</span> is the
+          opposite: the rule cannot express it under any circumstances, because
+          a rest ends a group by construction. That one is ours alone.
         </p>
       </Section>
 

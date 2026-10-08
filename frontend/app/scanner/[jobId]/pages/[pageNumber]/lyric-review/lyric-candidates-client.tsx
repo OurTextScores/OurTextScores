@@ -124,6 +124,11 @@ export default function LyricCandidatesClient({
             <p className="text-sm">
               {c.note}
             </p>
+            {c.placement && (
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Proposed placement (unconfirmed): {c.placement}
+              </p>
+            )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`${base}/${encodeURIComponent(c.id)}/crop`}

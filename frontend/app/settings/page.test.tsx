@@ -102,4 +102,36 @@ describe("SettingsPage", () => {
     expect(form.props.emailCategories.comments).toBe(false);
     expect(form.props.emailCategories.revisions).toBe(true);
   });
+
+  it("shows the local D1 review link only to admins when configured", async () => {
+    const prior = process.env.D1_REVIEW_URL;
+    process.env.D1_REVIEW_URL = "http://localhost:8765/";
+    try {
+      const links = async (roles: string[]) => {
+        (fetch as jest.Mock).mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ user: { email: "reviewer@example.com", roles } }),
+        });
+        const page: any = await SettingsPage();
+        const collect = (node: any): string[] => {
+          if (Array.isArray(node)) return node.flatMap(collect);
+          if (!node || typeof node !== "object") return [];
+          const children = Array.isArray(node.props?.children)
+            ? node.props.children
+            : [node.props?.children];
+          return [node.props?.href, ...children.flatMap(collect)].filter(Boolean);
+        };
+        return collect(page);
+      };
+      const adminLinks = await links(["user", "admin"]);
+      const userLinks = await links(["user"]);
+      expect(adminLinks).toContain("/ots-homr");
+      expect(adminLinks).toContain("http://localhost:8765/");
+      expect(userLinks).not.toContain("/ots-homr");
+      expect(userLinks).not.toContain("http://localhost:8765/");
+    } finally {
+      if (prior === undefined) delete process.env.D1_REVIEW_URL;
+      else process.env.D1_REVIEW_URL = prior;
+    }
+  });
 });

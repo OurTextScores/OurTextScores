@@ -95,6 +95,15 @@ describe('anchorRows', () => {
     expect(anchorRows([row('above', [0, 10, 50, 30], 'x')], [staff()]).size).toBe(0);
   });
 
+  it('picks the staff whose bottom is nearest when regions overlap and a row sits inside its own staff', () => {
+    const voice = staff({ index: 0, region: [0, 100, 1000, 400] });
+    const piano = staff({ index: 1, partIndex: 1, region: [0, 330, 1000, 800] });
+    // The row is inside both regions; the voice staff's bottom edge (400) is the nearer one.
+    expect(
+      anchorRows([row('in', [90, 370, 140, 390], 'kind')], [piano, voice]).get('in')!.staffIndex
+    ).toBe(0);
+  });
+
   it('ignores staves with no notes', () => {
     const empty = staff({ tokens: [['clef_G2'], ['barline']], symbols: [] });
     expect(anchorRows([row('a', [90, 170, 140, 190], 'x')], [empty]).size).toBe(0);
