@@ -43,6 +43,16 @@ describe('splitSyllables', () => {
   });
 });
 
+describe('punctuation-only fragments', () => {
+  it('withholds isolated punctuation without moving neighbouring lyric syllables', () => {
+    const pieces = splitSyllables('die . be !');
+    expect(pieces.map((piece) => piece.text)).toEqual(['die', 'be']);
+    expect(pieces[1].start).toBeCloseTo(6 / 10, 5);
+    expect(splitSyllables('Ah! I’d O.')).toHaveLength(3);
+    expect(splitSyllables('sé ché')).toHaveLength(2);
+  });
+});
+
 describe('ellipsis-aware placement', () => {
   it('counts a run of three or more dots as one unit and everything else as one each', () => {
     expect(charWidths('ab')).toEqual([1, 1]);

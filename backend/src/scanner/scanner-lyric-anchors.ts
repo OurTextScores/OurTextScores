@@ -101,6 +101,9 @@ export function splitSyllables(text: string): { text: string; start: number; end
   const pattern = /[^\s\-–—_]+/gu;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(masked)) !== null) {
+    // Punctuation-only OCR fragments cannot supply a sung syllable. Keep the original
+    // widths so withholding a fragment never moves its neighbouring words.
+    if (!/[\p{L}\p{N}]/u.test(match[0])) continue;
     // `cumulative` is per code point; the regex index is per UTF-16 unit, equal for BMP text.
     out.push({
       text: text.slice(match.index, match.index + match[0].length),
