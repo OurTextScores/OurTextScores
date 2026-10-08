@@ -97,3 +97,15 @@ setting alone does not update a deployed image. No new model weights are require
 The 26 focused service checks include real runtime XML generation through HTTP
 TestClient, not live model-loaded scanner inference or full latency qualification.
 See `/home/jhlusko/workspace/homr/docs/TREMOLO_SERVICE_WIRING_2026-10-07.md`.
+
+## Isolated local CPU candidate
+
+`local_tremolo_candidate.py prepare` takes an accepted graph manifest, a local CPU
+segmentation graph and a fresh output directory. It extracts the pinned source,
+applies both patches and copies graphs into isolated model paths. `smoke` takes
+the resulting candidate manifest, frozen page list, fresh arm output and optional
+`--enabled`; it invokes both supervised workers through HTTP TestClient. This
+uses experimental graph identities, no text detectors/OCR, and does not qualify
+production GPU latency. `summarize_local_tremolo_candidate.py --root <candidate-dir>`
+compares frozen on/off results and saves both MusicXML candidates.
+See `/home/jhlusko/workspace/homr/docs/TREMOLO_LOCAL_SERVICE_2026-10-07.md`.
