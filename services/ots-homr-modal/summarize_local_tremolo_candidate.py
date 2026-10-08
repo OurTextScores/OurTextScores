@@ -69,7 +69,14 @@ def main():
             rows.append(row)
             for arm, xml in (("off", axml), ("on", bxml)):
                 (args.root / arm / f"{source.stem}-{name}.musicxml").write_bytes(xml)
-    assert len(rows) == 4, "Expected two pages and both actual inference candidates"
+    expected_pages = (
+        len(json.loads(args.pages.read_text()))
+        if args.pages
+        else len(list((args.root / "off").glob("*.json"))) - 2
+    )
+    assert (
+        len(rows) == expected_pages * 2
+    ), "Expected every page and both actual inference candidates"
     report = {
         "scope": "Local CPU supervised workers through HTTP TestClient; OCR and text detectors disabled; no production GPU latency or new accuracy claim",
         "rows": rows,
