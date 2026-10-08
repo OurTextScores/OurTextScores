@@ -137,6 +137,7 @@ export default function LyricCandidatesClient({
               </label>
               <button
                 type="button"
+                className="rounded border border-slate-300 px-2 py-0.5 disabled:opacity-40 dark:border-slate-600"
                 disabled={d.text.trim() === ""}
                 onClick={() => update(c.id, (x) => setState(x, "accept"))}
               >
@@ -144,11 +145,16 @@ export default function LyricCandidatesClient({
               </button>
               <button
                 type="button"
+                className="rounded border border-slate-300 px-2 py-0.5 disabled:opacity-40 dark:border-slate-600"
                 onClick={() => update(c.id, (x) => setState(x, "exclude"))}
               >
                 Exclude
               </button>
-              <button type="button" onClick={() => update(c.id, () => blankCandidate(c))}>
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-2 py-0.5 disabled:opacity-40 dark:border-slate-600"
+                onClick={() => update(c.id, () => blankCandidate(c))}
+              >
                 Reset
               </button>
               <span data-testid={`state-${c.id}`}>{d.state}</span>
