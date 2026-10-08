@@ -147,6 +147,30 @@ describe('OCR rows', () => {
     expect(anchored!.syllables[0]).toMatchObject({ notePitch: 'C4', measureInStaff: 0 });
   });
 
+  it('withhold a gate-approved row that no staff reaches, but only when staves are known', () => {
+    const staff = {
+      index: 0,
+      region: [0, 300, 1000, 360],
+      tokens: [['clef_G2'], ['note_8', 'C4'], ['barline']],
+      barLines: [300],
+      symbols: [{ index: 1, attention: [128, 0] }]
+    };
+    const artifact = {
+      fusedRegions: [],
+      lyricText: {
+        status: 'ok',
+        rows: [row('FRANZ SCHUBERT.', [10, 20, 200, 60]), row('kind,', [90, 370, 140, 390])]
+      }
+    };
+    const withStaves = buildLyricCandidateInventory(artifact, 1, raster, [staff]).ocrRows;
+    expect(withStaves.map((r) => [r.text, r.proposedLyric, r.withheldReason])).toEqual([
+      ['FRANZ SCHUBERT.', false, 'no-staff'],
+      ['kind,', true, null]
+    ]);
+    const without = buildLyricCandidateInventory(artifact, 1, raster).ocrRows;
+    expect(without.every((r) => r.proposedLyric && r.withheldReason === null)).toBe(true);
+  });
+
   it('report a failed OCR run and refuse a row outside the page', () => {
     expect(
       buildLyricCandidateInventory(

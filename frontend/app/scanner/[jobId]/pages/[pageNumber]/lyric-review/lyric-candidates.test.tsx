@@ -116,6 +116,15 @@ describe("OCR rows", () => {
     expect(out.decisions[1].proposedPlacement).toBeNull();
   });
 
+  it("explains a row withheld for sitting under no staff", () => {
+    const items = reviewItems({
+      ...ocrInventory,
+      ocrRows: [{ ...ocrInventory.ocrRows![0], proposedLyric: false, withheldReason: "no-staff" }],
+    });
+    expect(items[0].note).toMatch(/not under a staff/);
+    expect(items[0].proposedLyric).toBe(false);
+  });
+
   it("falls back to detector boxes when OCR found nothing", () => {
     expect(reviewItems({ ...inventory, ocrRows: [], ocrStatus: "ok" })[0].kind).toBe("box");
     expect(reviewItems(inventory)[0].initialText).toBe("");

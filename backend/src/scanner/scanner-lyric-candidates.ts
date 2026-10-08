@@ -46,6 +46,8 @@ export interface LyricOcrRow {
   proposedLyric: boolean;
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
+  /** Why a row the semantic gate liked was withheld anyway; null when it was not. */
+  withheldReason: 'no-staff' | null;
 }
 
 export interface LyricCandidateInventory {
@@ -100,7 +102,8 @@ function readOcrRows(
       semantic: row.semantic,
       semanticScore: row.semanticScore === null ? null : Number(row.semanticScore),
       proposedLyric: row.proposedLyric === true,
-      anchor: null
+      anchor: null,
+      withheldReason: null
     });
   }
   return { ocrRows, ocrStatus: lyric.status === 'failed' ? 'failed' : 'ok' };
@@ -158,7 +161,15 @@ export function buildLyricCandidateInventory(
   candidates.sort((a, b) => a.box[1] - b.box[1] || a.box[0] - b.box[0] || a.id.localeCompare(b.id));
   const { ocrRows, ocrStatus } = readOcrRows(artifact, raster);
   const anchors = anchorRows(ocrRows, staves);
-  for (const row of ocrRows) row.anchor = anchors.get(row.id) ?? null;
+  for (const row of ocrRows) {
+    row.anchor = anchors.get(row.id) ?? null;
+    // Lyrics hang under a staff. With the score's staves in hand, a row no staff reaches is a title,
+    // credit, page number or similar, whatever the text classifier thought of it.
+    if (staves.length > 0 && !row.anchor && row.proposedLyric) {
+      row.proposedLyric = false;
+      row.withheldReason = 'no-staff';
+    }
+  }
   return {
     schemaVersion: LYRIC_CANDIDATE_SCHEMA,
     automaticAttachment: false,
