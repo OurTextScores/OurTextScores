@@ -1,0 +1,475 @@
+diff --git a/homr/music_xml_generator.py b/homr/music_xml_generator.py
+--- a/homr/music_xml_generator.py
++++ b/homr/music_xml_generator.py
+@@ -4,6 +4,7 @@
+ import os
+ import xml.etree.ElementTree as ET
+ from collections import Counter, defaultdict
++from collections.abc import Callable
+ from dataclasses import dataclass
+ from fractions import Fraction
+ 
+@@ -87,6 +88,8 @@
+         self.tremolo_state = "stop"
+         self.volta_number = 1
+         self.last_volta_measure = -10
++        self.note_trace: Callable[[EncodedSymbol, ET.Element, str], None] | None = None
++        self.note_marks: dict[int, str] | None = None
+ 
+     def open_slur(self) -> int:
+         """Claim the lowest free slur number."""
+@@ -204,11 +207,15 @@
+ 
+ class XmlGeneratorArguments:
+     def __init__(
+-        self, large_page: bool | None = None, metronome: int | None = None, tempo: int | None = None
++        self, large_page: bool | None = None, metronome: int | None = None, tempo: int | None = None,
++        paired_tremolo_timing: bool | None = None
+     ):
+         self.large_page = large_page
+         self.metronome = metronome
+         self.tempo = tempo
++        self.paired_tremolo_timing = paired_tremolo_timing
++        self._note_trace: Callable[[EncodedSymbol, ET.Element, str], None] | None = None
++        self._note_marks: dict[int, str] | None = None
+ 
+ 
+ def build_identification() -> ET.Element:
+@@ -219,6 +226,20 @@
+ 
+ 
+ def generate_xml(
++    args: XmlGeneratorArguments, staffs: list[list[EncodedSymbol]], title: str
++) -> ET.Element:
++    """Export the accepted path unless paired-tremolo timing is explicitly enabled."""
++    enabled = getattr(args, "paired_tremolo_timing", None)
++    if enabled is None:
++        enabled = os.environ.get("HOMR_PAIRED_TREMOLO_TIMING") == "1"
++    if enabled:
++        from homr.tremolo_timing import generate  # noqa: PLC0415 - optional policy import
++
++        return generate(_generate_xml, args, staffs, title)
++    return _generate_xml(args, staffs, title)
++
++
++def _generate_xml(
+     args: XmlGeneratorArguments, staffs: list[list[EncodedSymbol]], title: str
+ ) -> ET.Element:
+     root = ET.Element("score-partwise", version="4.0")
+@@ -290,6 +311,8 @@
+     groups = add_tuplet_start_stop(group_into_chords(voice))
+     division, nominator = find_division_and_time_signature_nominator(groups)
+     state = ConversionState(division, nominator)
++    state.note_trace = getattr(args, "_note_trace", None)
++    state.note_marks = getattr(args, "_note_marks", None)
+     state.modal_bar = modal_measure_duration(groups)
+     state.distrust_stated = stated_numerator_contradicts_bars(voice, state.modal_bar)
+     measures: list[ET.Element] = []
+@@ -1033,9 +1056,13 @@
+     # <beam> ahead of it.
+     build_beams(note, model_note)
+ 
++    if state.note_marks is not None:
++        tuplet_mark = state.note_marks.get(id(model_note), tuplet_mark)
+     build_articulations(note, model_note.articulation, tuplet_mark, state)
+     build_tied_notations(note, model_note)
+     build_slurs(note, model_note, state)
++    if state.note_trace is not None:
++        state.note_trace(model_note, note, tuplet_mark)
+ 
+     return note
+ 
+diff --git a/homr/tremolo_timing.py b/homr/tremolo_timing.py
+new file mode 100644
+--- /dev/null
++++ b/homr/tremolo_timing.py
+@@ -0,0 +1,389 @@
++"""Conservative paired-tremolo export timing, independent of learned timing heads.
++
++Only decoded context enters decisions. The default-off exporter flag owns invocation.
++No input mutation, global monkeypatching, training imports, references or model loads.
++"""
++
++import copy
++import xml.etree.ElementTree as ET
++from collections import Counter, defaultdict
++from collections.abc import Callable
++from fractions import Fraction
++from typing import TYPE_CHECKING, Any
++
++from homr.simple_logging import eprint
++from homr.transformer.vocabulary import EncodedSymbol, SymbolDuration, kern_to_symbol_duration
++
++if TYPE_CHECKING:
++    from homr.music_xml_generator import SymbolChord, XmlGeneratorArguments
++
++Voices = list[list[EncodedSymbol]]
++Timeline = list[dict[str, Any]]
++Render = Callable[["XmlGeneratorArguments", Voices, str], ET.Element]
++Key = tuple[int, int]
++
++DIVIDERS = {
++    "barline",
++    "doublebarline",
++    "bolddoublebarline",
++    "repeatStart",
++    "repeatEnd",
++    "repeatBoth",
++    "repeatEndStart",
++}
++
++
++def bars(symbols: list[EncodedSymbol]) -> list[list["SymbolChord"]]:
++    from homr.music_xml_generator import group_into_chords  # noqa: PLC0415 - import cycle
++
++    result: list[list[SymbolChord]] = []
++    current: list[SymbolChord] = []
++    for group in group_into_chords(symbols):
++        if group.symbols and group.symbols[0].rhythm in DIVIDERS:
++            result.append(current)
++            current = []
++        elif any(s.rhythm.startswith(("note", "rest")) for s in group.symbols):
++            current.append(group)
++    return result
++
++
++def context_meter(
++    voices: Voices, part_index: int, bar_index: int, allow_repeated: bool = False
++) -> tuple[Fraction | None, dict[str, Any]]:
++    target = voices[part_index]
++    denominators = [s.rhythm.split("/")[1] for s in target if s.rhythm.startswith("timeSignature/")]
++    numerators = [
++        int(s.rhythm.split("_")[-1]) for s in target if s.rhythm.startswith("timeSignatureBeats_")
++    ]
++    if allow_repeated:
++        tokens = [
++            s.rhythm
++            for s in target
++            if s.rhythm.startswith(("timeSignature/", "timeSignatureBeats_"))
++        ]
++        if (
++            len(tokens) < 2
++            or len(tokens) % 2
++            or not tokens[0].startswith("timeSignatureBeats_")
++            or not tokens[1].startswith("timeSignature/")
++            or any(tokens[i : i + 2] != tokens[:2] for i in range(0, len(tokens), 2))
++        ):
++            return None, {"reason": "missing-partial-or-changing-target-meter"}
++    elif len(denominators) != 1 or len(numerators) != 1:
++        return None, {"reason": "missing-or-changing-target-meter"}
++    declared = Fraction(numerators[0] * 4, int(denominators[0]))
++    count = len(bars(target))
++    witnesses: list[dict[str, Any]] = []
++    for pi, voice in enumerate(voices):
++        if (
++            pi == part_index
++            or any(s.position == "lower" for s in voice)
++            or len(bars(voice)) != count
++        ):
++            continue
++        lengths = [
++            sum((g.get_render_duration() * 4 for g in bar), Fraction())
++            for bi, bar in enumerate(bars(voice))
++            if bi != bar_index
++            and any(
++                s.rhythm.startswith("note") and "G" not in s.rhythm for g in bar for s in g.symbols
++            )
++        ]
++        votes = Counter(lengths)
++        if len(lengths) >= 3 and votes[declared] * 4 >= len(lengths) * 3:
++            witnesses.append({"part": pi + 1, "support": votes[declared], "total": len(lengths)})
++    return (
++        (
++            declared,
++            {"reason": "declared-meter-confirmed-by-other-part-bars", "witnesses": witnesses},
++        )
++        if witnesses
++        else (None, {"reason": "no-independent-peer-bar-support"})
++    )
++
++
++def safe_bar(timeline: Timeline, part: int, bar: int, staff: int, meter: Fraction) -> bool:
++    notes = [n for n in timeline if n["part"] == part and n["bar"] == bar and not n["grace"]]
++    if any(n["onset"] < 0 or n["onset"] + n["duration"] > meter for n in notes):
++        return False
++    lanes: dict[tuple[int, str], dict[Fraction, Fraction]] = defaultdict(dict)
++    for n in notes:
++        lane = lanes[(n["staff"], n["voice"])]
++        lane[n["onset"]] = max(lane.get(n["onset"], Fraction()), n["duration"])
++    for lane in lanes.values():
++        end = Fraction()
++        for onset, duration in sorted(lane.items()):
++            if onset < end:
++                return False
++            end = onset + duration
++    target = [n for n in notes if n["staff"] == staff]
++    # Only a single clean rhythmic voice can substantiate the corrected staff lane.
++    return (
++        bool(target)
++        and len({n["voice"] for n in target}) == 1
++        and min(n["onset"] for n in target) == 0
++        and max(n["onset"] + n["duration"] for n in target) == meter
++    )
++
++
++def peer_span(
++    voices: Voices,
++    part_index: int,
++    bar_index: int,
++    timeline: Timeline,
++    safe_bar: Callable[[Timeline, int, int, int, Fraction], bool],
++) -> tuple[Fraction | None, dict[str, Any]]:
++    target = voices[part_index]
++    # Any declaration prevents fallback: partial or changing declarations remain guarded.
++    if any(s.rhythm.startswith(("timeSignature/", "timeSignatureBeats_")) for s in target):
++        return None, {"reason": "declared-or-partial-meter-no-peer-fallback"}
++    count = len(bars(target))
++    witnesses: list[dict[str, Any]] = []
++    for pi, voice in enumerate(voices):
++        grouped = bars(voice)
++        if pi == part_index or len(grouped) != count or any(s.position == "lower" for s in voice):
++            continue
++        lengths = []
++        for bi, bar in enumerate(grouped):
++            symbols = [s for g in bar for s in g.symbols]
++            if bi == bar_index or any("G" in s.rhythm for s in symbols):
++                continue
++            if not any(s.rhythm.startswith("note") for s in symbols):
++                continue
++            length = sum((g.get_render_duration() * 4 for g in bar), Fraction())
++            # Only clean, complete serialized single-voice bars are evidence.
++            if length > 0 and safe_bar(timeline, pi, bi, 1, length):
++                lengths.append(length)
++        votes = Counter(lengths)
++        if len(lengths) < 3:
++            continue
++        span, support = votes.most_common(1)[0]
++        if support * 4 < len(lengths) * 3:
++            continue
++        witnesses.append(
++            {"part": pi + 1, "span": str(span), "support": support, "total": len(lengths)}
++        )
++    spans = {w["span"] for w in witnesses}
++    if len(spans) != 1:
++        return None, {"reason": "conflicting-or-insufficient-peer-spans", "witnesses": witnesses}
++    span = Fraction(next(iter(spans)))
++    # Require at least one peer's candidate bar itself to confirm the same span.
++    confirming = [
++        w["part"] for w in witnesses if safe_bar(timeline, w["part"] - 1, bar_index, 1, span)
++    ]
++    if not confirming:
++        return None, {"reason": "peer-candidate-bar-does-not-confirm-span", "witnesses": witnesses}
++    return span, {
++        "reason": "prediction-only-peer-span",
++        "witnesses": witnesses,
++        "confirming_parts": confirming,
++        "candidate_excluded": True,
++        "meter_notation_unchanged": True,
++    }
++
++
++def lane_symbols(groups: list["SymbolChord"], position: str, span: Fraction) -> list[EncodedSymbol]:
++    lane = [
++        [s for s in g.symbols if s.position == position and s.rhythm.startswith(("note", "rest"))]
++        for g in groups
++    ]
++    lane = [events for events in lane if events]
++    if not lane or any(
++        any("G" in s.rhythm for s in events)
++        or len({s.get_duration().fraction for s in events}) != 1
++        or (len(events) > 1 and any(s.rhythm.startswith("rest") for s in events))
++        or not any("tremolo" in s.articulation for s in events)
++        for events in lane
++    ):
++        return []
++    for events in lane:
++        for symbol in events:
++            if not symbol.rhythm.startswith("note_"):
++                return []
++            legacy = kern_to_symbol_duration(symbol.rhythm.split("_", 1)[1])
++            if legacy.actual_notes != legacy.normal_notes:
++                return []
++    if len(lane) % 2 or any(
++        lane[i][0].get_duration().fraction != lane[i + 1][0].get_duration().fraction
++        for i in range(0, len(lane), 2)
++    ):
++        return []
++    old = sum((events[0].get_duration().fraction * 4 for events in lane), Fraction())
++    if old <= span or old / 2 != span:
++        return []
++    return [s for events in lane for s in events]
++
++
++def apply(voices: Voices, edits: list[dict[str, Any]]) -> Voices:
++    result = copy.deepcopy(voices)
++    for edit in edits:
++        for index in edit["indices"]:
++            symbol = result[edit["part"]][index]
++            old = symbol.get_duration()
++            symbol._duration = SymbolDuration(old.base_duration, old.dots, 2, 1, old.kern)
++    return result
++
++
++def render(
++    raw_generate: Render,
++    args: "XmlGeneratorArguments",
++    voices: Voices,
++    title: str,
++    *,
++    marks: dict[Key, str] | None = None,
++    changed: set[Key] | None = None,
++) -> tuple[ET.Element, dict[Key, list[Fraction]], Timeline]:
++    trace: dict[int, tuple[Key, str]] = {}
++    selected = changed or set()
++    copied = copy.deepcopy(voices)
++    keys = {
++        id(symbol): (pi, si) for pi, voice in enumerate(copied) for si, symbol in enumerate(voice)
++    }
++    arguments = copy.copy(args)
++    arguments._note_marks = (
++        None
++        if marks is None
++        else {
++            symbol_id: "" if key in selected else marks[key]
++            for symbol_id, key in keys.items()
++            if key in selected or key in marks
++        }
++    )
++
++    def capture(symbol: EncodedSymbol, note: ET.Element, mark: str) -> None:
++        trace[id(note)] = (keys[id(symbol)], mark)
++
++    arguments._note_trace = capture
++    root = raw_generate(arguments, copied, title)
++    durations: dict[Key, list[Fraction]] = defaultdict(list)
++    timeline: Timeline = []
++    for pi, part in enumerate(root.findall("part")):
++        divisions = Fraction(1)
++        for bi, measure in enumerate(part.findall("measure")):
++            cursor, previous = Fraction(), Fraction()
++            for element in measure:
++                if element.tag == "attributes":
++                    divisions = Fraction(element.findtext("divisions", str(divisions)))
++                elif element.tag in ("backup", "forward"):
++                    delta = Fraction(element.findtext("duration", "0")) / divisions
++                    cursor += delta if element.tag == "forward" else -delta
++                elif element.tag == "note":
++                    duration = Fraction(element.findtext("duration", "0")) / divisions
++                    chord = element.find("chord") is not None
++                    onset = previous if chord else cursor
++                    if not chord:
++                        previous = onset
++                        cursor += duration
++                    key, mark = trace.get(id(element), (None, ""))
++                    if key is not None:
++                        durations[key].append(duration)
++                    timeline.append(
++                        {
++                            "part": pi,
++                            "bar": bi,
++                            "staff": int(element.findtext("staff", "1")),
++                            "voice": element.findtext("voice", "1"),
++                            "onset": onset,
++                            "duration": duration,
++                            "grace": element.find("grace") is not None,
++                            "key": key,
++                            "tuplet_mark": mark,
++                        }
++                    )
++    return root, dict(durations), timeline
++
++
++def protected_notes(root: ET.Element, timeline: Timeline, changed: set[Key]) -> list[bytes]:
++    notes = []
++    for note, event in zip(root.iter("note"), timeline, strict=True):
++        clone = copy.deepcopy(note)
++        for child in clone.findall("duration"):
++            clone.remove(child)
++        if event["key"] in changed:
++            for child in clone.findall("voice"):
++                clone.remove(child)
++            modification = clone.find("time-modification")
++            if (
++                modification is not None
++                and modification.findtext("actual-notes") == "2"
++                and modification.findtext("normal-notes") == "1"
++            ):
++                clone.remove(modification)
++        for notation in clone.findall("notations"):
++            if not len(notation) and not notation.attrib:
++                clone.remove(notation)
++        notes.append(ET.tostring(clone))
++    return notes
++
++
++def generate(
++    raw_generate: Render, args: "XmlGeneratorArguments", staffs: Voices, title: str
++) -> ET.Element:
++    voices = copy.deepcopy(staffs)
++    control, before, baseline = render(raw_generate, args, voices, title)
++    edits: list[dict[str, Any]] = []
++    for pi, voice in enumerate(voices):
++        for bi, groups in enumerate(bars(voice)):
++            span, _ = context_meter(voices, pi, bi, allow_repeated=True)
++            if span is None:
++                span, _ = peer_span(voices, pi, bi, baseline, safe_bar)
++            if span is None:
++                continue
++            for position, staff in [("upper", 1), ("lower", 2)]:
++                selected_symbols = {id(s) for s in lane_symbols(groups, position, span)}
++                indices = [i for i, symbol in enumerate(voice) if id(symbol) in selected_symbols]
++                if indices:
++                    edits.append(
++                        {
++                            "part": pi,
++                            "bar": bi,
++                            "staff": staff,
++                            "indices": indices,
++                            "meter": str(span),
++                        }
++                    )
++    if not edits:
++        return control
++    marks = {n["key"]: n["tuplet_mark"] for n in baseline if n["key"] is not None}
++    proposed = {(e["part"], i) for e in edits for i in e["indices"]}
++    try:
++        _, _, timeline = render(
++            raw_generate, args, apply(voices, edits), title, marks=marks, changed=proposed
++        )
++        accepted = [
++            e
++            for e in edits
++            if safe_bar(timeline, e["part"], e["bar"], e["staff"], Fraction(e["meter"]))
++        ]
++        if not accepted:
++            return control
++        changed = {(e["part"], i) for e in accepted for i in e["indices"]}
++        candidate, after, final = render(
++            raw_generate, args, apply(voices, accepted), title, marks=marks, changed=changed
++        )
++        if any(n["key"] is None for n in baseline + final):
++            raise ValueError("Untracked emitted note")
++        if protected_notes(control, baseline, changed) != protected_notes(
++            candidate, final, changed
++        ):
++            raise ValueError("Protected notation changed")
++        if [ET.tostring(t) for t in control.findall(".//time")] != [
++            ET.tostring(t) for t in candidate.findall(".//time")
++        ] or len(control.findall(".//measure")) != len(candidate.findall(".//measure")):
++            raise ValueError("Meter or measure inventory changed")
++        if set(before) != set(after) or any(
++            len(before[k]) != 1
++            or len(after[k]) != 1
++            or after[k][0] != before[k][0] * (Fraction(1, 2) if k in changed else 1)
++            for k in before
++        ):
++            raise ValueError("Untargeted duration or event inventory changed")
++        if any(
++            not safe_bar(final, e["part"], e["bar"], e["staff"], Fraction(e["meter"]))
++            for e in accepted
++        ):
++            raise ValueError("Final voice timeline invalid")
++        return candidate
++    except (ValueError, AssertionError, ZeroDivisionError) as error:
++        eprint("Paired-tremolo timing kept the accepted export:", str(error))
++        return control

@@ -4,6 +4,20 @@ This directory is the reproducible input set for the dedicated OTS-HOMR GPU
 provider. It is intentionally separate from `services/homr-modal`: upstream
 HOMR must remain independently deployable.
 
+## Current builder and isolated timing candidate
+
+The current `modal_app.py` uses source archive `homr-b6eca7-source.tar.gz`
+(commit `b6eca7c6af37df2764a9ca99033c947eb42aae90`, SHA-256
+`999d5071fe9bcfab8dc1534ec1614e125888651fcc6c72a9862bc605ba38d1a2`)
+and `patches/homr-runtime-glue.patch`. The older recipe below is historical.
+
+`patches/homr-paired-tremolo-candidate.patch` is a separately qualified additive
+candidate, not wired into the shipping builder. SHA-256:
+`5bbfe5c35e0e6f68526f4e4dd3eb373ae1808e86a53974ac077eb88a06f12da0`.
+Run `verify_tremolo_source_candidate.py --python <existing-homr-python> --output <receipt>`
+to verify hashes, clean application, disabled XML parity and enabled guards without
+model loading. Full candidate service/image qualification remains necessary.
+
 ## Pinned runtime source
 
 The rareNum core and structured-head sidecar were produced from upstream HOMR
