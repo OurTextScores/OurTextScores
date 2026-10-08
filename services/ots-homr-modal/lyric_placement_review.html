@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><title>Lyric placement review</title>
+<style>body{font:16px system-ui;margin:2rem;max-width:1300px}article{border-top:1px solid #aaa;padding:1rem}img{max-width:100%;max-height:420px}label{display:inline-block;margin:8px}input[type=text]{width:10em}button{margin:8px}</style>
+<h1>Lyric placement review</h1>
+<p>95 cached proposals from four earlier calibration pages. This is a separate cohort from the semantic text review. Blue circles mark proposed noteheads; orange circles mark syllable positions. Generated measure numbering is used. Lyric lines are numbered from top to bottom within a system. Export labels identify these printed lines; they do not claim native-source verse identities.</p>
+<p>Confirm text, select its printed lyric line, and confirm the blue note only when all three are correct. Edited text requires fresh positioning. Export creates a review plan; it does not modify MusicXML.</p>
+<button id="download">Export decisions</button><span id="count"></span><main></main>
+<script>
+(async()=>{
+const inventory=await(await fetch('inventory.json')).json();
+const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(inventory))))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const key='ots-placement-lines-v2-'+digest; let states=JSON.parse(localStorage.getItem(key)||'{}');
+const blank=r=>({id:r.id,text:r.text,printedLine:null,textConfirmed:false,verseConfirmed:false,noteConfirmed:false,excluded:false});
+const ready=(r,d)=>d&&!d.excluded&&d.text===r.text&&d.text.trim()&&d.printedLine!==null&&d.textConfirmed&&d.verseConfirmed&&d.noteConfirmed;
+function save(){localStorage.setItem(key,JSON.stringify(states));document.querySelector('#count').textContent=inventory.filter(r=>ready(r,states[r.id])).length+' fully confirmed; no score changes';}
+for(const r of inventory){
+ const d=states[r.id]||blank(r);states[r.id]=d;
+ const a=document.createElement('article');const h=document.createElement('h2');h.textContent=r.score+' — '+r.text;a.append(h);
+ const p=document.createElement('p');const n=r.generatedNote;p.textContent=`Generated measure ${n.physical_measure}, +${n.onset_quarters} quarter notes, ${n.pitch}; printed lyric row ${r.physicalRowOrder}`;a.append(p);
+ const img=document.createElement('img');img.src=r.image;img.alt='Blue proposed notehead; orange syllable';a.append(img,document.createElement('br'));
+ function field(title,name,type){const l=document.createElement('label');l.append(title+' ');const e=document.createElement('input');e.type=type;if(type==='checkbox')e.checked=d[name];else e.value=d[name];l.append(e);a.append(l);return e;}
+ const text=field('Text','text','text');
+ const label=document.createElement('label');label.append('Printed lyric line ');const verse=document.createElement('select');const empty=document.createElement('option');empty.value='';empty.textContent='Choose a line';verse.append(empty);
+ const lines=[...new Set(inventory.filter(x=>x.score===r.score).map(x=>x.physicalRowOrder))].sort((a,b)=>a-b);
+ for(const line of lines){const option=document.createElement('option');option.value=String(line);option.textContent=line===1?'Line 1 (top)':`Line ${line} (below line ${line-1})`;verse.append(option);}verse.value=d.printedLine===null?'':String(d.printedLine);label.append(verse);a.append(label);
+ const tc=field('Text correct','textConfirmed','checkbox'),vc=field('Selected line correct','verseConfirmed','checkbox'),nc=field('Blue note correct','noteConfirmed','checkbox'),ex=field('Exclude','excluded','checkbox');
+ function refresh(){tc.checked=d.textConfirmed;vc.checked=d.verseConfirmed;nc.checked=d.noteConfirmed;nc.disabled=d.text!==r.text;save();}
+ text.oninput=()=>{d.text=text.value;d.textConfirmed=false;d.noteConfirmed=false;refresh();};
+ verse.onchange=()=>{d.printedLine=verse.value===''?null:Number(verse.value);d.verseConfirmed=false;refresh();};
+ tc.onchange=()=>{d.textConfirmed=tc.checked&&!!d.text.trim();refresh();};vc.onchange=()=>{d.verseConfirmed=vc.checked&&d.printedLine!==null;refresh();};nc.onchange=()=>{d.noteConfirmed=nc.checked&&d.text===r.text;refresh();};ex.onchange=()=>{d.excluded=ex.checked;save();};
+ const reset=document.createElement('button');reset.textContent='Reset';reset.onclick=()=>{Object.assign(d,blank(r));text.value=d.text;verse.value='';ex.checked=false;refresh();};a.append(reset);document.querySelector('main').append(a);refresh();
+}
+document.querySelector('#download').onclick=()=>{const out={schemaVersion:'ots.lyric-placement-decisions.v2',automaticAttachment:false,decisions:inventory.map(r=>({...states[r.id],score:r.score,pageSha256:r.pageSha256,musicXmlSha256:r.musicXmlSha256,generatedNote:r.generatedNote,predictions_sha256:r.predictions_sha256}))};const url=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='lyric-placement-decisions.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+})();
+</script>
