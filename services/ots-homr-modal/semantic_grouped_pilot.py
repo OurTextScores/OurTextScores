@@ -26,7 +26,29 @@ def score_fold(score):
     )
 
 
-def select_policy(rows):
+def select_policy(rows, policy="zero-error"):
+    if policy == "retain95-proxy":
+        eligible = []
+        for row in rows:
+            lyrics = row["metrics"]["Lyrics"]
+            usable = lyrics["support"] - lyrics["empty_text"]
+            if usable and row["selected_lyrics"] / usable >= 0.95:
+                eligible.append(row)
+        return (
+            min(
+                eligible,
+                key=lambda r: (
+                    r["false_direction_lyrics"],
+                    -r["selected_lyrics"],
+                    -r["threshold"],
+                    -r["lambda"],
+                ),
+            )
+            if eligible
+            else None
+        )
+    if policy != "zero-error":
+        raise ValueError("Unknown development selection policy")
     eligible = [
         r for r in rows if r["false_direction_lyrics"] == 0 and r["selected_lyrics"] > 0
     ]
@@ -41,6 +63,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--selection-policy",
+        choices=("zero-error", "retain95-proxy"),
+        default="zero-error",
+    )
     args = parser.parse_args()
     inventory_path = args.packet / "inventory.json"
     ocr_path = args.packet / "ocr-scan-only-sharded/predictions.jsonl"
@@ -76,7 +103,13 @@ def main():
         "lambdas": LAMBDAS,
         "thresholds": THRESHOLDS,
         "folds": 5,
-        "selection": "zero observed direction-to-lyric errors and at least one lyric retained; maximize full-support lyric recall; ties higher threshold then larger lambda",
+        "selection_policy": args.selection_policy,
+        "selection": (
+            "Retain at least95% of nonempty GT-crop lyric OCR as a DEVELOPMENT PROXY; minimize direction false selections, then maximize retention. Actual gate requires e2-selected genuine fullpage OCR candidates, unavailable in training packet."
+            if args.selection_policy == "retain95-proxy"
+            else "zero observed direction-to-lyric errors and at least one lyric retained; maximize full-support lyric recall; ties higher threshold then larger lambda"
+        ),
+        "release_gate_established_by_training_packet": False,
         "threshold_probability_calibrated": False,
         "calibration_used_for_selection": False,
     }
@@ -152,7 +185,7 @@ def main():
                 }
             )
     pilot.write(args.out / "out-of-fold.json", oof)
-    selected = select_policy(grid)
+    selected = select_policy(grid, args.selection_policy)
     pilot.write(args.out / "selected-policy.json", selected)
     report = {
         "selection_grid": grid,

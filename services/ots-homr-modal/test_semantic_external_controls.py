@@ -2,7 +2,14 @@ import json
 from pathlib import Path
 
 import pytest
-from semantic_external_controls import coverage, evaluate, prepare, sha, union_coverage
+from semantic_external_controls import (
+    coverage,
+    evaluate,
+    lyric_retention_gate,
+    prepare,
+    sha,
+    union_coverage,
+)
 
 
 def test_union_does_not_double_count_and_keeps_frozen_area_gate():
@@ -99,3 +106,25 @@ def test_prepare_rejects_any_development_score_overlap(tmp_path):
     )
     with pytest.raises(ValueError, match="overlaps"):
         prepare(tmp_path, tmp_path / "output")
+
+
+def test_retention_uses_unique_supplied_lyric_candidates_and_reports_ocr_misses():
+    candidate = {
+        "ground_truth_role": "Lyrics",
+        "ocr_miss": False,
+        "matched_ocr": [
+            {
+                "id": "a",
+                "detector_e2_selected": True,
+                "semantic_prediction": {"prediction": "Lyrics"},
+            }
+        ],
+    }
+    missing = {"ground_truth_role": "Lyrics", "ocr_miss": True, "matched_ocr": []}
+    gate = lyric_retention_gate([candidate, candidate, missing])
+    assert gate["eligible_lyric_candidates"] == 1
+    assert gate["retention"] == 1
+    assert gate["lyric_reference_ocr_misses"] == 1
+    assert gate["all_reference_lyric_regions"] == 3
+    assert gate["automatic_promotion"] is False
+    assert lyric_retention_gate([missing])["passes_observed_target"] is False

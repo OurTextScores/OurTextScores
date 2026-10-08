@@ -33,3 +33,20 @@ def test_abstaining_candidate_does_not_displace_useful_safe_candidate():
     }
     assert select_policy([abstain, useful]) == useful
     assert select_policy([abstain]) is None
+
+
+def test_retention_policy_keeps_ocr_failures_visible_without_confusing_denominators():
+    below = {
+        "lambda": 0.001,
+        "threshold": 0.7,
+        "selected_lyrics": 94,
+        "false_direction_lyrics": 0,
+        "metrics": {"Lyrics": {"support": 120, "empty_text": 20}},
+    }
+    meets = {**below, "selected_lyrics": 95, "false_direction_lyrics": 2}
+    assert select_policy([below, meets], "retain95-proxy") == meets
+    assert select_policy([below], "retain95-proxy") is None
+    fewer_errors = {**meets, "selected_lyrics": 96, "false_direction_lyrics": 1}
+    assert select_policy([meets, fewer_errors], "retain95-proxy") == fewer_errors
+    all_empty = {**meets, "metrics": {"Lyrics": {"support": 20, "empty_text": 20}}}
+    assert select_policy([all_empty], "retain95-proxy") is None

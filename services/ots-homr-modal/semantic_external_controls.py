@@ -228,6 +228,35 @@ def prepare(base: Path, output: Path):
     return receipt
 
 
+def lyric_retention_gate(cases, target=0.95):
+    candidates = {}
+    for case in cases:
+        if case["ground_truth_role"] != "Lyrics":
+            continue
+        for row in case["matched_ocr"]:
+            if row["detector_e2_selected"]:
+                candidates[row["id"]] = row["semantic_prediction"]["prediction"]
+    n = len(candidates)
+    kept = sum(role == "Lyrics" for role in candidates.values())
+    return {
+        "approved_target": target,
+        "denominator": "Unique e2-selected fullpage OCR candidates matched to genuine lyric references",
+        "eligible_lyric_candidates": n,
+        "retained_lyric_candidates": kept,
+        "retention": kept / n if n else None,
+        "passes_observed_target": kept / n >= target if n else False,
+        "independent_qualification": False,
+        "automatic_promotion": False,
+        "note_attachment_measured": False,
+        "all_reference_lyric_regions": sum(
+            c["ground_truth_role"] == "Lyrics" for c in cases
+        ),
+        "lyric_reference_ocr_misses": sum(
+            c["ocr_miss"] for c in cases if c["ground_truth_role"] == "Lyrics"
+        ),
+    }
+
+
 def evaluate(output: Path, predictions: list[dict], model_receipt: dict):
     receipt = read(output / "receipt.json")
     for filename, key in [
@@ -289,6 +318,7 @@ def evaluate(output: Path, predictions: list[dict], model_receipt: dict):
         "controls_receipt": receipt,
         "note_attachment_scored": False,
         "threshold_tuned_on_controls": False,
+        "lyric_retention_gate": lyric_retention_gate(cases),
     }
     (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     return report
