@@ -42,6 +42,8 @@ export interface SyllableAnchor {
   notePitch: string | null;
   noteOrdinalInMeasure: number | null;
   distancePx: number | null;
+  /** Page x of the chosen note, so a reviewer can be shown which note is meant. */
+  noteX: number | null;
   position: 'attention' | 'interpolated' | 'none';
 }
 
@@ -191,6 +193,7 @@ export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<stri
             notePitch: null,
             noteOrdinalInMeasure: null,
             distancePx: null,
+            noteX: null,
             position: 'none' as const
           };
         }
@@ -205,6 +208,7 @@ export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<stri
           notePitch: String(staff.tokens[tokenIndex][1] ?? '') || null,
           noteOrdinalInMeasure: inMeasure.findIndex(([i]) => i === tokenIndex) + 1,
           distancePx: Math.abs(where.x - x),
+          noteX: where.x,
           position: where.how
         };
       });
