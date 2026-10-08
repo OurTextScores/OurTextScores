@@ -1,0 +1,334 @@
+{
+  "schemaVersion": "ots.lyric-anchor-fresh-evaluation.v2",
+  "items": 120,
+  "pages": 10,
+  "judgements": {
+    "correct": 109,
+    "wrong": 7,
+    "unsure": 4
+  },
+  "unsureTreatedAsWrong": {
+    "correct": 109,
+    "wrong": 11,
+    "accuracy": 0.9083333333333333,
+    "wilson90": [
+      0.8555469488243277,
+      0.9431129750988498
+    ]
+  },
+  "perPage": {
+    "IMSLP61112": {
+      "items": 12,
+      "correct": 12,
+      "wrongIncludingUnsure": 0
+    },
+    "IMSLP43630": {
+      "items": 12,
+      "correct": 11,
+      "wrongIncludingUnsure": 1
+    },
+    "IMSLP12778": {
+      "items": 12,
+      "correct": 9,
+      "wrongIncludingUnsure": 3
+    },
+    "IMSLP16259": {
+      "items": 12,
+      "correct": 10,
+      "wrongIncludingUnsure": 2
+    },
+    "IMSLP622104": {
+      "items": 12,
+      "correct": 12,
+      "wrongIncludingUnsure": 0
+    },
+    "IMSLP542017": {
+      "items": 12,
+      "correct": 8,
+      "wrongIncludingUnsure": 4
+    },
+    "IMSLP154289": {
+      "items": 12,
+      "correct": 12,
+      "wrongIncludingUnsure": 0
+    },
+    "IMSLP44341": {
+      "items": 12,
+      "correct": 12,
+      "wrongIncludingUnsure": 0
+    },
+    "IMSLP575893": {
+      "items": 12,
+      "correct": 11,
+      "wrongIncludingUnsure": 1
+    },
+    "IMSLP97202": {
+      "items": 12,
+      "correct": 12,
+      "wrongIncludingUnsure": 0
+    }
+  },
+  "failures": [
+    {
+      "score": "IMSLP43630",
+      "row": "ocr-2053380bd55452f66828",
+      "syllable": 0,
+      "text": "Da",
+      "x": 421.7291666666667,
+      "noteX": 518.5784342447918,
+      "box": [
+        383.625,
+        279.0,
+        459.83333333333337,
+        335.8333333333333
+      ],
+      "staffIndex": 0,
+      "printedLine": 1,
+      "measureInStaff": 0,
+      "noteOrdinal": 1,
+      "notePitch": "G4",
+      "position": "attention",
+      "distancePx": 96.84926757812505,
+      "id": "14aa631770674f5a798f",
+      "judgement": "wrong"
+    },
+    {
+      "score": "IMSLP12778",
+      "row": "ocr-44b78400d362b6c33157",
+      "syllable": 1,
+      "text": ".",
+      "x": 712.229967948718,
+      "noteX": 663.7065791015626,
+      "box": [
+        610.9583333333334,
+        2244.9166666666665,
+        1196.0833333333333,
+        2313.375
+      ],
+      "staffIndex": 3,
+      "printedLine": 1,
+      "measureInStaff": 0,
+      "noteOrdinal": 5,
+      "notePitch": "A4",
+      "position": "attention",
+      "distancePx": 48.52338884715538,
+      "id": "0213e88ab9589fda307b",
+      "judgement": "wrong"
+    },
+    {
+      "score": "IMSLP12778",
+      "row": "ocr-7b8b2390e2975ac7d83e",
+      "syllable": 3,
+      "text": ".",
+      "x": 625.2660256410256,
+      "noteX": 592.8233232421875,
+      "box": [
+        272.5416666666667,
+        2244.9166666666665,
+        639.375,
+        2301.75
+      ],
+      "staffIndex": 3,
+      "printedLine": 1,
+      "measureInStaff": 0,
+      "noteOrdinal": 4,
+      "notePitch": "B4",
+      "position": "attention",
+      "distancePx": 32.44270239883816,
+      "id": "1798287d22ceb7e39844",
+      "judgement": "unsure"
+    },
+    {
+      "score": "IMSLP12778",
+      "row": "ocr-44b78400d362b6c33157",
+      "syllable": 2,
+      "text": "be",
+      "x": 768.4919871794872,
+      "noteX": 814.2928330078125,
+      "box": [
+        610.9583333333334,
+        2244.9166666666665,
+        1196.0833333333333,
+        2313.375
+      ],
+      "staffIndex": 3,
+      "printedLine": 1,
+      "measureInStaff": 1,
+      "noteOrdinal": 1,
+      "notePitch": "D5",
+      "position": "attention",
+      "distancePx": 45.800845828325386,
+      "id": "2656cb853ad4b4a1424e",
+      "judgement": "unsure"
+    },
+    {
+      "score": "IMSLP16259",
+      "row": "ocr-5ece2e5bb61c9551a46c",
+      "syllable": 0,
+      "text": "trunk'.",
+      "x": 349.26666666666665,
+      "noteX": 301.45175,
+      "box": [
+        266.0833333333333,
+        1327.8333333333333,
+        503.75,
+        1382.0833333333335
+      ],
+      "staffIndex": 1,
+      "printedLine": 1,
+      "measureInStaff": 0,
+      "noteOrdinal": 1,
+      "notePitch": "C5",
+      "position": "attention",
+      "distancePx": 47.81491666666663,
+      "id": "2329735da1f394250053",
+      "judgement": "unsure"
+    },
+    {
+      "score": "IMSLP16259",
+      "row": "ocr-daa757c7126cbe6831f0",
+      "syllable": 1,
+      "text": ".",
+      "x": 420.34523809523813,
+      "noteX": 446.29715104166667,
+      "box": [
+        276.4166666666667,
+        1379.5,
+        431.4166666666667,
+        1435.0416666666667
+      ],
+      "staffIndex": 1,
+      "printedLine": 2,
+      "measureInStaff": 0,
+      "noteOrdinal": 2,
+      "notePitch": "G4",
+      "position": "attention",
+      "distancePx": 25.951912946428553,
+      "id": "60d74ac6f615c19f266d",
+      "judgement": "wrong"
+    },
+    {
+      "score": "IMSLP542017",
+      "row": "ocr-fdf62c454330f914b9f1",
+      "syllable": 1,
+      "text": "J.",
+      "x": 822.2113051470587,
+      "noteX": 824.4398030395508,
+      "box": [
+        609.9125,
+        3286.0328125,
+        1812.9390625,
+        3359.6875
+      ],
+      "staffIndex": 7,
+      "printedLine": 1,
+      "measureInStaff": 1,
+      "noteOrdinal": 2,
+      "notePitch": "A3",
+      "position": "interpolated",
+      "distancePx": 2.228497892492051,
+      "id": "07320f870e549ef37a17",
+      "judgement": "wrong"
+    },
+    {
+      "score": "IMSLP542017",
+      "row": "ocr-26dc7b19d420f6c4b365",
+      "syllable": 1,
+      "text": "her",
+      "x": 502.01484375,
+      "noteX": 502.3226670410156,
+      "box": [
+        329.5078125,
+        1484.7234375,
+        789.5265625,
+        1544.1640625
+      ],
+      "staffIndex": 1,
+      "printedLine": 1,
+      "measureInStaff": 0,
+      "noteOrdinal": 2,
+      "notePitch": "A4",
+      "position": "attention",
+      "distancePx": 0.30782329101560857,
+      "id": "12fbed0f2cb026d94ee8",
+      "judgement": "unsure"
+    },
+    {
+      "score": "IMSLP542017",
+      "row": "ocr-9d17934348fb9036fc47",
+      "syllable": 2,
+      "text": "England",
+      "x": 391.31744791666665,
+      "noteX": 415.5498333740234,
+      "box": [
+        148.6015625,
+        3355.8109375,
+        465.1875,
+        3408.790625
+      ],
+      "staffIndex": 7,
+      "printedLine": 2,
+      "measureInStaff": 0,
+      "noteOrdinal": 6,
+      "notePitch": "D2",
+      "position": "interpolated",
+      "distancePx": 24.232385457356752,
+      "id": "220fcce309b857b4790c",
+      "judgement": "wrong"
+    },
+    {
+      "score": "IMSLP542017",
+      "row": "ocr-e9f78a7501b3c9288e3a",
+      "syllable": 4,
+      "text": "Philadelphia",
+      "x": 1554.76,
+      "noteX": 1477.8362295532227,
+      "box": [
+        741.715625,
+        3344.18125,
+        1679.84375,
+        3408.790625
+      ],
+      "staffIndex": 7,
+      "printedLine": 2,
+      "measureInStaff": 2,
+      "noteOrdinal": 16,
+      "notePitch": "G2",
+      "position": "attention",
+      "distancePx": 76.92377044677747,
+      "id": "2484dfff99f3ec6e05ee",
+      "judgement": "wrong"
+    },
+    {
+      "score": "IMSLP575893",
+      "row": "ocr-127235019f1e76a11ae7",
+      "syllable": 4,
+      "text": "sé",
+      "x": 739.6170212765958,
+      "noteX": 724.104296875,
+      "box": [
+        581.0,
+        354.0,
+        936.0,
+        374.0
+      ],
+      "staffIndex": 0,
+      "printedLine": 1,
+      "measureInStaff": 2,
+      "noteOrdinal": 3,
+      "notePitch": "A4",
+      "position": "attention",
+      "distancePx": 15.512724401595733,
+      "id": "a2d67036ed0b0cda4d1d",
+      "judgement": "wrong"
+    }
+  ],
+  "scope": "Frozen-rule sampled proposed lyric placements, <=12 per page; conditional correctness, not end-to-end lyric recall. Per-item Wilson interval does not account for within-page clustering.",
+  "rulesRetunedOnThisSample": false,
+  "inputSha256": {
+    "../homr-artifacts/gpu-roadmap-20260919/instance-results/workspace/guarded-tuplet-20261004/review/lyric-anchor-judgement-2-20261008/items.json": "a6d24e49703d20319706aaac948950d73939d16cb6c3cf6eb80e98f07bbfec14",
+    "../homr-artifacts/gpu-roadmap-20260919/instance-results/workspace/guarded-tuplet-20261004/review/lyric-anchor-judgement-2-20261008-key.json": "3b7d41f3e4a9129ec3a9e51169ad049a2aca4685f548784acc52a07f0dd734c4",
+    "../homr-artifacts/lyric-anchor-judgements-v2.json": "d97158484b5aea2200aa4179af8d501983f95dc8ad9c88cba4e8a5279767cfb0"
+  },
+  "sourceSha256": "13b8bac991fa58939cc74f1192527814ec70e7450e3569471bed2348ce7b1f87"
+}
