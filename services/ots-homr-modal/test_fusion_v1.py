@@ -66,7 +66,7 @@ class FusionV1Test(unittest.TestCase):
 
     def test_empty_page_is_success_but_missing_detector_fails(self):
         result = run({"lyrics": [], "non-lyric-text": []})
-        self.assertEqual(result.summary, {"accepted": 0, "review": 0, "rejected": 0, "rejectedByReason": {}, "rejectedByClass": {}, "byClass": {}})
+        self.assertEqual(result.summary, {"accepted": 0, "review": 0, "reviewOmitted": 0, "rejected": 0, "rejectedByReason": {}, "rejectedByClass": {}, "byClass": {}})
         with self.assertRaisesRegex(FusionPolicyError, "all three logical detector runs"):
             run({"lyrics": []})
 
@@ -80,6 +80,7 @@ class FusionV1Test(unittest.TestCase):
             {
                 "accepted": 2,
                 "review": 0,
+                "reviewOmitted": 0,
                 "rejected": 1,
                 "rejectedByReason": {"unsupported-class": 1},
                 "rejectedByClass": {"MeasureNumber": 1},
@@ -88,6 +89,21 @@ class FusionV1Test(unittest.TestCase):
         )
         # Rejected candidates are counted, not listed.
         self.assertEqual({r["status"] for r in result.regions}, {"accepted"})
+
+    def test_review_list_is_bounded_keeps_the_strongest_and_counts_the_rest(self):
+        import fusion_v1
+
+        dynamics = [box("Dynamic", i * 12, 0, i * 12 + 10, 10, 0.5 + i / 1000) for i in range(8)]
+        original = fusion_v1.MAX_LISTED_REVIEW_REGIONS
+        fusion_v1.MAX_LISTED_REVIEW_REGIONS = 3
+        try:
+            result = run({"lyrics": [], "non-lyric-text": [], "dynamics": dynamics})
+        finally:
+            fusion_v1.MAX_LISTED_REVIEW_REGIONS = original
+        self.assertEqual((result.summary["review"], result.summary["reviewOmitted"]), (8, 5))
+        self.assertEqual(len(result.regions), 3)
+        listed = sorted(c["rawConfidence"] for r in result.regions for c in r["candidates"])
+        self.assertEqual(listed, sorted(d["confidence"] for d in dynamics)[-3:])
 
     def test_hundreds_of_rejected_boxes_do_not_become_regions(self):
         many = [box("Fingering", i * 12, 0, i * 12 + 10, 10) for i in range(600)]

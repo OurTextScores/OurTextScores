@@ -110,6 +110,7 @@ class FusionEngine(FakeEngine):
             summary={
                 "accepted": 0,
                 "review": 0,
+                "reviewOmitted": 0,
                 "rejected": 0,
                 "rejectedByReason": {},
                 "rejectedByClass": {},

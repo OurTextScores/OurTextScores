@@ -236,6 +236,7 @@ describe('ScannerOtsHomrProviderService', () => {
           fusionSummary: {
             accepted: 0,
             review: 0,
+            reviewOmitted: 0,
             rejected: 0,
             rejectedByReason: {},
             rejectedByClass: {},
@@ -264,6 +265,7 @@ describe('ScannerOtsHomrProviderService', () => {
       (fused.result as any).fusionSummary = {
         accepted: 0,
         review: 0,
+        reviewOmitted: 0,
         rejected: 600,
         rejectedByReason: { 'unsupported-class': 600 },
         rejectedByClass: { Fingering: 400, MeasureNumber: 200 },
@@ -277,6 +279,18 @@ describe('ScannerOtsHomrProviderService', () => {
         JSON.parse(tallied.nativeArtifacts!['text-fusion-review'].toString('utf8')).fusionSummary
           .rejected
       ).toBe(600);
+      // Omitted review regions are counted: 300 review, 200 listed.
+      (fused.result as any).fusionSummary = {
+        accepted: 0, review: 300, reviewOmitted: 300, rejected: 0, rejectedByReason: {}, rejectedByClass: {}, byClass: {}
+      };
+      await expect(new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: 'a'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })).resolves.toBeDefined();
+      (fused.result as any).fusionSummary = {
+        accepted: 0, review: 0, reviewOmitted: 0, rejected: 600, rejectedByReason: { 'unsupported-class': 600 },
+        rejectedByClass: { Fingering: 400, MeasureNumber: 200 }, byClass: {}
+      };
       // A tally that does not add up, or a listed rejected region, breaks the contract.
       (fused.result as any).fusionSummary.rejectedByClass = { Fingering: 1 };
       await expect(new ScannerOtsHomrProviderService(config).scanPage({
@@ -291,7 +305,7 @@ describe('ScannerOtsHomrProviderService', () => {
         idempotencyKey: 'b'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
       })).rejects.toMatchObject({ code: 'provider_invalid_response' });
       (fused.result as any).fusionSummary = {
-        accepted: 0, review: 0, rejected: 0, rejectedByReason: {}, rejectedByClass: {}, byClass: {}
+        accepted: 0, review: 0, reviewOmitted: 0, rejected: 0, rejectedByReason: {}, rejectedByClass: {}, byClass: {}
       };
       (fused.result as any).fusedRegions = [];
       (fused.engine as any).textPolicy.detectors[2].sha256 = 'f'.repeat(64);

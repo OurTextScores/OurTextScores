@@ -26,6 +26,10 @@ from fusion_policy import (
 
 REQUIRED_DETECTORS = FUSION_DETECTORS
 
+#: Review regions listed per page. Uncalibrated e4 output can produce hundreds that no person can
+#: review and that would exceed the provider's response cap; the rest are counted, not listed.
+MAX_LISTED_REVIEW_REGIONS = 200
+
 
 @dataclass(frozen=True)
 class FusionResult:
@@ -170,6 +174,19 @@ def fuse_page(
                 ],
             }
         )
+    # Keep the review list reviewable: regions holding a calibrated candidate first (any lyric
+    # decision that was close), then the strongest raw evidence. Accepted regions are always kept.
+    review = [r for r in regions if r["status"] == "review"]
+    review.sort(
+        key=lambda r: (
+            not any(c["calibratedConfidence"] is not None for c in r["candidates"]),
+            -max(c["rawConfidence"] for c in r["candidates"]),
+            r["candidates"][0]["id"],
+        )
+    )
+    listed = {id(r) for r in review[:MAX_LISTED_REVIEW_REGIONS]}
+    review_omitted = len(review) - len(listed)
+    regions = [r for r in regions if r["status"] != "review" or id(r) in listed]
     # Rejected candidates are tallied, never listed. A real page yields hundreds (e4 alone
     # emits ~450 Fingering and ~450 MeasureNumber boxes), which would exceed the response cap
     # and bury the review work; the reason counts keep every drop accountable.
@@ -180,6 +197,7 @@ def fuse_page(
         summary={
             "accepted": tally["accepted"],
             "review": tally["review"],
+            "reviewOmitted": review_omitted,
             "rejected": len(rejected),
             "rejectedByReason": dict(sorted(rejected_by_reason.items())),
             "rejectedByClass": dict(sorted(rejected_by_class.items())),

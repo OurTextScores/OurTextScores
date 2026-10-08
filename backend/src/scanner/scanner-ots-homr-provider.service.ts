@@ -218,8 +218,11 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         !['accepted', 'review', 'rejected'].every(
           (key) => Number.isInteger(summary[key]) && summary[key] >= 0
         ) ||
-        // Rejected candidates are counted, never listed: a real page yields hundreds.
-        summary.accepted + summary.review !== regions.length ||
+        // Rejected candidates are counted, never listed: a real page yields hundreds. Review
+        // regions beyond the provider's listing bound are counted in `reviewOmitted`.
+        !Number.isInteger(summary.reviewOmitted) ||
+        summary.reviewOmitted < 0 ||
+        summary.accepted + summary.review - summary.reviewOmitted !== regions.length ||
         regions.some((region: { status?: unknown }) => region?.status === 'rejected') ||
         !this.countsSumTo(summary.rejectedByReason, summary.rejected) ||
         !this.countsSumTo(summary.rejectedByClass, summary.rejected) ||
