@@ -1,0 +1,119 @@
+{
+ "accept": {
+  "dynamics": {
+   "Dynamic": null
+  },
+  "lyrics": {
+   "Lyrics": 0.9333
+  },
+  "non-lyric-text": {
+   "Expression": null,
+   "StaffText": null,
+   "Tempo": null
+  }
+ },
+ "calibration": {
+  "lyrics": {
+   "Lyrics": {
+    "belowLowestEdge": null,
+    "binLowerEdges": [
+     0.5,
+     0.6,
+     0.7,
+     0.8,
+     0.9
+    ],
+    "binValues": [
+     0.7604,
+     0.9333,
+     0.9333,
+     0.9333,
+     0.9869
+    ],
+    "kind": "isotonic-binned",
+    "note": "Estimated probability that an e2 box is lyric text on a vocal page."
+   }
+  }
+ },
+ "createdAt": "2026-10-08",
+ "detectors": {
+  "dynamics": {
+   "artifact": "non-lyric-text.pth",
+   "classAllowlist": [
+    "Dynamic"
+   ],
+   "repository": "jhlusko/non-lyric-text",
+   "revision": "9073adb53d901c90419f63b0f7e3fb4372ed18cc",
+   "sha256": "fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82"
+  },
+  "lyrics": {
+   "artifact": "lyrics.pth",
+   "classAllowlist": [
+    "Lyrics"
+   ],
+   "repository": "jhlusko/lyrics",
+   "revision": "1bf2201d2eead54f78d79e2beba502b204614a92",
+   "sha256": "7ff21020d5fefe5b774af71dd50610d1b05011f040c4b2c9c58f249b43f39804"
+  },
+  "non-lyric-text": {
+   "artifact": "non-lyric-text.pth",
+   "classAllowlist": [
+    "Expression",
+    "StaffText",
+    "Tempo"
+   ],
+   "repository": "jhlusko/non-lyric-text",
+   "revision": "9073adb53d901c90419f63b0f7e3fb4372ed18cc",
+   "sha256": "fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82"
+  }
+ },
+ "fit": {
+  "acceptRawLowerEdge": 0.6,
+  "caveats": [
+   "Detector training membership of these pages is unverified; precision may be optimistic.",
+   "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
+   "Boxes below raw 0.5 were not sampled; the bins carry no information about them."
+  ],
+  "negativeRates": [
+   {
+    "falsePositives": 84,
+    "perInstrumentalPage": 1.8666666666666667,
+    "rawAtLeast": 0.5
+   },
+   {
+    "falsePositives": 48,
+    "perInstrumentalPage": 1.0666666666666667,
+    "rawAtLeast": 0.6
+   },
+   {
+    "falsePositives": 28,
+    "perInstrumentalPage": 0.6222222222222222,
+    "rawAtLeast": 0.7
+   },
+   {
+    "falsePositives": 20,
+    "perInstrumentalPage": 0.4444444444444444,
+    "rawAtLeast": 0.8
+   },
+   {
+    "falsePositives": 5,
+    "perInstrumentalPage": 0.1111111111111111,
+    "rawAtLeast": 0.9
+   }
+  ],
+  "pages": {
+   "instrumental": 45,
+   "vocal": 173
+  },
+  "targetPrecision": 0.9
+ },
+ "geometry": {
+  "containmentThreshold": 0.6,
+  "iouThreshold": 0.3
+ },
+ "minimumWinnerMargin": 0.0,
+ "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
+ "policy": "fusion-v1",
+ "policyRevision": "a579f17d63a9e7595ecbbd0d8b64751d9788ba2b29f9b2ea1380f8ea1add3395",
+ "schemaVersion": "ots.text-fusion-calibration.v1"
+}

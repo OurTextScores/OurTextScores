@@ -1,0 +1,128 @@
+{
+ "schemaVersion": "ots.lyric-calibration-fit.v1",
+ "targetPrecision": 0.9,
+ "matchCoverage": 0.5,
+ "pages": {
+  "vocal": 173,
+  "instrumental": 45
+ },
+ "scores": {
+  "vocal": 89
+ },
+ "bands": [
+  {
+   "lowerEdge": 0.5,
+   "matched": 167,
+   "unmatched": 427,
+   "judged": 30,
+   "usable": 30,
+   "unsure": 0,
+   "judgedLyricRate": 0.6666666666666666,
+   "precision": 0.760381593714927,
+   "boxes": 594,
+   "calibrated": 0.7604,
+   "calibratedInterval90": [
+    0.6458,
+    0.8599
+   ]
+  },
+  {
+   "lowerEdge": 0.6,
+   "matched": 169,
+   "unmatched": 293,
+   "judged": 30,
+   "usable": 30,
+   "unsure": 0,
+   "judgedLyricRate": 0.9,
+   "precision": 0.9365800865800865,
+   "boxes": 462,
+   "calibrated": 0.9333,
+   "calibratedInterval90": [
+    0.8713,
+    0.9568
+   ]
+  },
+  {
+   "lowerEdge": 0.7,
+   "matched": 245,
+   "unmatched": 345,
+   "judged": 30,
+   "usable": 30,
+   "unsure": 0,
+   "judgedLyricRate": 0.9,
+   "precision": 0.9415254237288135,
+   "boxes": 590,
+   "calibrated": 0.9333,
+   "calibratedInterval90": [
+    0.8916,
+    0.9668
+   ]
+  },
+  {
+   "lowerEdge": 0.8,
+   "matched": 368,
+   "unmatched": 433,
+   "judged": 30,
+   "usable": 29,
+   "unsure": 1,
+   "judgedLyricRate": 0.8620689655172413,
+   "precision": 0.925438030048646,
+   "boxes": 801,
+   "calibrated": 0.9333,
+   "calibratedInterval90": [
+    0.9045,
+    0.9795
+   ]
+  },
+  {
+   "lowerEdge": 0.9,
+   "matched": 779,
+   "unmatched": 504,
+   "judged": 30,
+   "usable": 30,
+   "unsure": 0,
+   "judgedLyricRate": 0.9666666666666667,
+   "precision": 0.9869056897895557,
+   "boxes": 1283,
+   "calibrated": 0.9869,
+   "calibratedInterval90": [
+    0.9633,
+    1.0
+   ]
+  }
+ ],
+ "negativeRates": [
+  {
+   "rawAtLeast": 0.5,
+   "falsePositives": 84,
+   "perInstrumentalPage": 1.8666666666666667
+  },
+  {
+   "rawAtLeast": 0.6,
+   "falsePositives": 48,
+   "perInstrumentalPage": 1.0666666666666667
+  },
+  {
+   "rawAtLeast": 0.7,
+   "falsePositives": 28,
+   "perInstrumentalPage": 0.6222222222222222
+  },
+  {
+   "rawAtLeast": 0.8,
+   "falsePositives": 20,
+   "perInstrumentalPage": 0.4444444444444444
+  },
+  {
+   "rawAtLeast": 0.9,
+   "falsePositives": 5,
+   "perInstrumentalPage": 0.1111111111111111
+  }
+ ],
+ "acceptLowerEdge": 0.6,
+ "acceptCalibrated": 0.9333,
+ "caveats": [
+  "Detector training membership of these pages is unverified; precision may be optimistic.",
+  "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
+  "Boxes below raw 0.5 were not sampled; the bins carry no information about them."
+ ]
+}
