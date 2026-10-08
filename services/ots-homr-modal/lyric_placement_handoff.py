@@ -2,10 +2,26 @@
 
 import argparse
 import json
+from copy import deepcopy
 from pathlib import Path
 
 
 def placement_handoff(inventory, review):
+    review = deepcopy(review)
+    if review.get("schemaVersion") == "ots.lyric-placement-decisions.v2":
+        lines = {}
+        for row in inventory:
+            lines.setdefault(row["score"], set()).add(row["physicalRowOrder"])
+        for decision in review["decisions"]:
+            line = decision.get("printedLine")
+            if line is not None and (
+                type(line) is not int or line not in lines.get(decision["score"], set())
+            ):
+                raise ValueError("Unknown printed lyric line")
+            if line is None and decision["verseConfirmed"]:
+                raise ValueError("Confirmed lyric line is missing")
+            decision["verse"] = "" if line is None else f"printed-line-{line}"
+        review["schemaVersion"] = "ots.lyric-placement-decisions.v1"
     if (
         review.get("schemaVersion") != "ots.lyric-placement-decisions.v1"
         or review.get("automaticAttachment") is not False
