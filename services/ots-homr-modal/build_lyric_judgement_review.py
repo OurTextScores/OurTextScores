@@ -48,8 +48,8 @@ def main():
         items.append({"id": row["id"], "image": name})
     (args.out / "items.json").write_text(json.dumps(items))
     (args.out / "index.html").write_bytes(Path(__file__).with_name("lyric_judgement_review.html").read_bytes())
-    # The key (band/score/page/box) stays out of the browser-visible items; kept for the fit.
-    (args.out / "sample-key.json").write_text(json.dumps(sample, indent=1))
+    # The key (band/score/page/box) is written beside, not inside, the served directory.
+    (args.out.with_name(args.out.name + "-key.json")).write_text(json.dumps(sample, indent=1))
     print(len(items), "items;", len({r["score"] for r in sample}), "scores")
 
 
