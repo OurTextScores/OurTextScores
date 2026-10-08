@@ -51,6 +51,8 @@ export interface SyllableAnchor {
   /** Page x of the chosen note, so a reviewer can be shown which note is meant. */
   noteX: number | null;
   position: 'attention' | 'interpolated' | 'none';
+  /** A single consonant at a row edge is the clipped tail of a neighbouring word: it gets no note. */
+  fragment?: boolean;
 }
 
 export interface RowAnchor {
@@ -66,16 +68,44 @@ const isNoteLike = (token: string[] | undefined) =>
 const isBar = (token: string[] | undefined) => String(token?.[0] || '').startsWith('barline');
 
 /** Whitespace-, hyphen- and underscore-separated pieces, each placed proportionally by characters. */
+/**
+ * Widths for placing pieces along an OCR row: one unit per character, except that a run of three or more
+ * dots ("ziehn,......wir") counts as a single unit. Lyric lines space words widely to sit under their notes,
+ * so letter and gap widths are not proportional to the text: weighting letters and punctuation was measured
+ * and moved owner-confirmed placements to a neighbouring note. Only the ellipsis run is a known, large
+ * distortion (it adds many characters that take almost no room).
+ */
+export function charWidths(text: string): number[] {
+  const characters = [...text];
+  const widths = characters.map(() => 1);
+  for (let i = 0; i < characters.length; ) {
+    if (characters[i] !== '.') {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (j < characters.length && characters[j] === '.') j += 1;
+    if (j - i >= 3) for (let k = i + 1; k < j; k += 1) widths[k] = 0;
+    i = j;
+  }
+  return widths;
+}
+
 export function splitSyllables(text: string): { text: string; start: number; end: number }[] {
   const out: { text: string; start: number; end: number }[] = [];
-  const total = Math.max(1, text.length);
-  const pattern = /[^\s\-–—_]+/g;
+  const cumulative = [0];
+  for (const width of charWidths(text)) cumulative.push(cumulative[cumulative.length - 1] + width);
+  const total = Math.max(1e-9, cumulative[cumulative.length - 1]);
+  // A run of three or more dots separates words ("ziehn,......wir"); mask it so it splits the pieces.
+  const masked = text.replace(/\.{3,}/g, (run) => ' '.repeat(run.length));
+  const pattern = /[^\s\-–—_]+/gu;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
+  while ((match = pattern.exec(masked)) !== null) {
+    // `cumulative` is per code point; the regex index is per UTF-16 unit, equal for BMP text.
     out.push({
-      text: match[0],
-      start: match.index / total,
-      end: (match.index + match[0].length) / total
+      text: text.slice(match.index, match.index + match[0].length),
+      start: cumulative[match.index] / total,
+      end: cumulative[match.index + match[0].length] / total
     });
   }
   return out;
@@ -176,7 +206,8 @@ export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<stri
       const centreY = (row.box[1] + row.box[3]) / 2;
       const printedLine = lines.findIndex((y) => Math.abs(y - centreY) <= tolerance) + 1 || 1;
       const width = row.box[2] - row.box[0];
-      const syllables: SyllableAnchor[] = splitSyllables(row.text).map((piece) => {
+      const pieces = splitSyllables(row.text);
+      const syllables: SyllableAnchor[] = pieces.map((piece, pieceIndex) => {
         const x = row.box[0] + ((piece.start + piece.end) / 2) * width;
         const measureInStaff = bars.filter((b) => b < x).length;
         const lowToken = measureInStaff === 0 ? -1 : (barTokenIndices[measureInStaff - 1] ?? -1);
@@ -201,6 +232,10 @@ export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<stri
           noteX: null,
           position: 'none' as const
         };
+        const edge = pieceIndex === 0 || pieceIndex === pieces.length - 1;
+        if (pieces.length >= 2 && edge && /^[b-df-hj-np-tv-xz]$/.test(piece.text)) {
+          return { ...noNote, fragment: true };
+        }
         if (notes.length === 0) return noNote;
         const [tokenIndex, where] = notes.reduce((a, b) =>
           Math.abs(a[1].x - x) <= Math.abs(b[1].x - x) ? a : b

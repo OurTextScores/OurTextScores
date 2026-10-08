@@ -47,7 +47,7 @@ export interface LyricOcrRow {
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
   /** Why a row the semantic gate liked was withheld anyway; null when it was not. */
-  withheldReason: 'no-staff' | 'far-from-notes' | null;
+  withheldReason: 'no-staff' | 'far-from-notes' | 'credit-like' | null;
 }
 
 export interface LyricCandidateInventory {
@@ -65,6 +65,19 @@ export interface LyricCandidateInventory {
 function isBox(value: unknown): value is [number, number, number, number] {
   return (
     Array.isArray(value) && value.length === 4 && value.every((n) => Number.isInteger(n) && n >= 0)
+  );
+}
+
+/**
+ * Publisher, engraver and edition text that sits under a staff but is not sung: an imprint word, a copyright
+ * mark, an address, or a run of three or more digits (plate and page numbers). Matches words in English,
+ * German and French only; it is a guard for the common imprint, not a language model.
+ */
+export function looksLikeCredit(text: string): boolean {
+  return (
+    /©|copyright|\bverlag\b|\bedit(?:ions?|eur|or)\b|\béditeur\b|\bpubli(?:sh|é|e)|\bprinted\b|\bimprim|\bplate\b|\brue\b|\bstreet\b|\bstr\.|\bn[°º]\s*\d/i.test(
+      text
+    ) || /\d{3,}/.test(text)
   );
 }
 
@@ -168,6 +181,9 @@ export function buildLyricCandidateInventory(
     if (staves.length > 0 && !row.anchor && row.proposedLyric) {
       row.proposedLyric = false;
       row.withheldReason = 'no-staff';
+    } else if (row.proposedLyric && looksLikeCredit(row.text)) {
+      row.proposedLyric = false;
+      row.withheldReason = 'credit-like';
     } else if (
       row.anchor &&
       row.proposedLyric &&

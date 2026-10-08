@@ -1,4 +1,10 @@
-import { anchorRows, noteXPositions, splitSyllables, AnchorStaff } from './scanner-lyric-anchors';
+import {
+  charWidths,
+  anchorRows,
+  noteXPositions,
+  splitSyllables,
+  AnchorStaff
+} from './scanner-lyric-anchors';
 
 // A 1000px-wide staff at y 100-160: |  n n n |  n n | with bar lines at x=300 and x=700.
 const staff = (extra: Partial<AnchorStaff> = {}): AnchorStaff => ({
@@ -34,6 +40,29 @@ describe('splitSyllables', () => {
     expect(parts[0].start).toBe(0);
     expect(parts[1].end).toBe(1);
     expect(splitSyllables('  _ - ')).toEqual([]);
+  });
+});
+
+describe('ellipsis-aware placement', () => {
+  it('counts a run of three or more dots as one unit and everything else as one each', () => {
+    expect(charWidths('ab')).toEqual([1, 1]);
+    expect(charWidths('a...b')).toEqual([1, 1, 0, 0, 1]);
+    expect(charWidths('a..b')).toEqual([1, 1, 1, 1]);
+  });
+
+  it('does not let a run of dots push later words right', () => {
+    expect(splitSyllables('ziehn,......wir').map((p) => p.text)).toEqual(['ziehn,', 'wir']);
+    expect(splitSyllables('a..b').map((p) => p.text)).toEqual(['a..b']); // two dots stay inside a word
+    const dotted = splitSyllables('ab ...... wir');
+    const wir = dotted[dotted.length - 1];
+    expect(wir.text).toBe('wir');
+    // Counting every dot would put it at 10/13 = 0.77; one unit for the run puts it at 6/8 = 0.75... but the
+    // dots belong to no word, so compare against the same text without the run.
+    const without = splitSyllables('ab . wir');
+    expect(Math.abs(wir.start - without[without.length - 1].start)).toBeLessThan(0.02);
+    // Rows without an ellipsis are placed exactly as before.
+    const plain = splitSyllables('wish -ing');
+    expect(plain[1].start).toBeCloseTo(6 / 9, 5);
   });
 });
 
@@ -120,6 +149,23 @@ describe('anchorRows', () => {
     // A syllable 90px from the note still gets it.
     const near = anchorRows([row('near', [165, 170, 215, 190], 'kind')], [sparse]);
     expect(near.get('near')!.syllables[0].noteTokenIndex).toBe(1);
+  });
+
+  it('gives a clipped single consonant at a row edge no note, but keeps vowels and lone words', () => {
+    const out = anchorRows(
+      [
+        row('a', [90, 170, 330, 190], 'n hin- nen'),
+        row('b', [90, 220, 330, 240], 'i hin-nen'),
+        row('c', [90, 195, 120, 215], 'n')
+      ],
+      [staff()]
+    );
+    const first = out.get('a')!.syllables;
+    expect(first[0]).toMatchObject({ text: 'n', fragment: true, noteTokenIndex: null });
+    expect(first[1].noteTokenIndex).not.toBeNull();
+    expect(out.get('b')!.syllables[0].fragment).toBeUndefined();
+    // A row that is only one consonant is not "clipped" by a neighbour here; it is judged elsewhere.
+    expect(out.get('c')!.syllables[0].fragment).toBeUndefined();
   });
 
   it('ignores staves with no notes', () => {

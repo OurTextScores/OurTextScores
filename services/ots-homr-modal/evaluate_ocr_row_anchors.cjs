@@ -12,6 +12,11 @@ const pages = {};
 for (const score of [...new Set(truth.map((t) => t.score))]) {
   const inv = JSON.parse(fs.readFileSync(path.join(dir, `inv-anch-${score}.json`), 'utf8'));
   const review = JSON.parse(fs.readFileSync(path.join(dir, `review-${score}.json`), 'utf8'));
+  if (process.env.ANCHORS) {
+    const { anchorRows } = require(path.resolve(process.env.ANCHORS));
+    const fresh = anchorRows(inv.ocrRows.map((r) => ({ id: r.id, box: r.box, text: r.text })), review.staves);
+    for (const r of inv.ocrRows) r.anchor = fresh.get(r.id) || null; // REANCHOR with the given build
+  }
   const scale = review.raster.w / sizes[score][0];
   const staves = review.staves;
   const before = (staff) =>

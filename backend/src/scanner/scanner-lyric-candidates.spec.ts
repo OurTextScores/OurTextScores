@@ -1,5 +1,6 @@
 import {
   buildLyricCandidateInventory,
+  looksLikeCredit,
   lyricCandidateCrop,
   LYRIC_CANDIDATE_SCHEMA
 } from './scanner-lyric-candidates';
@@ -90,6 +91,25 @@ describe('buildLyricCandidateInventory', () => {
     ).toThrow();
     expect(() => buildLyricCandidateInventory({}, 1, raster)).toThrow();
   });
+});
+
+describe('looksLikeCredit', () => {
+  it.each([
+    'PAUL DUPONT Editeur, 4, rue du Bouloi.',
+    'B.& H.20327',
+    '© 1912 Breitkopf',
+    'Verlag von C. F. Peters',
+    'Edition Peters Nº 4'
+  ])('flags imprint text: %s', (text) => expect(looksLikeCredit(text)).toBe(true));
+
+  it.each([
+    "He doesn't love me.",
+    'wish -ing',
+    'ziehn,......wir müssen',
+    "Quand j'aurai jeté",
+    'rêves',
+    'In the year we met'
+  ])('leaves sung text alone: %s', (text) => expect(looksLikeCredit(text)).toBe(false));
 });
 
 describe('OCR rows', () => {
