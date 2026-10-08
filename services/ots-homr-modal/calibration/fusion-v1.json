@@ -73,7 +73,7 @@
   },
   "acceptRawLowerEdge": 0.7,
   "caveats": [
-   "Detector training membership of these pages is unverified; precision may be optimistic.",
+   "Detector training membership was reconstructed (fusion-v1-training-membership-audit.json): about 80% of the Lieder scores here sat in the OCR-first training pool. On the 29 verifiably clean scores the matched share is 57.8% against 51.3% on possibly-trained scores, and the judged lyric rate at raw 0.7+ is 18/19 against 63/70, so there is no sign of inflation; the clean judged sample is only 19 boxes.",
    "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
    "Boxes below raw 0.5 were not sampled; the bins carry no information about them."
   ],
@@ -133,6 +133,6 @@
  "minimumWinnerMargin": 0.0,
  "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
  "policy": "fusion-v1",
- "policyRevision": "c2bfa72e10543e1b4e1818056c5f404da1c643bb6c1f2a66ec5a24e1d6e1d31e",
+ "policyRevision": "fadb96afaa0a3a1dac76d8dc57290c5ecb53744faf5aa782edf476f13525a270",
  "schemaVersion": "ots.text-fusion-calibration.v1"
 }

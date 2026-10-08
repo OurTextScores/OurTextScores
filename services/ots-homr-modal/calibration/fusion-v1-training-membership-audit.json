@@ -1,0 +1,50 @@
+{
+ "schemaVersion": "ots.detector-training-membership-audit.v1",
+ "policyRevision": "fadb96afaa0a3a1dac76d8dc57290c5ecb53744faf5aa782edf476f13525a270",
+ "poolScores": 442,
+ "split": {
+  "seed": 0,
+  "validFraction": 0.1
+ },
+ "strata": {
+  "clean-hash-valid": {
+   "pages": 26,
+   "scores": 13,
+   "acceptedVocalBoxes": 495,
+   "matchedShare": 0.6202020202020202,
+   "instrumentalFalsePositives": 0
+  },
+  "clean-not-in-pool": {
+   "pages": 31,
+   "scores": 16,
+   "acceptedVocalBoxes": 634,
+   "matchedShare": 0.5441640378548895,
+   "instrumentalFalsePositives": 0
+  },
+  "ossq-unverified": {
+   "pages": 60,
+   "scores": 12,
+   "acceptedVocalBoxes": 0,
+   "matchedShare": null,
+   "instrumentalFalsePositives": 40
+  },
+  "possibly-trained": {
+   "pages": 244,
+   "scores": 125,
+   "acceptedVocalBoxes": 3475,
+   "matchedShare": 0.5130935251798561,
+   "instrumentalFalsePositives": 0
+  }
+ },
+ "cleanPooled": {
+  "pages": 57,
+  "scores": 29,
+  "acceptedVocalBoxes": 1129,
+  "matchedShare": 0.5775022143489814
+ },
+ "limits": [
+  "Pool membership is an upper bound: OCR-first output may have yielded no mask for a pool score.",
+  "Matched share measures agreement with OCR-first labels, which are also the training labels.",
+  "OSSQ scores were not in the scan-mask pool; their appearance in the synthetic bank is unverified."
+ ]
+}
