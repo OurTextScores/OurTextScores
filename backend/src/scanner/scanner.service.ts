@@ -3256,11 +3256,16 @@ export class ScannerService implements OnModuleInit {
     try {
       return {
         page,
-        inventory: buildLyricCandidateInventory(artifact, pageNumber, {
-          checksumSha256: raster.checksumSha256,
-          width: raster.width,
-          height: raster.height
-        })
+        inventory: buildLyricCandidateInventory(
+          artifact,
+          pageNumber,
+          {
+            checksumSha256: raster.checksumSha256,
+            width: raster.width,
+            height: raster.height
+          },
+          (page.engines?.['ots-homr' as ScannerEngineId]?.review?.staves ?? []) as never
+        )
       };
     } catch (error) {
       throw new ConflictException(

@@ -1,0 +1,102 @@
+import { anchorRows, noteXPositions, splitSyllables, AnchorStaff } from './scanner-lyric-anchors';
+
+// A 1000px-wide staff at y 100-160: |  n n n |  n n | with bar lines at x=300 and x=700.
+const staff = (extra: Partial<AnchorStaff> = {}): AnchorStaff => ({
+  index: 0,
+  partIndex: 0,
+  systemIndex: 0,
+  region: [0, 100, 1000, 160],
+  tokens: [
+    ['clef_G2'],
+    ['note_8', 'C4'],
+    ['note_8', 'D4'],
+    ['note_8', 'E4'],
+    ['barline'],
+    ['note_4', 'F4'],
+    ['note_4', 'G4'],
+    ['barline'],
+    ['rest_2']
+  ],
+  barLines: [300, 700],
+  // Attention (model canvas 1280 wide): C4 at 10%, D4 at 20%, G4 at 60%; E4, F4 and the rest pruned.
+  symbols: [
+    { index: 1, attention: [128, 0] },
+    { index: 2, attention: [256, 0] },
+    { index: 6, attention: [768, 0] }
+  ],
+  ...extra
+});
+
+describe('splitSyllables', () => {
+  it('splits on spaces, hyphens and underscores and places pieces proportionally', () => {
+    const parts = splitSyllables('wish -ing');
+    expect(parts.map((p) => p.text)).toEqual(['wish', 'ing']);
+    expect(parts[0].start).toBe(0);
+    expect(parts[1].end).toBe(1);
+    expect(splitSyllables('  _ - ')).toEqual([]);
+  });
+});
+
+describe('noteXPositions', () => {
+  it('uses attention where ordered and interpolates between known marks and bar lines', () => {
+    const positions = noteXPositions(staff());
+    expect(positions.get(1)).toEqual({ x: 100, how: 'attention' });
+    expect(positions.get(6)).toEqual({ x: 600, how: 'attention' });
+    const e4 = positions.get(3)!; // between D4 (200) and the bar line (300)
+    expect(e4.how).toBe('interpolated');
+    expect(e4.x).toBeGreaterThan(200);
+    expect(e4.x).toBeLessThan(300);
+    expect(positions.has(0)).toBe(false); // the clef is not a note
+  });
+
+  it('rejects an out-of-order attention point rather than trusting it', () => {
+    const bad = staff({
+      symbols: [
+        { index: 1, attention: [900, 0] },
+        { index: 2, attention: [256, 0] }
+      ]
+    });
+    expect(noteXPositions(bad).get(1)!.how).toBe('interpolated');
+  });
+});
+
+describe('anchorRows', () => {
+  const row = (id: string, box: number[], text: string) => ({
+    id,
+    box: box as [number, number, number, number],
+    text
+  });
+
+  it('assigns the staff above, ranks printed lines top to bottom and finds measure and note', () => {
+    const rows = [
+      row('a', [90, 170, 140, 190], 'kind'), // line 1, under C4 in measure 0
+      row('b', [450, 172, 690, 192], 'wish -ing'), // line 1, measure 1 (between the bar lines)
+      row('c', [90, 210, 140, 230], 'Kind') // line 2
+    ];
+    const out = anchorRows(rows, [staff()]);
+    expect(out.get('a')).toMatchObject({ staffIndex: 0, printedLine: 1 });
+    expect(out.get('c')!.printedLine).toBe(2);
+    const a = out.get('a')!.syllables[0];
+    expect(a).toMatchObject({
+      measureInStaff: 0,
+      noteTokenIndex: 1,
+      notePitch: 'C4',
+      noteOrdinalInMeasure: 1,
+      position: 'attention'
+    });
+    const b = out.get('b')!.syllables;
+    expect(b.map((s) => s.measureInStaff)).toEqual([1, 1]);
+    expect(b.map((s) => s.noteTokenIndex)).toEqual([5, 6]); // F4 then G4, left to right
+    expect(b.map((s) => s.noteOrdinalInMeasure)).toEqual([1, 2]);
+  });
+
+  it('leaves rows far from any staff, or with no staff above, unanchored', () => {
+    expect(anchorRows([row('far', [0, 900, 50, 920], 'x')], [staff()]).size).toBe(0);
+    expect(anchorRows([row('above', [0, 10, 50, 30], 'x')], [staff()]).size).toBe(0);
+  });
+
+  it('ignores staves with no notes', () => {
+    const empty = staff({ tokens: [['clef_G2'], ['barline']], symbols: [] });
+    expect(anchorRows([row('a', [90, 170, 140, 190], 'x')], [empty]).size).toBe(0);
+  });
+});

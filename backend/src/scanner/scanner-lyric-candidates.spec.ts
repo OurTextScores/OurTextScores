@@ -129,6 +129,24 @@ describe('OCR rows', () => {
     expect(first.ocrStatus).toBe('ok');
   });
 
+  it('carry an anchor when staves are supplied and null otherwise', () => {
+    const artifact = {
+      fusedRegions: [],
+      lyricText: { status: 'ok', rows: [row('kind,', [90, 170, 140, 190])] }
+    };
+    const staff = {
+      index: 0,
+      region: [0, 100, 1000, 160],
+      tokens: [['clef_G2'], ['note_8', 'C4'], ['barline']],
+      barLines: [300],
+      symbols: [{ index: 1, attention: [128, 0] }]
+    };
+    expect(buildLyricCandidateInventory(artifact, 1, raster).ocrRows[0].anchor).toBeNull();
+    const anchored = buildLyricCandidateInventory(artifact, 1, raster, [staff]).ocrRows[0].anchor;
+    expect(anchored).toMatchObject({ staffIndex: 0, printedLine: 1 });
+    expect(anchored!.syllables[0]).toMatchObject({ notePitch: 'C4', measureInStaff: 0 });
+  });
+
   it('report a failed OCR run and refuse a row outside the page', () => {
     expect(
       buildLyricCandidateInventory(

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { CropRect, padAndClamp } from './scanner-crop';
+import { AnchorStaff, RowAnchor, anchorRows } from './scanner-lyric-anchors';
 
 /**
  * Lyric candidate inventory for one scanned page, derived only from the stored
@@ -43,6 +44,8 @@ export interface LyricOcrRow {
   semantic: 'Lyrics' | 'DirectionText' | 'Unknown';
   semanticScore: number | null;
   proposedLyric: boolean;
+  /** Where the row sits in the recognised score; null when no staff could be assigned. */
+  anchor: RowAnchor | null;
 }
 
 export interface LyricCandidateInventory {
@@ -96,7 +99,8 @@ function readOcrRows(
       regionCoverage: Number(row.regionCoverage),
       semantic: row.semantic,
       semanticScore: row.semanticScore === null ? null : Number(row.semanticScore),
-      proposedLyric: row.proposedLyric === true
+      proposedLyric: row.proposedLyric === true,
+      anchor: null
     });
   }
   return { ocrRows, ocrStatus: lyric.status === 'failed' ? 'failed' : 'ok' };
@@ -105,7 +109,8 @@ function readOcrRows(
 export function buildLyricCandidateInventory(
   artifact: unknown,
   pageNumber: number,
-  raster: LyricRasterIdentity
+  raster: LyricRasterIdentity,
+  staves: AnchorStaff[] = []
 ): LyricCandidateInventory {
   const regions = (artifact as { fusedRegions?: unknown })?.fusedRegions;
   if (!Array.isArray(regions) || regions.length > MAX_CANDIDATES) {
@@ -152,6 +157,8 @@ export function buildLyricCandidateInventory(
   // Reading order: top to bottom, then left to right, so a page reviews like it reads.
   candidates.sort((a, b) => a.box[1] - b.box[1] || a.box[0] - b.box[0] || a.id.localeCompare(b.id));
   const { ocrRows, ocrStatus } = readOcrRows(artifact, raster);
+  const anchors = anchorRows(ocrRows, staves);
+  for (const row of ocrRows) row.anchor = anchors.get(row.id) ?? null;
   return {
     schemaVersion: LYRIC_CANDIDATE_SCHEMA,
     automaticAttachment: false,
