@@ -91,14 +91,16 @@ def main():
                 )
                 draw = ImageDraw.Draw(crop)
                 bx = item["box"]
+                # The outline is the complete OCR row. A narrow tick marks the
+                # proportional syllable estimate; never present it as a glyph box.
                 draw.rectangle(
-                    (
-                        item["x"] - left - 45,
-                        bx[1] - y0,
-                        item["x"] - left + 45,
-                        bx[3] - y0,
-                    ),
-                    outline="#cc6600",
+                    (bx[0] - left, bx[1] - y0, bx[2] - left, bx[3] - y0),
+                    outline="#888888",
+                    width=1,
+                )
+                draw.line(
+                    (item["x"] - left, bx[1] - y0, item["x"] - left, bx[3] - y0),
+                    fill="#cc6600",
                     width=3,
                 )
                 draw.line(
