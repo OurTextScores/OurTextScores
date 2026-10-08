@@ -13,10 +13,10 @@ from pathlib import Path
 MAX_PIXELS = 12_000_000
 
 
-def select(rows, lieder_per_score, ossq_per_score):
+def select(rows, lieder_per_score, ossq_per_score, partition="calibration"):
     groups = defaultdict(list)
     for row in rows:
-        if row["partition"] != "calibration" or row["width"] * row["height"] > MAX_PIXELS:
+        if row["partition"] != partition or row["width"] * row["height"] > MAX_PIXELS:
             continue
         if row["corpus"] == "lieder" and any(g["semanticFamily"] == "Lyrics" for g in row["ground_truth"]):
             groups[("lieder", row["score"])].append(row)
@@ -35,9 +35,10 @@ if __name__ == "__main__":
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--lieder-per-score", type=int, default=2)
     parser.add_argument("--ossq-per-score", type=int, default=5)
+    parser.add_argument("--partition", choices=["calibration", "test"], default="calibration")
     args = parser.parse_args()
     rows = [json.loads(line) for line in args.pages.open()]
-    chosen = select(rows, args.lieder_per_score, args.ossq_per_score)
+    chosen = select(rows, args.lieder_per_score, args.ossq_per_score, args.partition)
     with args.out.open("x") as handle:
         for row in chosen:
             handle.write(json.dumps(row) + "\n")
