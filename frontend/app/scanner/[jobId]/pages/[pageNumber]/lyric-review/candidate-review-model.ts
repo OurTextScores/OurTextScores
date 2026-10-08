@@ -12,12 +12,36 @@ export type Candidate = {
   competingText: boolean;
 };
 
+export type OcrRow = {
+  id: string;
+  box: [number, number, number, number];
+  text: string;
+  ocrConfidence: number;
+  regionCoverage: number;
+  semantic: "Lyrics" | "DirectionText" | "Unknown";
+  semanticScore: number | null;
+  proposedLyric: boolean;
+};
+
+/** One thing to review: a detector box with no text, or an OCR row with its unreviewed text. */
+export type ReviewItem = {
+  id: string;
+  kind: "box" | "ocr";
+  box: [number, number, number, number];
+  initialText: string;
+  /** The semantic gate's suggestion; null for a bare detector box. */
+  proposedLyric: boolean | null;
+  note: string;
+};
+
 export type Inventory = {
   schemaVersion: string;
   automaticAttachment: false;
   pageNumber: number;
   raster: { checksumSha256: string; width: number; height: number };
   candidates: Candidate[];
+  ocrRows?: OcrRow[];
+  ocrStatus?: "ok" | "failed" | "absent";
 };
 
 export type CandidateDecision = {
@@ -26,9 +50,36 @@ export type CandidateDecision = {
   state: "pending" | "accept" | "exclude";
 };
 
-export const blankCandidate = (c: Candidate): CandidateDecision => ({
+/** OCR rows when the provider read the page; otherwise the bare detector boxes. */
+export function reviewItems(inventory: Inventory): ReviewItem[] {
+  if (inventory.ocrRows && inventory.ocrRows.length > 0)
+    return inventory.ocrRows.map((r) => ({
+      id: r.id,
+      kind: "ocr" as const,
+      box: r.box,
+      initialText: r.text,
+      proposedLyric: r.proposedLyric,
+      note: r.proposedLyric
+        ? "Suggested lyric (text read by OCR, not yet checked)"
+        : "Withheld: reads like a direction or unclear. You can still accept it.",
+    }));
+  return inventory.candidates.map((c) => ({
+    id: c.id,
+    kind: "box" as const,
+    box: c.box,
+    initialText: "",
+    proposedLyric: null,
+    note:
+      (c.regionStatus === "review"
+        ? `Needs review (${c.reason})`
+        : "Detected") +
+      (c.competingText ? " — may be a direction or dynamic" : ""),
+  }));
+}
+
+export const blankCandidate = (c: { id: string; initialText?: string }): CandidateDecision => ({
   id: c.id,
-  text: "",
+  text: c.initialText ?? "",
   state: "pending",
 });
 
@@ -50,15 +101,19 @@ export function buildCandidateExport(
   inventory: Inventory,
   decisions: Record<string, CandidateDecision>,
 ) {
+  const items = reviewItems(inventory);
   return {
     schemaVersion: CANDIDATE_DECISION_SCHEMA,
     automaticAttachment: false,
     jobId,
     pageNumber: inventory.pageNumber,
     raster: inventory.raster,
-    decisions: inventory.candidates.map((c) => ({
+    decisions: items.map((c) => ({
       ...(decisions[c.id] ?? blankCandidate(c)),
       box: c.box,
+      source: c.kind === "ocr" ? "ocr-row" : "detector-box",
+      originalOcrText: c.kind === "ocr" ? c.initialText : null,
+      proposedLyric: c.proposedLyric,
     })),
   };
 }

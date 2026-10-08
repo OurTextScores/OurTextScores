@@ -3,6 +3,7 @@ import LyricCandidatesClient from "./lyric-candidates-client";
 import {
   blankCandidate,
   buildCandidateExport,
+  reviewItems,
   setState,
   setText,
   type Inventory,
@@ -51,6 +52,60 @@ describe("candidate review model", () => {
   });
 });
 
+const ocrInventory: Inventory = {
+  ...inventory,
+  ocrStatus: "ok",
+  ocrRows: [
+    {
+      id: "ocr-1",
+      box: [1, 2, 30, 40],
+      text: "kind,",
+      ocrConfidence: 0.99,
+      regionCoverage: 0.8,
+      semantic: "Lyrics",
+      semanticScore: 0.84,
+      proposedLyric: true,
+    },
+    {
+      id: "ocr-2",
+      box: [50, 2, 90, 40],
+      text: "a tempo.",
+      ocrConfidence: 0.95,
+      regionCoverage: 0.7,
+      semantic: "DirectionText",
+      semanticScore: 0.2,
+      proposedLyric: false,
+    },
+  ],
+};
+
+describe("OCR rows", () => {
+  it("replace bare boxes, prefill text, and record the original OCR and the gate's verdict", () => {
+    const items = reviewItems(ocrInventory);
+    expect(items.map((i) => [i.id, i.initialText, i.proposedLyric])).toEqual([
+      ["ocr-1", "kind,", true],
+      ["ocr-2", "a tempo.", false],
+    ]);
+    const edited = setText(blankCandidate(items[0]), "kind");
+    expect(blankCandidate(items[0]).text).toBe("kind,");
+    const out = buildCandidateExport("job-1", ocrInventory, { "ocr-1": setState(edited, "accept") });
+    expect(out.decisions[0]).toMatchObject({
+      id: "ocr-1",
+      text: "kind",
+      state: "accept",
+      source: "ocr-row",
+      originalOcrText: "kind,",
+      proposedLyric: true,
+    });
+    expect(out.decisions[1]).toMatchObject({ text: "a tempo.", state: "pending", proposedLyric: false });
+  });
+
+  it("falls back to detector boxes when OCR found nothing", () => {
+    expect(reviewItems({ ...inventory, ocrRows: [], ocrStatus: "ok" })[0].kind).toBe("box");
+    expect(reviewItems(inventory)[0].initialText).toBe("");
+  });
+});
+
 describe("LyricCandidatesClient", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -90,5 +145,21 @@ describe("LyricCandidatesClient", () => {
     })) as unknown as typeof fetch;
     render(<LyricCandidatesClient jobId="j" pageNumber={1} />);
     await waitFor(() => screen.getByText(/No lyric regions were detected/));
+  });
+});
+
+describe("LyricCandidatesClient with OCR rows", () => {
+  it("shows the prefilled text with the gate's suggestion and accepts it unchanged", async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ocrInventory,
+    })) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={2} />);
+    await waitFor(() => screen.getByText(/Suggested lyric/));
+    expect(screen.getByText(/Withheld/)).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox").map((t) => (t as HTMLInputElement).value)).toEqual(["kind,", "a tempo."]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Accept" })[0]);
+    expect(screen.getByTestId("accepted-count")).toHaveTextContent("1 accepted");
   });
 });

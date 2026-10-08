@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   blankCandidate,
   buildCandidateExport,
+  reviewItems,
   setState,
   setText,
   type CandidateDecision,
@@ -57,9 +58,10 @@ export default function LyricCandidatesClient({
   if (error) return <p role="alert">{error}</p>;
   if (!inventory) return <p>Loading lyric candidates…</p>;
 
+  const items = reviewItems(inventory);
   const update = (id: string, fn: (d: CandidateDecision) => CandidateDecision) =>
     setDecisions((prev) => {
-      const candidate = inventory.candidates.find((c) => c.id === id)!;
+      const candidate = items.find((c) => c.id === id)!;
       const next = { ...prev, [id]: fn(prev[id] ?? blankCandidate(candidate)) };
       try {
         window.localStorage.setItem(key, JSON.stringify(next));
@@ -69,7 +71,7 @@ export default function LyricCandidatesClient({
       return next;
     });
 
-  const accepted = inventory.candidates.filter(
+  const accepted = items.filter(
     (c) => decisions[c.id]?.state === "accept",
   ).length;
 
@@ -86,7 +88,7 @@ export default function LyricCandidatesClient({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  if (inventory.candidates.length === 0)
+  if (items.length === 0)
     return <p>No lyric regions were detected on this page.</p>;
 
   return (
@@ -106,7 +108,13 @@ export default function LyricCandidatesClient({
         </button>
         <span data-testid="accepted-count">{accepted} accepted</span>
       </div>
-      {inventory.candidates.map((c) => {
+      {inventory.ocrStatus === "failed" && (
+        <p role="status" className="text-sm text-amber-700">
+          Text recognition did not run for this page, so you are seeing detected
+          regions without text.
+        </p>
+      )}
+      {items.map((c) => {
         const d = decisions[c.id] ?? blankCandidate(c);
         return (
           <article
@@ -114,10 +122,7 @@ export default function LyricCandidatesClient({
             className="border-t border-slate-300 py-4 dark:border-slate-700"
           >
             <p className="text-sm">
-              {c.regionStatus === "review"
-                ? `Needs review (${c.reason})`
-                : "Detected"}
-              {c.competingText ? " — may be a direction or dynamic" : ""}
+              {c.note}
             </p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
