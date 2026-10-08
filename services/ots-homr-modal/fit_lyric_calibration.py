@@ -69,6 +69,26 @@ def bootstrap(rows, judgements, seed=20261008):
     return intervals
 
 
+def tall_box_rate(pages, floor=0.6, ratio=1.6):
+    """Share of vocal-page boxes at/above `floor` taller than `ratio` x their page's median height.
+
+    A geometric proxy for boxes that stack several lyric lines. Boxes spanning several words on one
+    line are not visible to it, so it is a lower bound on multi-lyric boxes, not a count of them.
+    """
+    total = tall = 0
+    for page in pages:
+        if page["corpus"] == "ossq":
+            continue
+        boxes = [b for b in page["boxes"] if b["rawConfidence"] >= floor]
+        if len(boxes) < 4:
+            continue
+        heights = sorted(b["box"][3] - b["box"][1] for b in boxes)
+        median = heights[len(heights) // 2]
+        total += len(boxes)
+        tall += sum(1 for h in (b["box"][3] - b["box"][1] for b in boxes) if h > ratio * median)
+    return {"boxes": total, "taller": tall, "rate": (tall / total) if total else None, "ratio": ratio, "rawAtLeast": floor}
+
+
 def choose_accept(bands):
     for band in bands:
         if band.get("calibrated") is not None and band["calibrated"] >= TARGET_PRECISION:
@@ -111,6 +131,11 @@ def main():
         "negativeRates": negative_rates(rows, negative_pages),
         "acceptLowerEdge": accept["lowerEdge"] if accept else None,
         "acceptCalibrated": accept["calibrated"] if accept else None,
+        "definition": (
+            "Precision is P(box contains lyric text) on a vocal page. A box that spans several words "
+            "or stacked lyric lines still counts as lyric text; the judging could not separate them."
+        ),
+        "tallBoxProxy": tall_box_rate(pages),
         "caveats": [
             "Detector training membership of these pages is unverified; precision may be optimistic.",
             "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",

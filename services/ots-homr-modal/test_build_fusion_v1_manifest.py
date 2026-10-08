@@ -15,6 +15,7 @@ def report(accept=0.7):
     return {
         "schemaVersion": "ots.lyric-calibration-fit.v1", "targetPrecision": 0.9, "bands": bands,
         "acceptLowerEdge": 0.8, "pages": {}, "negativeRates": [], "caveats": ["c"],
+        "definition": "d", "tallBoxProxy": {},
     }
 
 

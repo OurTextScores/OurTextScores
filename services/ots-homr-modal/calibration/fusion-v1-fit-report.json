@@ -120,6 +120,14 @@
  ],
  "acceptLowerEdge": 0.6,
  "acceptCalibrated": 0.9333,
+ "definition": "Precision is P(box contains lyric text) on a vocal page. A box that spans several words or stacked lyric lines still counts as lyric text; the judging could not separate them.",
+ "tallBoxProxy": {
+  "boxes": 3129,
+  "taller": 114,
+  "rate": 0.0364333652924257,
+  "ratio": 1.6,
+  "rawAtLeast": 0.6
+ },
  "caveats": [
   "Detector training membership of these pages is unverified; precision may be optimistic.",
   "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",

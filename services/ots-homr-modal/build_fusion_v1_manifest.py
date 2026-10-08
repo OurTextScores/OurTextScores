@@ -65,6 +65,8 @@ def build(report, created_at):
             "acceptRawLowerEdge": report["acceptLowerEdge"],
             "pages": report["pages"],
             "negativeRates": report["negativeRates"],
+            "definition": report["definition"],
+            "tallBoxProxy": report["tallBoxProxy"],
             "caveats": report["caveats"],
         },
     }

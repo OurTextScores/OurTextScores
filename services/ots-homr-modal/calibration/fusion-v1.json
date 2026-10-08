@@ -74,6 +74,7 @@
    "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
    "Boxes below raw 0.5 were not sampled; the bins carry no information about them."
   ],
+  "definition": "Precision is P(box contains lyric text) on a vocal page. A box that spans several words or stacked lyric lines still counts as lyric text; the judging could not separate them.",
   "negativeRates": [
    {
     "falsePositives": 84,
@@ -105,6 +106,13 @@
    "instrumental": 45,
    "vocal": 173
   },
+  "tallBoxProxy": {
+   "boxes": 3129,
+   "rate": 0.0364333652924257,
+   "ratio": 1.6,
+   "rawAtLeast": 0.6,
+   "taller": 114
+  },
   "targetPrecision": 0.9
  },
  "geometry": {
@@ -114,6 +122,6 @@
  "minimumWinnerMargin": 0.0,
  "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
  "policy": "fusion-v1",
- "policyRevision": "a579f17d63a9e7595ecbbd0d8b64751d9788ba2b29f9b2ea1380f8ea1add3395",
+ "policyRevision": "2d8104dd516247eb8286ce9ae3e0371fa9d87991179ce9fba3e2134e1f9ddb17",
  "schemaVersion": "ots.text-fusion-calibration.v1"
 }
