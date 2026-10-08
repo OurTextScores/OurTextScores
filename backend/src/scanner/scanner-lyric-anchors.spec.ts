@@ -104,6 +104,24 @@ describe('anchorRows', () => {
     ).toBe(0);
   });
 
+  it('gives a syllable far from every note of its measure no note at all', () => {
+    const sparse = staff({
+      tokens: [['clef_G2'], ['note_8', 'C4'], ['barline']],
+      barLines: [900],
+      symbols: [{ index: 1, attention: [128, 0] }]
+    });
+    // C4 sits at x=100; a credit set ~500px away under the same staff is nowhere near it.
+    const out = anchorRows([row('credit', [590, 170, 650, 190], 'PAUL')], [sparse]);
+    expect(out.get('credit')!.syllables[0]).toMatchObject({
+      noteTokenIndex: null,
+      noteX: null,
+      position: 'none'
+    });
+    // A syllable 90px from the note still gets it.
+    const near = anchorRows([row('near', [165, 170, 215, 190], 'kind')], [sparse]);
+    expect(near.get('near')!.syllables[0].noteTokenIndex).toBe(1);
+  });
+
   it('ignores staves with no notes', () => {
     const empty = staff({ tokens: [['clef_G2'], ['barline']], symbols: [] });
     expect(anchorRows([row('a', [90, 170, 140, 190], 'x')], [empty]).size).toBe(0);

@@ -171,6 +171,28 @@ describe('OCR rows', () => {
     expect(without.every((r) => r.proposedLyric && r.withheldReason === null)).toBe(true);
   });
 
+  it('withhold a gate-approved row under a staff but far from all of its notes', () => {
+    const staff = {
+      index: 0,
+      region: [0, 100, 1000, 160],
+      tokens: [['clef_G2'], ['note_8', 'C4'], ['barline']],
+      barLines: [900],
+      symbols: [{ index: 1, attention: [128, 0] }]
+    };
+    const artifact = {
+      fusedRegions: [],
+      lyricText: {
+        status: 'ok',
+        rows: [row('PAUL', [600, 170, 680, 190]), row('kind,', [90, 170, 140, 190])]
+      }
+    };
+    const rows = buildLyricCandidateInventory(artifact, 1, raster, [staff]).ocrRows;
+    expect(rows.map((r) => [r.text, r.proposedLyric, r.withheldReason])).toEqual([
+      ['PAUL', false, 'far-from-notes'],
+      ['kind,', true, null]
+    ]);
+  });
+
   it('report a failed OCR run and refuse a row outside the page', () => {
     expect(
       buildLyricCandidateInventory(

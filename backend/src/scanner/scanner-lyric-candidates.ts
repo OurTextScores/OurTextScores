@@ -47,7 +47,7 @@ export interface LyricOcrRow {
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
   /** Why a row the semantic gate liked was withheld anyway; null when it was not. */
-  withheldReason: 'no-staff' | null;
+  withheldReason: 'no-staff' | 'far-from-notes' | null;
 }
 
 export interface LyricCandidateInventory {
@@ -168,6 +168,14 @@ export function buildLyricCandidateInventory(
     if (staves.length > 0 && !row.anchor && row.proposedLyric) {
       row.proposedLyric = false;
       row.withheldReason = 'no-staff';
+    } else if (
+      row.anchor &&
+      row.proposedLyric &&
+      row.anchor.syllables.every((syllable) => syllable.noteTokenIndex === null)
+    ) {
+      // Under a staff but nowhere near one of its notes: a publisher or engraver credit, not a lyric.
+      row.proposedLyric = false;
+      row.withheldReason = 'far-from-notes';
     }
   }
   return {

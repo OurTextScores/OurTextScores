@@ -12,6 +12,12 @@ import { attentionIsOrdered } from './scanner-locate';
 
 const STAFF_IMAGE_WIDTH = 1280;
 const MAX_STAFF_GAP_FACTOR = 1.5;
+/**
+ * A syllable further than this (raster px; the scanner normalises pages to one width) from every note of
+ * its measure is not sung there: it gets no note. Publisher and engraver credits under the last staff sit
+ * 77-563 px from the nearest note; all 124 correct fresh-page placements were within 83 page px.
+ */
+export const MAX_NOTE_DISTANCE_PX = 100;
 
 export interface AnchorSymbol {
   index: number;
@@ -184,22 +190,22 @@ export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<stri
         const notes = inMeasure.filter(([i]) =>
           /^note|^gracenote/.test(String(staff.tokens[i][0]))
         );
-        if (notes.length === 0) {
-          return {
-            text: piece.text,
-            x,
-            measureInStaff,
-            noteTokenIndex: null,
-            notePitch: null,
-            noteOrdinalInMeasure: null,
-            distancePx: null,
-            noteX: null,
-            position: 'none' as const
-          };
-        }
+        const noNote = {
+          text: piece.text,
+          x,
+          measureInStaff,
+          noteTokenIndex: null,
+          notePitch: null,
+          noteOrdinalInMeasure: null,
+          distancePx: null,
+          noteX: null,
+          position: 'none' as const
+        };
+        if (notes.length === 0) return noNote;
         const [tokenIndex, where] = notes.reduce((a, b) =>
           Math.abs(a[1].x - x) <= Math.abs(b[1].x - x) ? a : b
         );
+        if (Math.abs(where.x - x) > MAX_NOTE_DISTANCE_PX) return noNote;
         return {
           text: piece.text,
           x,

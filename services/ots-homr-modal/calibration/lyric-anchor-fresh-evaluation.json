@@ -1,0 +1,75 @@
+{
+ "schemaVersion": "ots.lyric-anchor-fresh-evaluation.v1",
+ "pages": 11,
+ "items": 132,
+ "owner_note": "Owner: 'unsure' means wrong (spliced/partial lyric, split of two adjacent words, or not a lyric); no item was judged 'wrong'.",
+ "judgements": {
+  "correct": 124,
+  "unsure": 8
+ },
+ "unsureTreatedAsWrong": {
+  "correct": 124,
+  "wrong": 8,
+  "accuracy": 0.9393939393939394,
+  "wilson90": [
+   0.896,
+   0.966
+  ]
+ },
+ "failures": [
+  {
+   "score": "IMSLP41375",
+   "text": "n",
+   "distancePx": 40
+  },
+  {
+   "score": "IMSLP41375",
+   "text": "jetzt",
+   "distancePx": 15
+  },
+  {
+   "score": "IMSLP11784",
+   "text": "f",
+   "distancePx": 34
+  },
+  {
+   "score": "IMSLP435041",
+   "text": "B.&",
+   "distancePx": 430
+  },
+  {
+   "score": "IMSLP435041",
+   "text": "H.20327",
+   "distancePx": 563
+  },
+  {
+   "score": "IMSLP632177",
+   "text": "DUPONT",
+   "distancePx": 77
+  },
+  {
+   "score": "IMSLP632177",
+   "text": "PAUL",
+   "distancePx": 186
+  },
+  {
+   "score": "IMSLP632177",
+   "text": "Bouloi.",
+   "distancePx": 14
+  }
+ ],
+ "afterFarFromNotesRule": {
+  "note": "rule MAX_NOTE_DISTANCE_PX=100 chosen after seeing these judgements (development, not held out)",
+  "placements": 129,
+  "correct": 124,
+  "wrong": 5,
+  "accuracy": 0.9612403100775194,
+  "removedWrong": [
+   "B.&",
+   "H.20327",
+   "PAUL"
+  ],
+  "removedCorrect": []
+ },
+ "sampleDesign": "stable hash sample, <=12 syllables per page, proposed-lyric anchored rows on 11 clean-score Lieder pages not used in development"
+}
