@@ -56,7 +56,21 @@ def ots_homr_api():
         )
         if manifest.class_allowlist.get(detector_id) != CLASS_ALLOWLIST[detector_id]:
             raise RuntimeError("Fusion manifest has incompatible class ownership")
-    engine = OtsHomrEngine(artifacts=artifacts, core=core, fusion_manifest=manifest)
+
+    class LoggingEngine(OtsHomrEngine):
+        """Test-only: report how many regions fusion produced before the provider's cap."""
+
+        def transcribe_fusion(self, *args, **kwargs):
+            result = super().transcribe_fusion(*args, **kwargs)
+            fused = result["fusion"]
+            print(
+                "FUSION-LOCALTEST regions=%d summary=%s"
+                % (len(fused.regions), json.dumps(fused.summary)),
+                flush=True,
+            )
+            return result
+
+    engine = LoggingEngine(artifacts=artifacts, core=core, fusion_manifest=manifest)
     return create_provider_app(
         engine=engine,
         service_revision=SERVICE_REVISION,
