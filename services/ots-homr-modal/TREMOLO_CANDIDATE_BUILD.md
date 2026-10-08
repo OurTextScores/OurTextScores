@@ -44,7 +44,9 @@ old shipping image. The existing `local_tremolo_candidate.py` remains the workin
 CPU HTTP qualification harness; this specification does not add OCR or text
 fusion to that harness.
 
-Remaining gates are fresh negative controls, the separate image build, actual
+Fresh negative controls completed on the experimental fp32 stack: all five pages
+were unchanged, with no native measure regressions. Remaining gates are the
+separate private-fp16 image build, actual
 production-compatible GPU execution, OCR/calibrated text fusion, and full per-page
 latency against the 280-second deadline. No production provider revision or backend
 `.env` should change before those gates pass. App/revision names reserve a distinct
@@ -55,9 +57,9 @@ candidate namespace; they do not establish deployment or readiness.
 `modal_tremolo_candidate.py` is a separate executable Modal entrypoint. Its app is
 `ourtextscores-ots-homr-tremolo-private-fp16-candidate-on`, revision
 `ots-homr-tremolo-private-fp16-candidate-20261007-v1-on`, with dedicated volume
-`ots-homr-tremolo-candidate-models`. It has **not been imported, built or deployed**.
-Importing this entrypoint constructs Modal resource definitions; offline tests parse
-its AST instead. The shipping `modal_app.py` and volume remain unchanged.
+`ots-homr-tremolo-candidate-models`. It has **not been imported with live Modal resources, built or deployed**.
+Importing this entrypoint constructs Modal resource definitions; offline tests
+execute the recipe with a fake Modal recorder and also inspect its AST. The shipping `modal_app.py` and volume remain unchanged.
 
 This recipe intentionally bootstraps the existing private fp16 pins. It does not
 load the experimental fp32 graphs used by the successful local receipts. Candidate
@@ -76,7 +78,7 @@ explicitly enabled only in this candidate image. Fusion defaults off and retains
 the existing missing/incompatible-calibration rejection when enabled.
 
 Eleven offline tests cover specification rejection, worker masks, actual-pin identity
-preservation and AST builder separation/hash checks. These tests establish source
+preservation, executable fake-Modal recipe checks and AST separation/hash checks. These tests establish source
 configuration, not CUDA readiness, Modal dependency availability, model accuracy or
 latency. A separate build and full fp16 qualification are still required before this
 candidate can be promoted. No model publication, backend environment update or live
