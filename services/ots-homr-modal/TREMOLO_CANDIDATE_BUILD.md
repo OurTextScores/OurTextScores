@@ -92,3 +92,14 @@ volume namespace. Offline tests replace the entire Modal module with a recorder,
 execute the real image recipe, inspect copy/hash/environment/decorator calls, and
 check both arms without creating live resources. Worker-factory tests preserve
 both timing values alongside the explicit masks.
+
+## Completed private graph CPU checks
+
+On2026-10-07 the exact private pinned recognition graphs reproduced both positive
+timing improvements (Lieder30→10/357,OSSQ46→2/380) and allfive negative pages were
+unchanged across actual plain/heads off/on workers. No native measure regressions.
+Receipts: `/home/jhlusko/workspace/homr-artifacts/local-tremolo-private-fp16-20261008/`
+and `/home/jhlusko/workspace/homr-artifacts/local-tremolo-private-fp16-negatives-20261007/`.
+These known development-page CPU checks do not qualify whole-corpus accuracy,
+full OCR/text fusion, GPU latency or a built Modal image. Candidate readiness remains
+unqualified until those gates pass. No deploy or pin change occurred.
