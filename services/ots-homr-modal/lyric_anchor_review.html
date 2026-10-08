@@ -1,7 +1,7 @@
 <!doctype html><meta charset="utf-8"><title>Lyric placement judgement</title>
 <style>body{font:16px system-ui;margin:1.5rem auto;max-width:1100px}img{max-width:100%;border:1px solid #888}button{font-size:1rem;margin:6px;padding:6px 14px}#bar{position:sticky;top:0;background:#fff;padding:8px 0}kbd{border:1px solid #888;border-radius:3px;padding:0 4px}.done{color:#080}</style>
 <h1>Is the blue line on the note this syllable is sung on?</h1>
-<p>The <b style="color:#c60">orange tick</b> marks the estimated syllable position; the thin grey outline shows the complete OCR row, not an individual word boundary; the <b style="color:#17c">blue line</b> marks an approximate note location from decoder attention or interpolation. The recognized syllable is shown below; judge both its text and proposed note. <b>Correct</b>: the blue line sits on the note the syllable belongs to. <b>Wrong</b>: another note, or the syllable is not lyric text. <b>Unsure</b> if you cannot tell. Keys: <kbd>C</kbd> correct, <kbd>W</kbd> wrong, <kbd>U</kbd> unsure, left arrow back.</p>
+<p>The <b style="color:#c60">orange tick</b> marks the estimated syllable position; the thin grey outline shows the complete OCR row, not an individual word boundary; the <b style="color:#17c">blue line</b> marks an approximate note location from decoder attention or interpolation. The recognized syllable is shown below; judge both its text and proposed note. <b>Correct</b>: the blue line sits on the note the syllable belongs to. <b>Wrong</b>: another note, or the syllable is not lyric text. <b>Unsure</b> if you cannot tell. Use the optional text box to supply a corrected syllable. This saves a text correction separately from your judgement and does not change note placement. Keys: <kbd>C</kbd> correct, <kbd>W</kbd> wrong, <kbd>U</kbd> unsure, left arrow back.</p>
 <div id="bar"><span id="count"></span> <button id="download">Export judgements</button></div>
 <main></main>
 <script>
@@ -9,17 +9,19 @@
 const items=await(await fetch('items.json')).json();
 const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(items.map(i=>i.id)))))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const key='ots-anchor-judge-'+digest;let j=JSON.parse(localStorage.getItem(key)||'{}');
+const correctionKey=key+'-syllable-corrections';let corrections=JSON.parse(localStorage.getItem(correctionKey)||'{}');
 let at=Math.max(0,items.findIndex(i=>!j[i.id]));if(at<0)at=0;
 const main=document.querySelector('main');
-function save(){localStorage.setItem(key,JSON.stringify(j));const n=items.filter(i=>j[i.id]).length;document.querySelector('#count').textContent=`${n}/${items.length} judged; viewing ${at+1}`;}
+function save(){localStorage.setItem(key,JSON.stringify(j));localStorage.setItem(correctionKey,JSON.stringify(corrections));const n=items.filter(i=>j[i.id]).length;document.querySelector('#count').textContent=`${n}/${items.length} judged; viewing ${at+1}`;}
 function show(){main.innerHTML='';const i=items[at];const p=document.createElement('p');p.textContent=`Item ${at+1} of ${items.length}`+(j[i.id]?` — currently: ${j[i.id]}`:'');p.className=j[i.id]?'done':'';main.append(p);
  if(i.text!==undefined){const label=document.createElement('p');label.textContent=`Recognized syllable: “${i.text}”; proposed pitch: ${i.notePitch}; position from ${i.position}.`;main.append(label);}
  const img=document.createElement('img');img.src=i.image;img.alt='Page region with the box in red';main.append(img);main.append(document.createElement('br'));
+ const correctionLabel=document.createElement('label');correctionLabel.textContent='Correct syllable (optional): ';const correction=document.createElement('input');correction.type='text';correction.id='correct-syllable';correction.value=corrections[i.id]?.correctedText||'';correction.placeholder='Leave blank if no text correction';correction.style.width='22em';correction.oninput=()=>{if(correction.value.trim())corrections[i.id]={originalText:i.text??null,correctedText:correction.value};else delete corrections[i.id];save();};correctionLabel.append(correction);main.append(correctionLabel,document.createElement('br'));
  for(const [k,l] of [['correct','Correct (C)'],['wrong','Wrong (W)'],['unsure','Unsure (U)']]){const b=document.createElement('button');b.textContent=l;b.onclick=()=>set(k);main.append(b);}
  save();}
 function set(v){j[items[at].id]=v;if(at<items.length-1)at++;show();}
-document.onkeydown=e=>{const k=e.key.toLowerCase();if(k==='c')set('correct');else if(k==='w')set('wrong');else if(k==='u')set('unsure');else if(e.key==='ArrowLeft'&&at>0){at--;show();}else if(e.key==='ArrowRight'&&at<items.length-1){at++;show();}};
-document.querySelector('#download').onclick=()=>{const out={schemaVersion:'ots.lyric-anchor-judgements.v1',itemsSha256:digest,judgements:j};const url=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='lyric-anchor-judgements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+document.onkeydown=e=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target.isContentEditable||e.ctrlKey||e.metaKey||e.altKey)return;const k=e.key.toLowerCase();if(k==='c')set('correct');else if(k==='w')set('wrong');else if(k==='u')set('unsure');else if(e.key==='ArrowLeft'&&at>0){at--;show();}else if(e.key==='ArrowRight'&&at<items.length-1){at++;show();}};
+document.querySelector('#download').onclick=()=>{const out={schemaVersion:'ots.lyric-anchor-judgements.v1',itemsSha256:digest,judgements:j,syllableCorrections:corrections};const url=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='lyric-anchor-judgements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 show();
 })();
 </script>
