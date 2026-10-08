@@ -213,6 +213,22 @@ describe('OCR rows', () => {
     ]);
   });
 
+  it('withhold a gate-approved row in the bottom margin of the page', () => {
+    // raster is 1000x800: the footer starts at y > 0.92 * 800 = 736.
+    const artifact = {
+      fusedRegions: [],
+      lyricText: {
+        status: 'ok',
+        rows: [row('Made in England', [100, 750, 300, 790]), row('kind,', [100, 600, 160, 640])]
+      }
+    };
+    const rows = buildLyricCandidateInventory(artifact, 1, raster).ocrRows;
+    expect(rows.map((r) => [r.text, r.proposedLyric, r.withheldReason])).toEqual([
+      ['Made in England', false, 'footer'],
+      ['kind,', true, null]
+    ]);
+  });
+
   it('report a failed OCR run and refuse a row outside the page', () => {
     expect(
       buildLyricCandidateInventory(

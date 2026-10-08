@@ -1,0 +1,130 @@
+{
+ "schemaVersion": "ots.lyric-anchor-fresh-evaluation.v2",
+ "pages": 10,
+ "items": 120,
+ "rulesInForce": "no-staff, far-from-notes (100 px), clipped single consonant, ellipsis split, credit-like (build f9122ea); rules were NOT tuned on this sample",
+ "judgements": {
+  "correct": 109,
+  "wrong": 7,
+  "unsure": 4
+ },
+ "unsureTreatedAsWrong": {
+  "correct": 109,
+  "wrong": 11,
+  "accuracy": 0.9083333333333333,
+  "wilson90": [
+   0.856,
+   0.943
+  ]
+ },
+ "failures": [
+  {
+   "score": "IMSLP43630",
+   "text": "Da",
+   "judgement": "wrong",
+   "distancePx": 97,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP12778",
+   "text": ".",
+   "judgement": "wrong",
+   "distancePx": 49,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP12778",
+   "text": ".",
+   "judgement": "unsure",
+   "distancePx": 32,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP12778",
+   "text": "be",
+   "judgement": "unsure",
+   "distancePx": 46,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP16259",
+   "text": "trunk'.",
+   "judgement": "unsure",
+   "distancePx": 48,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP16259",
+   "text": ".",
+   "judgement": "wrong",
+   "distancePx": 26,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP542017",
+   "text": "J.",
+   "judgement": "wrong",
+   "distancePx": 2,
+   "position": "interpolated"
+  },
+  {
+   "score": "IMSLP542017",
+   "text": "her",
+   "judgement": "unsure",
+   "distancePx": 0,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP542017",
+   "text": "England",
+   "judgement": "wrong",
+   "distancePx": 24,
+   "position": "interpolated"
+  },
+  {
+   "score": "IMSLP542017",
+   "text": "Philadelphia",
+   "judgement": "wrong",
+   "distancePx": 77,
+   "position": "attention"
+  },
+  {
+   "score": "IMSLP575893",
+   "text": "s\u00e9",
+   "judgement": "wrong",
+   "distancePx": 16,
+   "position": "attention"
+  }
+ ],
+ "failureTypes": {
+  "imprintOrFooterText": [
+   "J.",
+   "England",
+   "Philadelphia"
+  ],
+  "punctuationOnlyPieces": [
+   ".",
+   ".",
+   "."
+  ],
+  "placementOrFragment": [
+   "Da (97 px from note)",
+   "be",
+   "trunk'.",
+   "her",
+   "s\u00e9"
+  ]
+ },
+ "afterFooterRule": {
+  "note": "footer rule (row centre below 92% of page height) was derived AFTER seeing samples 1 and 2: development, not held out",
+  "items": 117,
+  "correct": 109,
+  "accuracy": 0.9316239316239316,
+  "footerRowsOn21Pages": "all 8 rows below 88% of page height were page furniture, 0 lyrics"
+ },
+ "bothSamples": {
+  "items": 252,
+  "correct": 233,
+  "accuracy": 0.9246031746031746
+ }
+}

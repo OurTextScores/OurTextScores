@@ -13,6 +13,11 @@ import { AnchorStaff, RowAnchor, anchorRows } from './scanner-lyric-anchors';
 export const LYRIC_CANDIDATE_SCHEMA = 'ots.lyric-candidate-inventory.v1';
 const MAX_CANDIDATES = 500;
 const CROP_PADDING_PX = 24;
+/**
+ * Page furniture (imprint, plate number, folio) sits in the bottom margin. Across 483 OCR rows on 21 fresh pages every
+ * row below 92% of the page height was such text and no lyric was; the cutoff is language-free.
+ */
+const FOOTER_FRACTION = 0.92;
 const MAX_CROP_PIXELS = 4_000_000;
 
 export interface LyricRasterIdentity {
@@ -47,7 +52,7 @@ export interface LyricOcrRow {
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
   /** Why a row the semantic gate liked was withheld anyway; null when it was not. */
-  withheldReason: 'no-staff' | 'far-from-notes' | 'credit-like' | null;
+  withheldReason: 'no-staff' | 'far-from-notes' | 'credit-like' | 'footer' | null;
 }
 
 export interface LyricCandidateInventory {
@@ -178,7 +183,10 @@ export function buildLyricCandidateInventory(
     row.anchor = anchors.get(row.id) ?? null;
     // Lyrics hang under a staff. With the score's staves in hand, a row no staff reaches is a title,
     // credit, page number or similar, whatever the text classifier thought of it.
-    if (staves.length > 0 && !row.anchor && row.proposedLyric) {
+    if (row.proposedLyric && (row.box[1] + row.box[3]) / 2 > FOOTER_FRACTION * raster.height) {
+      row.proposedLyric = false;
+      row.withheldReason = 'footer';
+    } else if (staves.length > 0 && !row.anchor && row.proposedLyric) {
       row.proposedLyric = false;
       row.withheldReason = 'no-staff';
     } else if (row.proposedLyric && looksLikeCredit(row.text)) {

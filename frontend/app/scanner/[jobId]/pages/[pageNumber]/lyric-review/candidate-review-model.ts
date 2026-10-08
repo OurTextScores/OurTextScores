@@ -36,7 +36,7 @@ export type OcrRow = {
   semanticScore: number | null;
   proposedLyric: boolean;
   anchor?: RowAnchor | null;
-  withheldReason?: "no-staff" | "far-from-notes" | "credit-like" | null;
+  withheldReason?: "no-staff" | "far-from-notes" | "credit-like" | "footer" | null;
 };
 
 /** One thing to review: a detector box with no text, or an OCR row with its unreviewed text. */
@@ -97,7 +97,9 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
           ? "Withheld: not under a staff (a title, credit or page number?). You can still accept it."
           : r.withheldReason === "far-from-notes"
             ? "Withheld: under a staff but far from its notes (a publisher or engraver credit?). You can still accept it."
-            : r.withheldReason === "credit-like"
+            : r.withheldReason === "footer"
+              ? "Withheld: in the page's bottom margin (an imprint, plate number or folio?). You can still accept it."
+              : r.withheldReason === "credit-like"
               ? "Withheld: looks like a publisher, edition or plate-number line. You can still accept it."
             : "Withheld: reads like a direction or unclear. You can still accept it.",
       placement: describePlacement(r.anchor),
