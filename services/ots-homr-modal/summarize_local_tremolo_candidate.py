@@ -3,6 +3,7 @@
 import argparse
 import base64
 import json
+import hashlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -25,6 +26,11 @@ def inventory(root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument(
+        "--pages",
+        type=Path,
+        help="Frozen source-reference windows for optional native audits",
+    )
     args = parser.parse_args()
     rows = []
     for source in sorted((args.root / "off").glob("*.json")):
@@ -73,6 +79,60 @@ def main():
     (args.root / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     assert report["checksPassed"], "Local integration invariant changed"
+    if args.pages:
+        from training.onnx.audit_tremolo_validation import native_measures
+        from training.onnx.score_full_page_musicxml import compare, staff_events
+        from training.onnx.score_paired_page_diagnostic import read_reference
+
+        audits = []
+        for page in json.loads(args.pages.read_text()):
+            reference_path = Path(page["reference"])
+            assert (
+                hashlib.sha256(reference_path.read_bytes()).hexdigest()
+                == page["reference_sha256"]
+            )
+            reference = staff_events(
+                read_reference(reference_path),
+                page["start_measure"],
+                page["end_measure"],
+            )
+            for candidate in ("core", "additional-heads"):
+                streams = {
+                    arm: staff_events(
+                        ET.parse(
+                            args.root / arm / f'{page["score"]}-{candidate}.musicxml'
+                        ).getroot()
+                    )
+                    for arm in ("off", "on")
+                }
+                measures = native_measures(reference, streams["off"], streams["on"])
+                audits.append(
+                    {
+                        "score": page["score"],
+                        "source": page["source"],
+                        "candidate": candidate,
+                        "metrics": {
+                            arm: compare(reference, events)
+                            for arm, events in streams.items()
+                        },
+                        "regressedNativeMeasures": [
+                            m["page_bar"] for m in measures if m["regressed"]
+                        ],
+                    }
+                )
+                (
+                    args.root / f'{page["score"]}-{candidate}-native-audit.json'
+                ).write_text(json.dumps(measures, indent=2) + "\n")
+        (args.root / "native-score-report.json").write_text(
+            json.dumps(
+                {
+                    "cases": audits,
+                    "scope": "Known positive pages; paired on/off for this local source and graph configuration, not shipping stack or independent test corpus",
+                },
+                indent=2,
+            )
+            + "\n"
+        )
 
 
 if __name__ == "__main__":
