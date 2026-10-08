@@ -451,6 +451,35 @@ export class ScannerController {
   }
 
   /** Everything the findings review embed needs: systems, the reading, and the findings. */
+  @Get(':jobId/pages/:pageNumber/lyric-candidates')
+  async lyricCandidates(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number
+  ) {
+    return this.scanner.pageLyricCandidates(user.userId, jobId, pageNumber);
+  }
+
+  @Get(':jobId/pages/:pageNumber/lyric-candidates/:candidateId/crop')
+  async lyricCandidateCrop(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('candidateId') candidateId: string,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const crop = await this.scanner.pageLyricCandidateCrop(
+      user.userId,
+      jobId,
+      pageNumber,
+      candidateId
+    );
+    response.setHeader('Content-Type', crop.contentType);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(crop.body);
+  }
+
   /**
    * Sits at the same depth as the comparison's regions document on purpose. Everything
    * inside it addresses siblings relatively -- the crops, and `../merged` for the save --

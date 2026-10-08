@@ -19,6 +19,11 @@ import {
 } from './schemas/scanner-finding-disposition.schema';
 import { findingCrop, findingSystems } from './scanner-finding-crop';
 import {
+  buildLyricCandidateInventory,
+  lyricCandidateCrop,
+  LyricCandidateInventory
+} from './scanner-lyric-candidates';
+import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -3186,6 +3191,80 @@ export class ScannerService implements OnModuleInit {
     const finding = run?.crossStaffFindings?.[findingIndex];
     if (!finding) throw new NotFoundException('Scanner finding not found');
     return this.extractFindingCrop(userId, jobId, pageNumber, engineId, statusVersion, finding);
+  }
+
+  /**
+   * Lyric candidates for one page, from the stored text-fusion review only. Off unless
+   * SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED=1, and read-only: nothing here writes a score.
+   */
+  async pageLyricCandidates(
+    userId: string,
+    jobId: string,
+    pageNumber: number
+  ): Promise<LyricCandidateInventory> {
+    return (await this.lyricCandidateContext(userId, jobId, pageNumber)).inventory;
+  }
+
+  async pageLyricCandidateCrop(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    candidateId: string
+  ): Promise<{ body: Buffer; contentType: 'image/png' }> {
+    const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
+    const candidate = inventory.candidates.find((entry) => entry.id === candidateId);
+    if (!candidate) throw new NotFoundException('Scanner lyric candidate not found');
+    const rect = lyricCandidateCrop(candidate, inventory.raster);
+    if (!rect) throw new PayloadTooLargeException('Scanner lyric candidate crop is too large');
+    const locator = page.recognitionRaster!.storage!;
+    const source = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
+    const metadata = await sharp(source).metadata();
+    if (
+      createHash('sha256').update(source).digest('hex') !== inventory.raster.checksumSha256 ||
+      Number(metadata.width || 0) !== inventory.raster.width ||
+      Number(metadata.height || 0) !== inventory.raster.height
+    ) {
+      throw new ConflictException('Scanner recognition raster changed; refresh and try again');
+    }
+    return { body: await sharp(source).extract(rect).png().toBuffer(), contentType: 'image/png' };
+  }
+
+  private async lyricCandidateContext(userId: string, jobId: string, pageNumber: number) {
+    this.assertAvailable(userId);
+    if (process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED !== '1') {
+      throw new NotFoundException('Lyric review is not enabled');
+    }
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!page) throw new NotFoundException('Scanner page not found');
+    const raster = page.recognitionRaster;
+    if (!raster?.storage) {
+      throw new NotFoundException('Scanner recognition raster is not available');
+    }
+    const locator =
+      page.engines?.['ots-homr' as ScannerEngineId]?.artifacts?.['text-fusion-review'];
+    if (!locator) throw new NotFoundException('This page has no text fusion review');
+    const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
+    let artifact: unknown;
+    try {
+      artifact = JSON.parse(body.toString('utf8'));
+    } catch {
+      throw new ConflictException('Scanner text fusion review is unreadable');
+    }
+    try {
+      return {
+        page,
+        inventory: buildLyricCandidateInventory(artifact, pageNumber, {
+          checksumSha256: raster.checksumSha256,
+          width: raster.width,
+          height: raster.height
+        })
+      };
+    } catch (error) {
+      throw new ConflictException(
+        error instanceof Error ? error.message : 'Scanner text fusion review is invalid'
+      );
+    }
   }
 
   /**
