@@ -9,9 +9,21 @@ from __future__ import annotations
 
 import modal
 
-from modal_app import HARD_TIMEOUT_SECONDS, SOURCE_COMMIT, hf_secret, image, model_cache
+from pathlib import Path as _Path
 
-SERVICE_REVISION = "ots-homr-fusion-calibrated-localtest-20261008-v1"
+from modal_app import HARD_TIMEOUT_SECONDS, SOURCE_COMMIT, hf_secret, image as base_image, model_cache
+
+#: The shipping image plus the hash-pinned lyric OCR stack (RapidOCR bundles its pinned models).
+image = base_image.add_local_file(
+    _Path(__file__).resolve().parent / "ocr-requirements.txt",
+    remote_path="/tmp/ocr-requirements.txt",
+    copy=True,
+).run_commands(
+    "python -m pip install --no-cache-dir --require-hashes --no-deps -r /tmp/ocr-requirements.txt",
+    "python -c 'import rapidocr; print(rapidocr.__file__)'",
+)
+
+SERVICE_REVISION = "ots-homr-fusion-ocr-localtest-20261008-v1"
 
 app = modal.App("ourtextscores-ots-homr-fusion-localtest")
 
@@ -63,13 +75,30 @@ def ots_homr_api():
             result = super().transcribe_fusion(*args, **kwargs)
             fused = result["fusion"]
             print(
-                "FUSION-LOCALTEST regions=%d summary=%s"
-                % (len(fused.regions), json.dumps(fused.summary)),
+                "FUSION-LOCALTEST regions=%d summary=%s ocr=%s"
+                % (
+                    len(fused.regions),
+                    json.dumps(fused.summary),
+                    json.dumps(
+                        {
+                            k: (v if k != "rows" else len(v))
+                            for k, v in (result.get("lyricText") or {}).items()
+                        }
+                    ),
+                ),
                 flush=True,
             )
             return result
 
-    engine = LoggingEngine(artifacts=artifacts, core=core, fusion_manifest=manifest)
+    from lyric_ocr import LyricTextPipeline
+    from semantic_gate import SemanticGate
+
+    engine = LoggingEngine(
+        artifacts=artifacts,
+        core=core,
+        fusion_manifest=manifest,
+        lyric_text=LyricTextPipeline(SemanticGate.load(), threads=2),
+    )
     return create_provider_app(
         engine=engine,
         service_revision=SERVICE_REVISION,

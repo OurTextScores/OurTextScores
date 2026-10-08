@@ -396,6 +396,8 @@ def create_provider_app(
                 return _error(request_id, "inference_failed", "Text fusion exceeded review limit")
             response["result"]["fusionSummary"] = fused.summary
             response["result"]["fusedRegions"] = fused.regions
+            if "lyricText" in result:
+                response["result"]["lyricText"] = result["lyricText"]
         app.state.result_cache[idempotency_key] = {
             "requestFingerprint": request_fingerprint,
             "response": response,

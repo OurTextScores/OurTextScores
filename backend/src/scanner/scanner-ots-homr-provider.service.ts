@@ -127,6 +127,41 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     });
   }
 
+  /**
+   * Optional OCR rows for lyric review: unreviewed text with the semantic gate's verdict. Anything
+   * malformed is a contract failure, not something to repair, so a bad row never reaches a person.
+   */
+  private lyricTextPayload(value: unknown): Record<string, unknown> | undefined {
+    if (value === undefined || value === null) return undefined;
+    const lyric = value as { status?: unknown; rows?: unknown; rowsOmitted?: unknown };
+    const rows = lyric.rows;
+    const valid =
+      (lyric.status === 'ok' || lyric.status === 'failed') &&
+      Array.isArray(rows) &&
+      rows.length <= 400 &&
+      Number.isInteger(lyric.rowsOmitted) &&
+      rows.every((row: Record<string, unknown>) => {
+        const box = row?.box as unknown[];
+        return (
+          Array.isArray(box) &&
+          box.length === 4 &&
+          box.every((n) => Number.isInteger(n)) &&
+          typeof row.text === 'string' &&
+          row.text.length <= 500 &&
+          typeof row.proposedLyric === 'boolean' &&
+          ['Lyrics', 'DirectionText', 'Unknown'].includes(row.semantic as string) &&
+          (row.semanticScore === null || typeof row.semanticScore === 'number') &&
+          typeof row.ocrConfidence === 'number'
+        );
+      });
+    if (!valid) throw this.invalid('Scanner OTS-HOMR lyric text contract verification failed');
+    return {
+      status: lyric.status,
+      rows,
+      rowsOmitted: lyric.rowsOmitted
+    };
+  }
+
   /** A tally object whose non-negative integer values add up to `total`. */
   private countsSumTo(counts: unknown, total: number): boolean {
     if (!counts || typeof counts !== 'object' || Array.isArray(counts)) return false;
@@ -230,11 +265,13 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         typeof summary.byClass !== 'object'
       )
         throw this.invalid('Scanner OTS-HOMR text fusion contract verification failed');
+      const lyricText = this.lyricTextPayload(envelope?.result?.lyricText);
       fusionArtifact = Buffer.from(
         JSON.stringify({
           textPolicy: engine.textPolicy,
           fusionSummary: summary,
-          fusedRegions: regions
+          fusedRegions: regions,
+          ...(lyricText ? { lyricText } : {})
         })
       );
       if (fusionArtifact.length > 1_048_576)

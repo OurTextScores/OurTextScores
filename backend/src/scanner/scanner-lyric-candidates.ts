@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { CropRect, padAndClamp } from './scanner-crop';
 
 /**
@@ -32,6 +33,18 @@ export interface LyricCandidate {
   textSource: 'none';
 }
 
+/** One OCR row from the provider, with the frozen semantic gate's verdict. Text is unreviewed. */
+export interface LyricOcrRow {
+  id: string;
+  box: [number, number, number, number];
+  text: string;
+  ocrConfidence: number;
+  regionCoverage: number;
+  semantic: 'Lyrics' | 'DirectionText' | 'Unknown';
+  semanticScore: number | null;
+  proposedLyric: boolean;
+}
+
 export interface LyricCandidateInventory {
   schemaVersion: typeof LYRIC_CANDIDATE_SCHEMA;
   automaticAttachment: false;
@@ -39,12 +52,54 @@ export interface LyricCandidateInventory {
   raster: LyricRasterIdentity;
   textPolicy: unknown;
   candidates: LyricCandidate[];
+  /** OCR rows selected by the lyric regions; empty when the provider ran no OCR. */
+  ocrRows: LyricOcrRow[];
+  ocrStatus: 'ok' | 'failed' | 'absent';
 }
 
 function isBox(value: unknown): value is [number, number, number, number] {
   return (
     Array.isArray(value) && value.length === 4 && value.every((n) => Number.isInteger(n) && n >= 0)
   );
+}
+
+function readOcrRows(
+  artifact: unknown,
+  raster: LyricRasterIdentity
+): { ocrRows: LyricOcrRow[]; ocrStatus: 'ok' | 'failed' | 'absent' } {
+  const lyric = (artifact as { lyricText?: { status?: string; rows?: unknown[] } })?.lyricText;
+  if (!lyric) return { ocrRows: [], ocrStatus: 'absent' };
+  const ocrRows: LyricOcrRow[] = [];
+  const seen = new Set<string>();
+  for (const row of (Array.isArray(lyric.rows) ? lyric.rows : []) as Record<string, any>[]) {
+    const box = row?.box;
+    if (
+      !isBox(box) ||
+      box[2] <= box[0] ||
+      box[3] <= box[1] ||
+      box[2] > raster.width ||
+      box[3] > raster.height
+    ) {
+      throw new Error('Text fusion artifact has an OCR row outside its page');
+    }
+    const id = createHash('sha256')
+      .update(`${raster.checksumSha256}:${box.join(',')}:${row.text}`)
+      .digest('hex')
+      .slice(0, 20);
+    if (seen.has(id)) continue; // identical text at an identical box is one row
+    seen.add(id);
+    ocrRows.push({
+      id: `ocr-${id}`,
+      box,
+      text: String(row.text),
+      ocrConfidence: Number(row.ocrConfidence),
+      regionCoverage: Number(row.regionCoverage),
+      semantic: row.semantic,
+      semanticScore: row.semanticScore === null ? null : Number(row.semanticScore),
+      proposedLyric: row.proposedLyric === true
+    });
+  }
+  return { ocrRows, ocrStatus: lyric.status === 'failed' ? 'failed' : 'ok' };
 }
 
 export function buildLyricCandidateInventory(
@@ -96,19 +151,22 @@ export function buildLyricCandidateInventory(
   }
   // Reading order: top to bottom, then left to right, so a page reviews like it reads.
   candidates.sort((a, b) => a.box[1] - b.box[1] || a.box[0] - b.box[0] || a.id.localeCompare(b.id));
+  const { ocrRows, ocrStatus } = readOcrRows(artifact, raster);
   return {
     schemaVersion: LYRIC_CANDIDATE_SCHEMA,
     automaticAttachment: false,
     pageNumber,
     raster,
     textPolicy: (artifact as { textPolicy?: unknown }).textPolicy ?? null,
-    candidates
+    candidates,
+    ocrRows,
+    ocrStatus
   };
 }
 
 /** The crop rectangle for one candidate, or null when it would be unreasonably large. */
 export function lyricCandidateCrop(
-  candidate: LyricCandidate,
+  candidate: { box: [number, number, number, number] },
   raster: LyricRasterIdentity
 ): CropRect | null {
   const rect = padAndClamp(candidate.box, CROP_PADDING_PX, raster);

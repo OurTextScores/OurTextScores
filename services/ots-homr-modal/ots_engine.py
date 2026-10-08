@@ -31,6 +31,10 @@ if TYPE_CHECKING:
     from bootstrap import RuntimeArtifacts
 
 
+#: e2 boxes at or above this raw confidence select OCR rows (the calibration floor).
+LYRIC_OCR_MIN_CONFIDENCE = 0.5
+
+
 class TextFusionError(RuntimeError):
     code = "fusion_failed"
 
@@ -49,11 +53,14 @@ class OtsHomrEngine:
         core: Any,
         execution_provider: str = "CUDAExecutionProvider",
         fusion_manifest: CalibrationManifest | None = None,
+        lyric_text: Any = None,
     ) -> None:
         self.artifacts = artifacts
         self.core = core
         self.execution_provider = execution_provider
         self.fusion_manifest = fusion_manifest
+        #: Optional `LyricTextPipeline`: OCR rows + semantic gate for lyric review. Never required.
+        self.lyric_text = lyric_text
         self._ready = False
         self._warm_lock = threading.Lock()
 
@@ -161,7 +168,21 @@ class OtsHomrEngine:
         except Exception as error:
             raise TextFusionError("recognition") from error
         result["fusion"] = fusion
+        if self.lyric_text is not None:
+            result["lyricText"] = self._lyric_text(decoded, detections)
         return result
+
+    def _lyric_text(self, decoded: Any, detections: dict[str, Any]) -> dict[str, Any]:
+        """OCR rows for lyric review. A failure here must not fail the page: it is reported."""
+        try:
+            boxes = [
+                [row["left"], row["top"], row["right"], row["bottom"]]
+                for row in detections[DETECTOR_ROUTES["lyrics"]]
+                if row.get("label") == "Lyrics" and row.get("confidence", 0) >= LYRIC_OCR_MIN_CONFIDENCE
+            ]
+            return self.lyric_text.lyric_rows(decoded, boxes)
+        except Exception as error:  # noqa: BLE001 - optional assist; surface, never raise
+            return {"status": "failed", "rows": [], "rowsOmitted": 0, "error": type(error).__name__}
 
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes:
         return self.core.regenerate(staffs, title)

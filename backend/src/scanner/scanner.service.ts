@@ -3212,7 +3212,9 @@ export class ScannerService implements OnModuleInit {
     candidateId: string
   ): Promise<{ body: Buffer; contentType: 'image/png' }> {
     const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
-    const candidate = inventory.candidates.find((entry) => entry.id === candidateId);
+    const candidate =
+      inventory.candidates.find((entry) => entry.id === candidateId) ??
+      inventory.ocrRows.find((entry) => entry.id === candidateId);
     if (!candidate) throw new NotFoundException('Scanner lyric candidate not found');
     const rect = lyricCandidateCrop(candidate, inventory.raster);
     if (!rect) throw new PayloadTooLargeException('Scanner lyric candidate crop is too large');

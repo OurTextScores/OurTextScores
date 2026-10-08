@@ -92,6 +92,61 @@ describe('buildLyricCandidateInventory', () => {
   });
 });
 
+describe('OCR rows', () => {
+  const row = (text: string, box: number[], extra: object = {}) => ({
+    box,
+    text,
+    ocrConfidence: 0.9,
+    regionCoverage: 0.7,
+    semantic: 'Lyrics',
+    semanticScore: 0.8,
+    proposedLyric: true,
+    ...extra
+  });
+
+  it('are absent without lyricText, carried with stable ids, and deduplicated', () => {
+    expect(buildLyricCandidateInventory({ fusedRegions: [] }, 1, raster)).toMatchObject({
+      ocrRows: [],
+      ocrStatus: 'absent'
+    });
+    const artifact = {
+      fusedRegions: [],
+      lyricText: {
+        status: 'ok',
+        rows: [
+          row('kind,', [10, 10, 60, 30]),
+          row('kind,', [10, 10, 60, 30]),
+          row('a tempo.', [70, 10, 120, 30], { semantic: 'DirectionText', proposedLyric: false })
+        ]
+      }
+    };
+    const first = buildLyricCandidateInventory(artifact, 1, raster);
+    const again = buildLyricCandidateInventory(artifact, 1, raster);
+    expect(first.ocrRows.map((r) => r.text)).toEqual(['kind,', 'a tempo.']);
+    expect(first.ocrRows.map((r) => r.id)).toEqual(again.ocrRows.map((r) => r.id));
+    expect(first.ocrRows[0].id).toMatch(/^ocr-[0-9a-f]{20}$/);
+    expect(first.ocrRows[1].proposedLyric).toBe(false);
+    expect(first.ocrStatus).toBe('ok');
+  });
+
+  it('report a failed OCR run and refuse a row outside the page', () => {
+    expect(
+      buildLyricCandidateInventory(
+        { fusedRegions: [], lyricText: { status: 'failed', rows: [] } },
+        1,
+        raster
+      ).ocrStatus
+    ).toBe('failed');
+    expect(() =>
+      buildLyricCandidateInventory(
+        { fusedRegions: [], lyricText: { status: 'ok', rows: [row('x', [900, 10, 1200, 30])] } },
+        1,
+        raster
+      )
+    ).toThrow();
+  });
+});
+
 describe('lyricCandidateCrop', () => {
   const candidate = (box: [number, number, number, number]) =>
     buildLyricCandidateInventory(

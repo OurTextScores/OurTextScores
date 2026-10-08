@@ -261,6 +261,25 @@ describe('ScannerOtsHomrProviderService', () => {
       expect(
         JSON.parse(result.nativeArtifacts!['text-fusion-review'].toString('utf8'))
       ).toMatchObject({ fusionSummary: { accepted: 0, review: 0, rejected: 0 } });
+      // OCR rows are optional; a well-formed set is carried, a malformed row fails the contract.
+      const row = {
+        box: [1, 2, 30, 40], text: 'kind,', ocrConfidence: 0.99, regionCoverage: 0.8,
+        semantic: 'Lyrics', semanticScore: 0.84, proposedLyric: true
+      };
+      (fused.result as any).lyricText = { status: 'ok', rows: [row], rowsOmitted: 0 };
+      const withText = await new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: '9'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      });
+      expect(
+        JSON.parse(withText.nativeArtifacts!['text-fusion-review'].toString('utf8')).lyricText.rows[0].text
+      ).toBe('kind,');
+      (fused.result as any).lyricText = { status: 'ok', rows: [{ ...row, box: [1, 2, 3] }], rowsOmitted: 0 };
+      await expect(new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: '8'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      delete (fused.result as any).lyricText;
       // Hundreds of rejected boxes are carried as a tally, not as regions.
       (fused.result as any).fusionSummary = {
         accepted: 0,

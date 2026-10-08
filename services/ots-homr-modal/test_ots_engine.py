@@ -167,6 +167,49 @@ class OtsHomrEngineTest(unittest.TestCase):
         self.assertEqual(detectors["non-lyric-text"].calls, [page])
         self.assertEqual(len(core.calls), 1)
 
+    def _fusion_engine(self):
+        engine, detectors, core = self.make_engine()
+        engine.fusion_manifest = CalibrationManifest(
+            policy="fusion-v1",
+            policy_revision="test",
+            detectors={
+                detector_id: DetectorIdentity("test", revision, "test.pth", digest)
+                for detector_id, (_repo, revision, _filename, digest) in LOGICAL_DETECTORS.items()
+            },
+            class_allowlist=CLASS_ALLOWLIST,
+            calibration={},
+            accept={},
+            iou_threshold=0.3,
+            containment_threshold=0.6,
+            minimum_winner_margin=0.1,
+        )
+        engine.warm_up()
+        ok, encoded = cv2.imencode(".png", np.full((10, 10, 3), 255, dtype=np.uint8))
+        self.assertTrue(ok)
+        return engine, encoded.tobytes()
+
+    def test_lyric_text_is_attached_when_configured_and_a_failure_does_not_fail_the_page(self):
+        class Pipeline:
+            def __init__(self, fail):
+                self.fail, self.seen = fail, []
+
+            def lyric_rows(self, page, boxes):
+                self.seen.append(boxes)
+                if self.fail:
+                    raise RuntimeError("ocr down")
+                return {"status": "ok", "rows": [{"text": "kind,"}], "rowsOmitted": 0}
+
+        engine, page = self._fusion_engine()
+        self.assertNotIn("lyricText", engine.transcribe_fusion(page, "image/png", False))
+        engine.lyric_text = Pipeline(False)
+        self.assertEqual(
+            engine.transcribe_fusion(page, "image/png", False)["lyricText"]["rows"], [{"text": "kind,"}]
+        )
+        engine.lyric_text = Pipeline(True)
+        failed = engine.transcribe_fusion(page, "image/png", False)["lyricText"]
+        self.assertEqual((failed["status"], failed["rows"], failed["error"]), ("failed", [], "RuntimeError"))
+        self.assertEqual(engine.transcribe_fusion(page, "image/png", False)["fusion"].summary["accepted"], 0)
+
     def test_fusion_without_calibration_fails_before_inference(self):
         engine, detectors, core = self.make_engine()
         engine.warm_up()
