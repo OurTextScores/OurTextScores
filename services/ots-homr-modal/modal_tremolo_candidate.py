@@ -1,0 +1,232 @@
+"""Separate unqualified private-fp16 candidate. Importing constructs Modal resources."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shlex
+import subprocess
+from pathlib import Path
+
+import modal
+from tremolo_provider_candidate_spec import SOURCE_INPUTS
+
+HOMR_COMMIT = "b6eca7c6af37df2764a9ca99033c947eb42aae90"
+CANDIDATE_TIMING = os.environ.get("OTS_CANDIDATE_PAIRED_TREMOLO_TIMING", "1")
+if CANDIDATE_TIMING not in ("0", "1"):
+    raise ValueError("OTS_CANDIDATE_PAIRED_TREMOLO_TIMING must be 0 or 1")
+CANDIDATE_ARM = "on" if CANDIDATE_TIMING == "1" else "off"
+SERVICE_REVISION = (
+    f"ots-homr-tremolo-private-fp16-candidate-20261007-v1-{CANDIDATE_ARM}"
+)
+HARD_TIMEOUT_SECONDS = 280
+CUDA_BASE = "nvidia/cuda@sha256:17e2934e1fa96152b14f78078bfbafd0f00f391df995dc6c641a720fce1202bb"
+HERE = Path(__file__).resolve().parent
+PATCH = HERE / "patches" / "homr-runtime-glue.patch"
+SOURCE_ARCHIVE = HERE / "source" / "homr-b6eca7-source.tar.gz"
+SOURCE_ARCHIVE_SHA256 = (
+    "999d5071fe9bcfab8dc1534ec1614e125888651fcc6c72a9862bc605ba38d1a2"
+)
+HOMR_SHARED = HERE.parent / "homr-provider"
+
+
+def _source_commit() -> str:
+    commit = os.environ.get("OTS_SOURCE_COMMIT", "").strip()
+    if not commit:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=HERE,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        ).stdout.strip()
+    if len(commit) not in (40, 64) or any(
+        character not in "0123456789abcdef" for character in commit
+    ):
+        raise RuntimeError("OTS source commit is not an immutable git object id")
+    return commit
+
+
+SOURCE_COMMIT = _source_commit()
+# Capture every Python/calibration/dependency input copied into the image. The
+# receipt distinguishes dirty local inputs from the immutable checkout commit.
+SERVICE_INPUT_SHA256 = {
+    str(Path(remote) / path.relative_to(directory)): hashlib.sha256(
+        path.read_bytes()
+    ).hexdigest()
+    for directory, remote in (
+        (HERE, "/opt/ots-homr-provider"),
+        (HOMR_SHARED, "/opt/homr-provider-support"),
+    )
+    for path in sorted(directory.rglob("*"))
+    if path.is_file()
+    and path.suffix in (".py", ".json", ".txt", ".png")
+    and "__pycache__" not in path.parts
+    and not path.name.startswith("test_")
+    and not any(
+        part in ("source", "patches") for part in path.relative_to(directory).parts
+    )
+}
+SERVICE_HASH_CHECK = "python -c " + shlex.quote(
+    "import hashlib,json,pathlib; checks=json.loads("
+    + repr(json.dumps(SERVICE_INPUT_SHA256))
+    + "); assert all(hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()==h for p,h in checks.items())"
+)
+
+# The secret has only a read-scoped HF token. It is deliberately not present in
+# the Scanner API, worker, response envelope, image definition, or source tree.
+hf_secret = modal.Secret.from_name("ots-homr-hf-read", required_keys=["HF_TOKEN"])
+model_cache = modal.Volume.from_name(
+    "ots-homr-tremolo-candidate-models", create_if_missing=True
+)
+
+TIMING_PATCH = HERE / "patches/homr-paired-tremolo-candidate.patch"
+ROUTING_PATCH = HERE / "patches/homr-worker-head-routing-candidate.patch"
+
+image = (
+    modal.Image.from_registry(CUDA_BASE, add_python="3.12")
+    .apt_install("git", "libgl1", "libglib2.0-0", "libgomp1", "ca-certificates")
+    .add_local_file(
+        TIMING_PATCH, remote_path="/tmp/homr-paired-tremolo-candidate.patch", copy=True
+    )
+    .add_local_file(
+        ROUTING_PATCH,
+        remote_path="/tmp/homr-worker-head-routing-candidate.patch",
+        copy=True,
+    )
+    .add_local_file(PATCH, remote_path="/tmp/homr-runtime-glue.patch", copy=True)
+    .add_local_file(
+        SOURCE_ARCHIVE, remote_path="/tmp/homr-b6eca7-source.tar.gz", copy=True
+    )
+    .add_local_file(
+        HOMR_SHARED / "security-overrides.txt",
+        remote_path="/tmp/security-overrides.txt",
+        copy=True,
+    )
+    .run_commands(
+        f"echo '{SOURCE_ARCHIVE_SHA256}  /tmp/homr-b6eca7-source.tar.gz' | sha256sum --check --strict",
+        f"echo '{SOURCE_INPUTS["patches/homr-runtime-glue.patch"]}  /tmp/homr-runtime-glue.patch' | sha256sum --check --strict",
+        f"echo '{SOURCE_INPUTS["patches/homr-paired-tremolo-candidate.patch"]}  /tmp/homr-paired-tremolo-candidate.patch' | sha256sum --check --strict",
+        f"echo '{SOURCE_INPUTS["patches/homr-worker-head-routing-candidate.patch"]}  /tmp/homr-worker-head-routing-candidate.patch' | sha256sum --check --strict",
+        "mkdir -p /opt && tar -xzf /tmp/homr-b6eca7-source.tar.gz -C /opt",
+        "cd /opt/homr && git apply --check /tmp/homr-runtime-glue.patch && git apply /tmp/homr-runtime-glue.patch",
+        "cd /opt/homr && git apply --check /tmp/homr-paired-tremolo-candidate.patch && git apply /tmp/homr-paired-tremolo-candidate.patch",
+        "cd /opt/homr && git apply --check /tmp/homr-worker-head-routing-candidate.patch && git apply /tmp/homr-worker-head-routing-candidate.patch",
+        "python -m pip install --no-cache-dir 'poetry==2.3.2' 'poetry-plugin-export==1.9.0'",
+        "cd /opt/homr && poetry export --only main --extras gpu -f requirements.txt -o /tmp/homr-requirements.txt",
+        "awk '/^onnxruntime==/{drop=1;next} /^[^[:space:]]/{drop=0} !drop' /tmp/homr-requirements.txt > /tmp/homr-gpu-requirements.txt && mv /tmp/homr-gpu-requirements.txt /tmp/homr-requirements.txt",
+        "python -m pip install --no-cache-dir --require-hashes -r /tmp/homr-requirements.txt",
+        "python -m pip install --no-cache-dir --require-hashes -r /tmp/security-overrides.txt",
+        # The clean source archive deliberately has no .git directory. HOMR's
+        # dynamic-versioning backend otherwise fails while preparing metadata.
+        # Use the static fallback already declared in its pyproject.toml.
+        "POETRY_DYNAMIC_VERSIONING_BYPASS=0.0.0 "
+        "python -m pip install --no-cache-dir --no-deps /opt/homr",
+        "python -m pip uninstall -y poetry poetry-plugin-export",
+        "python -m pip install --no-cache-dir 'fastapi==0.116.1' 'python-multipart==0.0.30' 'huggingface_hub==0.34.4' 'segmentation-models-pytorch==0.5.0'",
+        "python -m pip show onnxruntime-gpu > /dev/null",
+        "if python -m pip show onnxruntime > /dev/null 2>&1; then "
+        "echo 'onnxruntime CPU package must not shadow onnxruntime-gpu'; exit 1; fi",
+    )
+    .add_local_dir(
+        HOMR_SHARED,
+        remote_path="/opt/homr-provider-support",
+        copy=True,
+        ignore=["__pycache__", "*.pyc", "test_*.py"],
+    )
+    .add_local_dir(
+        HERE,
+        remote_path="/opt/ots-homr-provider",
+        copy=True,
+        ignore=["__pycache__", "*.pyc", "patches", "source/"],
+    )
+    .run_commands(SERVICE_HASH_CHECK)
+    .env(
+        {
+            "PYTHONPATH": (
+                "/opt/homr:/opt/ots-homr-provider:/opt/homr-provider-support"
+            ),
+            "PYTHONUNBUFFERED": "1",
+            "HOMR_WARMUP_PAGE": "/opt/homr-provider-support/warmup-page.png",
+            "HOMR_REQUIRE_CUDA": "1",
+            "OTS_SOURCE_COMMIT": SOURCE_COMMIT,
+            "OTS_CANDIDATE_SERVICE_SOURCE_SHA256": json.dumps(SERVICE_INPUT_SHA256),
+            "OTS_HOMR_PAIRED_TREMOLO_TIMING": CANDIDATE_TIMING,
+        }
+    )
+)
+
+app = modal.App(
+    f"ourtextscores-ots-homr-tremolo-private-fp16-candidate-{CANDIDATE_ARM}"
+)
+
+
+@app.function(
+    image=image,
+    gpu="L4",
+    timeout=660,
+    min_containers=0,
+    max_containers=1,
+    scaledown_window=60,
+    secrets=[hf_secret],
+    volumes={"/models": model_cache},
+)
+@modal.concurrent(max_inputs=1)
+@modal.asgi_app(requires_proxy_auth=True)
+def ots_homr_api():
+    from pathlib import Path
+
+    from bootstrap import bootstrap
+    from calibration_manifest import load_calibration_manifest
+    from homr_core import PatchedHomrCore
+    from homr_engine import HomrEngine
+    from ots_engine import OtsHomrEngine
+    from ots_homr_provider import create_provider_app
+    from tremolo_candidate_runtime import (
+        candidate_engine_class,
+        candidate_worker_factory,
+    )
+
+    artifacts = bootstrap(root=Path("/models/ots-homr"), device="cuda")
+    model_cache.commit()
+    core = PatchedHomrCore(
+        engine_factory=candidate_worker_factory(HomrEngine),
+        artifacts=artifacts,
+        hard_timeout_seconds=HARD_TIMEOUT_SECONDS,
+        paired_tremolo_timing=os.environ.get("OTS_HOMR_PAIRED_TREMOLO_TIMING") == "1",
+    )
+    fusion_manifest = None
+    if os.environ.get("OTS_HOMR_FUSION_ENABLED") == "1":
+        # The manifest is deliberately absent until both models have a
+        # score-disjoint calibration. Enabling fusion before it lands prevents
+        # readiness rather than silently using lyrics-only calibration.
+        fusion_manifest = load_calibration_manifest(
+            HERE / "calibration" / "fusion-v1.json"
+        )
+        if fusion_manifest.policy != "fusion-v1":
+            raise RuntimeError("Fusion needs its own pinned calibration")
+        from fusion_policy import CLASS_ALLOWLIST
+        from pins import FUSION_DETECTORS
+
+        for detector_id in FUSION_DETECTORS:
+            detector = artifacts.detectors[detector_id]
+            fusion_manifest.assert_detector_matches(
+                detector_id, revision=detector.revision, sha256=detector.sha256
+            )
+            if (
+                fusion_manifest.class_allowlist.get(detector_id)
+                != CLASS_ALLOWLIST[detector_id]
+            ):
+                raise RuntimeError(
+                    "Fusion calibration has incompatible logical class ownership"
+                )
+    engine = candidate_engine_class(OtsHomrEngine)(
+        artifacts=artifacts, core=core, fusion_manifest=fusion_manifest
+    )
+    return create_provider_app(
+        engine=engine,
+        service_revision=SERVICE_REVISION,
+        provider_source_commit=SOURCE_COMMIT,
+    )
