@@ -109,3 +109,17 @@ uses experimental graph identities, no text detectors/OCR, and does not qualify
 production GPU latency. `summarize_local_tremolo_candidate.py --root <candidate-dir>`
 compares frozen on/off results and saves both MusicXML candidates.
 See `/home/jhlusko/workspace/homr/docs/TREMOLO_LOCAL_SERVICE_2026-10-07.md`.
+
+## Corrected candidate head policy
+
+The local candidate additionally applies `homr-worker-head-routing-candidate.patch`
+(SHA-256 `365346a3b81988c342264f68d618f3a64364deff0f0661d571a5bd3ba0aead3a`).
+The pinned source previously ignored the worker head-path environment variable.
+This isolated patch honors empty/custom paths and skips empty optional downloads.
+The core-only worker explicitly exports `none`; heads exports `beam,stem,tie,slur`,
+excluding unpromoted rhythmic advance. Candidate provenance records both masks.
+The shipping builder/default settings are unchanged. Local v2 qualification
+recovers Lieder30→10/357 and OSSQ46→2/380 rhythm errors with no native-measure
+regressions.27 service tests and5 runtime guards pass. Fresh negative controls and
+full provider latency/pin qualification remain; see
+`/home/jhlusko/workspace/homr/docs/TREMOLO_SERVICE_POLICY_AUDIT_2026-10-07.md`.
