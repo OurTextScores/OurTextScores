@@ -1,8 +1,8 @@
-"""Separate LOCAL-TEST provider that runs fusion-v1 with an uncalibrated manifest.
+"""Separate LOCAL-TEST provider that runs fusion-v1 with the pinned calibration/fusion-v1.json.
 
 Deploy under its own app name; it never touches the shipping `ourtextscores-ots-homr-scanner`
-app. The manifest is generated at start-up from the shipping detector pins, carries no
-calibration, and puts every region in review. Importing builds Modal resources only.
+app. Lyrics are calibrated by the checked-in manifest; directions and dynamics stay in review.
+Importing builds Modal resources only.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import modal
 
 from modal_app import HARD_TIMEOUT_SECONDS, SOURCE_COMMIT, hf_secret, image, model_cache
 
-SERVICE_REVISION = "ots-homr-fusion-uncalibrated-localtest-20261007-v1"
+SERVICE_REVISION = "ots-homr-fusion-calibrated-localtest-20261008-v1"
 
 app = modal.App("ourtextscores-ots-homr-fusion-localtest")
 
@@ -36,7 +36,6 @@ def ots_homr_api():
     from calibration_manifest import load_calibration_manifest
     from fusion_policy import CLASS_ALLOWLIST
     from homr_core import PatchedHomrCore
-    from make_local_test_fusion_manifest import build
     from ots_engine import OtsHomrEngine
     from ots_homr_provider import create_provider_app
     from pins import FUSION_DETECTORS
@@ -46,9 +45,9 @@ def ots_homr_api():
     core = PatchedHomrCore(
         artifacts=artifacts, hard_timeout_seconds=HARD_TIMEOUT_SECONDS
     )
-    manifest_path = Path("/tmp/fusion-v1-local-test.json")
-    manifest_path.write_text(json.dumps(build(), indent=1, sort_keys=True))
-    manifest = load_calibration_manifest(manifest_path)
+    manifest = load_calibration_manifest(
+        Path("/opt/ots-homr-provider/calibration/fusion-v1.json")
+    )
     for detector_id in FUSION_DETECTORS:
         detector = artifacts.detectors[detector_id]
         manifest.assert_detector_matches(
