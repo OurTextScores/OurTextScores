@@ -32,3 +32,6 @@ frontend/public/webmscore.lib.mem.wasm
 frontend/public/webmscore.lib.symbols
 
 frontend/public/score-editor/soundfonts/
+
+# Local review data for /scanner/lyric-review (inventory.json + crops)
+frontend/public/lyric-review/
