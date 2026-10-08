@@ -46,7 +46,7 @@ def run(detections, **kwargs):
 class FusionV1Test(unittest.TestCase):
     def test_empty_page_is_success_but_missing_detector_fails(self):
         result = run({"lyrics": [], "non-lyric-text": []})
-        self.assertEqual(result.summary, {"accepted": 0, "review": 0, "rejected": 0, "byClass": {}})
+        self.assertEqual(result.summary, {"accepted": 0, "review": 0, "rejected": 0, "rejectedByReason": {}, "rejectedByClass": {}, "byClass": {}})
         with self.assertRaisesRegex(FusionPolicyError, "all three logical detector runs"):
             run({"lyrics": []})
 
@@ -55,7 +55,26 @@ class FusionV1Test(unittest.TestCase):
             "lyrics": [box("Lyrics", 0, 0, 10, 10), box("MeasureNumber", 80, 0, 90, 10)],
             "non-lyric-text": [box("Tempo", 30, 0, 40, 10)],
         })
-        self.assertEqual(result.summary, {"accepted": 2, "review": 0, "rejected": 1, "byClass": {"Lyrics": 1, "Tempo": 1}})
+        self.assertEqual(
+            result.summary,
+            {
+                "accepted": 2,
+                "review": 0,
+                "rejected": 1,
+                "rejectedByReason": {"unsupported-class": 1},
+                "rejectedByClass": {"MeasureNumber": 1},
+                "byClass": {"Lyrics": 1, "Tempo": 1},
+            },
+        )
+        # Rejected candidates are counted, not listed.
+        self.assertEqual({r["status"] for r in result.regions}, {"accepted"})
+
+    def test_hundreds_of_rejected_boxes_do_not_become_regions(self):
+        many = [box("Fingering", i * 12, 0, i * 12 + 10, 10) for i in range(600)]
+        result = run({"lyrics": many + [box("Lyrics", 0, 50, 10, 60)], "non-lyric-text": []})
+        self.assertEqual(len(result.regions), 1)
+        self.assertEqual(result.summary["rejected"], 600)
+        self.assertEqual(result.summary["rejectedByReason"], {"unsupported-class": 600})
 
     def test_uncalibrated_overlap_is_review_not_raw_confidence_winner(self):
         result = run({

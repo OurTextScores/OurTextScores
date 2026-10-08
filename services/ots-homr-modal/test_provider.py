@@ -107,7 +107,14 @@ class FusionEngine(FakeEngine):
         result = self.transcribe(page, content_type, detect_title, "fusion-v1", score_profile)
         result["fusion"] = FusionResult(
             regions=[],
-            summary={"accepted": 0, "review": 0, "rejected": 0, "byClass": {}},
+            summary={
+                "accepted": 0,
+                "review": 0,
+                "rejected": 0,
+                "rejectedByReason": {},
+                "rejectedByClass": {},
+                "byClass": {},
+            },
         )
         return result
 

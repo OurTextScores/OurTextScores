@@ -127,6 +127,16 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     });
   }
 
+  /** A tally object whose non-negative integer values add up to `total`. */
+  private countsSumTo(counts: unknown, total: number): boolean {
+    if (!counts || typeof counts !== 'object' || Array.isArray(counts)) return false;
+    const values = Object.values(counts as Record<string, unknown>);
+    return (
+      values.every((n) => Number.isInteger(n) && (n as number) >= 0) &&
+      values.reduce((sum: number, n) => sum + (n as number), 0) === total
+    );
+  }
+
   async scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult> {
     const options = this.options(input.engineOptions);
     if (options.textPolicy && this.text('SCANNER_OTS_HOMR_FUSION_ENABLED') !== '1') {
@@ -208,7 +218,11 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         !['accepted', 'review', 'rejected'].every(
           (key) => Number.isInteger(summary[key]) && summary[key] >= 0
         ) ||
-        summary.accepted + summary.review + summary.rejected !== regions.length ||
+        // Rejected candidates are counted, never listed: a real page yields hundreds.
+        summary.accepted + summary.review !== regions.length ||
+        regions.some((region: { status?: unknown }) => region?.status === 'rejected') ||
+        !this.countsSumTo(summary.rejectedByReason, summary.rejected) ||
+        !this.countsSumTo(summary.rejectedByClass, summary.rejected) ||
         !summary.byClass ||
         typeof summary.byClass !== 'object'
       )

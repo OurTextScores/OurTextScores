@@ -165,31 +165,19 @@ def fuse_page(
                 ],
             }
         )
-    for candidate, reason in rejected:
-        tally["rejected"] += 1
-        regions.append(
-            {
-                "status": "rejected",
-                "reason": reason,
-                "selectedCandidateId": None,
-                "candidates": [
-                    {
-                        "id": candidate.candidate_id,
-                        "detectorId": candidate.detector_id,
-                        "physicalDetectorId": DETECTOR_ROUTES.get(candidate.detector_id),
-                        "label": candidate.label,
-                        "semanticFamily": SEMANTIC_FAMILY.get(candidate.label),
-                        "box": list(candidate.box),
-                    }
-                ],
-            }
-        )
+    # Rejected candidates are tallied, never listed. A real page yields hundreds (e4 alone
+    # emits ~450 Fingering and ~450 MeasureNumber boxes), which would exceed the response cap
+    # and bury the review work; the reason counts keep every drop accountable.
+    rejected_by_reason: Counter[str] = Counter(reason for _, reason in rejected)
+    rejected_by_class: Counter[str] = Counter(candidate.label for candidate, _ in rejected)
     return FusionResult(
         regions=regions,
         summary={
             "accepted": tally["accepted"],
             "review": tally["review"],
-            "rejected": tally["rejected"],
+            "rejected": len(rejected),
+            "rejectedByReason": dict(sorted(rejected_by_reason.items())),
+            "rejectedByClass": dict(sorted(rejected_by_class.items())),
             "byClass": dict(sorted(by_class.items())),
         },
     )

@@ -233,7 +233,14 @@ describe('ScannerOtsHomrProviderService', () => {
         },
         result: {
           ...base.result,
-          fusionSummary: { accepted: 0, review: 0, rejected: 0, byClass: {} },
+          fusionSummary: {
+            accepted: 0,
+            review: 0,
+            rejected: 0,
+            rejectedByReason: {},
+            rejectedByClass: {},
+            byClass: {}
+          },
           fusedRegions: []
         }
       });
@@ -253,6 +260,40 @@ describe('ScannerOtsHomrProviderService', () => {
       expect(
         JSON.parse(result.nativeArtifacts!['text-fusion-review'].toString('utf8'))
       ).toMatchObject({ fusionSummary: { accepted: 0, review: 0, rejected: 0 } });
+      // Hundreds of rejected boxes are carried as a tally, not as regions.
+      (fused.result as any).fusionSummary = {
+        accepted: 0,
+        review: 0,
+        rejected: 600,
+        rejectedByReason: { 'unsupported-class': 600 },
+        rejectedByClass: { Fingering: 400, MeasureNumber: 200 },
+        byClass: {}
+      };
+      const tallied = await new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: 'd'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      });
+      expect(
+        JSON.parse(tallied.nativeArtifacts!['text-fusion-review'].toString('utf8')).fusionSummary
+          .rejected
+      ).toBe(600);
+      // A tally that does not add up, or a listed rejected region, breaks the contract.
+      (fused.result as any).fusionSummary.rejectedByClass = { Fingering: 1 };
+      await expect(new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: 'c'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      (fused.result as any).fusionSummary.rejectedByClass = { Fingering: 600 };
+      (fused.result as any).fusionSummary.review = 1;
+      (fused.result as any).fusedRegions = [{ status: 'rejected', candidates: [] }];
+      await expect(new ScannerOtsHomrProviderService(config).scanPage({
+        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
+        idempotencyKey: 'b'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      (fused.result as any).fusionSummary = {
+        accepted: 0, review: 0, rejected: 0, rejectedByReason: {}, rejectedByClass: {}, byClass: {}
+      };
+      (fused.result as any).fusedRegions = [];
       (fused.engine as any).textPolicy.detectors[2].sha256 = 'f'.repeat(64);
       await expect(new ScannerOtsHomrProviderService(config).scanPage({
         image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
