@@ -1,0 +1,28 @@
+diff --git a/homr/transformer/configs.py b/homr/transformer/configs.py
+--- a/homr/transformer/configs.py
++++ b/homr/transformer/configs.py
+@@ -41,10 +41,10 @@
+         # and the decoder graph already emits `hidden`, so nothing about the decoder
+         # export has to change to carry them - which also means a deployment can drop
+         # this file and keep working exactly as it did.
+-        self.structured_heads_path = os.path.join(
++        self.structured_heads_path = os.environ.get("HOMR_STRUCTURED_HEADS_PATH", os.path.join(
+             workspace,
+             f"structured_heads_{model_name}.onnx",
+-        )  # noqa: E501
++        ))  # noqa: E501
+ 
+         self.encoder_path_fp16 = os.path.join(
+             workspace,
+diff --git a/homr/main.py b/homr/main.py
+--- a/homr/main.py
++++ b/homr/main.py
+@@ -436,7 +436,7 @@
+     a network hiccup fetching it, must not turn an optional feature into a startup
+     failure for everyone.
+     """
+-    if os.path.exists(model):
++    if not model or os.path.exists(model):
+         return
+     base_name = os.path.basename(model).split(".")[0]
+     downloaded_zip = os.path.join(os.path.dirname(model), base_name + ".zip")

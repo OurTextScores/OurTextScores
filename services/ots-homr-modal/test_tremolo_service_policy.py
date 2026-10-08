@@ -3,7 +3,12 @@ import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from homr_engine import CODE_NOT_READY, InferenceError, xml_generator_arguments
+from homr_engine import (
+    CODE_NOT_READY,
+    HomrEngine,
+    InferenceError,
+    xml_generator_arguments,
+)
 from homr.music_xml_generator import XmlGeneratorArguments, generate_xml
 from homr.transformer.vocabulary import EncodedSymbol
 from ots_homr_provider import create_provider_app
@@ -42,6 +47,15 @@ class LocalRegenerationEngine:
 
 
 class TremoloServicePolicyTest(unittest.TestCase):
+    def test_worker_family_selection_rejects_unknown_values(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported structured"):
+            HomrEngine(
+                use_gpu=False,
+                homr_commit="test",
+                hard_timeout_seconds=10,
+                structured_export_families="unsupported",
+            )
+
     def test_legacy_runtime_off_is_compatible_but_on_fails_closed(self):
         class Legacy:
             pass

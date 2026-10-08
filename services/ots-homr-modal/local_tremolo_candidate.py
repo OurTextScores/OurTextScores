@@ -14,6 +14,9 @@ from pathlib import Path
 from verify_tremolo_source_candidate import ARCHIVE_SHA256, HERE, PATCH_SHA256
 
 MODEL_NAME = "local-tremolo-accepted-20261007"
+HEAD_ROUTING_PATCH_SHA256 = (
+    "365346a3b81988c342264f68d618f3a64364deff0f0661d571a5bd3ba0aead3a"
+)
 
 
 def sha(path):
@@ -31,8 +34,14 @@ def prepare(args):
         tar.extractall(output, filter="data")
     root = output / "homr"
     source = {}
-    for name in ("homr-runtime-glue.patch", "homr-paired-tremolo-candidate.patch"):
+    for name in (
+        "homr-runtime-glue.patch",
+        "homr-paired-tremolo-candidate.patch",
+        "homr-worker-head-routing-candidate.patch",
+    ):
         path = HERE / "patches" / name
+        if name == "homr-worker-head-routing-candidate.patch":
+            assert sha(path) == HEAD_ROUTING_PATCH_SHA256
         subprocess.run(["git", "apply", "--check", str(path)], cwd=root, check=True)
         subprocess.run(["git", "apply", str(path)], cwd=root, check=True)
         source[name] = sha(path)
@@ -56,6 +65,10 @@ def prepare(args):
         "patches": source,
         "runtimeRoot": str(root),
         "modelName": MODEL_NAME,
+        "structuredExportFamilies": {
+            "core": "none",
+            "additional-heads": "beam,stem,tie,slur",
+        },
         "graphs": graphs,
         "segmentation": {"path": str(seg), "sha256": sha(seg)},
         "scope": "Local CPU candidate, accepted experimental graphs, no detectors or shipping-provider equivalence",
@@ -94,9 +107,17 @@ class CandidateEngine:
                 "segmentation": manifest["segmentation"]["sha256"],
             },
         )
-        self.plain = HomrEngine(**common, structured_heads_path="")
+        self.plain = HomrEngine(
+            **common,
+            structured_heads_path="",
+            structured_export_families=manifest["structuredExportFamilies"]["core"],
+        )
         self.heads = HomrEngine(
-            **common, structured_heads_path=manifest["graphs"]["heads"]["candidatePath"]
+            **common,
+            structured_heads_path=manifest["graphs"]["heads"]["candidatePath"],
+            structured_export_families=manifest["structuredExportFamilies"][
+                "additional-heads"
+            ],
         )
 
     def warm_up(self):

@@ -49,6 +49,10 @@ def main():
                 "score": source.stem,
                 "candidate": name,
                 "xmlChanged": axml != bxml,
+                "structuredSymbolCountsOff": sum(
+                    sum(value is not None for value in staff["structured"])
+                    for staff in a["review"]["regeneration"]
+                ),
                 "pitchAndWrittenDurationInventoryUnchanged": inventory(ar)
                 == inventory(br),
                 "measureCountsOff": [
@@ -79,6 +83,19 @@ def main():
     (args.root / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     assert report["checksPassed"], "Local integration invariant changed"
+    manifest = json.loads((args.root / "candidate.json").read_text())
+    if "structuredExportFamilies" in manifest:
+        routing_ok = all(
+            (
+                row["structuredSymbolCountsOff"] == 0
+                if row["candidate"] == "core"
+                else row["structuredSymbolCountsOff"] > 0
+            )
+            for row in rows
+        )
+        report["distinctWorkerHeadRoutingPassed"] = routing_ok
+        (args.root / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
+        assert routing_ok, "Core-only/head-enabled workers are not distinct"
     if args.pages:
         from training.onnx.audit_tremolo_validation import native_measures
         from training.onnx.score_full_page_musicxml import compare, staff_events

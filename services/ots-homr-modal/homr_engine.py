@@ -176,11 +176,14 @@ def _child_main(
     use_gpu: bool,
     structured_heads_path: str,
     paired_tremolo_timing: bool = False,
+    structured_export_families: str | None = None,
 ) -> None:
     """Long-lived inference loop. Owns the cached ONNX sessions."""
     warnings: list[str] = []
     try:
         os.environ["HOMR_STRUCTURED_HEADS_PATH"] = structured_heads_path
+        if structured_export_families is not None:
+            os.environ["HOMR_STRUCTURED_EXPORT"] = structured_export_families
         import onnxruntime as ort
         from homr.main import ProcessingConfig, download_weights, process_image
         from homr.music_xml_generator import XmlGeneratorArguments
@@ -484,13 +487,21 @@ class HomrEngine:
         expected_model_sha256: dict[str, str] | None = None,
         structured_heads_path: str = "",
         paired_tremolo_timing: bool = False,
+        structured_export_families: str | None = None,
     ) -> None:
+        if structured_export_families is not None and (
+            structured_export_families != "none"
+            and not set(structured_export_families.split(","))
+            <= {"beam", "advance", "stem", "tie", "slur"}
+        ):
+            raise ValueError("Unsupported structured export family")
         self._use_gpu = use_gpu
         self._homr_commit = homr_commit
         self._hard_timeout = hard_timeout_seconds
         self._startup_timeout = startup_timeout_seconds
         self._structured_heads_path = structured_heads_path
         self._paired_tremolo_timing = paired_tremolo_timing
+        self._structured_export_families = structured_export_families
         # Optional supply-chain pin (design section 9.5). Empty means unpinned.
         self._expected_model_sha256 = {
             key: value for key, value in (expected_model_sha256 or {}).items() if value
@@ -553,6 +564,7 @@ class HomrEngine:
                 self._use_gpu,
                 self._structured_heads_path,
                 self._paired_tremolo_timing,
+                self._structured_export_families,
             ),
             daemon=True,
         )
