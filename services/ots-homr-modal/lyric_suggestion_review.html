@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Review lyric suggestions</title>
+<style>body{font:16px system-ui;background:#f6f6f4;color:#242424;margin:24px;max-width:1300px}header{position:sticky;top:0;background:#f6f6f4;padding:12px 0;border-bottom:1px solid #ccc}button,select,textarea{font:inherit}button{padding:6px 12px;margin:4px;cursor:pointer}article{padding:16px;background:white;border:1px solid #ccc;margin:16px 0}article[data-state=accept]{border-left:6px solid #267641}article[data-state=exclude]{border-left:6px solid #9b4848}textarea{display:block;width:95%;min-height:50px;margin:12px 0}.images{display:flex;gap:20px;flex-wrap:wrap}.images img{max-width:100%;max-height:200px;object-fit:contain}.status{font-weight:600}h2{font-size:18px}small{color:#555}</style>
+<h1>Review lyric suggestions</h1><p>Confirm or correct the text, or exclude it if it is not a lyric. Withheld text is included so you can recover missed lyrics. These decisions do not modify a score.</p>
+<header><label>Source page <select id="page"></select></label><button id="batch">Accept unreviewed proposals on this page</button><button id="download">Download review record</button><p id="progress" aria-live="polite"></p></header><main id="cards"></main><p id="error" role="alert"></p>
+<script>
+let data, decisions={}, key;
+const el=id=>document.getElementById(id);
+function save(){localStorage.setItem(key,JSON.stringify(decisions));progress();}
+function progress(){const all=data.pages.flatMap(p=>p.suggestions),reviewed=all.filter(s=>['accept','exclude'].includes(decisions[s.id]?.decision)).length;el('progress').textContent=`${reviewed} of ${all.length} suggestions reviewed. Saved in this browser; download a record to keep a copy.`;}
+function render(){const page=data.pages[Number(el('page').value)];el('cards').replaceChildren();for(const s of page.suggestions){
+ const d=decisions[s.id]||{decision:'pending',text:s.ocrText};const card=document.createElement('article');card.dataset.state=d.decision;
+ const title=document.createElement('h2');title.textContent=s.proposed?'Proposed lyric':'Withheld by semantic check';card.append(title);
+ const images=document.createElement('div');images.className='images';for(const [path,label] of [[s.crop,'Text crop'],[s.context,'Nearby scan context']]){const img=document.createElement('img');img.src=path;img.alt=label;img.loading='lazy';images.append(img);}card.append(images);
+ const text=document.createElement('textarea');text.value=d.text;text.setAttribute('aria-label','Lyric text');card.append(text);
+ const status=document.createElement('p');status.className='status';status.textContent=d.decision==='pending'?'Awaiting review':d.decision==='accept'?'Accepted':'Excluded';card.append(status);
+ text.addEventListener('input',()=>{decisions[s.id]={decision:'pending',text:text.value};card.dataset.state='pending';status.textContent='Text changed — confirm again';save();});
+ for(const [action,label] of [['accept','Accept lyric'],['exclude','Exclude'],['pending','Reset decision']]){const b=document.createElement('button');b.textContent=label;b.addEventListener('click',()=>{if(action==='accept'&&!text.value.trim()){status.textContent='Enter lyric text before accepting.';return;}decisions[s.id]={decision:action,text:text.value};save();render();});card.append(b);}
+ const source=document.createElement('small');source.textContent=`Original OCR: ${s.ocrText}`;card.append(source);el('cards').append(card);
+}progress();}
+el('page').addEventListener('change',render);
+el('batch').addEventListener('click',()=>{const page=data.pages[Number(el('page').value)];for(const s of page.suggestions){const d=decisions[s.id];if(s.proposed&&!d&&s.ocrText.trim())decisions[s.id]={decision:'accept',text:s.ocrText};}save();render();});
+el('download').addEventListener('click',()=>{const record={schemaVersion:'ots.lyric-review-decisions.v1',modelSha256:data.modelSha256,automaticAttachment:false,pages:data.pages.map(p=>({score:p.score,imageSha256:p.imageSha256,decisions:p.suggestions.map(s=>({id:s.id,box:s.box,originalText:s.ocrText,proposed:s.proposed,...(decisions[s.id]||{decision:'pending',text:s.ocrText})}))}))};const blob=new Blob([JSON.stringify(record,null,2)+'\n'],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='lyric-review-decisions.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+fetch('suggestions.json').then(r=>{if(!r.ok)throw Error('Suggestions could not be loaded');return r.json();}).then(d=>{data=d;key='ots-lyric-review:'+data.modelSha256+':'+data.pages.map(p=>p.imageSha256).join(':');try{decisions=JSON.parse(localStorage.getItem(key)||'{}');}catch{decisions={};}for(const [i,p] of data.pages.entries()){const option=document.createElement('option');option.value=i;option.textContent=`${p.score} — ${p.suggestions.length} suggestions`;el('page').append(option);}render();}).catch(e=>el('error').textContent=e.message);
+</script></html>
