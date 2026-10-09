@@ -1,7 +1,4 @@
-import {
-  effectiveEngineOptions,
-  effectiveScoreProfile
-} from './scanner-score-profile-amendment';
+import { effectiveEngineOptions, effectiveScoreProfile } from './scanner-score-profile-amendment';
 import {
   Inject,
   Injectable,
@@ -1464,7 +1461,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     let renderMs = 0;
     for (const engineId of this.engineRegistry().planForJob(job).engineIds) {
       const run = rendered.engines?.[engineId];
-      const musicXml = run?.artifacts.musicXml;
+      // A reviewer's corrected copy (e.g. lyrics added from review) replaces the engine's own output.
+      const musicXml =
+        run?.status === 'succeeded' && run.reviewedMusicXml
+          ? run.reviewedMusicXml
+          : run?.artifacts.musicXml;
       if (!run || !musicXml) continue;
       if (!this.engineRegistry().get(engineId)?.artifacts.pdf) continue;
       const inputs = [

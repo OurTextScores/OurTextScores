@@ -581,6 +581,48 @@ describe('ScannerWorkerService', () => {
     expect(filters[0].reassembleRequestedAt).toEqual({ $lte: requestedAt });
   });
 
+  it("renders an engine's preview from the reviewer's corrected MusicXML, not the original", async () => {
+    const scannerWorker = service() as any;
+    const loc = (key: string, sum: string) => ({
+      bucket: 'scanner',
+      objectKey: key,
+      checksumSha256: sum
+    });
+    const read: string[] = [];
+    scannerWorker.registeredEngines = {
+      planForJob: () => ({ engineIds: ['ots-homr'] }),
+      get: () => ({ id: 'ots-homr', artifacts: { pdf: {} } })
+    };
+    scannerWorker.storage = {
+      getObjectBuffer: jest.fn(async (_bucket: string, key: string) => {
+        read.push(key);
+        return Buffer.from('x');
+      })
+    };
+    scannerWorker.renderer = {
+      renderMusicXmlPdf: jest.fn(async () => ({ pdf: Buffer.from('pdf') }))
+    };
+    scannerWorker.updateLease = jest.fn(async () => undefined);
+    scannerWorker.store = jest.fn(async (key: string) => loc(key, 'pdf'));
+    const page = {
+      pageNumber: 1,
+      ordinal: 1,
+      engines: {
+        'ots-homr': {
+          engine: 'ots-homr',
+          status: 'succeeded',
+          artifacts: { musicXml: loc('original.musicxml', 'orig') },
+          reviewedMusicXml: loc('with-lyrics.musicxml', 'lyrics')
+        }
+      }
+    };
+
+    const { page: out } = await scannerWorker.renderEnginePreviews({ jobId: 'j' }, page, 'u');
+
+    expect(read).toEqual(['with-lyrics.musicxml']);
+    expect(out.engines['ots-homr'].artifacts.pdf.inputSignature).toBeDefined();
+  });
+
   it('rebuilds nothing when the derivatives already match their inputs', async () => {
     // Idempotent by construction: every builder compares its stored input
     // signature against the current effective pages before storing anything.
