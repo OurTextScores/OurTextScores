@@ -1499,6 +1499,24 @@ export default function ScannerJobClient({
             );
           })()}
 
+          {process.env.NEXT_PUBLIC_OTS_HOMR_LYRIC_REVIEW_ENABLED === "1" &&
+            selected?.engines?.["ots-homr"]?.artifactKinds?.includes(
+              "text-fusion-review",
+            ) && (
+              <p className="mt-5 text-sm">
+                <a
+                  href={`/scanner/${encodeURIComponent(jobId)}/pages/${selected.pageNumber}/lyric-review`}
+                  className="font-medium text-blue-700 underline dark:text-blue-400"
+                >
+                  Review lyrics for this page
+                </a>{" "}
+                <span className="text-slate-500">
+                  Check the text read from the scan, confirm where each syllable
+                  goes, and download a score copy with the lyrics added.
+                </span>
+              </p>
+            )}
+
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
               <span className="font-medium uppercase tracking-wide text-slate-500">

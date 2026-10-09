@@ -10,7 +10,8 @@ change provider/model pins, deploy, or invoke a recognition provider.
 2. Add each syllable to include in the copy. Select its actual recognised-score
    note and the printed lyric line (top to bottom). Note labels identify source
    part, displayed and physical measure, quarter-note offset, pitch, staff and voice.
-   There is no automatic conversion from approximate row anchors to XML notes.
+   Accepted, unchanged rows with a note alignment may propose syllables and exact
+   XML note choices. These proposals still require all three confirmations.
 3. Confirm syllable text, printed line and note placement independently. Editing
    a field withdraws its confirmation. Accepting a region alone never attaches it.
 4. Download the validated score copy and optionally export its confirmed placement
@@ -52,3 +53,11 @@ create a source revision, or publish anything.
   `LYRIC_COPY_JOB_ID`, `LYRIC_COPY_OWNER_EMAIL`, optional `LYRIC_COPY_PAGE` and the
   local session secret. It does not upload or scan a new page and checks the stored
   XML hash after download remains unchanged.
+
+Latest local validation (2026-10-08): 14 focused backend tests, 13 frontend tests
+and the authenticated corrected-copy browser smoke passed. Stored XML SHA was
+unchanged after download. Draft restoration cannot overwrite newly added rows.
+The broader backend lyric/anchor/alignment regression suites also passed (43 tests).
+The subsequent shared-workspace duplicate-slot UI changes passed both frontend
+suites again (14 tests); they remain separate active edits.
+Frontend Docker image ots-lyric-review-local-20261008 built successfully (EXIT 0).
