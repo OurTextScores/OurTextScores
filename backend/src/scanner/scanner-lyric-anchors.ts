@@ -64,6 +64,8 @@ export interface RowAnchor {
   systemIndex: number | null;
   printedLine: number;
   syllables: SyllableAnchor[];
+  /** Directions only: printed above or below the middle of the staff region (a reviewer can flip it). */
+  placement?: 'above' | 'below';
 }
 
 const isNoteLike = (token: string[] | undefined) =>
@@ -267,6 +269,101 @@ export function anchorRows(rows: OcrRowInput[], staves: AnchorStaff[]): Map<stri
         syllables
       });
     }
+  }
+  return result;
+}
+
+/** A direction hangs above its staff (or between a grand staff's hands), so it may sit a little outside the region. */
+const DIRECTION_STAFF_GAP_FACTOR = 0.8;
+/** Direction text starts over its note; further than this (page px) from every note of its measure it is not attached. */
+export const MAX_DIRECTION_NOTE_DISTANCE_PX = 150;
+
+function staffForDirection(staves: AnchorStaff[], box: number[]): AnchorStaff | null {
+  const centreY = (box[1] + box[3]) / 2;
+  let best: AnchorStaff | null = null;
+  let bestDistance = Infinity;
+  for (const staff of staves) {
+    if (!staff.tokens.some(isNoteLike)) continue;
+    const [, top, , bottom] = staff.region;
+    const gap = DIRECTION_STAFF_GAP_FACTOR * (bottom - top);
+    if (centreY < top - gap || centreY > bottom + gap) continue;
+    const distance = centreY < top ? top - centreY : centreY > bottom ? centreY - bottom : 0;
+    if (distance < bestDistance) {
+      best = staff;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * Anchor written directions and dynamics: the staff nearest the row (above, between or inside), the measure
+ * its start (words) or middle (a dynamic mark) falls in, and the nearest note of that measure. The row is one
+ * piece of text: it is returned as a single "syllable" so the lyric review machinery (note choices, placement
+ * pictures) serves it unchanged.
+ */
+export function anchorDirectionRows(
+  rows: (OcrRowInput & { kind: 'words' | 'dynamic' })[],
+  staves: AnchorStaff[]
+): Map<string, RowAnchor> {
+  const result = new Map<string, RowAnchor>();
+  for (const row of rows) {
+    const staff = staffForDirection(staves, row.box);
+    if (!staff) continue;
+    const positions = noteXPositions(staff);
+    const bars = staff.barLines ?? [];
+    const barTokenIndices: number[] = [];
+    staff.tokens.forEach((token, index) => isBar(token) && barTokenIndices.push(index));
+    const x = row.kind === 'dynamic' ? (row.box[0] + row.box[2]) / 2 : row.box[0];
+    const measureInStaff = bars.filter((b) => b < x).length;
+    const lowToken = measureInStaff === 0 ? -1 : (barTokenIndices[measureInStaff - 1] ?? -1);
+    const highToken =
+      barTokenIndices[measureInStaff] !== undefined
+        ? barTokenIndices[measureInStaff]
+        : staff.tokens.length;
+    const inMeasure = [...positions.entries()]
+      .filter(([i]) => i > lowToken && i < highToken)
+      .sort((a, b) => a[0] - b[0]);
+    const notes = inMeasure.filter(([i]) => /^note|^gracenote/.test(String(staff.tokens[i][0])));
+    const noNote = {
+      text: row.text,
+      x,
+      measureInStaff,
+      noteTokenIndex: null,
+      notePitch: null,
+      noteOrdinalInMeasure: null,
+      distancePx: null,
+      noteX: null,
+      position: 'none' as const
+    };
+    let syllable: SyllableAnchor = noNote;
+    if (notes.length > 0) {
+      const [tokenIndex, where] = notes.reduce((a, b) =>
+        Math.abs(a[1].x - x) <= Math.abs(b[1].x - x) ? a : b
+      );
+      if (Math.abs(where.x - x) <= MAX_DIRECTION_NOTE_DISTANCE_PX) {
+        syllable = {
+          text: row.text,
+          x,
+          measureInStaff,
+          noteTokenIndex: tokenIndex,
+          notePitch: String(staff.tokens[tokenIndex][1] ?? '') || null,
+          noteOrdinalInMeasure: inMeasure.findIndex(([i]) => i === tokenIndex) + 1,
+          distancePx: Math.abs(where.x - x),
+          noteX: where.x,
+          position: where.how
+        };
+      }
+    }
+    result.set(row.id, {
+      staffIndex: staff.index,
+      partIndex: staff.partIndex ?? null,
+      systemIndex: staff.systemIndex ?? null,
+      printedLine: 1,
+      syllables: [syllable],
+      placement:
+        (row.box[1] + row.box[3]) / 2 < (staff.region[1] + staff.region[3]) / 2 ? 'above' : 'below'
+    });
   }
   return result;
 }

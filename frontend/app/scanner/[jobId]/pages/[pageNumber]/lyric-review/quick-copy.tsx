@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Placement } from "./candidate-review-model";
+import type { DirectionPayload } from "./direction-review-model";
 
 type NoteChoice = { id: string; measureLabel: string; noteOrdinal: number; pitch: string };
 
@@ -22,6 +23,9 @@ export default function QuickCopy({
   acceptedCount,
   excludedCount,
   undecidedCount,
+  directions = [],
+  directionConflicts = [],
+  acceptedDirections = 0,
   jobHref,
 }: {
   base: string;
@@ -33,6 +37,9 @@ export default function QuickCopy({
   acceptedCount: number;
   excludedCount: number;
   undecidedCount: number;
+  directions?: DirectionPayload[];
+  directionConflicts?: string[];
+  acceptedDirections?: number;
   jobHref: string;
 }) {
   const [notes, setNotes] = useState<Record<string, NoteChoice>>({});
@@ -61,7 +68,10 @@ export default function QuickCopy({
   }, [base]);
 
   // Any change to what would be written starts a fresh review.
-  const signature = placements.map((p) => `${p.candidateId}|${p.noteId}|${p.printedLine}|${p.text}`).join("\n");
+  const signature =
+    placements.map((p) => `${p.candidateId}|${p.noteId}|${p.printedLine}|${p.text}`).join("\n") +
+    "\n--\n" +
+    directions.map((d) => `${d.candidateId}|${d.noteId}|${d.kind}|${d.text}|${d.placement}`).join("\n");
   useEffect(() => {
     setChecked(false);
     setSaved("");
@@ -75,6 +85,12 @@ export default function QuickCopy({
         automaticAttachment: false,
         rasterSha256,
         musicXmlSha256: sha,
+        directions: directions.map((d, i) => ({
+          id: `direction-${i}`,
+          ...d,
+          textConfirmed: true,
+          noteConfirmed: true,
+        })),
         placements: placements.map((p, i) => ({
           id: `review-${i}`,
           candidateId: p.candidateId,
@@ -109,7 +125,9 @@ export default function QuickCopy({
   const saveToScore = () =>
     run(async () => {
       await request("save-lyrics");
-      setSaved(`Added ${placements.length} lyric syllables to the scan's score.`);
+      setSaved(
+        `Added ${placements.length} lyric syllables${directions.length ? ` and ${directions.length} directions or dynamics` : ""} to the scan's score.`,
+      );
     });
 
   const downloadCopy = () =>
@@ -123,7 +141,11 @@ export default function QuickCopy({
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
-  const ready = Boolean(sha) && placements.length > 0 && conflicts.length === 0;
+  const ready =
+    Boolean(sha) &&
+    placements.length + directions.length > 0 &&
+    conflicts.length === 0 &&
+    directionConflicts.length === 0;
   return (
     <section className="my-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-slate-900">
       <p className="text-sm font-medium" data-testid="review-summary">
@@ -133,6 +155,11 @@ export default function QuickCopy({
         <p role="alert" className="mt-2 text-sm text-amber-800">
           Two syllables share a note and lyric line ({conflicts.join("; ")}). A note holds one syllable per
           line: change one note, or leave it out.
+        </p>
+      )}
+      {directionConflicts.length > 0 && (
+        <p role="alert" className="mt-2 text-sm text-amber-800">
+          {directionConflicts.join("; ")}. Exclude one or choose another note.
         </p>
       )}
       {error && (
@@ -165,10 +192,10 @@ export default function QuickCopy({
             Add accepted lyrics to the score
           </button>
           <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-            {placements.length > 0
-              ? `${placements.length} syllables with a chosen note will be added.`
-              : acceptedCount > 0
-                ? "None of the accepted syllables has a note chosen."
+            {placements.length + directions.length > 0
+              ? `${placements.length} syllables${directions.length ? ` and ${directions.length} directions or dynamics` : ""} with a chosen note will be added.`
+              : acceptedCount + acceptedDirections > 0
+                ? "None of the accepted rows has a note chosen."
                 : "Accept the rows that are lyrics (check their notes and lyric line), then add them to the score."}
           </p>
         </div>
@@ -191,6 +218,20 @@ export default function QuickCopy({
               );
             })}
           </ol>
+          {directions.length > 0 && (
+            <ol className="mt-2 max-h-48 list-decimal overflow-auto pl-6 text-sm" aria-label="Directions to add">
+              {directions.map((d, i) => {
+                const note = notes[d.noteId];
+                return (
+                  <li key={`${d.candidateId}-${d.noteId}-${i}`}>
+                    <strong>{d.text}</strong>
+                    {` (${d.kind === "dynamic" ? "dynamic" : "direction"}, ${d.placement})`}
+                    {note ? ` → measure ${note.measureLabel}, ${note.pitch} (note ${note.noteOrdinal})` : ""}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
           {leftOut.length > 0 && (
             <p className="mt-2 text-xs text-amber-800">
               Left out (no note chosen): {leftOut.join(", ")}.

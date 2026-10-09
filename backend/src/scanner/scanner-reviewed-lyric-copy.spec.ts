@@ -1,5 +1,6 @@
 import {
   withoutLyrics,
+  withoutReviewAdditions,
   applyReviewedLyricCopy,
   lyricNoteInventory
 } from './scanner-reviewed-lyric-copy';
@@ -111,5 +112,99 @@ describe('withoutLyrics', () => {
     expect(lyricNoteInventory(stripped).notes.map((n) => n.id)).toEqual(
       inventory.notes.map((n) => n.id)
     );
+  });
+});
+
+describe('reviewed directions', () => {
+  const direction = (extra: object = {}) => ({
+    id: 'd1',
+    candidateId: 'c1',
+    noteId: inventory.notes[0].id,
+    kind: 'words',
+    text: 'cresc. poco a poco',
+    placement: 'above',
+    textConfirmed: true,
+    noteConfirmed: true,
+    ...extra
+  });
+  const req = (directions: object[], placements: object[] = []) => ({
+    automaticAttachment: false,
+    musicXmlSha256: inventory.musicXmlSha256,
+    placements,
+    directions
+  });
+
+  it('writes a words direction before its note, with a review id and escaped text', () => {
+    const out = applyReviewedLyricCopy(
+      xml,
+      req([direction({ text: 'a & <b>' })]),
+      new Set(['c1'])
+    ).toString();
+    expect(out).toMatch(
+      /<direction placement="above" id="ots-review-[0-9a-f]{12}"><direction-type><words>a &amp; &lt;b&gt;<\/words><\/direction-type><\/direction><note><pitch>/
+    );
+  });
+
+  it('writes a dynamic mark as a dynamics element and keeps lyrics and directions together', () => {
+    const out = applyReviewedLyricCopy(
+      xml,
+      req([direction({ kind: 'dynamic', mark: 'mf', text: 'mf', placement: 'below' })], [row]),
+      new Set(['c1'])
+    ).toString();
+    expect(out).toContain('<dynamics><mf></mf></dynamics>');
+    expect(out).toContain('placement="below"');
+    expect(out).toContain('<lyric number="2">');
+  });
+
+  it('adds a staff element only for a note that already names its staff', () => {
+    const staffed = Buffer.from(
+      xml.toString().replace('<voice>1</voice>', '<voice>1</voice><staff>2</staff>')
+    );
+    const inv = lyricNoteInventory(staffed);
+    const out = applyReviewedLyricCopy(
+      staffed,
+      { ...req([direction({ noteId: inv.notes[0].id })]), musicXmlSha256: inv.musicXmlSha256 },
+      new Set(['c1'])
+    ).toString();
+    expect(out).toContain('</direction-type><staff>2</staff></direction>');
+  });
+
+  it.each([
+    ['unconfirmed text', { textConfirmed: false }],
+    ['unconfirmed note', { noteConfirmed: false }],
+    ['unknown note', { noteId: '["P1",9,9]' }],
+    ['unknown kind', { kind: 'lyric' }],
+    ['an unknown dynamic mark', { kind: 'dynamic', mark: 'zz' }],
+    ['a bad placement', { placement: 'left' }],
+    ['empty text', { text: '  ' }],
+    ['a candidate that is not in the inventory', { candidateId: 'other' }]
+  ])('refuses %s', (_name, extra) => {
+    expect(() => applyReviewedLyricCopy(xml, req([direction(extra)]), new Set(['c1']))).toThrow();
+  });
+
+  it('refuses a duplicate direction on one note and requires something to write', () => {
+    expect(() =>
+      applyReviewedLyricCopy(xml, req([direction(), direction({ id: 'd2' })]), new Set(['c1']))
+    ).toThrow(/Duplicate/);
+    expect(() => applyReviewedLyricCopy(xml, req([]), new Set(['c1']))).toThrow();
+  });
+
+  it('strips what a review added so a re-save starts clean, and leaves other scores untouched', () => {
+    const written = applyReviewedLyricCopy(xml, req([direction()], [row]), new Set(['c1']));
+    const base = withoutReviewAdditions(written);
+    expect(base.toString()).not.toContain('ots-review-');
+    expect(base.toString()).not.toContain('<lyric');
+    expect(base.toString()).toContain('<note><rest></rest>');
+    expect(withoutReviewAdditions(xml)).toBe(xml);
+    // A direction the source score had itself is not ours and survives.
+    const own = Buffer.from(
+      xml
+        .toString()
+        .replace(
+          '<note><rest/>',
+          '<direction placement="above"><direction-type><words>Allegro</words></direction-type></direction><note><rest/>'
+        )
+    );
+    expect(withoutReviewAdditions(own)).toBe(own);
   });
 });

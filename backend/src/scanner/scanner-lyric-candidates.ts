@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { CropRect, padAndClamp } from './scanner-crop';
-import { AnchorStaff, RowAnchor, anchorRows } from './scanner-lyric-anchors';
+import { AnchorStaff, RowAnchor, anchorDirectionRows, anchorRows } from './scanner-lyric-anchors';
 import { NoteChoice } from './scanner-lyric-note-choices';
 
 /**
@@ -50,12 +50,64 @@ export interface LyricOcrRow {
   semantic: 'Lyrics' | 'DirectionText' | 'Unknown';
   semanticScore: number | null;
   proposedLyric: boolean;
+  /** 'lyric' (default), or a written direction ('words') / dynamic mark ('dynamic') offered for review. */
+  kind?: 'lyric' | 'words' | 'dynamic';
+  /** A dynamic row's canonical mark (p, mf, ...). */
+  mark?: string;
+  /** The row is offered as a direction or dynamic (kind words/dynamic) and was not withheld. */
+  proposedDirection?: boolean;
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
   /** Recognised notes around the row, each a note the copy writer accepts; empty when the part did not align. */
   noteChoices?: NoteChoice[];
   /** Why a row the semantic gate liked was withheld anyway; null when it was not. */
   withheldReason: 'no-staff' | 'far-from-notes' | 'credit-like' | 'footer' | null;
+}
+
+/** Rows the provider offers as directions/dynamics, read from the same artifact. */
+function readDirectionRows(artifact: unknown, raster: LyricRasterIdentity): LyricOcrRow[] {
+  const direction = (artifact as { lyricText?: { directionRows?: { rows?: unknown[] } } })
+    ?.lyricText?.directionRows;
+  const out: LyricOcrRow[] = [];
+  const seen = new Set<string>();
+  for (const row of (Array.isArray(direction?.rows) ? direction!.rows : []) as Record<
+    string,
+    any
+  >[]) {
+    const box = row?.box;
+    if (
+      !isBox(box) ||
+      box[2] <= box[0] ||
+      box[3] <= box[1] ||
+      box[2] > raster.width ||
+      box[3] > raster.height ||
+      (row.kind !== 'words' && row.kind !== 'dynamic')
+    ) {
+      throw new Error('Text fusion artifact has a direction row outside its page');
+    }
+    const id = createHash('sha256')
+      .update(`${raster.checksumSha256}:direction:${box.join(',')}:${row.text}`)
+      .digest('hex')
+      .slice(0, 20);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id: `ocr-${id}`,
+      box,
+      text: String(row.text),
+      ocrConfidence: Number(row.ocrConfidence),
+      regionCoverage: 0,
+      semantic: row.semantic,
+      semanticScore: row.semanticScore === null ? null : Number(row.semanticScore),
+      proposedLyric: false,
+      kind: row.kind,
+      ...(row.kind === 'dynamic' && typeof row.mark === 'string' ? { mark: row.mark } : {}),
+      proposedDirection: true,
+      anchor: null,
+      withheldReason: null
+    });
+  }
+  return out;
 }
 
 export interface LyricCandidateInventory {
@@ -205,6 +257,28 @@ export function buildLyricCandidateInventory(
       row.withheldReason = 'far-from-notes';
     }
   }
+  const directionRows = readDirectionRows(artifact, raster);
+  const directionAnchors = anchorDirectionRows(
+    directionRows.map((row) => ({
+      id: row.id,
+      box: row.box,
+      text: row.text,
+      kind: row.kind as 'words' | 'dynamic'
+    })),
+    staves
+  );
+  for (const row of directionRows) {
+    row.anchor = directionAnchors.get(row.id) ?? null;
+    const reject = (reason: NonNullable<LyricOcrRow['withheldReason']>) => {
+      row.proposedDirection = false;
+      row.withheldReason = reason;
+    };
+    if ((row.box[1] + row.box[3]) / 2 > FOOTER_FRACTION * raster.height) reject('footer');
+    else if (!row.anchor) reject('no-staff');
+    else if (row.kind === 'words' && looksLikeCredit(row.text)) reject('credit-like');
+    else if (row.anchor.syllables.every((syllable) => syllable.noteTokenIndex === null))
+      reject('far-from-notes');
+  }
   return {
     schemaVersion: LYRIC_CANDIDATE_SCHEMA,
     automaticAttachment: false,
@@ -212,7 +286,7 @@ export function buildLyricCandidateInventory(
     raster,
     textPolicy: (artifact as { textPolicy?: unknown }).textPolicy ?? null,
     candidates,
-    ocrRows,
+    ocrRows: [...ocrRows, ...directionRows],
     ocrStatus
   };
 }

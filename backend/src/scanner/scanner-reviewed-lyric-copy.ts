@@ -92,7 +92,9 @@ export function reviewedLyricNotes(body: Buffer) {
               occupiedLines: element.note
                 .filter((n: Node) => 'lyric' in n)
                 .map((n: Node) => String(n[':@']?.['@_number'] ?? '1')),
-              node: element.note
+              node: element.note,
+              measureNodes: measure.measure,
+              element
             });
           }
         });
@@ -104,11 +106,101 @@ export function lyricNoteInventory(body: Buffer) {
   const inventory = reviewedLyricNotes(body);
   return {
     musicXmlSha256: inventory.musicXmlSha256,
-    notes: inventory.notes.map(({ node, ...note }) => note)
+    notes: inventory.notes.map(({ node, measureNodes, element, ...note }) => note)
   };
 }
 
-/** Only explicit fully confirmed syllables; never modifies the stored score. */
+const REVIEW_DIRECTION_ID = 'ots-review-';
+const DYNAMIC_ELEMENTS = new Set([
+  'p',
+  'pp',
+  'ppp',
+  'mp',
+  'mf',
+  'f',
+  'ff',
+  'fff',
+  'sf',
+  'sfz',
+  'fp',
+  'rf',
+  'rfz',
+  'fz',
+  'sfp'
+]);
+
+const isReviewDirection = (n: Node) =>
+  'direction' in n && String(n[':@']?.['@_id'] ?? '').startsWith(REVIEW_DIRECTION_ID);
+
+/** Remove what a review adds: lyrics, and (when asked) the directions it wrote, which carry an ots-review id. */
+function stripReviewAdditions(nodes: Node[], directions: boolean): Node[] {
+  return nodes
+    .filter((n) => !('lyric' in n) && !(directions && isReviewDirection(n)))
+    .map((n) =>
+      Object.fromEntries(
+        Object.entries(n).map(([k, v]) => [
+          k,
+          Array.isArray(v) ? stripReviewAdditions(v, directions) : v
+        ])
+      )
+    );
+}
+
+/** One confirmed written direction or dynamic mark, as a `<direction>` placed before its note. */
+function directionElement(row: any, hasStaff: string): Node {
+  const dynamic = row.kind === 'dynamic';
+  const type = dynamic
+    ? [{ dynamics: [{ [row.mark]: [] }] }]
+    : [{ words: [{ '#text': row.text.trim() }] }];
+  return {
+    direction: [
+      { 'direction-type': type },
+      ...(hasStaff ? [{ staff: [{ '#text': hasStaff }] }] : [])
+    ],
+    ':@': {
+      '@_placement': row.placement,
+      '@_id': `${REVIEW_DIRECTION_ID}${createHash('sha256')
+        .update(`${row.candidateId}:${row.noteId}:${row.kind}:${row.text}`)
+        .digest('hex')
+        .slice(0, 12)}`
+    }
+  };
+}
+
+function checkedDirections(request: any, allowedIds: Set<string>, notes: any[]): any[] {
+  const rows = request.directions ?? [];
+  if (!Array.isArray(rows) || rows.length > 200) throw new Error('Too many directions');
+  const ids = new Set<string>();
+  const slots = new Set<string>();
+  for (const row of rows) {
+    const note = notes.find((n) => n.id === row?.noteId);
+    const mark = row?.kind === 'dynamic' ? row.mark : undefined;
+    if (
+      !allowedIds.has(row?.candidateId) ||
+      typeof row.id !== 'string' ||
+      ids.has(row.id) ||
+      row.textConfirmed !== true ||
+      row.noteConfirmed !== true ||
+      (row.kind !== 'words' && row.kind !== 'dynamic') ||
+      (row.kind === 'dynamic' && !DYNAMIC_ELEMENTS.has(String(mark))) ||
+      typeof row.text !== 'string' ||
+      !row.text.trim() ||
+      row.text.length > 200 ||
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(row.text) ||
+      (row.placement !== 'above' && row.placement !== 'below') ||
+      !note
+    )
+      throw new Error('Require unique, fully confirmed direction text, kind, placement and note');
+    // One identical direction per note; the same text twice on a note is a duplicate, not a second mark.
+    const slot = `${row.noteId}:${row.kind}:${row.kind === 'dynamic' ? mark : row.text.trim()}`;
+    if (slots.has(slot)) throw new Error('Duplicate direction on a note');
+    slots.add(slot);
+    ids.add(row.id);
+  }
+  return rows;
+}
+
+/** Only explicit fully confirmed syllables and directions; never modifies the stored score. */
 export function applyReviewedLyricCopy(body: Buffer, request: any, allowedIds: Set<string>) {
   const inventory = reviewedLyricNotes(body);
   if (
@@ -116,12 +208,13 @@ export function applyReviewedLyricCopy(body: Buffer, request: any, allowedIds: S
     request?.automaticAttachment !== false
   )
     throw new Error('Score identity changed or review is not explicit');
+  const directions = checkedDirections(request, allowedIds, inventory.notes);
   if (
     !Array.isArray(request.placements) ||
-    !request.placements.length ||
+    (!request.placements.length && !directions.length) ||
     request.placements.length > 1000
   )
-    throw new Error('Require between 1 and 1000 confirmed syllables');
+    throw new Error('Require between 1 and 1000 confirmed syllables, or confirmed directions');
   const occupied = new Set<string>();
   const ids = new Set<string>();
   for (const row of request.placements) {
@@ -152,22 +245,27 @@ export function applyReviewedLyricCopy(body: Buffer, request: any, allowedIds: S
       ':@': { '@_number': String(row.printedLine) }
     });
   }
+  for (const row of directions) {
+    const note = inventory.notes.find((n) => n.id === row.noteId)!;
+    const at = note.measureNodes.indexOf(note.element);
+    const hasStaff = String(
+      note.element.note.find((n: Node) => 'staff' in n)?.staff?.[0]?.['#text'] ?? ''
+    );
+    note.measureNodes.splice(at, 0, directionElement(row, hasStaff));
+  }
   const output = Buffer.from(
     new XMLBuilder({ preserveOrder: true, ignoreAttributes: false, processEntities: true }).build(
       inventory.document
     )
   );
   parseValidMusicXml(output);
-  // Parse both documents and remove lyrics: serialization must preserve all other content.
-  const strip = (nodes: Node[]): Node[] =>
-    nodes
-      .filter((n) => !('lyric' in n))
-      .map((n) =>
-        Object.fromEntries(Object.entries(n).map(([k, v]) => [k, Array.isArray(v) ? strip(v) : v]))
-      );
+  // Parse both documents and remove what a review adds: serialization must preserve all other content.
   const before = orderedParser().parse(body.toString('utf8'));
   const after = orderedParser().parse(output.toString('utf8'));
-  if (JSON.stringify(strip(before)) !== JSON.stringify(strip(after)))
+  if (
+    JSON.stringify(stripReviewAdditions(before, true)) !==
+    JSON.stringify(stripReviewAdditions(after, true))
+  )
     throw new Error('Non-lyric score content changed');
   return output;
 }
@@ -189,6 +287,22 @@ export function withoutLyrics(body: Buffer): Buffer {
   const output = Buffer.from(
     new XMLBuilder({ preserveOrder: true, ignoreAttributes: false, processEntities: true }).build(
       strip(document)
+    )
+  );
+  parseValidMusicXml(output);
+  return output;
+}
+
+/**
+ * The score without anything a previous review added (lyrics and review-written directions): the base for a
+ * fresh save, so saving again replaces rather than collides. Untouched scores are returned byte for byte.
+ */
+export function withoutReviewAdditions(body: Buffer): Buffer {
+  const text = body.toString('utf8');
+  if (!/<lyric[\s>]/.test(text) && !text.includes(REVIEW_DIRECTION_ID)) return body;
+  const output = Buffer.from(
+    new XMLBuilder({ preserveOrder: true, ignoreAttributes: false, processEntities: true }).build(
+      stripReviewAdditions(orderedParser().parse(text), true)
     )
   );
   parseValidMusicXml(output);

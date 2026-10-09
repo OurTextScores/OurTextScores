@@ -1,6 +1,7 @@
 import {
   charWidths,
   anchorRows,
+  anchorDirectionRows,
   noteXPositions,
   splitSyllables,
   AnchorStaff
@@ -184,21 +185,74 @@ describe('anchorRows', () => {
   });
 });
 
-
 describe('double-bar measure boundaries', () => {
   it.each(['doublebarline', 'bolddoublebarline', 'repeatStart', 'repeatEnd', 'repeatEndStart'])(
-    'keeps lyrics after %s in their own measure, including interpolation', (boundary) => {
-    const context = staff({
-      tokens: [['rest_1'], [boundary], ['note_4', 'B3'], ['note_4', 'E4'], ['barline']],
-      barLines: [300, 700],
-      symbols: []
+    'keeps lyrics after %s in their own measure, including interpolation',
+    (boundary) => {
+      const context = staff({
+        tokens: [['rest_1'], [boundary], ['note_4', 'B3'], ['note_4', 'E4'], ['barline']],
+        barLines: [300, 700],
+        symbols: []
+      });
+      const positions = noteXPositions(context);
+      expect(positions.get(2)!.x).toBeGreaterThan(300);
+      expect(positions.get(3)!.x).toBeLessThan(700);
+      const anchor = anchorRows(
+        [{ id: 'after-double-bar', text: 'Dans la', box: [420, 170, 610, 190] }],
+        [context]
+      ).get('after-double-bar')!;
+      expect(anchor.syllables.map((s) => s.measureInStaff)).toEqual([1, 1]);
+      expect(anchor.syllables.map((s) => s.noteTokenIndex)).toEqual([2, 3]);
+      expect(anchor.syllables.map((s) => s.notePitch)).toEqual(['B3', 'E4']);
+    }
+  );
+});
+
+describe('anchorDirectionRows', () => {
+  const dir = (
+    id: string,
+    box: [number, number, number, number],
+    kind: 'words' | 'dynamic' = 'words'
+  ) => ({
+    id,
+    box,
+    text: id,
+    kind
+  });
+
+  it('anchors a direction above the staff to the measure its start falls in and the nearest note', () => {
+    // "cresc." starts at x=620 (second measure: between the bars at 300 and 700), 40px above the staff.
+    const anchors = anchorDirectionRows([dir('cresc', [620, 55, 700, 80])], [staff()]);
+    const syllable = anchors.get('cresc')!.syllables[0];
+    expect(anchors.get('cresc')).toMatchObject({
+      staffIndex: 0,
+      printedLine: 1,
+      placement: 'above'
     });
-    const positions = noteXPositions(context);
-    expect(positions.get(2)!.x).toBeGreaterThan(300);
-    expect(positions.get(3)!.x).toBeLessThan(700);
-    const anchor = anchorRows([{ id: 'after-double-bar', text: 'Dans la', box: [420, 170, 610, 190] }], [context]).get('after-double-bar')!;
-    expect(anchor.syllables.map((s) => s.measureInStaff)).toEqual([1, 1]);
-    expect(anchor.syllables.map((s) => s.noteTokenIndex)).toEqual([2, 3]);
-    expect(anchor.syllables.map((s) => s.notePitch)).toEqual(['B3', 'E4']);
+    expect(syllable).toMatchObject({ measureInStaff: 1, notePitch: 'G4', text: 'cresc' });
+    expect(syllable.distancePx).toBeLessThanOrEqual(150);
+  });
+
+  it('uses the middle of a dynamic mark rather than its left edge', () => {
+    const wide = anchorDirectionRows([dir('p', [250, 170, 350, 190], 'dynamic')], [staff()]);
+    // Centre x=300 is not before the bar at 300, so it belongs to the first measure.
+    expect(wide.get('p')!.syllables[0].measureInStaff).toBe(0);
+  });
+
+  it('gives no note to a direction far from every note and no anchor to one far from every staff', () => {
+    const far = anchorDirectionRows([dir('far', [940, 55, 990, 80])], [staff()]);
+    expect(far.get('far')!.syllables[0].noteTokenIndex).toBeNull();
+    expect(anchorDirectionRows([dir('title', [100, 700, 300, 740])], [staff()]).size).toBe(0);
+  });
+
+  it('picks the nearer of two staves for a row between them', () => {
+    const lower = staff({ index: 1, region: [0, 200, 1000, 260] });
+    const anchors = anchorDirectionRows(
+      [dir('between', [100, 165, 160, 185], 'dynamic')],
+      [staff(), lower]
+    );
+    // Centre 175 is 15 below the first staff and 25 above the second.
+    expect(anchors.get('between')!.staffIndex).toBe(0);
+    expect(anchors.get('between')!.placement).toBe('below');
   });
 });

@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import CorrectedCopy from "./corrected-copy";
 import QuickCopy from "./quick-copy";
+import DirectionsReview from "./directions-review";
+import {
+  directionItems,
+  directionPlan,
+  type DirectionDecision,
+} from "./direction-review-model";
 import {
   blankCandidate,
   buildCandidateExport,
@@ -39,6 +45,7 @@ export default function LyricCandidatesClient({
   const [decisions, setDecisions] = useState<Record<string, CandidateDecision>>(
     {},
   );
+  const [directionDecisions, setDirectionDecisions] = useState<Record<string, DirectionDecision>>({});
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState("");
 
@@ -55,6 +62,9 @@ export default function LyricCandidatesClient({
         setInventory(body);
         setKey(k);
         setDecisions(load(k));
+        setDirectionDecisions(
+          load(`${k}-directions`) as unknown as Record<string, DirectionDecision>,
+        );
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
@@ -84,6 +94,19 @@ export default function LyricCandidatesClient({
       return next;
     });
 
+  const directionList = directionItems(inventory);
+  const directionOutcome = directionPlan(directionList, directionDecisions);
+  const updateDirection = (id: string, next: DirectionDecision) =>
+    setDirectionDecisions((prev) => {
+      const merged = { ...prev, [id]: next };
+      try {
+        window.localStorage.setItem(`${key}-directions`, JSON.stringify(merged));
+      } catch {
+        /* storage is a convenience only */
+      }
+      return merged;
+    });
+
   const accepted = items.filter(
     (c) => decisions[c.id]?.state === "accept",
   ).length;
@@ -107,7 +130,7 @@ export default function LyricCandidatesClient({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  if (items.length === 0)
+  if (items.length === 0 && directionList.length === 0)
     return <p>No lyric regions were detected on this page.</p>;
 
   return (
@@ -127,7 +150,10 @@ export default function LyricCandidatesClient({
         acceptedCount={accepted}
         excludedCount={items.filter((c) => decisions[c.id]?.state === "exclude").length}
         undecidedCount={items.filter((c) => (decisions[c.id]?.state ?? "pending") === "pending").length}
-        leftOut={plan.leftOut}
+        leftOut={[...plan.leftOut, ...directionOutcome.leftOut]}
+        directions={directionOutcome.directions}
+        directionConflicts={directionOutcome.conflicts}
+        acceptedDirections={directionOutcome.directions.length}
         jobHref={`/scanner/${encodeURIComponent(jobId)}`}
       />
       {items.some(
@@ -203,6 +229,7 @@ export default function LyricCandidatesClient({
           regions without text.
         </p>
       )}
+      {items.length > 0 && <h2 className="mt-8 text-lg font-semibold">Lyrics</h2>}
       {items.map((c) => {
         const d = withDefaults(decisions[c.id], c);
         const placeable = c.defaultSyllables.length > 0 && c.noteChoices.length > 0;
@@ -359,6 +386,12 @@ export default function LyricCandidatesClient({
           </article>
         );
       })}
+      <DirectionsReview
+        base={base}
+        items={directionList}
+        decisions={directionDecisions}
+        onChange={updateDirection}
+      />
     </div>
   );
 }

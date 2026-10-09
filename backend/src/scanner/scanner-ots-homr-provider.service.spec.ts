@@ -300,6 +300,40 @@ describe('ScannerOtsHomrProviderService', () => {
           engineOptions: { textPolicy: { mode: 'fusion-v1' } }
         })
       ).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      // Direction rows are optional too, and validated: a good set is carried, an unknown kind fails.
+      const directionRow = {
+        box: [5, 6, 60, 30],
+        text: 'cresc.',
+        kind: 'words',
+        ocrConfidence: 0.9,
+        semantic: 'DirectionText',
+        semanticScore: 0.1
+      };
+      const directionRequest = (rows: unknown[], key: string) => ({
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: key.repeat(64),
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      });
+      (fused.result as any).lyricText = {
+        status: 'ok',
+        rows: [],
+        rowsOmitted: 0,
+        directionRows: { rows: [directionRow], rowsOmitted: 0 }
+      };
+      const withDirections = await new ScannerOtsHomrProviderService(config).scanPage(
+        directionRequest([directionRow], '7')
+      );
+      expect(
+        JSON.parse(withDirections.nativeArtifacts!['text-fusion-review'].toString('utf8')).lyricText
+          .directionRows.rows[0]
+      ).toMatchObject({ text: 'cresc.', kind: 'words' });
+      (fused.result as any).lyricText.directionRows.rows = [{ ...directionRow, kind: 'lyric' }];
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage(directionRequest([], '6'))
+      ).rejects.toMatchObject({ code: 'provider_invalid_response' });
       delete (fused.result as any).lyricText;
       // Hundreds of rejected boxes are carried as a tally, not as regions.
       (fused.result as any).fusionSummary = {

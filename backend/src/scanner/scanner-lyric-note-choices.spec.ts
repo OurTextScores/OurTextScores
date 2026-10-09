@@ -40,7 +40,9 @@ describe('noteChoicesForRow', () => {
   it('offers nothing for notes that did not align and nothing far from the row', () => {
     expect(noteChoicesForRow(staff, [150, 170, 260, 190], new Map(), 100)).toEqual([]);
     // With a 10px margin only D4 (x=200) reaches the row (x 150-260); C4 (x=100) does not.
-    expect(noteChoicesForRow(staff, [150, 170, 260, 190], ids, 10).map((c) => c.pitch)).toEqual(['D4']);
+    expect(noteChoicesForRow(staff, [150, 170, 260, 190], ids, 10).map((c) => c.pitch)).toEqual([
+      'D4'
+    ]);
     expect(noteChoicesForRow(staff, [880, 170, 950, 190], ids, 50)).toEqual([]);
   });
 });

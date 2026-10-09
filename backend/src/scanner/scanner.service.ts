@@ -2,7 +2,7 @@ import {
   applyReviewedLyricCopy,
   lyricNoteInventory,
   reviewedLyricNotes,
-  withoutLyrics
+  withoutReviewAdditions
 } from './scanner-reviewed-lyric-copy';
 import { alignAllParts } from './scanner-lyric-note-alignment';
 import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
@@ -3265,7 +3265,7 @@ export class ScannerService implements OnModuleInit {
     )
       throw new ConflictException('Recognised score changed');
     // The base for lyrics is the page without any lyrics a previous review saved.
-    return { ...context, body: withoutLyrics(stored) };
+    return { ...context, body: withoutReviewAdditions(stored) };
   }
 
   async pageLyricNoteInventory(userId: string, jobId: string, pageNumber: number) {
@@ -3356,6 +3356,7 @@ export class ScannerService implements OnModuleInit {
     return {
       ok: true,
       syllables: request.placements.length,
+      directions: (request.directions ?? []).length,
       musicXmlSha256: locator.checksumSha256
     };
   }

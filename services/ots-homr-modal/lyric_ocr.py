@@ -110,7 +110,8 @@ class LyricTextPipeline:
 
     def lyric_rows(self, page_bgr: Any, lyric_boxes: Sequence[Sequence[int]]) -> dict[str, Any]:
         """OCR the page, keep e2-covered rows, classify each; bounded and order-stable."""
-        rows = select_rows(self.read_page(page_bgr), lyric_boxes)
+        all_rows = self.read_page(page_bgr)
+        rows = select_rows(all_rows, lyric_boxes)
         rows.sort(key=lambda r: (_rect(r["box"])[1], _rect(r["box"])[0]))
         out = []
         for row in rows[:MAX_ROWS]:
@@ -127,4 +128,29 @@ class LyricTextPipeline:
                     "proposedLyric": verdict["proposedLyric"],
                 }
             )
-        return {"status": "ok", "rows": out, "rowsOmitted": max(0, len(rows) - MAX_ROWS)}
+        return {
+            "status": "ok",
+            "rows": out,
+            "rowsOmitted": max(0, len(rows) - MAX_ROWS),
+            "directionRows": self._direction_rows(all_rows, out),
+        }
+
+    def _direction_rows(self, all_rows: Sequence[dict[str, Any]], lyric_rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        """Written directions and dynamics among the page's other OCR rows (review candidates only)."""
+        from direction_text import direction_rows
+
+        classified = []
+        for row in all_rows:
+            left, top, right, bottom = _rect(row["box"])
+            verdict = self.gate.classify(row["text"])
+            classified.append(
+                {
+                    "box": [int(left), int(top), int(right), int(bottom)],
+                    "text": row["text"],
+                    "ocrConfidence": row["confidence"],
+                    "semantic": verdict["prediction"],
+                    "semanticScore": verdict["score"],
+                    "proposedLyric": verdict["proposedLyric"],
+                }
+            )
+        return direction_rows(classified, [r["box"] for r in lyric_rows if r["proposedLyric"]])

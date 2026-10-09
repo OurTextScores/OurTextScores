@@ -155,11 +155,33 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
           typeof row.ocrConfidence === 'number'
         );
       });
-    if (!valid) throw this.invalid('Scanner OTS-HOMR lyric text contract verification failed');
+    const direction = (value as { directionRows?: { rows?: unknown; rowsOmitted?: unknown } })
+      .directionRows;
+    const directionValid =
+      direction === undefined ||
+      (Array.isArray(direction.rows) &&
+        direction.rows.length <= 120 &&
+        Number.isInteger(direction.rowsOmitted) &&
+        direction.rows.every((row: Record<string, unknown>) => {
+          const box = row?.box as unknown[];
+          return (
+            Array.isArray(box) &&
+            box.length === 4 &&
+            box.every((n) => Number.isInteger(n)) &&
+            typeof row.text === 'string' &&
+            row.text.length <= 500 &&
+            (row.kind === 'words' || row.kind === 'dynamic') &&
+            (row.mark === undefined || typeof row.mark === 'string') &&
+            typeof row.ocrConfidence === 'number'
+          );
+        }));
+    if (!valid || !directionValid)
+      throw this.invalid('Scanner OTS-HOMR lyric text contract verification failed');
     return {
       status: lyric.status,
       rows,
-      rowsOmitted: lyric.rowsOmitted
+      rowsOmitted: lyric.rowsOmitted,
+      ...(direction ? { directionRows: direction } : {})
     };
   }
 

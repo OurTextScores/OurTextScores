@@ -274,3 +274,72 @@ describe('lyricCandidateCrop', () => {
     expect(lyricCandidateCrop(c, big)).toBeNull();
   });
 });
+
+describe('direction rows in the inventory', () => {
+  const staffForTest = {
+    index: 0,
+    partIndex: 0,
+    systemIndex: 0,
+    region: [0, 100, 1000, 160],
+    tokens: [['clef_G2'], ['note_4', 'C4'], ['note_4', 'D4'], ['barline']],
+    barLines: [900],
+    symbols: [
+      { index: 1, attention: [128, 0] },
+      { index: 2, attention: [256, 0] }
+    ]
+  };
+  const artifact = (rows: object[]) => ({
+    fusedRegions: [],
+    lyricText: { status: 'ok', rows: [], rowsOmitted: 0, directionRows: { rows, rowsOmitted: 0 } }
+  });
+  const row = (text: string, box: number[], kind = 'words', extra: object = {}) => ({
+    box,
+    text,
+    kind,
+    semantic: 'DirectionText',
+    semanticScore: 0.1,
+    ocrConfidence: 0.9,
+    ...extra
+  });
+
+  it('offers anchored direction and dynamic rows, and withholds footer, credit and unanchored ones', () => {
+    const inventory = buildLyricCandidateInventory(
+      artifact([
+        row('dolce', [90, 60, 180, 85]),
+        row('mf', [120, 175, 150, 195], 'dynamic', { mark: 'mf' }),
+        row('Peters Verlag', [90, 60, 180, 85]),
+        row('rit.', [90, 760, 180, 790]),
+        row('Allegro', [500, 400, 600, 420])
+      ]),
+      1,
+      raster,
+      [staffForTest]
+    );
+    const byText = Object.fromEntries(inventory.ocrRows.map((r) => [r.text, r]));
+    expect(byText['dolce']).toMatchObject({
+      kind: 'words',
+      proposedDirection: true,
+      proposedLyric: false
+    });
+    expect(byText['dolce'].anchor!.syllables[0].noteTokenIndex).toBe(1);
+    expect(byText['mf']).toMatchObject({ kind: 'dynamic', mark: 'mf', proposedDirection: true });
+    expect(byText['Peters Verlag']).toMatchObject({
+      proposedDirection: false,
+      withheldReason: 'credit-like'
+    });
+    expect(byText['rit.']).toMatchObject({ proposedDirection: false, withheldReason: 'footer' });
+    expect(byText['Allegro']).toMatchObject({
+      proposedDirection: false,
+      withheldReason: 'no-staff'
+    });
+  });
+
+  it('rejects a direction row outside the page or of an unknown kind', () => {
+    expect(() =>
+      buildLyricCandidateInventory(artifact([row('p', [10, 10, 2000, 30])]), 1, raster, [])
+    ).toThrow(/direction row/);
+    expect(() =>
+      buildLyricCandidateInventory(artifact([row('p', [10, 10, 30, 30], 'lyric')]), 1, raster, [])
+    ).toThrow(/direction row/);
+  });
+});

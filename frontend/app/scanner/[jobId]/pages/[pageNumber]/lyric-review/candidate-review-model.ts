@@ -25,6 +25,7 @@ export type SyllableAnchor = {
 export type RowAnchor = {
   staffIndex: number;
   printedLine: number;
+  placement?: "above" | "below";
   syllables: SyllableAnchor[];
 };
 
@@ -48,6 +49,10 @@ export type OcrRow = {
   semantic: "Lyrics" | "DirectionText" | "Unknown";
   semanticScore: number | null;
   proposedLyric: boolean;
+  /** Absent or 'lyric' for lyric rows; direction rows are reviewed separately. */
+  kind?: "lyric" | "words" | "dynamic";
+  mark?: string;
+  proposedDirection?: boolean;
   anchor?: RowAnchor | null;
   noteChoices?: NoteChoice[];
   withheldReason?: "no-staff" | "far-from-notes" | "credit-like" | "footer" | null;
@@ -108,12 +113,18 @@ export function describePlacement(anchor: RowAnchor | null | undefined): string 
   return `Staff ${anchor.staffIndex + 1}, printed line ${anchor.printedLine}, measure ${measures} of the staff: ${notes}`;
 }
 
+/** The OCR rows reviewed as lyrics (direction and dynamic rows have their own review). */
+export function lyricRows(inventory: Inventory): OcrRow[] {
+  return (inventory.ocrRows ?? []).filter((r) => !r.kind || r.kind === "lyric");
+}
+
 export function reviewItems(inventory: Inventory): ReviewItem[] {
-  if (inventory.ocrRows && inventory.ocrRows.length > 0) {
+  const rows = lyricRows(inventory);
+  if (rows.length > 0) {
     // One syllable per note per printed line: where several proposals land on one note the nearest keeps it
     // and the others start as "leave out", so no default selection is one the copy writer would refuse.
     const best = new Map<string, number>();
-    for (const r of inventory.ocrRows)
+    for (const r of rows)
       for (const s of r.anchor?.syllables ?? []) {
         if (!s.noteId) continue;
         const key = `${s.noteId}|${r.anchor!.printedLine}`;
@@ -121,7 +132,7 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
         if (!best.has(key) || distance < best.get(key)!) best.set(key, distance);
       }
     const claimed = new Set<string>();
-    return inventory.ocrRows.map((r) => ({
+    return rows.map((r) => ({
       id: r.id,
       kind: "ocr" as const,
       box: r.box,
@@ -294,7 +305,7 @@ export function proposedSyllables(
   decisions: Record<string, CandidateDecision>,
 ): ProposedSyllable[] {
   const best = new Map<string, { distance: number; item: ProposedSyllable }>();
-  for (const row of inventory.ocrRows ?? []) {
+  for (const row of lyricRows(inventory)) {
     const decision = decisions[row.id];
     if (!decision || decision.state !== "accept" || decision.text !== row.text)
       continue;
