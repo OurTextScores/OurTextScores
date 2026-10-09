@@ -185,6 +185,30 @@ export const blankCandidate = (c: {
     : {}),
 });
 
+/**
+ * A decision saved by an earlier version of the page has no per-syllable entries; a placeable row would then
+ * show a note choice with no syllable to review. Fill in the row's defaults (keeping the saved state/text).
+ */
+export function withDefaults(
+  d: CandidateDecision | undefined,
+  item: {
+    id: string;
+    initialText?: string;
+    defaultLine?: number | null;
+    defaultSyllables?: SyllableDecision[];
+  },
+): CandidateDecision {
+  const blank = blankCandidate(item);
+  if (!d) return blank;
+  if (!item.defaultSyllables || item.defaultSyllables.length === 0) return d;
+  return {
+    ...d,
+    printedLine: d.printedLine ?? blank.printedLine,
+    syllables:
+      d.syllables && d.syllables.length > 0 ? d.syllables : blank.syllables,
+  };
+}
+
 /** Any change to what the reviewer is accepting withdraws the acceptance. */
 export function setSyllable(
   d: CandidateDecision,
@@ -314,7 +338,7 @@ export function placementsFrom(
   const leftOut: string[] = [];
   const seen = new Map<string, string>();
   for (const item of items) {
-    const d = decisions[item.id];
+    const d = decisions[item.id] && withDefaults(decisions[item.id], item);
     if (!d || d.state !== "accept") continue;
     if (!d.syllables || d.syllables.length === 0) {
       if (d.text.trim()) leftOut.push(d.text);

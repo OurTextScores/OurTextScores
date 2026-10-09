@@ -377,4 +377,26 @@ describe("note decisions on each row", () => {
       ["ing", choices[1].noteId, 1, true],
     ]);
   });
+
+  it("shows the syllables and the row's text for a decision saved by an older version of the page", async () => {
+    window.localStorage.clear();
+    // Older versions stored only {id, text, state}: no syllables, no lyric line.
+    window.localStorage.setItem(
+      `ots-lyric-candidates-job-1-2-${placed.raster.checksumSha256}`,
+      JSON.stringify({ "ocr-1": { id: "ocr-1", text: "wish -ing", state: "pending" } }),
+    );
+    global.fetch = jest.fn(async (url: string) =>
+      String(url).endsWith("/notes")
+        ? { ok: true, json: async () => ({ musicXmlSha256: "sha", notes: [] }) }
+        : { ok: true, json: async () => placed },
+    ) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={2} />);
+    await waitFor(() => screen.getByLabelText("Syllable 1 of wish -ing"));
+    expect((screen.getByLabelText("Syllable 1 of wish -ing") as HTMLInputElement).value).toBe("wish");
+    expect((screen.getByLabelText("Syllable 2 of wish -ing") as HTMLInputElement).value).toBe("ing");
+    expect(screen.getByText("wish -ing", { selector: "strong" })).toBeInTheDocument();
+    // Editing still works from the upgraded decision.
+    fireEvent.change(screen.getByLabelText("Syllable 2 of wish -ing"), { target: { value: "in" } });
+    expect((screen.getByLabelText("Syllable 2 of wish -ing") as HTMLInputElement).value).toBe("in");
+  });
 });

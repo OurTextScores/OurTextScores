@@ -11,6 +11,7 @@ import {
   reviewItems,
   setLine,
   setSyllable,
+  withDefaults,
   setState,
   setText,
   type CandidateDecision,
@@ -73,7 +74,7 @@ export default function LyricCandidatesClient({
   ) =>
     setDecisions((prev) => {
       const candidate = items.find((c) => c.id === id)!;
-      const next = { ...prev, [id]: fn(prev[id] ?? blankCandidate(candidate)) };
+      const next = { ...prev, [id]: fn(withDefaults(prev[id], candidate)) };
       try {
         window.localStorage.setItem(key, JSON.stringify(next));
       } catch {
@@ -202,7 +203,7 @@ export default function LyricCandidatesClient({
         </p>
       )}
       {items.map((c) => {
-        const d = decisions[c.id] ?? blankCandidate(c);
+        const d = withDefaults(decisions[c.id], c);
         const placeable = c.defaultSyllables.length > 0;
         const withdraw = (fn: (x: typeof d) => typeof d) => update(c.id, fn);
         return (
@@ -211,6 +212,12 @@ export default function LyricCandidatesClient({
             className="border-t border-slate-300 py-4 dark:border-slate-700"
           >
             <p className="text-sm">{c.note}</p>
+            {c.initialText && (
+              <p className="mt-1 text-base">
+                <span className="text-xs text-slate-500">Read from the scan: </span>
+                <strong>{c.initialText}</strong>
+              </p>
+            )}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`${base}/${encodeURIComponent(c.id)}/crop${c.noteChoices.length > 0 ? "?view=placement" : ""}`}
