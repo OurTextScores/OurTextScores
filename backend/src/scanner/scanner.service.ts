@@ -1,4 +1,9 @@
-import { applyReviewedLyricCopy, lyricNoteInventory } from './scanner-reviewed-lyric-copy';
+import {
+  applyReviewedLyricCopy,
+  lyricNoteInventory,
+  reviewedLyricNotes
+} from './scanner-reviewed-lyric-copy';
+import { alignAllParts } from './scanner-lyric-note-alignment';
 import {
   ScannerFindingEdit,
   ScannerFindingEditDocument
@@ -3203,7 +3208,39 @@ export class ScannerService implements OnModuleInit {
     jobId: string,
     pageNumber: number
   ): Promise<LyricCandidateInventory> {
-    return (await this.lyricCandidateContext(userId, jobId, pageNumber)).inventory;
+    const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
+    await this.attachProposedNoteIds(inventory, page);
+    return inventory;
+  }
+
+  /**
+   * Give each anchored syllable the XML note it points at, when the page's token sequence aligns exactly
+   * with its MusicXML. Failure to align (or to read the score) just leaves the proposals without ids.
+   */
+  private async attachProposedNoteIds(inventory: LyricCandidateInventory, page: any) {
+    if (!inventory.ocrRows.some((row) => row.anchor)) return;
+    const locator = page.engines?.['ots-homr' as ScannerEngineId]?.artifacts?.musicXml;
+    const staves = page.engines?.['ots-homr' as ScannerEngineId]?.review?.staves;
+    if (!locator || !Array.isArray(staves)) return;
+    try {
+      const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
+      if (
+        locator.checksumSha256 &&
+        createHash('sha256').update(body).digest('hex') !== locator.checksumSha256
+      )
+        return;
+      const ids = alignAllParts(staves as never, reviewedLyricNotes(body).sequence);
+      for (const row of inventory.ocrRows) {
+        for (const syllable of row.anchor?.syllables ?? []) {
+          syllable.noteId =
+            syllable.noteTokenIndex === null
+              ? null
+              : (ids.get(`${row.anchor!.staffIndex}:${syllable.noteTokenIndex}`) ?? null);
+        }
+      }
+    } catch {
+      /* proposals without note ids are still usable; the reviewer picks the note */
+    }
   }
 
   private async lyricCopySource(userId: string, jobId: string, pageNumber: number) {
@@ -3369,8 +3406,7 @@ export class ScannerService implements OnModuleInit {
     // Same identity check the comparison crop makes: a raster that changed under us would
     // produce a correct-looking crop of the wrong pixels.
     if (
-      createHash('sha256').update(source).digest('hex') !==
-        page.recognitionRaster.checksumSha256 ||
+      createHash('sha256').update(source).digest('hex') !== page.recognitionRaster.checksumSha256 ||
       Number(metadata.width || 0) !== page.recognitionRaster.width ||
       Number(metadata.height || 0) !== page.recognitionRaster.height
     ) {
@@ -4013,11 +4049,7 @@ export class ScannerService implements OnModuleInit {
       }
       try {
         const seeded = ensureScoreProfileHistory(job);
-        const amended = amendProfile(
-          seeded,
-          input.amendment,
-          this.userHash(userId)
-        );
+        const amended = amendProfile(seeded, input.amendment, this.userHash(userId));
         if (amended !== seeded) {
           job.scoreProfileRevisions = amended;
           job.markModified('scoreProfileRevisions');

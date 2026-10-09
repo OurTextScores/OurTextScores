@@ -5,6 +5,7 @@ import CorrectedCopy from "./corrected-copy";
 import {
   blankCandidate,
   buildCandidateExport,
+  proposedSyllables,
   reviewItems,
   setState,
   setText,
@@ -139,6 +140,7 @@ export default function LyricCandidatesClient({
       <CorrectedCopy
         base={base}
         rasterSha256={inventory.raster.checksumSha256}
+        proposals={proposedSyllables(inventory, decisions)}
         candidates={items
           .filter((c) => decisions[c.id]?.state === "accept")
           .map((c) => ({ id: c.id, text: decisions[c.id].text }))}

@@ -23,6 +23,14 @@ export function reviewedLyricNotes(body: Buffer) {
   const root = document.find((n: Node) => 'score-partwise' in n)['score-partwise'];
   const partList = root.find((n: Node) => 'part-list' in n)?.['part-list'] ?? [];
   const notes: any[] = [];
+  /** Every note element (rests and chords included) in score order, for aligning with decoded tokens. */
+  const sequence: {
+    partId: string;
+    measure: number;
+    ordinal: number;
+    rest: boolean;
+    pitch: string | null;
+  }[] = [];
   root
     .filter((n: Node) => 'part' in n)
     .forEach((part: Node) => {
@@ -60,6 +68,13 @@ export function reviewedLyricNotes(body: Buffer) {
             }
             ordinal += 1;
             const pitch = element.note.find((n: Node) => 'pitch' in n)?.pitch;
+            sequence.push({
+              partId,
+              measure: mi + 1,
+              ordinal,
+              rest: !pitch,
+              pitch: pitch ? `${text(pitch, 'step')}${text(pitch, 'octave')}` : null
+            });
             if (!pitch) continue;
             const alter = text(pitch, 'alter');
             notes.push({
@@ -82,7 +97,7 @@ export function reviewedLyricNotes(body: Buffer) {
           }
         });
     });
-  return { document, musicXmlSha256: hash(body), notes };
+  return { document, musicXmlSha256: hash(body), notes, sequence };
 }
 
 export function lyricNoteInventory(body: Buffer) {

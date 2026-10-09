@@ -18,6 +18,7 @@ export type SyllableAnchor = {
   noteOrdinalInMeasure: number | null;
   notePitch: string | null;
   position: "attention" | "interpolated" | "none";
+  noteId?: string | null;
 };
 
 export type RowAnchor = {
@@ -161,4 +162,37 @@ export function buildCandidateExport(
       proposedPlacement: c.anchor,
     })),
   };
+}
+
+export type ProposedSyllable = {
+  candidateId: string;
+  text: string;
+  noteId: string;
+  printedLine: number;
+};
+
+/**
+ * Syllables the scanner proposes for accepted, UNEDITED OCR rows, each with the exact recognised note it
+ * points at. Edited rows are left out: corrected text needs fresh positioning by the reviewer.
+ */
+export function proposedSyllables(
+  inventory: Inventory,
+  decisions: Record<string, CandidateDecision>,
+): ProposedSyllable[] {
+  const out: ProposedSyllable[] = [];
+  for (const row of inventory.ocrRows ?? []) {
+    const decision = decisions[row.id];
+    if (!decision || decision.state !== "accept" || decision.text !== row.text)
+      continue;
+    for (const syllable of row.anchor?.syllables ?? []) {
+      if (syllable.noteId)
+        out.push({
+          candidateId: row.id,
+          text: syllable.text,
+          noteId: syllable.noteId,
+          printedLine: row.anchor!.printedLine,
+        });
+    }
+  }
+  return out;
 }

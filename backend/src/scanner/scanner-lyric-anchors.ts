@@ -51,6 +51,8 @@ export interface SyllableAnchor {
   /** Page x of the chosen note, so a reviewer can be shown which note is meant. */
   noteX: number | null;
   position: 'attention' | 'interpolated' | 'none';
+  /** The recognised score's note for this syllable (`[part, measure, ordinal]` as JSON), when the part aligns exactly. */
+  noteId?: string | null;
   /** A single consonant at a row edge is the clipped tail of a neighbouring word: it gets no note. */
   fragment?: boolean;
 }

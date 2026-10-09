@@ -3,6 +3,7 @@ import LyricCandidatesClient from "./lyric-candidates-client";
 import {
   blankCandidate,
   buildCandidateExport,
+  proposedSyllables,
   reviewItems,
   setState,
   setText,
@@ -186,5 +187,54 @@ describe("LyricCandidatesClient with OCR rows", () => {
     expect(screen.getAllByRole("textbox").map((t) => (t as HTMLInputElement).value)).toEqual(["kind,", "a tempo."]);
     fireEvent.click(screen.getAllByRole("button", { name: "Accept" })[0]);
     expect(screen.getByTestId("accepted-count")).toHaveTextContent("1 accepted");
+  });
+});
+
+describe("proposed syllables for the corrected copy", () => {
+  const withIds: Inventory = {
+    ...ocrInventory,
+    ocrRows: ocrInventory.ocrRows!.map((r, i) => ({
+      ...r,
+      anchor: {
+        staffIndex: 0,
+        printedLine: i + 1,
+        syllables: [
+          { text: r.text, measureInStaff: 0, noteOrdinalInMeasure: 1, notePitch: "C4", position: "attention" as const, noteId: i === 0 ? '["P1",2,3]' : null },
+        ],
+      },
+    })),
+  };
+
+  it("lists only accepted, unedited rows whose syllables have an exact note", () => {
+    const accepted = { "ocr-1": setState(blankCandidate({ id: "ocr-1", initialText: "kind," }), "accept"), "ocr-2": setState(blankCandidate({ id: "ocr-2", initialText: "a tempo." }), "accept") };
+    expect(proposedSyllables(withIds, accepted)).toEqual([
+      { candidateId: "ocr-1", text: "kind,", noteId: '["P1",2,3]', printedLine: 1 },
+    ]);
+    // Not accepted, or edited after acceptance: nothing is proposed.
+    expect(proposedSyllables(withIds, {})).toEqual([]);
+    expect(proposedSyllables(withIds, { "ocr-1": { ...accepted["ocr-1"], text: "kind" } })).toEqual([]);
+  });
+
+  it("adds them to the copy form unconfirmed, with the proposed note and line", async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn(async (url: string) =>
+      String(url).endsWith("/notes")
+        ? { ok: true, json: async () => ({ musicXmlSha256: "x", notes: [{ id: '["P1",2,3]', partId: "P1", measure: 2, measureLabel: "2", noteOrdinal: 3, onsetQuarterNotes: 1, pitch: "C4", voice: "1", staff: "1", occupiedLines: [] }] }) }
+        : { ok: true, json: async () => withIds },
+    ) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={2} />);
+    await waitFor(() => screen.getAllByRole("button", { name: "Accept" }));
+    expect(screen.queryByText(/proposed syllables from accepted rows/)).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "Accept" })[0]);
+    const add = await screen.findByRole("button", { name: /Add 1 proposed syllables/ });
+    fireEvent.click(add);
+    expect(await screen.findByText("Syllable 1")).toBeInTheDocument();
+    const boxes = screen.getAllByRole("checkbox").filter((b) => /confirmed/.test(b.closest("label")?.textContent ?? ""));
+    expect(boxes.length).toBe(3);
+    expect(boxes.every((b) => !(b as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByRole("button", { name: "Download corrected score copy" })).toBeDisabled();
+    // Adding again does not duplicate the same proposal.
+    fireEvent.click(add);
+    expect(screen.queryByText("Syllable 2")).toBeNull();
   });
 });

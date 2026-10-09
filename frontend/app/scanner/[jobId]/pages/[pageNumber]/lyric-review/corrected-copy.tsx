@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ProposedSyllable } from "./candidate-review-model";
 
 type Note = {
   id: string;
@@ -31,10 +32,12 @@ export default function CorrectedCopy({
   base,
   rasterSha256,
   candidates,
+  proposals = [],
 }: {
   base: string;
   rasterSha256: string;
   candidates: { id: string; text: string }[];
+  proposals?: ProposedSyllable[];
 }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [sha, setSha] = useState("");
@@ -120,6 +123,25 @@ export default function CorrectedCopy({
     setRows((previous) =>
       previous.map((r, i) => (i === index ? { ...r, ...patch } : r)),
     );
+  const addProposals = () =>
+    setRows((previous) => {
+      const have = new Set(
+        previous.map((r) => `${r.candidateId}|${r.noteId}|${r.printedLine}`),
+      );
+      const fresh = proposals
+        .filter((p) => !have.has(`${p.candidateId}|${p.noteId}|${p.printedLine}`))
+        .map((p, i) => ({
+          id: `proposed-${previous.length + i}-${Date.now()}`,
+          candidateId: p.candidateId,
+          text: p.text,
+          noteId: p.noteId,
+          printedLine: p.printedLine,
+          textConfirmed: false,
+          lineConfirmed: false,
+          noteConfirmed: false,
+        }));
+      return [...previous, ...fresh];
+    });
   const valid =
     rows.length > 0 &&
     rows.every(
@@ -176,6 +198,19 @@ export default function CorrectedCopy({
         editing.
       </p>
       {error && <p role="alert">{error}</p>}
+      {proposals.length > 0 && (
+        <p className="my-2 text-sm">
+          <button
+            type="button"
+            onClick={addProposals}
+            className="rounded border px-2 py-1"
+          >
+            Add {proposals.length} proposed syllables from accepted rows
+          </button>{" "}
+          Each arrives unconfirmed with its proposed note and printed line;
+          check them against the scan and confirm or correct every one.
+        </p>
+      )}
       <button
         type="button"
         disabled={!sha || !candidates.length}
@@ -204,6 +239,7 @@ export default function CorrectedCopy({
           <label className="block">
             Accepted scan region{" "}
             <select
+              aria-label="Accepted scan region"
               value={row.candidateId}
               onChange={(e) =>
                 update(i, {
@@ -235,6 +271,7 @@ export default function CorrectedCopy({
           <label className="block">
             Recognised note{" "}
             <select
+              aria-label="Recognised note"
               value={row.noteId}
               onChange={(e) =>
                 update(i, { noteId: e.target.value, noteConfirmed: false })
