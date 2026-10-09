@@ -62,3 +62,10 @@ def test_a_spread_out_word_is_joined_across_hyphen_and_dropped_hyphen_pieces():
     # A different line, or a gap too wide, does not chain.
     assert merge_hyphen_chains([r("cre-", box=(0, 0, 90, 40)), r("do", box=(0, 300, 60, 340))]) == []
     assert merge_hyphen_chains([r("cre-", box=(0, 0, 90, 40)), r("do", box=(2000, 0, 2060, 40))]) == []
+
+
+def test_page_furniture_and_ocr_junk_are_not_offered_but_real_directions_with_stray_marks_are():
+    for junk in ["Piano.", "PIANO", "Pianoforte.", "Chant.", "vorbehalten.", "(Wolfgang Müller.)", "L.A.v.Arnim.", "Ring,", "Je_mand!o", "con-tent", "Cette version est transposée"]:
+        assert direction_kind(junk, "DirectionText") is None, junk
+    for real in ["poco rit._", "a tempo.", "molto cres.", "colla voce.", "rall:", "Ped."]:
+        assert direction_kind(real, "DirectionText") == "words", real

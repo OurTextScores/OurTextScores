@@ -28,6 +28,13 @@ FUSED_TERMS = STRICT_TERMS | frozenset("dolce poco molto sempre meno più piu co
 LONG_TERMS = (
     "crescendo decrescendo diminuendo ritardando rallentando accelerando ritenuto smorzando perdendosi calando"
 ).split()
+#: Part, instrument and voice labels printed at the start of a system or on a title page ("Piano.", "Chant.").
+LABEL_WORDS = frozenset(
+    "piano pianoforte pf clavier klavier chant voix canto voice gesang singstimme stimme canto cello violon "
+    "violin viola flute fl cor horn basso baryton barytone soprano alto tenor".split()
+)
+_CREDIT = re.compile(r"vorbehalten|r[ée]serv|reserved|copyright|transpos|^\s*\(|\b[A-Z]\.[A-Za-z]\.[a-z]?\.?", re.IGNORECASE)
+_INITIALS = re.compile(r"^(?:[A-Z]\.\s*){2,}")
 MAX_DIRECTION_ROWS = 120
 MAX_CHAIN = 4
 _FUSED = re.compile(r"^(ppp|pp|p|mp|mf|fff|ff|f|sfz|sf|fp)\s*([^\W\d_]{3,}\.?)$", re.IGNORECASE | re.UNICODE)
@@ -60,7 +67,24 @@ def direction_kind(text: str, semantic: str) -> str | None:
     letters = len(_LETTERS.findall(text))
     if letters < MIN_WORD_LETTERS:  # numbers, rehearsal marks, stray syllable fragments
         return None
-    return "words"
+    return None if _not_a_direction(text) else "words"
+
+
+def _not_a_direction(text: str) -> bool:
+    """Page furniture and OCR junk the gate lets through: part labels, credits, lyric punctuation, garbled text."""
+    stripped = text.strip()
+    if first_token(stripped) in LABEL_WORDS and len(stripped.split()) <= 2:
+        return True
+    if _CREDIT.search(stripped) or _INITIALS.match(stripped):
+        return True
+    if (
+        stripped.endswith(",")
+        or re.search(r"[^\W\d]_[^\W\d]", stripped)
+        or "!" in stripped.rstrip("!.")
+        or "-" in stripped.strip("-")
+    ):
+        return True  # lyric punctuation, extension underscores, hyphenated syllables
+    return any(ord(c) > 0x24F for c in stripped)  # letters outside Latin: OCR noise on a music symbol
 
 
 def direction_rows(rows: Sequence[dict[str, Any]], lyric_boxes: Sequence[Sequence[int]]) -> dict[str, Any]:
