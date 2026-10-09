@@ -3,6 +3,7 @@ import LyricCandidatesClient from "./lyric-candidates-client";
 import {
   blankCandidate,
   buildCandidateExport,
+  duplicateSlots,
   proposedSyllables,
   reviewItems,
   setState,
@@ -236,5 +237,47 @@ describe("proposed syllables for the corrected copy", () => {
     // Adding again does not duplicate the same proposal.
     fireEvent.click(add);
     expect(screen.queryByText("Syllable 2")).toBeNull();
+  });
+
+  it("keeps the proposals disabled until the note choices load, so a late draft cannot wipe added rows", async () => {
+    window.localStorage.clear();
+    let release: (value: unknown) => void = () => undefined;
+    const notesReady = new Promise((resolve) => (release = resolve));
+    global.fetch = jest.fn(async (url: string) =>
+      String(url).endsWith("/notes")
+        ? notesReady.then(() => ({ ok: true, json: async () => ({ musicXmlSha256: "x", notes: [] }) }))
+        : { ok: true, json: async () => withIds },
+    ) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={2} />);
+    await waitFor(() => screen.getAllByRole("button", { name: "Accept" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Accept" })[0]);
+    const add = await screen.findByRole("button", { name: /Add 1 proposed syllables/ });
+    expect(add).toBeDisabled();
+    release(null);
+    await waitFor(() => expect(add).toBeEnabled());
+    fireEvent.click(add);
+    expect(await screen.findByText("Syllable 1")).toBeInTheDocument();
+  });
+
+  it("proposes only the nearest syllable when several land on one note and line, and flags duplicates", () => {
+    const crowded: Inventory = {
+      ...ocrInventory,
+      ocrRows: ocrInventory.ocrRows!.map((r, i) => ({
+        ...r,
+        anchor: {
+          staffIndex: 0,
+          printedLine: 1,
+          syllables: [
+            { text: i === 0 ? "far" : "near", measureInStaff: 0, noteOrdinalInMeasure: 1, notePitch: "C4", position: "attention" as const, noteId: '["P1",1,1]', distancePx: i === 0 ? 30 : 4 },
+          ],
+        },
+      })),
+    };
+    const accepted = {
+      "ocr-1": setState(blankCandidate({ id: "ocr-1", initialText: "kind," }), "accept"),
+      "ocr-2": setState(blankCandidate({ id: "ocr-2", initialText: "a tempo." }), "accept"),
+    };
+    expect(proposedSyllables(crowded, accepted).map((p) => p.text)).toEqual(["near"]);
+    expect(duplicateSlots([{ noteId: "n", printedLine: 1 }, { noteId: "n", printedLine: 2 }, { noteId: "n", printedLine: 1 }, { noteId: "", printedLine: 1 }])).toEqual([2]);
   });
 });

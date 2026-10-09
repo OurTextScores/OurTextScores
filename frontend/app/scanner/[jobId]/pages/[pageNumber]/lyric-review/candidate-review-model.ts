@@ -19,6 +19,7 @@ export type SyllableAnchor = {
   notePitch: string | null;
   position: "attention" | "interpolated" | "none";
   noteId?: string | null;
+  distancePx?: number | null;
 };
 
 export type RowAnchor = {
@@ -173,26 +174,47 @@ export type ProposedSyllable = {
 
 /**
  * Syllables the scanner proposes for accepted, UNEDITED OCR rows, each with the exact recognised note it
- * points at. Edited rows are left out: corrected text needs fresh positioning by the reviewer.
+ * points at. Edited rows are left out (corrected text needs fresh positioning by the reviewer). The copy
+ * writer allows one syllable per note per printed line, so when several proposals land on the same note
+ * and line only the one nearest its note is proposed; the rest are for the reviewer to place by hand.
  */
 export function proposedSyllables(
   inventory: Inventory,
   decisions: Record<string, CandidateDecision>,
 ): ProposedSyllable[] {
-  const out: ProposedSyllable[] = [];
+  const best = new Map<string, { distance: number; item: ProposedSyllable }>();
   for (const row of inventory.ocrRows ?? []) {
     const decision = decisions[row.id];
     if (!decision || decision.state !== "accept" || decision.text !== row.text)
       continue;
     for (const syllable of row.anchor?.syllables ?? []) {
-      if (syllable.noteId)
-        out.push({
-          candidateId: row.id,
-          text: syllable.text,
-          noteId: syllable.noteId,
-          printedLine: row.anchor!.printedLine,
-        });
+      if (!syllable.noteId) continue;
+      const item = {
+        candidateId: row.id,
+        text: syllable.text,
+        noteId: syllable.noteId,
+        printedLine: row.anchor!.printedLine,
+      };
+      const key = `${item.noteId}|${item.printedLine}`;
+      const distance = syllable.distancePx ?? Number.POSITIVE_INFINITY;
+      const held = best.get(key);
+      if (!held || distance < held.distance) best.set(key, { distance, item });
     }
   }
+  return [...best.values()].map((entry) => entry.item);
+}
+
+/** Row indexes (0-based) that share a note and printed line with an earlier row; the writer refuses these. */
+export function duplicateSlots(
+  rows: { noteId: string; printedLine: number }[],
+): number[] {
+  const seen = new Set<string>();
+  const out: number[] = [];
+  rows.forEach((r, i) => {
+    if (!r.noteId) return;
+    const key = `${r.noteId}|${r.printedLine}`;
+    if (seen.has(key)) out.push(i);
+    seen.add(key);
+  });
   return out;
 }

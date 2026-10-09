@@ -7,7 +7,11 @@ behind both existing flags: `NEXT_PUBLIC_OTS_HOMR_LYRIC_REVIEW_ENABLED=1` and
 change provider/model pins, deploy, or invoke a recognition provider.
 
 1. Check the full scan and detected region; correct and accept the region's text.
-2. Add each syllable to include in the copy. Select its actual recognised-score
+2. Use **Add N proposed syllables from accepted rows** to bring in the scanner's proposals: each accepted,
+   unedited row's syllables arrive with the exact recognised note they point at (the page's decoded tokens
+   are aligned with the MusicXML note elements; a part that does not align exactly gets no proposals) and
+   the printed line, all **unconfirmed**. When several proposals land on one note and line only the nearest
+   is proposed; the rest are for you to place by hand. Or add each syllable yourself: Select its actual recognised-score
    note and the printed lyric line (top to bottom). Note labels identify source
    part, displayed and physical measure, quarter-note offset, pitch, staff and voice.
    Accepted, unchanged rows with a note alignment may propose syllables and exact
@@ -61,3 +65,22 @@ The broader backend lyric/anchor/alignment regression suites also passed (43 tes
 The subsequent shared-workspace duplicate-slot UI changes passed both frontend
 suites again (14 tests); they remain separate active edits.
 Frontend Docker image ots-lyric-review-local-20261008 built successfully (EXIT 0).
+
+## Entry point and end-to-end test
+
+On the scan's job page, a page whose OTS-HOMR run produced a text review shows **Review lyrics for this page**
+(same flag as the review page). The upload form's **This score has lyrics** box (needs
+`NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED=1` and `SCANNER_OTS_HOMR_FUSION_ENABLED=1`) is what makes the scan run
+fusion-v1, OCR and the text classifier.
+
+`smoke/e2e/scanner-lyric-checkbox-flow.spec.cjs` drives the whole path in a real browser: upload with the box
+ticked, start, wait, open the review, accept the suggested rows, add the proposals, confirm each, download, then
+check the copy is a new document with the original's non-lyric content unchanged. Opt in with
+`LYRIC_FLOW_SMOKE=1`, `LYRIC_FLOW_OWNER_EMAIL` and `LYRIC_FLOW_IMAGE` (costs one provider scan) or
+`LYRIC_FLOW_JOB_ID` (re-runs the review half on a completed local job). Its confirmations are clicked by the test:
+a fixture, not a person's approval.
+
+The 2026-10-08 run of this flow on a real GPU scan of IMSLP10602 produced 18 OCR rows, 17 suggested, 26 proposals
+(25 after the one-syllable-per-note rule) and a 25-lyric copy whose non-lyric content was identical to the
+recognised score. A draft-restore race that wiped added rows and an unfiltered same-note proposal (the writer refused
+the whole copy, 409) were found and fixed by that run.

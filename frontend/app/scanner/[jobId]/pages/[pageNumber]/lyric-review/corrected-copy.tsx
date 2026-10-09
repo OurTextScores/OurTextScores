@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ProposedSyllable } from "./candidate-review-model";
+import { duplicateSlots, type ProposedSyllable } from "./candidate-review-model";
 
 type Note = {
   id: string;
@@ -79,7 +79,8 @@ export default function CorrectedCopy({
                   ),
               )
             )
-              setRows(saved);
+              // A draft only fills an empty form: never replace rows the reviewer already added.
+              setRows((current) => (current.length > 0 ? current : saved));
           } catch {
             /* drafts are only a convenience */
           }
@@ -142,8 +143,10 @@ export default function CorrectedCopy({
         }));
       return [...previous, ...fresh];
     });
+  const duplicates = duplicateSlots(rows);
   const valid =
     rows.length > 0 &&
+    duplicates.length === 0 &&
     rows.every(
       (r) =>
         candidates.some((c) => c.id === r.candidateId) &&
@@ -198,12 +201,20 @@ export default function CorrectedCopy({
         editing.
       </p>
       {error && <p role="alert">{error}</p>}
+      {duplicates.length > 0 && (
+        <p role="alert" className="text-sm text-amber-800">
+          Syllable {duplicates.map((i) => i + 1).join(", ")} share a note and
+          printed line with an earlier syllable. A note holds one syllable per
+          line: change its note or line, or remove it.
+        </p>
+      )}
       {proposals.length > 0 && (
         <p className="my-2 text-sm">
           <button
             type="button"
             onClick={addProposals}
-            className="rounded border px-2 py-1"
+            disabled={!sha || !storageKey}
+            className="rounded border px-2 py-1 disabled:opacity-40"
           >
             Add {proposals.length} proposed syllables from accepted rows
           </button>{" "}
