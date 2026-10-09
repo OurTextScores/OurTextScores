@@ -14,6 +14,9 @@ async function setup(artifact: object | Buffer, mutateRaster?: (raster: any) => 
     .toBuffer();
   const objects: Record<string, Buffer> = {
     raster: png,
+    musicxml: Buffer.from(
+      '<score-partwise><part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list><part id="P1"><measure number="1"><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration></note></measure></part></score-partwise>'
+    ),
     fusion: Buffer.isBuffer(artifact) ? artifact : Buffer.from(JSON.stringify(artifact))
   };
   const storage = {
@@ -41,7 +44,12 @@ async function setup(artifact: object | Buffer, mutateRaster?: (raster: any) => 
         pageNumber: 1,
         recognitionRaster: raster,
         engines: {
-          'ots-homr': { artifacts: { 'text-fusion-review': { bucket: 'b', objectKey: 'fusion' } } }
+          'ots-homr': {
+            artifacts: {
+              'text-fusion-review': { bucket: 'b', objectKey: 'fusion' },
+              musicXml: { bucket: 'b', objectKey: 'musicxml' }
+            }
+          }
         }
       }
     ]
@@ -90,6 +98,42 @@ describe('ScannerService lyric candidates', () => {
     expect(crop.contentType).toBe('image/png');
     expect(await sharp(crop.body).metadata()).toMatchObject({ width: 244, height: 88 });
     await expect(service.pageLyricCandidateCrop('user-1', 'job', 1, 'nope')).rejects.toThrow(
+      NotFoundException
+    );
+  });
+
+  it('returns note choices and downloads only a hash-bound explicitly confirmed copy', async () => {
+    process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED = '1';
+    const service = await setup(artifact);
+    const notes = await service.pageLyricNoteInventory('user-1', 'job', 1);
+    const candidates = await service.pageLyricCandidates('user-1', 'job', 1);
+    const request = {
+      automaticAttachment: false,
+      musicXmlSha256: notes.musicXmlSha256,
+      rasterSha256: candidates.raster.checksumSha256,
+      placements: [
+        {
+          id: 's1',
+          candidateId: 'c1',
+          noteId: notes.notes[0].id,
+          text: 'fi',
+          printedLine: 1,
+          textConfirmed: true,
+          lineConfirmed: true,
+          noteConfirmed: true
+        }
+      ]
+    };
+    const copy = await service.pageReviewedLyricCopy('user-1', 'job', 1, request);
+    expect(copy.toString()).toContain('<text>fi</text>');
+    expect((await service.pageLyricNoteInventory('user-1', 'job', 1)).musicXmlSha256).toBe(
+      notes.musicXmlSha256
+    );
+    await expect(
+      service.pageReviewedLyricCopy('user-1', 'job', 1, { ...request, rasterSha256: 'stale' })
+    ).rejects.toThrow(ConflictException);
+    delete process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED;
+    await expect(service.pageReviewedLyricCopy('user-1', 'job', 1, request)).rejects.toThrow(
       NotFoundException
     );
   });

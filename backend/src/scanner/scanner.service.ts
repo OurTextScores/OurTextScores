@@ -1,3 +1,4 @@
+import { applyReviewedLyricCopy, lyricNoteInventory } from './scanner-reviewed-lyric-copy';
 import {
   ScannerFindingEdit,
   ScannerFindingEditDocument
@@ -3203,6 +3204,56 @@ export class ScannerService implements OnModuleInit {
     pageNumber: number
   ): Promise<LyricCandidateInventory> {
     return (await this.lyricCandidateContext(userId, jobId, pageNumber)).inventory;
+  }
+
+  private async lyricCopySource(userId: string, jobId: string, pageNumber: number) {
+    const context = await this.lyricCandidateContext(userId, jobId, pageNumber);
+    const locator = context.page.engines?.['ots-homr' as ScannerEngineId]?.artifacts?.musicXml;
+    if (!locator) throw new NotFoundException('Recognised MusicXML is not available');
+    const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
+    if (
+      locator.checksumSha256 &&
+      createHash('sha256').update(body).digest('hex') !== locator.checksumSha256
+    )
+      throw new ConflictException('Recognised score changed');
+    return { ...context, body };
+  }
+
+  async pageLyricNoteInventory(userId: string, jobId: string, pageNumber: number) {
+    const { body } = await this.lyricCopySource(userId, jobId, pageNumber);
+    try {
+      return lyricNoteInventory(body);
+    } catch (error) {
+      throw new ConflictException(
+        error instanceof Error ? error.message : 'Invalid recognised score'
+      );
+    }
+  }
+
+  async pageReviewedLyricCopy(userId: string, jobId: string, pageNumber: number, request: any) {
+    const { body, inventory } = await this.lyricCopySource(userId, jobId, pageNumber);
+    if (request?.rasterSha256 !== inventory.raster.checksumSha256)
+      throw new ConflictException('Recognition raster changed; refresh the review');
+    const allowed = new Set([...inventory.candidates, ...inventory.ocrRows].map((r) => r.id));
+    try {
+      return applyReviewedLyricCopy(body, request, allowed);
+    } catch (error) {
+      throw new ConflictException(error instanceof Error ? error.message : 'Invalid lyric review');
+    }
+  }
+
+  async pageLyricReviewRaster(userId: string, jobId: string, pageNumber: number) {
+    const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
+    const locator = page.recognitionRaster!.storage!;
+    const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
+    const metadata = await sharp(body).metadata();
+    if (
+      createHash('sha256').update(body).digest('hex') !== inventory.raster.checksumSha256 ||
+      metadata.width !== inventory.raster.width ||
+      metadata.height !== inventory.raster.height
+    )
+      throw new ConflictException('Scanner recognition raster changed; refresh the review');
+    return sharp(body).png().toBuffer();
   }
 
   async pageLyricCandidateCrop(

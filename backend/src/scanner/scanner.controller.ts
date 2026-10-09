@@ -460,6 +460,48 @@ export class ScannerController {
     return this.scanner.pageLyricCandidates(user.userId, jobId, pageNumber);
   }
 
+  @Get(':jobId/pages/:pageNumber/lyric-candidates/scan')
+  async lyricReviewScan(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const body = await this.scanner.pageLyricReviewRaster(user.userId, jobId, pageNumber);
+    response.setHeader('Content-Type', 'image/png');
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(body);
+  }
+
+  @Get(':jobId/pages/:pageNumber/lyric-candidates/notes')
+  async lyricNotes(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number
+  ) {
+    return this.scanner.pageLyricNoteInventory(user.userId, jobId, pageNumber);
+  }
+
+  @Post(':jobId/pages/:pageNumber/lyric-candidates/corrected-copy')
+  async reviewedLyricCopy(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const output = await this.scanner.pageReviewedLyricCopy(user.userId, jobId, pageNumber, body);
+    response.setHeader('Content-Type', 'application/vnd.recordare.musicxml+xml');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="reviewed-lyrics-page-${pageNumber}.musicxml"`
+    );
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(output);
+  }
+
   @Get(':jobId/pages/:pageNumber/lyric-candidates/:candidateId/crop')
   async lyricCandidateCrop(
     @CurrentUser() user: RequestUser,

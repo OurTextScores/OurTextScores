@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import CorrectedCopy from "./corrected-copy";
 import {
   blankCandidate,
   buildCandidateExport,
@@ -39,7 +40,8 @@ export default function LyricCandidatesClient({
     (async () => {
       try {
         const res = await fetch(base, { cache: "no-store" });
-        if (!res.ok) throw new Error(`Lyric candidates unavailable (${res.status})`);
+        if (!res.ok)
+          throw new Error(`Lyric candidates unavailable (${res.status})`);
         const body = (await res.json()) as Inventory;
         if (cancelled) return;
         const k = `ots-lyric-candidates-${jobId}-${pageNumber}-${body.raster.checksumSha256}`;
@@ -59,7 +61,10 @@ export default function LyricCandidatesClient({
   if (!inventory) return <p>Loading lyric candidates…</p>;
 
   const items = reviewItems(inventory);
-  const update = (id: string, fn: (d: CandidateDecision) => CandidateDecision) =>
+  const update = (
+    id: string,
+    fn: (d: CandidateDecision) => CandidateDecision,
+  ) =>
     setDecisions((prev) => {
       const candidate = items.find((c) => c.id === id)!;
       const next = { ...prev, [id]: fn(prev[id] ?? blankCandidate(candidate)) };
@@ -77,7 +82,13 @@ export default function LyricCandidatesClient({
 
   const download = () => {
     const blob = new Blob(
-      [JSON.stringify(buildCandidateExport(jobId, inventory, decisions), null, 2)],
+      [
+        JSON.stringify(
+          buildCandidateExport(jobId, inventory, decisions),
+          null,
+          2,
+        ),
+      ],
       { type: "application/json" },
     );
     const url = URL.createObjectURL(blob);
@@ -108,6 +119,30 @@ export default function LyricCandidatesClient({
         </button>
         <span data-testid="accepted-count">{accepted} accepted</span>
       </div>
+      <p className="my-2 text-sm">
+        <a
+          className="underline"
+          href={`/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}/artifacts/musicxml?page=${pageNumber}&engine=ots-homr`}
+        >
+          Download recognised score to check note choices
+        </a>
+      </p>
+      <details className="my-4">
+        <summary>Full scan for lyric and note context</summary>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`${base}/scan`}
+          alt="Full recognition scan with lyric and note context"
+          className="max-w-full"
+        />
+      </details>
+      <CorrectedCopy
+        base={base}
+        rasterSha256={inventory.raster.checksumSha256}
+        candidates={items
+          .filter((c) => decisions[c.id]?.state === "accept")
+          .map((c) => ({ id: c.id, text: decisions[c.id].text }))}
+      />
       {inventory.ocrStatus === "failed" && (
         <p role="status" className="text-sm text-amber-700">
           Text recognition did not run for this page, so you are seeing detected
@@ -121,9 +156,7 @@ export default function LyricCandidatesClient({
             key={c.id}
             className="border-t border-slate-300 py-4 dark:border-slate-700"
           >
-            <p className="text-sm">
-              {c.note}
-            </p>
+            <p className="text-sm">{c.note}</p>
             {c.placement && (
               <p className="text-xs text-slate-600 dark:text-slate-400">
                 Proposed placement (unconfirmed): {c.placement}
@@ -141,7 +174,9 @@ export default function LyricCandidatesClient({
                 <input
                   type="text"
                   value={d.text}
-                  onChange={(e) => update(c.id, (x) => setText(x, e.target.value))}
+                  onChange={(e) =>
+                    update(c.id, (x) => setText(x, e.target.value))
+                  }
                   className="w-56 rounded border px-1"
                 />
               </label>
