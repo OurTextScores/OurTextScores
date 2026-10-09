@@ -9,6 +9,7 @@ Rows already proposed as lyrics are never offered. OCR text is unreviewed.
 
 from __future__ import annotations
 
+import difflib
 import re
 from typing import Any, Sequence
 
@@ -35,6 +36,23 @@ LABEL_WORDS = frozenset(
 )
 _CREDIT = re.compile(r"vorbehalten|r[ée]serv|reserved|copyright|transpos|^\s*\(|\b[A-Z]\.[A-Za-z]\.[a-z]?\.?", re.IGNORECASE)
 _INITIALS = re.compile(r"^(?:[A-Z]\.\s*){2,}")
+#: Music terms (Italian first, then German and French) a written direction contains. A words row must hold one, within
+#: a small spelling error: on two judged sets the false word rows were lyric fragments and titles ("mante", "tes.",
+#: "Op. 3, No. 1") and every right one held a term, even garbled ("crese", "Tenpo", "sécco"). The list was written
+#: from general knowledge and then checked against those rows, so treat its measured gain as development evidence.
+TERMS = sorted(
+    set(
+        """ped pedal pedale cresc crescendo decresc decrescendo dim diminuendo rit ritard ritardando ritenuto riten rall
+        rallent rallentando accel accelerando allarg allargando dolce dolciss dolcissimo espress espressivo legato staccato
+        marc marcato sempre poco molto piu meno tempo istesso allegro allegretto andante andantino adagio adagietto largo
+        larghetto lento moderato presto prestissimo vivace animato agitato grazioso cantabile scherzando tranquillo pesante
+        sostenuto morendo smorz smorzando perdendo calando senza con una corda tre corde colla voce sotto subito sfz fp trem
+        tremolo secco simile sim tutti solo ossia arco pizz pizzicato sord sordino armonioso armonico semplice dolente
+        langsam schnell ruhig bewegt innig zart etwas mit sehr leise laut gehalten allmahlich breit lebhaft
+        lent vif doux tres rubato mezza mezzo stringendo giocoso maestoso mosso energico appassionato lamentoso teneramente
+        soave""".split()
+    )
+)
 MAX_DIRECTION_ROWS = 120
 MAX_CHAIN = 4
 _FUSED = re.compile(r"^(ppp|pp|p|mp|mf|fff|ff|f|sfz|sf|fp)\s*([^\W\d_]{3,}\.?)$", re.IGNORECASE | re.UNICODE)
@@ -67,7 +85,24 @@ def direction_kind(text: str, semantic: str) -> str | None:
     letters = len(_LETTERS.findall(text))
     if letters < MIN_WORD_LETTERS:  # numbers, rehearsal marks, stray syllable fragments
         return None
-    return None if _not_a_direction(text) else "words"
+    return None if _not_a_direction(text) or not has_known_term(text) else "words"
+
+
+def _folded(token: str) -> str:
+    table = str.maketrans({"ù": "u", "è": "e", "é": "e", "ê": "e", "à": "a", "ä": "a", "ö": "o", "ü": "u"})
+    return re.sub(r"[^a-z]", "", token.lower().translate(table))
+
+
+def has_known_term(text: str) -> bool:
+    """True when a token of the text is (nearly) a music term; 3-letter tokens must match exactly."""
+    for token in re.findall(r"[^\W\d_]+", text, re.UNICODE):
+        folded = _folded(token)
+        if len(folded) < 3:
+            continue
+        for term in TERMS:
+            if folded == term or (len(folded) >= 4 and len(term) >= 4 and difflib.SequenceMatcher(None, folded, term).ratio() >= 0.8):
+                return True
+    return False
 
 
 def _not_a_direction(text: str) -> bool:

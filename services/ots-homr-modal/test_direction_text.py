@@ -64,6 +64,13 @@ def test_a_spread_out_word_is_joined_across_hyphen_and_dropped_hyphen_pieces():
     assert merge_hyphen_chains([r("cre-", box=(0, 0, 90, 40)), r("do", box=(2000, 0, 2060, 40))]) == []
 
 
+def test_a_words_row_must_hold_a_music_term_even_when_garbled():
+    for real in ["cresc.", "crese", "Tenpo", "sécco", "un poco rit.", "Andante con moto.", "Con Pedale.", "l'istesso tempo.", "dolce."]:
+        assert direction_kind(real, "DirectionText") == "words", real
+    for fragment in ["monmanteau", "mante", "tes.", "vres.", "ten", "Op. 3, No. 1", "Sadly.", "tuwohl"]:
+        assert direction_kind(fragment, "DirectionText") is None, fragment
+
+
 def test_page_furniture_and_ocr_junk_are_not_offered_but_real_directions_with_stray_marks_are():
     for junk in ["Piano.", "PIANO", "Pianoforte.", "Chant.", "vorbehalten.", "(Wolfgang Müller.)", "L.A.v.Arnim.", "Ring,", "Je_mand!o", "con-tent", "Cette version est transposée"]:
         assert direction_kind(junk, "DirectionText") is None, junk

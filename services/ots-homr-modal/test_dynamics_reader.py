@@ -53,6 +53,24 @@ def test_boxes_below_the_mark_size_floor_are_not_classified(monkeypatch):
     # A page half as wide scales the floor down by four: 22x12 is then large enough.
     narrow = np.zeros((200, 960, 3), np.uint8)
     assert len(reader.read(narrow, [box(10, 10, 32, 22)])) == 1
+    # ...and the ceiling too: a box that is 6,400 px at 1920 wide would be 1,600 px at 960 wide.
+    assert reader.read(narrow, [box(10, 10, 90, 90)]) == []
+
+
+def test_oversized_boxes_and_marks_ocr_already_reads_are_not_offered(monkeypatch):
+    reader = DynamicsReader()
+    monkeypatch.setattr(reader, "labels", ["f", "p", "none"])
+    answers = iter([[5.0, 0.0, 0.0], [0.0, 5.0, 0.0], [5.0, 0.0, 0.0]])
+
+    class Scripted:
+        def __call__(self, images):
+            return torch.tensor([next(answers) for _ in range(images.shape[0])])
+
+    reader.model = Scripted()
+    page = np.zeros((400, 1920, 3), np.uint8)
+    # f (kept), p (skipped: OCR reads it), and an 80x80 = 6,400 px box (over the 4,000 px ceiling, never classified).
+    rows = reader.read(page, [box(10, 10, 40, 40), box(100, 100, 130, 130), box(300, 100, 380, 180)])
+    assert [r["mark"] for r in rows] == ["f"]
 
 
 def test_a_trained_model_layout_matches_the_weights(tmp_path):
@@ -71,7 +89,7 @@ def test_overlapping_boxes_keep_only_the_strongest(monkeypatch):
             return torch.tensor([[3.0, 0.0]] + [[2.0, 0.0]] * (n - 1))
 
     reader.model = Fake()
-    page = np.zeros((200, 200, 3), np.uint8)
+    page = np.zeros((300, 1920, 3), np.uint8)
     rows = reader.read(page, [box(10, 10, 60, 50), box(12, 12, 62, 52), box(120, 120, 170, 160)])
     assert [r["box"] for r in rows] == [[10, 10, 60, 50], [120, 120, 170, 160]]
 

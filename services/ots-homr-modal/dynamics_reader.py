@@ -22,6 +22,11 @@ MIN_AREA = 100
 #: ones were under 400 px (a floor, not a classifier: sizes of false and right marks otherwise overlap).
 MIN_MARK_AREA = 400
 REFERENCE_WIDTH = 1920
+#: Larger boxes are not marks (two boxes of 7,268 and 30,073 px were read as mp and pp).
+MAX_MARK_AREA = 4000
+#: OCR already reads these (96% right place on 50 rows) while the classifier's p rows were right 3 times in 17
+#: on a fresh judged set, so it only contributes the marks OCR misses (f, ff, mf, sf...).
+SKIP_MARKS = frozenset({"p", "pp", "ppp"})
 MIN_PROBABILITY = 0.5
 MAX_BOXES = 800
 NMS_IOU = 0.3
@@ -76,12 +81,13 @@ class DynamicsReader:
 
         gray = cv2.cvtColor(page_bgr, cv2.COLOR_BGR2GRAY) if page_bgr.ndim == 3 else page_bgr
         crops, kept = [], []
-        floor = max(MIN_AREA, MIN_MARK_AREA * (gray.shape[1] / REFERENCE_WIDTH) ** 2)
+        scale = (gray.shape[1] / REFERENCE_WIDTH) ** 2
+        floor, ceiling = max(MIN_AREA, MIN_MARK_AREA * scale), MAX_MARK_AREA * scale
         for box in boxes:
             if box.get("label") != "Dynamic":
                 continue
             left, top, right, bottom = (int(box[k]) for k in ("left", "top", "right", "bottom"))
-            if (right - left) * (bottom - top) < floor:
+            if not floor <= (right - left) * (bottom - top) <= ceiling:
                 continue
             crop = gray[max(0, top - MARGIN) : bottom + MARGIN, max(0, left - MARGIN) : right + MARGIN]
             if min(crop.shape) < 4:
@@ -97,7 +103,7 @@ class DynamicsReader:
         candidates = []
         for box, probability in zip(kept, probabilities):
             best = int(probability.argmax())
-            if self.labels[best] != "none" and float(probability[best]) >= MIN_PROBABILITY:
+            if self.labels[best] not in SKIP_MARKS | {"none"} and float(probability[best]) >= MIN_PROBABILITY:
                 candidates.append((float(probability[best]), box, self.labels[best]))
         candidates.sort(key=lambda c: -c[0])
         rows: list[dict[str, Any]] = []
