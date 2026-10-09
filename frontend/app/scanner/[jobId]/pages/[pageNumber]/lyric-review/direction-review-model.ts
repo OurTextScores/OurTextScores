@@ -23,6 +23,8 @@ export type DirectionItem = {
   defaultPlacement: "above" | "below";
   /** Where the scan puts it: the recognised note nearest its start, geometry only. */
   measureLabel: string | null;
+  /** Who read it: the page OCR or the dynamics classifier. */
+  source: "ocr" | "classifier";
 };
 
 export type DirectionPayload = {
@@ -53,6 +55,7 @@ export function directionItems(inventory: Inventory): DirectionItem[] {
         defaultNoteId: noteId,
         defaultPlacement: r.anchor?.placement ?? "above",
         measureLabel: chosen ? `m${chosen.measure}` : null,
+        source: r.source ?? "ocr",
       };
     });
 }

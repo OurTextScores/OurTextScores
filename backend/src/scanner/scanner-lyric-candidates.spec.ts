@@ -353,6 +353,23 @@ describe('direction rows in the inventory', () => {
     });
   });
 
+  it('keeps who read a direction row, and ignores an unknown source', () => {
+    const inventory = buildLyricCandidateInventory(
+      artifact([
+        row('f', [120, 175, 150, 195], 'dynamic', { mark: 'f', source: 'classifier' }),
+        row('p', [300, 175, 330, 195], 'dynamic', { mark: 'p', source: 'ocr' }),
+        row('mf', [500, 175, 530, 195], 'dynamic', { mark: 'mf', source: 'guess' })
+      ]),
+      1,
+      raster,
+      [staffForTest]
+    );
+    const byText = Object.fromEntries(inventory.ocrRows.map((r) => [r.text, r]));
+    expect(byText['f'].source).toBe('classifier');
+    expect(byText['p'].source).toBe('ocr');
+    expect(byText['mf'].source).toBeUndefined();
+  });
+
   it('rejects a direction row outside the page or of an unknown kind', () => {
     expect(() =>
       buildLyricCandidateInventory(artifact([row('p', [10, 10, 2000, 30])]), 1, raster, [])

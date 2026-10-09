@@ -69,6 +69,11 @@ describe("direction review model", () => {
     expect(plan.leftOut).toEqual(["mf"]);
   });
 
+  it("remembers who read a row, and says so on the card", () => {
+    const inv = inventory([row({ id: "c-1", text: "f", kind: "dynamic", mark: "f", source: "classifier" }), row({ id: "o-1", text: "p", kind: "dynamic", mark: "p" })]);
+    expect(directionItems(inv).map((i) => [i.id, i.source])).toEqual([["c-1", "classifier"], ["o-1", "ocr"]]);
+  });
+
   it("flags the same mark twice on one note", () => {
     const items = directionItems(inventory([row({ id: "a", text: "p", kind: "dynamic", mark: "p" }), row({ id: "b", text: "p", kind: "dynamic", mark: "p" })]));
     const accepted = Object.fromEntries(items.map((i) => [i.id, { ...blankDirection(i), state: "accept" as const }]));
@@ -93,6 +98,7 @@ describe("directions in the review page", () => {
     render(<LyricCandidatesClient jobId="job-1" pageNumber={1} />);
     await waitFor(() => screen.getByLabelText("Direction text for cresc. poco a poco"));
     expect(screen.getByRole("heading", { name: "Directions and dynamics" })).toBeInTheDocument();
+    expect(screen.getAllByText(/read by OCR, not yet checked/).length).toBe(2);
     fireEvent.change(screen.getByLabelText("Direction text for cresc. poco a poco"), { target: { value: "cresc." } });
     fireEvent.change(screen.getByLabelText("Dynamic mark for mf"), { target: { value: "f" } });
     const accepts = screen.getAllByRole("button", { name: "Accept" });

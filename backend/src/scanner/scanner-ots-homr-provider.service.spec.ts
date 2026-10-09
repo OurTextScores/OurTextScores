@@ -330,6 +330,10 @@ describe('ScannerOtsHomrProviderService', () => {
         JSON.parse(withDirections.nativeArtifacts!['text-fusion-review'].toString('utf8')).lyricText
           .directionRows.rows[0]
       ).toMatchObject({ text: 'cresc.', kind: 'words' });
+      (fused.result as any).lyricText.directionRows.rows = [{ ...directionRow, source: 'guess' }];
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage(directionRequest([], '5'))
+      ).rejects.toMatchObject({ code: 'provider_invalid_response' });
       (fused.result as any).lyricText.directionRows.rows = [{ ...directionRow, kind: 'lyric' }];
       await expect(
         new ScannerOtsHomrProviderService(config).scanPage(directionRequest([], '6'))

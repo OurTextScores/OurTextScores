@@ -54,6 +54,7 @@ class OtsHomrEngine:
         execution_provider: str = "CUDAExecutionProvider",
         fusion_manifest: CalibrationManifest | None = None,
         lyric_text: Any = None,
+        dynamics_reader: Any = None,
     ) -> None:
         self.artifacts = artifacts
         self.core = core
@@ -61,6 +62,8 @@ class OtsHomrEngine:
         self.fusion_manifest = fusion_manifest
         #: Optional `LyricTextPipeline`: OCR rows + semantic gate for lyric review. Never required.
         self.lyric_text = lyric_text
+        #: Optional `DynamicsReader`: classifies e4's Dynamic boxes into marks (p, mf, ff...). Never required.
+        self.dynamics_reader = dynamics_reader
         self._ready = False
         self._warm_lock = threading.Lock()
 
@@ -180,9 +183,18 @@ class OtsHomrEngine:
                 for row in detections[DETECTOR_ROUTES["lyrics"]]
                 if row.get("label") == "Lyrics" and row.get("confidence", 0) >= LYRIC_OCR_MIN_CONFIDENCE
             ]
-            return self.lyric_text.lyric_rows(decoded, boxes)
+            return self.lyric_text.lyric_rows(decoded, boxes, self._dynamic_rows(decoded, detections))
         except Exception as error:  # noqa: BLE001 - optional assist; surface, never raise
             return {"status": "failed", "rows": [], "rowsOmitted": 0, "error": type(error).__name__}
+
+    def _dynamic_rows(self, decoded: Any, detections: dict[str, Any]) -> list[dict[str, Any]]:
+        """Marks read from e4's Dynamic boxes; a failure here only means no classifier rows."""
+        if self.dynamics_reader is None:
+            return []
+        try:
+            return self.dynamics_reader.read(decoded, detections[DETECTOR_ROUTES["dynamics"]])
+        except Exception:  # noqa: BLE001 - optional assist
+            return []
 
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes:
         return self.core.regenerate(staffs, title)

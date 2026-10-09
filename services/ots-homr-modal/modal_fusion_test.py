@@ -90,6 +90,7 @@ def ots_homr_api():
             )
             return result
 
+    from dynamics_reader import DynamicsReader
     from lyric_ocr import LyricTextPipeline
     from semantic_gate import SemanticGate
 
@@ -98,6 +99,7 @@ def ots_homr_api():
         core=core,
         fusion_manifest=manifest,
         lyric_text=LyricTextPipeline(SemanticGate.load(), threads=2),
+        dynamics_reader=DynamicsReader(),
     )
     return create_provider_app(
         engine=engine,

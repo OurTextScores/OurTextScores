@@ -172,6 +172,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
             row.text.length <= 500 &&
             (row.kind === 'words' || row.kind === 'dynamic') &&
             (row.mark === undefined || typeof row.mark === 'string') &&
+            (row.source === undefined || row.source === 'ocr' || row.source === 'classifier') &&
             typeof row.ocrConfidence === 'number'
           );
         }));

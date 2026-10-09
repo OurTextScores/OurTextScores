@@ -108,7 +108,9 @@ class LyricTextPipeline:
             for box, text, score in zip(result.boxes, result.txts, result.scores, strict=True)
         ]
 
-    def lyric_rows(self, page_bgr: Any, lyric_boxes: Sequence[Sequence[int]]) -> dict[str, Any]:
+    def lyric_rows(
+        self, page_bgr: Any, lyric_boxes: Sequence[Sequence[int]], dynamic_rows: Sequence[dict[str, Any]] = ()
+    ) -> dict[str, Any]:
         """OCR the page, keep e2-covered rows, classify each; bounded and order-stable."""
         all_rows = self.read_page(page_bgr)
         rows = select_rows(all_rows, lyric_boxes)
@@ -132,12 +134,17 @@ class LyricTextPipeline:
             "status": "ok",
             "rows": out,
             "rowsOmitted": max(0, len(rows) - MAX_ROWS),
-            "directionRows": self._direction_rows(all_rows, out),
+            "directionRows": self._direction_rows(all_rows, out, dynamic_rows),
         }
 
-    def _direction_rows(self, all_rows: Sequence[dict[str, Any]], lyric_rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    def _direction_rows(
+        self,
+        all_rows: Sequence[dict[str, Any]],
+        lyric_rows: Sequence[dict[str, Any]],
+        dynamic_rows: Sequence[dict[str, Any]] = (),
+    ) -> dict[str, Any]:
         """Written directions and dynamics among the page's other OCR rows (review candidates only)."""
-        from direction_text import direction_rows
+        from direction_text import MAX_DIRECTION_ROWS, direction_rows, merge_classifier_rows
 
         classified = []
         for row in all_rows:
@@ -153,4 +160,8 @@ class LyricTextPipeline:
                     "proposedLyric": verdict["proposedLyric"],
                 }
             )
-        return direction_rows(classified, [r["box"] for r in lyric_rows if r["proposedLyric"]])
+        offered = direction_rows(classified, [r["box"] for r in lyric_rows if r["proposedLyric"]])
+        if not dynamic_rows:
+            return {**offered, "rows": [{**r, "source": "ocr"} for r in offered["rows"]]}
+        merged = merge_classifier_rows(offered["rows"], dynamic_rows, [r["box"] for r in classified])
+        return {"rows": merged[:MAX_DIRECTION_ROWS], "rowsOmitted": offered["rowsOmitted"] + max(0, len(merged) - MAX_DIRECTION_ROWS)}

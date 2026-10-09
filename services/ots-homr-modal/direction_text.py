@@ -176,3 +176,22 @@ def merge_hyphen_chains(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return merged
+
+
+def merge_classifier_rows(
+    ocr_rows: Sequence[dict[str, Any]], classifier_rows: Sequence[dict[str, Any]], ocr_boxes: Sequence[Sequence[int]]
+) -> list[dict[str, Any]]:
+    """Add classifier-read dynamic marks to the OCR rows, without duplicating a box OCR already read.
+
+    A classifier row is dropped when it overlaps any OCR row (IoU >= 0.3): a dynamic OCR read keeps its OCR
+    reading, and the glyphs inside a word ("f" in "forte") are not a mark. OCR rows are tagged `source: ocr`.
+    """
+    from dynamics_reader import iou
+
+    merged = [{**row, "source": "ocr"} for row in ocr_rows]
+    for row in classifier_rows:
+        if any(iou(row["box"], box) >= 0.3 for box in ocr_boxes):
+            continue
+        merged.append(row)
+    merged.sort(key=lambda r: (r["box"][1], r["box"][0]))
+    return merged

@@ -37,7 +37,8 @@ export default function DirectionsReview({
         return (
           <article key={item.id} className="border-t border-slate-300 py-4 dark:border-slate-700">
             <p className="text-sm">
-              {item.kind === "dynamic" ? "Dynamic mark" : "Written direction"} (read by OCR, not yet checked)
+              {item.kind === "dynamic" ? "Dynamic mark" : "Written direction"} (read by{" "}
+              {item.source === "classifier" ? "the dynamics classifier" : "OCR"}, not yet checked)
             </p>
             <p className="mt-1 text-base">
               <span className="text-xs text-slate-500">Read from the scan: </span>

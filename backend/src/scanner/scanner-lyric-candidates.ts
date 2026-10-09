@@ -54,6 +54,8 @@ export interface LyricOcrRow {
   kind?: 'lyric' | 'words' | 'dynamic';
   /** A dynamic row's canonical mark (p, mf, ...). */
   mark?: string;
+  /** Who read a direction row: the page OCR, or the dynamics classifier (dynamic marks only). */
+  source?: 'ocr' | 'classifier';
   /** The row is offered as a direction or dynamic (kind words/dynamic) and was not withheld. */
   proposedDirection?: boolean;
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
@@ -102,6 +104,7 @@ function readDirectionRows(artifact: unknown, raster: LyricRasterIdentity): Lyri
       proposedLyric: false,
       kind: row.kind,
       ...(row.kind === 'dynamic' && typeof row.mark === 'string' ? { mark: row.mark } : {}),
+      ...(row.source === 'ocr' || row.source === 'classifier' ? { source: row.source } : {}),
       proposedDirection: true,
       anchor: null,
       withheldReason: null

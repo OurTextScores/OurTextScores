@@ -53,6 +53,7 @@ export type OcrRow = {
   /** Absent or 'lyric' for lyric rows; direction rows are reviewed separately. */
   kind?: "lyric" | "words" | "dynamic";
   mark?: string;
+  source?: "ocr" | "classifier";
   proposedDirection?: boolean;
   anchor?: RowAnchor | null;
   noteChoices?: NoteChoice[];
