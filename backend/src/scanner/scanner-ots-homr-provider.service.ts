@@ -1,3 +1,4 @@
+import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
@@ -299,7 +300,10 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         }
       },
       availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
-      crossStaffFindings: this.crossStaffFindings(envelope?.result?.crossStaffFindings),
+      crossStaffFindings: this.crossStaffFindings(
+        envelope?.result?.crossStaffFindings,
+        options.scoreProfile
+      ),
       providerRevision: String(engine.serviceRevision),
       modelRevision: String(core.revision),
       requestId: typeof envelope.requestId === 'string' ? envelope.requestId : undefined,
@@ -337,10 +341,14 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
    * which is the opposite of how the model artifacts are treated and deliberately so -
    * losing an annotation costs a reviewer a prompt, losing provenance costs trust.
    */
-  private crossStaffFindings(value: unknown): ScannerCrossStaffFinding[] | undefined {
+  private crossStaffFindings(
+    value: unknown,
+    profile?: { parts?: { expectedStaffCount?: number }[] }
+  ): ScannerCrossStaffFinding[] | undefined {
     if (!Array.isArray(value) || value.length === 0) return undefined;
     const findings = value.flatMap((entry) => {
       const finding = entry as Record<string, unknown>;
+      if (isMergedGrandStaffDeviation(finding, profile)) return [];
       if (typeof finding?.kind !== 'string' || typeof finding?.message !== 'string') {
         return [];
       }

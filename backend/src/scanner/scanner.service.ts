@@ -5,6 +5,7 @@ import {
   withoutLyrics
 } from './scanner-reviewed-lyric-copy';
 import { alignAllParts } from './scanner-lyric-note-alignment';
+import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
 import { noteChoicesForRow } from './scanner-lyric-note-choices';
 import { placementCropRect, placementOverlaySvg } from './scanner-lyric-placement-crop';
 import {
@@ -4475,7 +4476,17 @@ export class ScannerService implements OnModuleInit {
             engines: Object.fromEntries(
               enginePlan.engineIds.flatMap((engineId) => {
                 const run = engineId === 'homr' ? homr : page.engines?.[engineId];
-                return run ? [[engineId, this.presentEngineRun(run)]] : [];
+                return run
+                  ? [
+                      [
+                        engineId,
+                        this.presentEngineRun(
+                          run,
+                          (job.enginePlan as any)?.engineOptions?.[engineId]?.scoreProfile
+                        )
+                      ]
+                    ]
+                  : [];
               })
             ),
             canRetry: this.pageRetryEligibility(job, page.pageNumber, page).allowed
@@ -4527,7 +4538,7 @@ export class ScannerService implements OnModuleInit {
     };
   }
 
-  private presentEngineRun(run: ScannerEngineRun): any {
+  private presentEngineRun(run: ScannerEngineRun, profile?: any): any {
     return {
       status: run.status,
       attempts: run.attempts,
@@ -4535,7 +4546,10 @@ export class ScannerService implements OnModuleInit {
       providerRequestId: run.providerRequestId,
       startedAt: run.startedAt,
       durationMs: run.durationMs,
-      crossStaffFindings: run.crossStaffFindings,
+      // Jobs scanned before the recogniser stopped sending the merged-grand-staff false alarm still carry it.
+      crossStaffFindings: run.crossStaffFindings?.filter(
+        (finding) => !isMergedGrandStaffDeviation(finding as any, profile)
+      ),
       inferenceMs: run.inferenceMs,
       recognitionRaster: run.recognitionRaster,
       generation: run.generation,

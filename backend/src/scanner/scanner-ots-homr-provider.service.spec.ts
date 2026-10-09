@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
+import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
 
 describe('ScannerOtsHomrProviderService', () => {
   const image = Buffer.from('page-image');
@@ -263,22 +264,42 @@ describe('ScannerOtsHomrProviderService', () => {
       ).toMatchObject({ fusionSummary: { accepted: 0, review: 0, rejected: 0 } });
       // OCR rows are optional; a well-formed set is carried, a malformed row fails the contract.
       const row = {
-        box: [1, 2, 30, 40], text: 'kind,', ocrConfidence: 0.99, regionCoverage: 0.8,
-        semantic: 'Lyrics', semanticScore: 0.84, proposedLyric: true
+        box: [1, 2, 30, 40],
+        text: 'kind,',
+        ocrConfidence: 0.99,
+        regionCoverage: 0.8,
+        semantic: 'Lyrics',
+        semanticScore: 0.84,
+        proposedLyric: true
       };
       (fused.result as any).lyricText = { status: 'ok', rows: [row], rowsOmitted: 0 };
       const withText = await new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: '9'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: '9'.repeat(64),
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
       });
       expect(
-        JSON.parse(withText.nativeArtifacts!['text-fusion-review'].toString('utf8')).lyricText.rows[0].text
+        JSON.parse(withText.nativeArtifacts!['text-fusion-review'].toString('utf8')).lyricText
+          .rows[0].text
       ).toBe('kind,');
-      (fused.result as any).lyricText = { status: 'ok', rows: [{ ...row, box: [1, 2, 3] }], rowsOmitted: 0 };
-      await expect(new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: '8'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
-      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      (fused.result as any).lyricText = {
+        status: 'ok',
+        rows: [{ ...row, box: [1, 2, 3] }],
+        rowsOmitted: 0
+      };
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage({
+          image,
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: '8'.repeat(64),
+          engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        })
+      ).rejects.toMatchObject({ code: 'provider_invalid_response' });
       delete (fused.result as any).lyricText;
       // Hundreds of rejected boxes are carried as a tally, not as regions.
       (fused.result as any).fusionSummary = {
@@ -291,8 +312,12 @@ describe('ScannerOtsHomrProviderService', () => {
         byClass: {}
       };
       const tallied = await new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: 'd'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: 'd'.repeat(64),
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
       });
       expect(
         JSON.parse(tallied.nativeArtifacts!['text-fusion-review'].toString('utf8')).fusionSummary
@@ -300,43 +325,90 @@ describe('ScannerOtsHomrProviderService', () => {
       ).toBe(600);
       // Omitted review regions are counted: 300 review, 200 listed.
       (fused.result as any).fusionSummary = {
-        accepted: 0, review: 300, reviewOmitted: 300, rejected: 0, rejectedByReason: {}, rejectedByClass: {}, byClass: {}
+        accepted: 0,
+        review: 300,
+        reviewOmitted: 300,
+        rejected: 0,
+        rejectedByReason: {},
+        rejectedByClass: {},
+        byClass: {}
       };
-      await expect(new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: 'a'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
-      })).resolves.toBeDefined();
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage({
+          image,
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: 'a'.repeat(64),
+          engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        })
+      ).resolves.toBeDefined();
       (fused.result as any).fusionSummary = {
-        accepted: 0, review: 0, reviewOmitted: 0, rejected: 600, rejectedByReason: { 'unsupported-class': 600 },
-        rejectedByClass: { Fingering: 400, MeasureNumber: 200 }, byClass: {}
+        accepted: 0,
+        review: 0,
+        reviewOmitted: 0,
+        rejected: 600,
+        rejectedByReason: { 'unsupported-class': 600 },
+        rejectedByClass: { Fingering: 400, MeasureNumber: 200 },
+        byClass: {}
       };
       // A tally that does not add up, or a listed rejected region, breaks the contract.
       (fused.result as any).fusionSummary.rejectedByClass = { Fingering: 1 };
-      await expect(new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: 'c'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
-      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage({
+          image,
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: 'c'.repeat(64),
+          engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        })
+      ).rejects.toMatchObject({ code: 'provider_invalid_response' });
       (fused.result as any).fusionSummary.rejectedByClass = { Fingering: 600 };
       (fused.result as any).fusionSummary.review = 1;
       (fused.result as any).fusedRegions = [{ status: 'rejected', candidates: [] }];
-      await expect(new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: 'b'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
-      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage({
+          image,
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: 'b'.repeat(64),
+          engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        })
+      ).rejects.toMatchObject({ code: 'provider_invalid_response' });
       (fused.result as any).fusionSummary = {
-        accepted: 0, review: 0, reviewOmitted: 0, rejected: 0, rejectedByReason: {}, rejectedByClass: {}, byClass: {}
+        accepted: 0,
+        review: 0,
+        reviewOmitted: 0,
+        rejected: 0,
+        rejectedByReason: {},
+        rejectedByClass: {},
+        byClass: {}
       };
       (fused.result as any).fusedRegions = [];
       (fused.engine as any).textPolicy.detectors[2].sha256 = 'f'.repeat(64);
-      await expect(new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: 'f'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
-      })).rejects.toMatchObject({ code: 'provider_model_artifact_mismatch' });
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage({
+          image,
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: 'f'.repeat(64),
+          engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        })
+      ).rejects.toMatchObject({ code: 'provider_model_artifact_mismatch' });
       (fused.engine as any).textPolicy.detectors.pop();
-      await expect(new ScannerOtsHomrProviderService(config).scanPage({
-        image, filename: 'page.png', contentType: 'image/png', detectTitle: false,
-        idempotencyKey: 'f'.repeat(64), engineOptions: { textPolicy: { mode: 'fusion-v1' } }
-      })).rejects.toMatchObject({ code: 'provider_invalid_response' });
+      await expect(
+        new ScannerOtsHomrProviderService(config).scanPage({
+          image,
+          filename: 'page.png',
+          contentType: 'image/png',
+          detectTitle: false,
+          idempotencyKey: 'f'.repeat(64),
+          engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+        })
+      ).rejects.toMatchObject({ code: 'provider_invalid_response' });
     } finally {
       delete values.SCANNER_OTS_HOMR_FUSION_ENABLED;
       delete values.SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION;
@@ -403,5 +475,31 @@ describe('ScannerOtsHomrProviderService', () => {
       ])
     ).rejects.toMatchObject({ code: 'provider_invalid_option', retryable: false });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('isMergedGrandStaffDeviation', () => {
+  const voicePiano = { parts: [{}, { expectedStaffCount: 2 }] };
+  const deviation = (expects: number, implies: number) => ({
+    kind: 'profile_layout_deviation',
+    message: `profile expects ${expects} staff(s) per system, detected geometry implies ${implies}`
+  });
+
+  it('drops the false alarm for a voice+piano profile read as two units per system', () => {
+    expect(isMergedGrandStaffDeviation(deviation(3, 2), voicePiano)).toBe(true);
+  });
+
+  it('keeps a real deviation, other finding kinds and findings without a profile', () => {
+    expect(isMergedGrandStaffDeviation(deviation(3, 4), voicePiano)).toBe(false);
+    expect(isMergedGrandStaffDeviation(deviation(3, 1), voicePiano)).toBe(false);
+    expect(
+      isMergedGrandStaffDeviation(
+        { kind: 'part_order', message: deviation(3, 2).message },
+        voicePiano
+      )
+    ).toBe(false);
+    expect(isMergedGrandStaffDeviation(deviation(3, 2), undefined)).toBe(false);
+    // A quartet has no grand staff to merge: 4 expected, 3 found stays a deviation.
+    expect(isMergedGrandStaffDeviation(deviation(4, 3), { parts: [{}, {}, {}, {}] })).toBe(false);
   });
 });
