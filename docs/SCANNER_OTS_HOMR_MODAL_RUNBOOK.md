@@ -172,7 +172,7 @@ The provider must return `ots-ots-homr-provider.v2` and a response shaped like:
   "inputSha256": "<sha256 of page bytes>",
   "engine": {
     "name": "ots-homr",
-    "serviceRevision": "ots-ots-homr-provider-v7",
+    "serviceRevision": "ots-ots-homr-provider-v8",
     "core": { "repository": "jhlusko/OTS-homr", "revision": "...", "sha256": "..." },
     "textDetector": { "id": "lyrics", "revision": "...", "sha256": "..." },
     "structuredHeads": {
@@ -215,6 +215,40 @@ provider must reject invalid selections and must reject rather than omit a
 prohibited dynamic output. It may not report a CPU backend as CUDA.
 
 ---
+
+## 4a. Provider v8: review-assisted lyrics, directions and dynamics (off by default)
+
+v8 adds, behind `OTS_HOMR_FUSION_ENABLED`, the pipeline behind the scanner's lyric/direction review: full-page OCR
+(RapidOCR 3.9.2, hash-pinned wheels; its bundled models are re-verified by SHA-256 at start), the frozen semantic gate,
+calibrated text fusion (`calibration/fusion-v1.json`), direction and dynamics rows from the OCR text, and the dynamics
+classifier (`models/dynamics-ft-real-v1.pth`, SHA-256 checked at start). The image always carries the OCR layer; the
+engine only uses it when the flag is set **at deploy time** (it is baked into the image environment):
+
+```bash
+cd services/ots-homr-modal
+export OTS_SOURCE_COMMIT="$(git -C ../.. rev-parse HEAD)"
+# dark deploy: v8 behaves as v7 did
+modal deploy modal_app.py
+# or with the review pipeline enabled
+OTS_HOMR_FUSION_ENABLED=1 modal deploy modal_app.py
+```
+
+Pre-flight without touching the live App (a separate App with the same image; stop it afterwards):
+
+```bash
+OTS_HOMR_APP_NAME=ourtextscores-ots-homr-v8-preflight OTS_HOMR_FUSION_ENABLED=1 modal deploy modal_app.py
+modal app stop ourtextscores-ots-homr-v8-preflight
+```
+
+Scanner side, to use it: `SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v8`,
+`SCANNER_OTS_HOMR_FUSION_ENABLED=1` (API and worker) and, for the review pages, `NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED=1`
+and `NEXT_PUBLIC_OTS_HOMR_LYRIC_REVIEW_ENABLED=1` (these are baked into the frontend at build). Measured on the
+test deployment of this code (87 page runs, L4, cold starts included): median 28 s, p90 57 s, max 99 s per page, against the
+280 s decode limit. Not yet pinned by the scanner: the OCR library, semantic gate and dynamics classifier identities
+are checked inside the provider only (they are not in the response envelope), so a changed one fails the container start
+rather than being rejected by the API. Rollback: redeploy without the flag (v8 then behaves as v7), or set
+`SCANNER_OTS_HOMR_ENABLED=false` (below). The core still has the grand-staff profile-layout false alarm (fixed in HOMR
+`40fe6a6`, needs a source pin); the API filters that finding meanwhile.
 
 ## 4. Build and deploy the provider
 
@@ -398,7 +432,7 @@ SCANNER_OTS_HOMR_MODAL_TOKEN_ID=<wk-...>
 SCANNER_OTS_HOMR_MODAL_TOKEN_SECRET=<ws-...>
 SCANNER_OTS_HOMR_PROVIDER_BUDGET_EXHAUSTED=false
 
-SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v7
+SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v8
 SCANNER_EXPECTED_OTS_HOMR_CORE_REPOSITORY=jhlusko/OTS-homr
 SCANNER_EXPECTED_OTS_HOMR_CORE_REVISION=1dbc87399c70238136da0dfd412fff032d17b76c
 SCANNER_EXPECTED_OTS_HOMR_CORE_SHA256=1b2855ce3facea9aa8b0017f6e30143abd9aa43569a2f9ce1ab46bf8bf818fa3

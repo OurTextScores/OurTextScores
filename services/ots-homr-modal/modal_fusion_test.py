@@ -9,19 +9,10 @@ from __future__ import annotations
 
 import modal
 
-from pathlib import Path as _Path
-
 from modal_app import HARD_TIMEOUT_SECONDS, SOURCE_COMMIT, hf_secret, image as base_image, model_cache
 
-#: The shipping image plus the hash-pinned lyric OCR stack (RapidOCR bundles its pinned models).
-image = base_image.add_local_file(
-    _Path(__file__).resolve().parent / "ocr-requirements.txt",
-    remote_path="/tmp/ocr-requirements.txt",
-    copy=True,
-).run_commands(
-    "python -m pip install --no-cache-dir --require-hashes --no-deps -r /tmp/ocr-requirements.txt",
-    "python -c 'import rapidocr; print(rapidocr.__file__)'",
-)
+#: The shipping image now carries the hash-pinned OCR stack itself.
+image = base_image
 
 SERVICE_REVISION = "ots-homr-fusion-ocr-localtest-20261008-v1"
 

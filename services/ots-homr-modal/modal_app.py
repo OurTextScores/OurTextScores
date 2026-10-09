@@ -9,7 +9,7 @@ from pathlib import Path
 import modal
 
 HOMR_COMMIT = "b6eca7c6af37df2764a9ca99033c947eb42aae90"
-SERVICE_REVISION = "ots-ots-homr-provider-v7"
+SERVICE_REVISION = "ots-ots-homr-provider-v8"
 HARD_TIMEOUT_SECONDS = 280
 CUDA_BASE = "nvidia/cuda@sha256:17e2934e1fa96152b14f78078bfbafd0f00f391df995dc6c641a720fce1202bb"
 HERE = Path(__file__).resolve().parent
@@ -78,6 +78,16 @@ image = (
         "if python -m pip show onnxruntime > /dev/null 2>&1; then "
         "echo 'onnxruntime CPU package must not shadow onnxruntime-gpu'; exit 1; fi",
     )
+    # Hash-pinned lyric/direction OCR stack (RapidOCR bundles its models; lyric_ocr.py re-verifies them by SHA-256 at
+    # start). Installed whether or not fusion is enabled: it is inert until the engine is given the pipeline, and
+    # keeping it below the heavy layers above and above the frequently edited source layers below keeps rebuilds cheap.
+    .add_local_file(
+        HERE / "ocr-requirements.txt", remote_path="/tmp/ocr-requirements.txt", copy=True
+    )
+    .run_commands(
+        "python -m pip install --no-cache-dir --require-hashes --no-deps -r /tmp/ocr-requirements.txt",
+        "python -c 'import rapidocr; print(rapidocr.__file__)'",
+    )
     .add_local_dir(
         HOMR_SHARED,
         remote_path="/opt/homr-provider-support",
@@ -99,11 +109,15 @@ image = (
             "HOMR_WARMUP_PAGE": "/opt/homr-provider-support/warmup-page.png",
             "HOMR_REQUIRE_CUDA": "1",
             "OTS_SOURCE_COMMIT": SOURCE_COMMIT,
+            # Text fusion with review-assisted lyrics, directions and dynamics. Off unless the deployer sets it:
+            # `OTS_HOMR_FUSION_ENABLED=1 modal deploy modal_app.py`. Off, the service behaves as v7 did.
+            "OTS_HOMR_FUSION_ENABLED": os.environ.get("OTS_HOMR_FUSION_ENABLED", "0"),
         }
     )
 )
 
-app = modal.App("ourtextscores-ots-homr-scanner")
+# The production App name. Only a pre-flight deployment overrides it (a separate App, never the live one).
+app = modal.App(os.environ.get("OTS_HOMR_APP_NAME", "ourtextscores-ots-homr-scanner"))
 
 
 @app.function(
@@ -159,8 +173,23 @@ def ots_homr_api():
                 raise RuntimeError(
                     "Fusion calibration has incompatible logical class ownership"
                 )
+    lyric_text = dynamics_reader = None
+    if fusion_manifest is not None:
+        # OCR rows (lyrics, written directions, dynamics) and the dynamics classifier read the page the fusion pass
+        # already detected on. Both verify their pinned models/weights by SHA-256 and fail the start, not the page,
+        # when they differ; a runtime failure on a page only drops that page's rows (see ots_engine).
+        from dynamics_reader import DynamicsReader
+        from lyric_ocr import LyricTextPipeline
+        from semantic_gate import SemanticGate
+
+        lyric_text = LyricTextPipeline(SemanticGate.load(), threads=2)
+        dynamics_reader = DynamicsReader()
     engine = OtsHomrEngine(
-        artifacts=artifacts, core=core, fusion_manifest=fusion_manifest
+        artifacts=artifacts,
+        core=core,
+        fusion_manifest=fusion_manifest,
+        lyric_text=lyric_text,
+        dynamics_reader=dynamics_reader,
     )
     return create_provider_app(
         engine=engine,
