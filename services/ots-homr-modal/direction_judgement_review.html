@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>Direction and dynamic row judgement</title>
+<style>body{font:16px system-ui;margin:1.5rem auto;max-width:1100px}img{max-width:100%;border:1px solid #888}button{font-size:1rem;margin:6px;padding:6px 14px}#bar{position:sticky;top:0;background:#fff;padding:8px 0}kbd{border:1px solid #888;border-radius:3px;padding:0 4px}.done{color:#080}.prop{font-size:1.4rem;margin:.4rem 0}</style>
+<h1>Is the red box a written direction or dynamic mark, read correctly?</h1>
+<p>The scanner would offer this row as <b>what is shown below the picture</b>. <b>Correct</b>: the red box is a real direction (cresc., rit., dolce, Allegro…) or dynamic mark (p, mf…) and the text/mark shown is right. <b>Fix text</b>: it is a real direction or dynamic but the shown text/mark is wrong, split or incomplete. <b>Not a direction</b>: lyrics, titles, credits, numbers, page furniture, noise, hairpins. <b>Unsure</b> counts as wrong. Keys: <kbd>C</kbd> correct, <kbd>F</kbd> fix text, <kbd>N</kbd> not a direction, <kbd>U</kbd> unsure, <kbd>←</kbd> back.</p>
+<div id="bar"><span id="count"></span> <button id="download">Export judgements</button></div>
+<main></main>
+<script>
+(async()=>{
+const items=await(await fetch('items.json')).json();
+const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(items.map(i=>i.id)))))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const key='ots-direction-judge-'+digest;let j=JSON.parse(localStorage.getItem(key)||'{}');
+let at=Math.max(0,items.findIndex(i=>!j[i.id]));if(at<0)at=0;
+const main=document.querySelector('main');
+function save(){localStorage.setItem(key,JSON.stringify(j));const n=items.filter(i=>j[i.id]).length;document.querySelector('#count').textContent=`${n}/${items.length} judged; viewing ${at+1}`;}
+function show(){main.innerHTML='';const i=items[at];const p=document.createElement('p');p.textContent=`Item ${at+1} of ${items.length}`+(j[i.id]?` — currently: ${j[i.id]}`:'');p.className=j[i.id]?'done':'';main.append(p);
+ const img=document.createElement('img');img.src=i.image;img.alt='Page region with the box in red';main.append(img);
+ const prop=document.createElement('p');prop.className='prop';prop.textContent=`${i.kind==='dynamic'?'Dynamic mark':'Direction'}: ${i.text}`;main.append(prop);
+ for(const [k,l] of [['correct','Correct (C)'],['fix-text','Fix text (F)'],['not-direction','Not a direction (N)'],['unsure','Unsure (U)']]){const b=document.createElement('button');b.textContent=l;b.onclick=()=>set(k);main.append(b);}
+ save();}
+function set(v){j[items[at].id]=v;if(at<items.length-1)at++;show();}
+document.onkeydown=e=>{const k=e.key.toLowerCase();if(k==='c')set('correct');else if(k==='f')set('fix-text');else if(k==='n')set('not-direction');else if(k==='u')set('unsure');else if(e.key==='ArrowLeft'&&at>0){at--;show();}else if(e.key==='ArrowRight'&&at<items.length-1){at++;show();}};
+document.querySelector('#download').onclick=()=>{const out={schemaVersion:'ots.direction-row-judgements.v1',itemsSha256:digest,judgements:j};const url=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='direction-row-judgements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+show();
+})();
+</script>
