@@ -7,6 +7,22 @@ from collections import Counter
 from pathlib import Path
 
 
+def reference_rectangle(box):
+    """Legacy quadrilateral annotations use their enclosing axis-aligned rectangle."""
+    if len(box) != 4:
+        raise ValueError("Reference box must have four coordinates or corners")
+    if all(isinstance(x, (int, float)) for x in box):
+        return box
+    if all(isinstance(p, (list, tuple)) and len(p) == 2 for p in box):
+        return [
+            min(p[0] for p in box),
+            min(p[1] for p in box),
+            max(p[0] for p in box),
+            max(p[1] for p in box),
+        ]
+    raise ValueError("Invalid reference geometry")
+
+
 def reference_role(box, references):
     left, top, right, bottom = box
     area = max(0, right - left) * max(0, bottom - top)
@@ -47,10 +63,10 @@ def main():
             {
                 **r,
                 "preparedBox": [
-                    r["box"][0] * sx,
-                    r["box"][1] * sy,
-                    r["box"][2] * sx,
-                    r["box"][3] * sy,
+                    reference_rectangle(r["box"])[0] * sx,
+                    reference_rectangle(r["box"])[1] * sy,
+                    reference_rectangle(r["box"])[2] * sx,
+                    reference_rectangle(r["box"])[3] * sy,
                 ],
             }
             for r in references
@@ -94,7 +110,7 @@ def main():
     args.out.write_text(
         json.dumps(
             {
-                "scope": "Partial positive annotations on previously inspected semantic controls. Conditional retention only for selected OCR rows wholly covered (>=80%) by one reference role. Unlabelled rows are unscored, not negative. No whole-page recall, exact text, ownership or independent release qualification.",
+                "scope": "Partial positive annotations on previously inspected semantic controls. Legacy quadrilaterals use enclosing axis-aligned rectangles. Conditional retention only for selected OCR rows wholly covered (>=80%) by one reference role. Unlabelled rows are unscored, not negative. No whole-page recall, exact text, ownership or independent release qualification.",
                 "counts": dict(totals),
                 "rows": records,
                 "inputSha256": binding,

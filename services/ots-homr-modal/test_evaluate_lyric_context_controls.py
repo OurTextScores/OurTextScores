@@ -1,6 +1,6 @@
 import unittest
 
-from evaluate_lyric_context_controls import reference_role
+from evaluate_lyric_context_controls import reference_rectangle, reference_role
 
 
 def ref(role, box):
@@ -28,6 +28,14 @@ class Roles(unittest.TestCase):
                 [ref("Lyrics", [0, 0, 10, 10]), ref("DirectionText", [0, 0, 10, 10])],
             )
         )
+
+    def test_legacy_quadrilateral_normalizes_without_changing_rectangles(self):
+        self.assertEqual(
+            reference_rectangle([[2, 3], [12, 4], [11, 9], [1, 8]]), [1, 3, 12, 9]
+        )
+        self.assertEqual(reference_rectangle([1, 3, 12, 9]), [1, 3, 12, 9])
+        with self.assertRaises(ValueError):
+            reference_rectangle([1, 2, 3])
 
     def test_zero_area_abstains(self):
         self.assertIsNone(reference_role([2, 2, 2, 8], [ref("Lyrics", [0, 0, 10, 10])]))
