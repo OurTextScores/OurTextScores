@@ -30,6 +30,8 @@ export function reviewedLyricNotes(body: Buffer) {
     ordinal: number;
     rest: boolean;
     pitch: string | null;
+    /** The MusicXML note is a `<chord/>` member (sounds with the previous note). */
+    chord: boolean;
   }[] = [];
   root
     .filter((n: Node) => 'part' in n)
@@ -73,7 +75,8 @@ export function reviewedLyricNotes(body: Buffer) {
               measure: mi + 1,
               ordinal,
               rest: !pitch,
-              pitch: pitch ? `${text(pitch, 'step')}${text(pitch, 'octave')}` : null
+              pitch: pitch ? `${text(pitch, 'step')}${text(pitch, 'octave')}` : null,
+              chord
             });
             if (!pitch) continue;
             const alter = text(pitch, 'alter');

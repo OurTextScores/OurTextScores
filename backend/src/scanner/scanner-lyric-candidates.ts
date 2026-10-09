@@ -273,9 +273,10 @@ export function buildLyricCandidateInventory(
       row.proposedDirection = false;
       row.withheldReason = reason;
     };
-    if ((row.box[1] + row.box[3]) / 2 > FOOTER_FRACTION * raster.height) reject('footer');
+    // No footer rule: a direction is only offered when a staff reaches it, and a last system's "una corda"
+    // or "poco rit." legitimately sits in the bottom margin. Plate numbers and imprints are caught as credits.
+    if (row.kind === 'words' && looksLikeCredit(row.text)) reject('credit-like');
     else if (!row.anchor) reject('no-staff');
-    else if (row.kind === 'words' && looksLikeCredit(row.text)) reject('credit-like');
     else if (row.anchor.syllables.every((syllable) => syllable.noteTokenIndex === null))
       reject('far-from-notes');
   }

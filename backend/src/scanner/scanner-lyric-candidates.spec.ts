@@ -327,10 +327,29 @@ describe('direction rows in the inventory', () => {
       proposedDirection: false,
       withheldReason: 'credit-like'
     });
-    expect(byText['rit.']).toMatchObject({ proposedDirection: false, withheldReason: 'footer' });
+    expect(byText['rit.']).toMatchObject({ proposedDirection: false, withheldReason: 'no-staff' });
     expect(byText['Allegro']).toMatchObject({
       proposedDirection: false,
       withheldReason: 'no-staff'
+    });
+  });
+
+  it('offers a direction in the bottom margin when a staff reaches it, and withholds a plate number', () => {
+    const lastSystem = { ...staffForTest, region: [0, 690, 1000, 760] };
+    const inventory = buildLyricCandidateInventory(
+      artifact([
+        row('una corda', [90, 765, 190, 790]),
+        row('F. E. C. L. 4913', [90, 770, 300, 795])
+      ]),
+      1,
+      raster,
+      [lastSystem]
+    );
+    const byText = Object.fromEntries(inventory.ocrRows.map((r) => [r.text, r]));
+    expect(byText['una corda']).toMatchObject({ proposedDirection: true, withheldReason: null });
+    expect(byText['F. E. C. L. 4913']).toMatchObject({
+      proposedDirection: false,
+      withheldReason: 'credit-like'
     });
   });
 

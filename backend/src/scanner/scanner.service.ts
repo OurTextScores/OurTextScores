@@ -3240,7 +3240,10 @@ export class ScannerService implements OnModuleInit {
         const staff = row.anchor
           ? (staves as any[]).find((entry) => entry.index === row.anchor!.staffIndex)
           : undefined;
-        row.noteChoices = staff ? noteChoicesForRow(staff, row.box, ids) : [];
+        // A direction starts over its note, so fewer neighbours are offered than for a wide lyric row.
+        row.noteChoices = staff
+          ? noteChoicesForRow(staff, row.box, ids, row.kind && row.kind !== 'lyric' ? 70 : 160)
+          : [];
         for (const syllable of row.anchor?.syllables ?? []) {
           syllable.noteId =
             syllable.noteTokenIndex === null

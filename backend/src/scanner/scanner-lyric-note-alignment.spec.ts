@@ -50,3 +50,60 @@ describe('alignAllParts', () => {
     expect(map.has('2:0')).toBe(false);
   });
 });
+
+describe('grand-staff chords', () => {
+  // Tokens list both hands' simultaneous notes as one run (high to low); the XML writes each hand as its
+  // own chord group, lowest of the hand first.
+  const piano = [
+    {
+      index: 0,
+      partIndex: 0,
+      systemIndex: 0,
+      region: [0, 0, 1, 1],
+      tokens: [
+        ['clef_G2', 'upper'],
+        ['note_8', 'E4'],
+        ['chord'],
+        ['note_8', 'B3'],
+        ['chord'],
+        ['note_8', 'G3'],
+        ['chord'],
+        ['note_2', 'E3'],
+        ['chord'],
+        ['note_2', 'B2'],
+        ['note_4', 'C4']
+      ]
+    }
+  ];
+  const note = (ordinal: number, pitch: string, chord: boolean): XmlNote => ({
+    partId: 'P1',
+    measure: 1,
+    ordinal,
+    rest: false,
+    pitch,
+    chord
+  });
+  const sequence = [
+    note(1, 'G3', false),
+    note(2, 'E4', true),
+    note(3, 'B3', true),
+    note(4, 'E3', false),
+    note(5, 'B2', true),
+    note(6, 'C4', false)
+  ];
+
+  it('pairs notes by pitch within a simultaneous run, whatever order the chord is written in', () => {
+    const map = alignTokensToNotes(piano, sequence, 0);
+    expect(map.get('0:1')).toBe('["P1",1,2]'); // E4
+    expect(map.get('0:3')).toBe('["P1",1,3]'); // B3
+    expect(map.get('0:5')).toBe('["P1",1,1]'); // G3
+    expect(map.get('0:7')).toBe('["P1",1,4]'); // E3
+    expect(map.get('0:9')).toBe('["P1",1,5]'); // B2
+    expect(map.get('0:10')).toBe('["P1",1,6]'); // the following single note
+  });
+
+  it('refuses when the groups do not add up to the same notes', () => {
+    const short = sequence.slice(0, 5).concat(note(6, 'C4', true)); // C4 joins the chord: runs no longer line up
+    expect(() => alignTokensToNotes(piano, short, 0)).toThrow(/chord groups|counts/);
+  });
+});
