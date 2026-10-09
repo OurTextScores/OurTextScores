@@ -265,7 +265,7 @@ export default function LyricCandidatesClient({
                         <li key={n.noteId} className="w-24">
                           <label
                             className="block text-[11px] text-slate-500"
-                            title={`This note's lyric is in the row "${other.rowText}" below or above; edit it there.`}
+                            title={`This note's lyric is in the review pane for "${other.rowText}"; edit it there.`}
                           >
                             <span className="mr-1 inline-block h-4 w-4 rounded-full border border-slate-300 text-center text-[10px] leading-4">
                               {n.number}
@@ -274,11 +274,11 @@ export default function LyricCandidatesClient({
                             <input
                               type="text"
                               readOnly
-                              aria-label={`Text for note ${n.number} of ${d.text} (in another row)`}
+                              aria-label={`Text for note ${n.number} of ${d.text} (in another review pane)`}
                               value={other.text}
                               className="mt-0.5 block w-full rounded border border-slate-200 bg-slate-100 px-1 text-sm italic text-slate-500 dark:bg-slate-800"
                             />
-                            <span className="text-[10px]">in another row</span>
+                            <span className="text-[10px]">in another review pane</span>
                           </label>
                         </li>
                       );
