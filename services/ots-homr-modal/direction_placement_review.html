@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>Direction placement judgement</title>
+<style>body{font:16px system-ui;margin:1.5rem auto;max-width:1100px}img{max-width:100%;border:1px solid #888}button{font-size:1rem;margin:6px;padding:6px 14px}#bar{position:sticky;top:0;background:#fff;padding:8px 0}kbd{border:1px solid #888;border-radius:3px;padding:0 4px}.done{color:#080}.prop{font-size:1.2rem;margin:.4rem 0}</style>
+<h1>Is the direction attached to the right note?</h1>
+<p>The <b style="color:#e08000">orange</b> box is the direction read from the scan; the <b style="color:#1060e0">blue</b> line is the note the scanner would put it on (grey numbered lines are other notes). <b>Right</b>: right note (or a note of the same chord/onset) and the above/below shown is right. <b>Wrong above/below</b>: right note, wrong side. <b>Right measure</b>: right measure but another note; acceptable. <b>Wrong</b>: another measure or staff, or no sensible note. <b>Not a direction</b>: the box is not a direction/dynamic at all. Keys: <kbd>R</kbd> right, <kbd>P</kbd> wrong above/below, <kbd>M</kbd> right measure, <kbd>W</kbd> wrong, <kbd>N</kbd> not a direction, <kbd>←</kbd> back.</p>
+<div id="bar"><span id="count"></span> <button id="download">Export judgements</button></div>
+<main></main>
+<script>
+(async()=>{
+const items=await(await fetch('items.json')).json();
+const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(items.map(i=>i.id)))))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const key='ots-direction-placement-judge-'+digest;let j=JSON.parse(localStorage.getItem(key)||'{}');
+let at=Math.max(0,items.findIndex(i=>!j[i.id]));if(at<0)at=0;
+const main=document.querySelector('main');
+function save(){localStorage.setItem(key,JSON.stringify(j));const n=items.filter(i=>j[i.id]).length;document.querySelector('#count').textContent=`${n}/${items.length} judged; viewing ${at+1}`;}
+function show(){main.innerHTML='';const i=items[at];const p=document.createElement('p');p.textContent=`Item ${at+1} of ${items.length}`+(j[i.id]?` — currently: ${j[i.id]}`:'');p.className=j[i.id]?'done':'';main.append(p);
+ const img=document.createElement('img');img.src=i.image;img.alt='Direction with numbered notes; blue is the proposal';main.append(img);
+ const prop=document.createElement('p');prop.className='prop';prop.textContent=`${i.kind==='dynamic'?'Dynamic mark':'Direction'}: ${i.text} — on ${i.note}, printed ${i.placement}`;main.append(prop);
+ for(const [k,l] of [['right','Right (R)'],['wrong-side','Wrong above/below (P)'],['right-measure','Right measure (M)'],['wrong','Wrong (W)'],['not-direction','Not a direction (N)']]){const b=document.createElement('button');b.textContent=l;b.onclick=()=>set(k);main.append(b);}
+ save();}
+function set(v){j[items[at].id]=v;if(at<items.length-1)at++;show();}
+document.onkeydown=e=>{const k=e.key.toLowerCase();if(k==='r')set('right');else if(k==='p')set('wrong-side');else if(k==='m')set('right-measure');else if(k==='w')set('wrong');else if(k==='n')set('not-direction');else if(e.key==='ArrowLeft'&&at>0){at--;show();}else if(e.key==='ArrowRight'&&at<items.length-1){at++;show();}};
+document.querySelector('#download').onclick=()=>{const out={schemaVersion:'ots.direction-placement-judgements.v1',itemsSha256:digest,judgements:j};const url=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='direction-placement-judgements.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+show();
+})();
+</script>
