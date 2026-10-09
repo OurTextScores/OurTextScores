@@ -2,8 +2,9 @@
 
 **Current flow (2026-10-08, supersedes the per-syllable form described further down, which is now the
 "Place syllables by hand (advanced)" section).** Each row's card shows the lyric row with its staff and numbered
-lines for the recognised notes around it (the proposed notes in blue), editable syllables, a note choice per
-syllable (pre-selected to the proposal, or "Leave out"), and the lyric line. **Accept** means the text, lyric line
+lines for the recognised notes around it (the proposed notes in blue), a text box under each
+recognised notehead (numbered like the picture; filled where a syllable is proposed, blank elsewhere), and the lyric
+line. To split a word, put its parts in neighbouring boxes; to move one, clear a box and type in another. **Accept** means the text, lyric line
 and notes shown are right (any edit withdraws it). "Accept all suggested rows" is a shortcut. "Add accepted lyrics
 to the score" lists exactly what will be written and asks for one confirmation; "Add lyrics to the score" saves it
 as the page's reviewed score, so the scan's MusicXML (job-level download, combined score) carries the lyrics and the

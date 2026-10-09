@@ -85,8 +85,12 @@ export type CandidateDecision = {
   id: string;
   text: string;
   state: "pending" | "accept" | "exclude";
-  /** Placement for rows the scanner anchored: one entry per syllable (note null = leave it out). */
+  /** Placement for rows the scanner anchored: the text under each recognised note (empty = no syllable there). */
   printedLine?: number;
+  slots?: Record<string, string>;
+  /** Proposed syllables that had no note of their own; the reviewer may type them into a blank note. */
+  unplaced?: string[];
+  /** Older saved decisions only (one entry per OCR token); converted to `slots` on load. */
   syllables?: SyllableDecision[];
 };
 
@@ -168,6 +172,13 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
   }));
 }
 
+const slotsFrom = (syllables: SyllableDecision[]) => ({
+  slots: Object.fromEntries(
+    syllables.filter((x) => x.noteId).map((x) => [x.noteId as string, x.text]),
+  ) as Record<string, string>,
+  unplaced: syllables.filter((x) => !x.noteId && x.text.trim()).map((x) => x.text),
+});
+
 export const blankCandidate = (c: {
   id: string;
   initialText?: string;
@@ -178,16 +189,13 @@ export const blankCandidate = (c: {
   text: c.initialText ?? "",
   state: "pending",
   ...(c.defaultSyllables && c.defaultSyllables.length > 0
-    ? {
-        printedLine: c.defaultLine ?? 1,
-        syllables: c.defaultSyllables.map((x) => ({ ...x })),
-      }
+    ? { printedLine: c.defaultLine ?? 1, ...slotsFrom(c.defaultSyllables) }
     : {}),
 });
 
 /**
- * A decision saved by an earlier version of the page has no per-syllable entries; a placeable row would then
- * show a note choice with no syllable to review. Fill in the row's defaults (keeping the saved state/text).
+ * Fill in what a decision saved by an earlier version of the page lacks (a placeable row would otherwise show a
+ * note row with nothing in it), keeping its saved state and text. Per-token entries become per-note slots.
  */
 export function withDefaults(
   d: CandidateDecision | undefined,
@@ -201,26 +209,27 @@ export function withDefaults(
   const blank = blankCandidate(item);
   if (!d) return blank;
   if (!item.defaultSyllables || item.defaultSyllables.length === 0) return d;
+  const converted =
+    d.slots === undefined && d.syllables && d.syllables.length > 0
+      ? slotsFrom(d.syllables)
+      : undefined;
   return {
     ...d,
     printedLine: d.printedLine ?? blank.printedLine,
-    syllables:
-      d.syllables && d.syllables.length > 0 ? d.syllables : blank.syllables,
+    slots: d.slots ?? converted?.slots ?? blank.slots,
+    unplaced: d.unplaced ?? converted?.unplaced ?? blank.unplaced,
   };
 }
 
-/** Any change to what the reviewer is accepting withdraws the acceptance. */
-export function setSyllable(
+/** Type (or clear) the syllable under one recognised note; any change withdraws the acceptance. */
+export function setSlot(
   d: CandidateDecision,
-  index: number,
-  patch: Partial<SyllableDecision>,
+  noteId: string,
+  text: string,
 ): CandidateDecision {
-  const syllables = (d.syllables ?? []).map((x, i) =>
-    i === index ? { ...x, ...patch } : x,
-  );
   return {
     ...d,
-    syllables,
+    slots: { ...(d.slots ?? {}), [noteId]: text },
     state: d.state === "accept" ? "pending" : d.state,
   };
 }
@@ -262,7 +271,7 @@ export function buildCandidateExport(
       proposedLyric: c.proposedLyric,
       proposedPlacement: c.anchor,
       printedLine: (decisions[c.id] ?? blankCandidate(c)).printedLine ?? null,
-      syllables: (decisions[c.id] ?? blankCandidate(c)).syllables ?? null,
+      slots: withDefaults(decisions[c.id], c).slots ?? null,
     })),
   };
 }
@@ -328,7 +337,7 @@ export type Placement = {
   printedLine: number;
 };
 
-/** What accepted rows put on the score: each syllable with a chosen note, plus any note/line collisions. */
+/** What accepted rows put on the score: the text under each note, plus any note/line collisions. */
 export function placementsFrom(
   items: ReviewItem[],
   decisions: Record<string, CandidateDecision>,
@@ -338,32 +347,33 @@ export function placementsFrom(
   const leftOut: string[] = [];
   const seen = new Map<string, string>();
   for (const item of items) {
-    const d = decisions[item.id] && withDefaults(decisions[item.id], item);
-    if (!d || d.state !== "accept") continue;
-    if (!d.syllables || d.syllables.length === 0) {
+    const raw = decisions[item.id];
+    if (!raw || raw.state !== "accept") continue;
+    const d = withDefaults(raw, item);
+    if (!d.slots) {
       if (d.text.trim()) leftOut.push(d.text);
       continue;
     }
-    for (const syllable of d.syllables) {
-      if (!syllable.text.trim()) continue;
-      if (!syllable.noteId) {
-        leftOut.push(syllable.text);
-        continue;
-      }
-      const line = d.printedLine ?? 1;
-      const key = `${syllable.noteId}|${line}`;
+    const line = d.printedLine ?? 1;
+    const typed = new Set<string>();
+    for (const choice of item.noteChoices) {
+      const text = (d.slots[choice.noteId] ?? "").trim();
+      if (!text) continue;
+      typed.add(text);
+      const key = `${choice.noteId}|${line}`;
       if (seen.has(key)) {
-        conflicts.push(`${seen.get(key)} / ${syllable.text}`);
+        conflicts.push(`${seen.get(key)} / ${text}`);
         continue;
       }
-      seen.set(key, syllable.text);
+      seen.set(key, text);
       placements.push({
         candidateId: item.id,
-        text: syllable.text.trim(),
-        noteId: syllable.noteId,
+        text,
+        noteId: choice.noteId,
         printedLine: line,
       });
     }
+    for (const text of d.unplaced ?? []) if (!typed.has(text.trim())) leftOut.push(text);
   }
   return { placements, conflicts, leftOut };
 }

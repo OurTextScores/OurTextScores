@@ -69,8 +69,8 @@ test("ticking the lyrics box leads to lyrics added to the scan's score, and noth
   }
 
   await expect(page.locator("article").first()).toBeVisible({ timeout: 180000 });
-  // Every card shows its syllables with a note choice (the proposal is pre-selected) and a lyric line.
-  await expect(page.getByLabel(/^Note for syllable 1 of /).first()).toBeVisible();
+  // Every card shows a text box under each recognised note (the proposal filled in, blanks elsewhere) and a lyric line.
+  await expect(page.getByLabel(/^Text for note 1 of /).first()).toBeVisible();
   await page.getByRole("button", { name: "Accept all suggested rows" }).click();
   const open = page.getByRole("button", { name: "Add accepted lyrics to the score" });
   await expect(open).toBeEnabled({ timeout: 90000 }); // waits for the recognised note choices

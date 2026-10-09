@@ -10,7 +10,7 @@ import {
   proposedSyllables,
   reviewItems,
   setLine,
-  setSyllable,
+  setSlot,
   withDefaults,
   setState,
   setText,
@@ -204,7 +204,7 @@ export default function LyricCandidatesClient({
       )}
       {items.map((c) => {
         const d = withDefaults(decisions[c.id], c);
-        const placeable = c.defaultSyllables.length > 0;
+        const placeable = c.defaultSyllables.length > 0 && c.noteChoices.length > 0;
         const withdraw = (fn: (x: typeof d) => typeof d) => update(c.id, fn);
         return (
           <article
@@ -250,39 +250,48 @@ export default function LyricCandidatesClient({
                     (counted from the top under the staff)
                   </span>
                 </div>
-                <ul className="mt-2 space-y-1">
-                  {(d.syllables ?? []).map((syllable, i) => (
-                    <li key={i} className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="text"
-                        aria-label={`Syllable ${i + 1} of ${d.text}`}
-                        value={syllable.text}
-                        onChange={(e) =>
-                          withdraw((x) => setSyllable(x, i, { text: e.target.value }))
-                        }
-                        className="w-32 rounded border px-1"
-                      />
-                      <span>→ note</span>
-                      <select
-                        aria-label={`Note for syllable ${i + 1} of ${d.text}`}
-                        value={syllable.noteId ?? ""}
-                        onChange={(e) =>
-                          withdraw((x) =>
-                            setSyllable(x, i, { noteId: e.target.value || null }),
-                          )
-                        }
-                        className="rounded border px-1"
-                      >
-                        <option value="">Leave out (no note)</option>
-                        {c.noteChoices.map((n) => (
-                          <option key={n.noteId} value={n.noteId}>
-                            {n.number} · {n.pitch} · measure {n.measure}
-                          </option>
-                        ))}
-                      </select>
-                    </li>
-                  ))}
-                </ul>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                  Type the syllable that belongs under each notehead (the numbers match the picture). Blank
+                  means no syllable on that note. To split a word, put its parts on neighbouring notes.
+                </p>
+                <ol className="mt-1 flex flex-wrap gap-2">
+                  {c.noteChoices.map((n) => {
+                    const value = d.slots?.[n.noteId] ?? "";
+                    return (
+                      <li key={n.noteId} className="w-24">
+                        <label className="block text-[11px] text-slate-600 dark:text-slate-400">
+                          <span
+                            className={`mr-1 inline-block h-4 w-4 rounded-full text-center text-[10px] font-bold leading-4 ${
+                              value.trim()
+                                ? "bg-blue-600 text-white"
+                                : "border border-slate-400"
+                            }`}
+                          >
+                            {n.number}
+                          </span>
+                          {n.pitch} · m{n.measure}
+                          <input
+                            type="text"
+                            aria-label={`Text for note ${n.number} of ${d.text}`}
+                            value={value}
+                            onChange={(e) =>
+                              withdraw((x) => setSlot(x, n.noteId, e.target.value))
+                            }
+                            className={`mt-0.5 block w-full rounded border px-1 text-sm ${
+                              value.trim() ? "border-blue-500" : "border-dashed"
+                            }`}
+                          />
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ol>
+                {(d.unplaced ?? []).length > 0 && (
+                  <p className="mt-1 text-xs text-amber-800">
+                    Not placed (no note of its own): {(d.unplaced ?? []).join(", ")}. Type it under a note
+                    to place it.
+                  </p>
+                )}
               </div>
             ) : (
               <label className="mt-2 block text-sm">
