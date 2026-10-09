@@ -183,3 +183,21 @@ describe('anchorRows', () => {
     expect(anchorRows([row('a', [90, 170, 140, 190], 'x')], [empty]).size).toBe(0);
   });
 });
+
+
+describe('double-bar measure boundaries', () => {
+  it('keeps lyrics after a double bar in their own measure, including interpolation', () => {
+    const context = staff({
+      tokens: [['rest_1'], ['doublebarline'], ['note_4', 'B3'], ['note_4', 'E4'], ['barline']],
+      barLines: [300, 700],
+      symbols: []
+    });
+    const positions = noteXPositions(context);
+    expect(positions.get(2)!.x).toBeGreaterThan(300);
+    expect(positions.get(3)!.x).toBeLessThan(700);
+    const anchor = anchorRows([{ id: 'after-double-bar', text: 'Dans la', box: [420, 170, 610, 190] }], [context]).get('after-double-bar')!;
+    expect(anchor.syllables.map((s) => s.measureInStaff)).toEqual([1, 1]);
+    expect(anchor.syllables.map((s) => s.noteTokenIndex)).toEqual([2, 3]);
+    expect(anchor.syllables.map((s) => s.notePitch)).toEqual(['B3', 'E4']);
+  });
+});

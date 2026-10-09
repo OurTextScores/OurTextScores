@@ -67,7 +67,10 @@ export interface RowAnchor {
 
 const isNoteLike = (token: string[] | undefined) =>
   !!token && /^(note|rest|gracenote)/.test(String(token[0] || ''));
-const isBar = (token: string[] | undefined) => String(token?.[0] || '').startsWith('barline');
+const isBar = (token: string[] | undefined) => {
+  const value = String(token?.[0] || '');
+  return value.startsWith('barline') || value === 'doublebarline';
+};
 
 /** Whitespace-, hyphen- and underscore-separated pieces, each placed proportionally by characters. */
 /**
