@@ -35,6 +35,7 @@ for (const [id, fused] of fusion) {
   records.push({ id, score: fused.score, status: 'replayed', inputProposals: text.rows.filter(row => row.proposedLyric).length, retainedProposals: inventory.ocrRows.filter(row => row.proposedLyric).length, withheld, inventorySha256: sha(output), reviewSha256: sha(reviewPath) });
 }
 const compiledFiles = ['scanner-lyric-candidates.js', 'scanner-lyric-anchors.js', 'scanner-locate.js', 'scanner-crop.js'];
+if (fs.existsSync(path.join(path.resolve(backend), 'dist/scanner/scanner-barline.js'))) compiledFiles.push('scanner-barline.js');
 const freshSelection = [...ocr.values()].every(row => row.ocrSelection === 'fresh-pinned-e2-lyrics-at-0.5');
 const report = { ocrSelection: freshSelection ? 'fresh-pinned-e2-lyrics-at-0.5' : 'cached-e2-selection', schemaVersion: 'ots.lyric-backend-filter-replay.v1', runnerSha256: sha(__filename), backendCompiledSha256: Object.fromEntries(compiledFiles.map(name => [name, sha(path.join(path.resolve(backend), 'dist/scanner', name))])), fusionSha256: sha(fusionPath), ocrSha256: sha(ocrPath), scope: freshSelection ? 'Actual backend filtering replay with fresh pinned e2 raw selection >=0.5, matching production OCR stage independent of fused-region status. Not source-linked attachment accuracy.' : 'Exact backend filtering replay. OCR rows come from cached E2 selection; selection equivalence remains unqualified.', automaticAttachment: false, pages: records };
 fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
