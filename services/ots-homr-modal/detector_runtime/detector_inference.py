@@ -110,12 +110,15 @@ def boxes_from_probs(probs: np.ndarray, min_area: int = 4) -> list[PredictedBox]
         binary = (class_map == class_index).astype(np.uint8)
         if binary.sum() == 0:
             continue
-        count, _, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+        count, components, stats, _ = cv2.connectedComponentsWithStats(
+            binary, connectivity=8
+        )
         for component in range(1, count):  # component 0 is background
             left, top, w, h, area = stats[component]
             if area < min_area:
                 continue
-            region = binary[top : top + h, left : left + w] > 0
+            # Score only this component, not disconnected same-class pixels inside its box.
+            region = components[top : top + h, left : left + w] == component
             confidence = float(
                 confidence_map[top : top + h, left : left + w][region].mean()
             )
