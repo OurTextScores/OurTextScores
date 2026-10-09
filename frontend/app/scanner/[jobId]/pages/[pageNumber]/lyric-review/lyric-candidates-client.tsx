@@ -11,6 +11,7 @@ import {
   reviewItems,
   setLine,
   setSlot,
+  slotsElsewhere,
   withDefaults,
   setState,
   setText,
@@ -205,6 +206,7 @@ export default function LyricCandidatesClient({
       {items.map((c) => {
         const d = withDefaults(decisions[c.id], c);
         const placeable = c.defaultSyllables.length > 0 && c.noteChoices.length > 0;
+        const elsewhere = placeable ? slotsElsewhere(items, decisions, c.id, d.printedLine ?? 1) : {};
         const withdraw = (fn: (x: typeof d) => typeof d) => update(c.id, fn);
         return (
           <article
@@ -257,6 +259,29 @@ export default function LyricCandidatesClient({
                 <ol className="mt-1 flex flex-wrap gap-2">
                   {c.noteChoices.map((n) => {
                     const value = d.slots?.[n.noteId] ?? "";
+                    const other = !value.trim() ? elsewhere[n.noteId] : undefined;
+                    if (other)
+                      return (
+                        <li key={n.noteId} className="w-24">
+                          <label
+                            className="block text-[11px] text-slate-500"
+                            title={`This note's lyric is in the row "${other.rowText}" below or above; edit it there.`}
+                          >
+                            <span className="mr-1 inline-block h-4 w-4 rounded-full border border-slate-300 text-center text-[10px] leading-4">
+                              {n.number}
+                            </span>
+                            {n.pitch} · m{n.measure}
+                            <input
+                              type="text"
+                              readOnly
+                              aria-label={`Text for note ${n.number} of ${d.text} (in another row)`}
+                              value={other.text}
+                              className="mt-0.5 block w-full rounded border border-slate-200 bg-slate-100 px-1 text-sm italic text-slate-500 dark:bg-slate-800"
+                            />
+                            <span className="text-[10px]">in another row</span>
+                          </label>
+                        </li>
+                      );
                     return (
                       <li key={n.noteId} className="w-24">
                         <label className="block text-[11px] text-slate-600 dark:text-slate-400">

@@ -377,3 +377,27 @@ export function placementsFrom(
   }
   return { placements, conflicts, leftOut };
 }
+
+/**
+ * Notes that another row already puts text on, on the same lyric line. Neighbouring rows' pictures overlap, so
+ * a note can look blank in one card while the lyric under it belongs to the next row; showing it (read-only)
+ * keeps a blank meaning "no syllable anywhere". Excluded rows write nothing and are left out.
+ */
+export function slotsElsewhere(
+  items: ReviewItem[],
+  decisions: Record<string, CandidateDecision>,
+  selfId: string,
+  line: number,
+): Record<string, { text: string; rowText: string }> {
+  const out: Record<string, { text: string; rowText: string }> = {};
+  for (const item of items) {
+    if (item.id === selfId || item.defaultSyllables.length === 0) continue;
+    const d = withDefaults(decisions[item.id], item);
+    if (d.state === "exclude" || (d.printedLine ?? 1) !== line) continue;
+    for (const [noteId, text] of Object.entries(d.slots ?? {})) {
+      if (text.trim() && !out[noteId])
+        out[noteId] = { text: text.trim(), rowText: item.initialText };
+    }
+  }
+  return out;
+}

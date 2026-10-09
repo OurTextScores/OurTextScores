@@ -7,6 +7,7 @@ import {
   placementsFrom,
   setLine,
   setSlot,
+  slotsElsewhere,
   proposedSyllables,
   reviewItems,
   setState,
@@ -422,5 +423,16 @@ describe("note decisions on each row", () => {
     expect((screen.getByLabelText("Text for note 2 of wish -ing") as HTMLInputElement).value).toBe("ing");
     expect((screen.getByLabelText("Text for note 3 of wish -ing") as HTMLInputElement).value).toBe("");
     expect(screen.getByText("wish -ing", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("shows a note another row already fills, read-only, so a blank means no syllable anywhere", () => {
+    const [a] = reviewItems(placed);
+    const b = { ...a, id: "ocr-9", initialText: "next row", defaultSyllables: [{ text: "ich", noteId: choices[2].noteId }] };
+    const decisions = { [b.id]: blankCandidate(b) };
+    expect(slotsElsewhere([a, b], decisions, a.id, 1)).toEqual({ [choices[2].noteId]: { text: "ich", rowText: "next row" } });
+    // Another lyric line, an excluded row, and the row itself do not count.
+    expect(slotsElsewhere([a, b], decisions, a.id, 2)).toEqual({});
+    expect(slotsElsewhere([a, b], { [b.id]: { ...blankCandidate(b), state: "exclude" as const } }, a.id, 1)).toEqual({});
+    expect(slotsElsewhere([a, b], decisions, b.id, 1)).toEqual({ [choices[0].noteId]: { text: "wish", rowText: a.initialText }, [choices[1].noteId]: { text: "ing", rowText: a.initialText } });
   });
 });
