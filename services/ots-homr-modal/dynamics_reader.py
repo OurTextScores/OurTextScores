@@ -17,6 +17,11 @@ WEIGHTS_SHA256 = "2c42456bbe49828149eac8944c0e99d33363b0a02b1a1e389b4acaacd1bd57
 IMAGE_SIZE = 48
 MARGIN = 4
 MIN_AREA = 100
+#: A mark is at least this large on the scanner's 1920 px wide pages (scaled for other widths). Beam stubs,
+#: stem ends and specks the detector boxes are smaller: on 26 aligned pages 8 of 33 false marks and 3 of 41 right
+#: ones were under 400 px (a floor, not a classifier: sizes of false and right marks otherwise overlap).
+MIN_MARK_AREA = 400
+REFERENCE_WIDTH = 1920
 MIN_PROBABILITY = 0.5
 MAX_BOXES = 800
 NMS_IOU = 0.3
@@ -71,11 +76,12 @@ class DynamicsReader:
 
         gray = cv2.cvtColor(page_bgr, cv2.COLOR_BGR2GRAY) if page_bgr.ndim == 3 else page_bgr
         crops, kept = [], []
+        floor = max(MIN_AREA, MIN_MARK_AREA * (gray.shape[1] / REFERENCE_WIDTH) ** 2)
         for box in boxes:
             if box.get("label") != "Dynamic":
                 continue
             left, top, right, bottom = (int(box[k]) for k in ("left", "top", "right", "bottom"))
-            if (right - left) * (bottom - top) < MIN_AREA:
+            if (right - left) * (bottom - top) < floor:
                 continue
             crop = gray[max(0, top - MARGIN) : bottom + MARGIN, max(0, left - MARGIN) : right + MARGIN]
             if min(crop.shape) < 4:

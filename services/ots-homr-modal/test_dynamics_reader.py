@@ -38,6 +38,23 @@ def test_reading_skips_non_dynamic_tiny_and_blank_boxes_and_returns_marks_only(t
     assert reader.read(page, []) == []
 
 
+def test_boxes_below_the_mark_size_floor_are_not_classified(monkeypatch):
+    reader = DynamicsReader()
+    monkeypatch.setattr(reader, "labels", ["f", "none"])
+
+    class Always:
+        def __call__(self, images):
+            return torch.tensor([[5.0, 0.0]] * images.shape[0])
+
+    reader.model = Always()
+    wide = np.zeros((400, 1920, 3), np.uint8)
+    # 22x12 = 264 px (a beam stub) is under the 400 px floor at 1920 wide; 30x30 is over it.
+    assert [r["box"] for r in reader.read(wide, [box(10, 10, 32, 22), box(100, 100, 130, 130)])] == [[100, 100, 130, 130]]
+    # A page half as wide scales the floor down by four: 22x12 is then large enough.
+    narrow = np.zeros((200, 960, 3), np.uint8)
+    assert len(reader.read(narrow, [box(10, 10, 32, 22)])) == 1
+
+
 def test_a_trained_model_layout_matches_the_weights(tmp_path):
     reader = DynamicsReader()
     fresh = build_model(len(reader.labels))
