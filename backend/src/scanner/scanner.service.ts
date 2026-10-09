@@ -951,7 +951,20 @@ export class ScannerService implements OnModuleInit {
               provenance: job.engineProvenance
             })
           : page?.engines?.[engine];
-      locator = kind === 'musicxml' ? run?.artifacts.musicXml : run?.artifacts[kind];
+      locator = kind === 'musicxml'
+        ? run?.reviewedMusicXml || run?.artifacts.musicXml
+        : run?.artifacts[kind];
+      if (kind === 'pdf' && locator) {
+        const musicXml = run?.reviewedMusicXml || run?.artifacts.musicXml;
+        const inputs = [
+          { ordinal: page?.ordinal || pageNumber, checksumSha256: musicXml?.checksumSha256 }
+        ];
+        if (locator.inputSignature
+          ? !scannerArtifactInputMatches(locator, SCANNER_ARTIFACT_BUILDERS.pagePdf, inputs)
+          : Boolean(run?.reviewedMusicXml)) {
+          locator = undefined;
+        }
+      }
       const extension = definition?.artifacts[kind].extension || (kind === 'kern' ? 'krn' : kind);
       filename = `scan-page-${pageNumber}-${engine}.${extension}`;
     } else if (!SCANNER_JOB_ARTIFACT_KINDS.has(kind)) {
@@ -3345,7 +3358,7 @@ export class ScannerService implements OnModuleInit {
               entry.pageNumber === pageNumber ? updatedPage : entry
             ),
             ...(hadCombined ? { combinedStale: true } : {}),
-            ...(['succeeded', 'partial'].includes(job.status)
+            ...(['succeeded', 'partial'].includes(job.status) || job.reassembleRequestedAt
               ? { reassembleRequestedAt: new Date() }
               : {})
           },
@@ -3855,7 +3868,7 @@ export class ScannerService implements OnModuleInit {
             // without this the reviewer's correction simply removes their
             // download. Ask the worker to rebuild rather than leaving them to
             // notice and ask.
-            ...(['succeeded', 'partial'].includes(job.status)
+            ...(['succeeded', 'partial'].includes(job.status) || job.reassembleRequestedAt
               ? { reassembleRequestedAt: new Date() }
               : {})
           },

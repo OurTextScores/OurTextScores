@@ -639,6 +639,18 @@ describe('ScannerService', () => {
     expect((await readStream(musicXml.stream)).toString()).toBe('<score-partwise/>');
     expect(kern.filename).toBe('scan-page-1-transcoda.krn');
     expect((await readStream(kern.stream)).toString()).toBe('**kern\n4c\n*-\n');
+    const reviewedMusicXml = {
+      ...transcodaMusicXml,
+      objectKey: 'page-001-transcoda-reviewed.musicxml'
+    };
+    bodies[reviewedMusicXml.objectKey] = Buffer.from('<score-partwise><lyric/></score-partwise>');
+    job.pages[0].engines.transcoda.reviewedMusicXml = reviewedMusicXml;
+    const reviewed = await service.getArtifact('user-1', 'job-1', 'musicxml', 1, 'transcoda');
+    expect((await readStream(reviewed.stream)).toString()).toBe(
+      '<score-partwise><lyric/></score-partwise>'
+    );
+    const unchangedKern = await service.getArtifact('user-1', 'job-1', 'kern', 1, 'transcoda');
+    expect((await readStream(unchangedKern.stream)).toString()).toBe('**kern\n4c\n*-\n');
     await expect(service.getArtifact('user-1', 'job-1', 'kern', 1)).rejects.toThrow(
       BadRequestException
     );
@@ -735,6 +747,40 @@ describe('ScannerService', () => {
     await expect(
       service.getArtifact('user-1', 'job-1', '../mei', 1, 'audiveris-5')
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('withholds an engine PDF until it matches the reviewed MusicXML', async () => {
+    const raw = { bucket: 'scanner', objectKey: 'raw.xml', checksumSha256: 'raw' };
+    const reviewed = { ...raw, objectKey: 'reviewed.xml', checksumSha256: 'reviewed' };
+    const pdf = {
+      bucket: 'scanner', objectKey: 'page.pdf', contentType: 'application/pdf',
+      sizeBytes: 13, checksumSha256: 'pdf'
+    };
+    const run: any = {
+      engine: 'homr', status: 'succeeded', attempts: 1, idempotencyKey: 'key',
+      artifacts: { musicXml: raw, pdf }, reviewedMusicXml: reviewed
+    };
+    const job: any = { jobId: 'job-1', userId: 'user-1', pageCount: 1, pages: [
+      { pageNumber: 1, status: 'succeeded', engines: { homr: run } }
+    ] };
+    const storage: any = { getObjectStream: jest.fn(async () => Readable.from(['%PDF-reviewed'])) };
+    const service = new ScannerService(
+      { findOne: () => ({ exec: async () => job }) } as any,
+      corrections, storage, provider, telemetry, alerts, config
+    );
+    await expect(service.getArtifact('user-1', 'job-1', 'pdf', 1, 'homr')).rejects.toThrow(
+      'Artifact is not available'
+    );
+    run.artifacts.pdf = withScannerArtifactInputSignature(pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf,
+      [{ ordinal: 1, checksumSha256: 'raw' }]);
+    await expect(service.getArtifact('user-1', 'job-1', 'pdf', 1, 'homr')).rejects.toThrow(
+      'Artifact is not available'
+    );
+    run.artifacts.pdf = withScannerArtifactInputSignature(pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf,
+      [{ ordinal: 1, checksumSha256: 'reviewed' }]);
+    const result = await service.getArtifact('user-1', 'job-1', 'pdf', 1, 'homr');
+    expect((await readStream(result.stream)).toString()).toBe('%PDF-reviewed');
+    expect(storage.getObjectStream).toHaveBeenCalledTimes(1);
   });
 
   it('compares the selected reviewed and raw engine artifacts through the live pipeline', async () => {

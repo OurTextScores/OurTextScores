@@ -2325,9 +2325,19 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     const completedAt = new Date();
     // Lease-scoped for the same reason as persistPageProgress: only the worker
     // that currently holds the job may terminalise it.
+    // A reviewer can save again while rendering. Never publish the older
+    // page snapshot over their new locator (whose predecessor may be retired).
+    const reviewSnapshot = job.reassembleRequestedAt
+      ? Object.fromEntries(job.pages.flatMap((page, index) =>
+          Object.entries(page.engines || {}).map(([engine, run]) => [
+            `pages.${index}.engines.${engine}.reviewedMusicXml.checksumSha256`,
+            run?.reviewedMusicXml?.checksumSha256 || null
+          ])
+        ))
+      : {};
     const updated = await this.jobs
       .findOneAndUpdate(
-        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
+        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' }, ...reviewSnapshot },
         {
           $set: {
             status,
@@ -2343,7 +2353,10 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
         { new: true }
       )
       .exec();
-    if (!updated) return;
+    if (!updated) {
+      if (job.reassembleRequestedAt) await this.releaseReassemblyLease(job);
+      return;
+    }
     const succeededPages = pages.filter((page) => page.status === 'succeeded').length;
     const failedPages = pages.filter((page) => page.status === 'failed').length;
     this.telemetry.emit('job_finished', {

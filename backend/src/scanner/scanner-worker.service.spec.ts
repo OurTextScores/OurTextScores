@@ -560,6 +560,26 @@ describe('ScannerWorkerService', () => {
     expect(cleared[0].$unset).toMatchObject({ reassembleRequestedAt: 1 });
   });
 
+  it('does not overwrite a newer review when an older rebuild finishes', async () => {
+    const scannerWorker = service() as any;
+    let filter: any;
+    scannerWorker.jobs = {
+      findOneAndUpdate: (query: any) => {
+        filter = query;
+        return { exec: async () => null };
+      }
+    };
+    scannerWorker.releaseReassemblyLease = jest.fn(async () => undefined);
+    const job = {
+      jobId: 'job-1', reassembleRequestedAt: new Date(), pages: [{ engines: {
+        'ots-homr': { reviewedMusicXml: { checksumSha256: 'old-review' } }
+      } }]
+    };
+    await scannerWorker.finish(job, 'succeeded', job.pages, {});
+    expect(filter['pages.0.engines.ots-homr.reviewedMusicXml.checksumSha256']).toBe('old-review');
+    expect(scannerWorker.releaseReassemblyLease).toHaveBeenCalledWith(job);
+  });
+
   it('retires the claimed request without discarding one that arrived mid-rebuild', async () => {
     // The clear must not be lease-scoped: finish releases the lease first, so a
     // lease-scoped filter matches nothing and the job is reclaimed every tick.
