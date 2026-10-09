@@ -26,7 +26,10 @@ export function noteChoicesForRow(
   box: number[],
   ids: Map<string, string>,
   margin = 160,
-  /** Collapse chord tones (same x, same hand) into one choice, keeping `prefer` when it is among them. */
+  /**
+   * Collapse chord tones at one x into one choice, keeping `prefer` when it is among them. Hands are not told
+   * apart: a direction or dynamic between a grand staff's staves belongs to the whole part.
+   */
   collapseChords?: { prefer?: string | null }
 ): NoteChoice[] {
   const positions = noteXPositions(staff);
@@ -51,9 +54,7 @@ export function noteChoicesForRow(
   found.sort((a, b) => a.x - b.x);
   const kept = collapseChords
     ? found.filter((choice, i) => {
-        const cluster = found.filter(
-          (other) => other.hand === choice.hand && Math.abs(other.x - choice.x) <= CHORD_X_PX
-        );
+        const cluster = found.filter((other) => Math.abs(other.x - choice.x) <= CHORD_X_PX);
         const winner = cluster.find((o) => o.noteId === collapseChords.prefer) ?? cluster[0];
         return winner === choice && found.indexOf(choice) === i;
       })

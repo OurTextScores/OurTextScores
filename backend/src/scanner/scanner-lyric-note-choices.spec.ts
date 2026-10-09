@@ -113,14 +113,14 @@ describe('collapsing chord tones for directions', () => {
     expect(noteChoicesForRow(piano, [50, 20, 250, 50], pianoIds, 100)).toHaveLength(5);
   });
 
-  it('offers one choice per hand and onset, keeping the preferred note, and numbers them again', () => {
+  it('offers one choice per onset whatever the hand, keeping the preferred note, and numbers them again', () => {
     const choices = noteChoicesForRow(piano, [50, 20, 250, 50], pianoIds, 100, {
       prefer: '["P1",1,2]'
     });
-    expect(choices.map((c) => [c.number, c.pitch, c.hand])).toEqual([
-      [1, 'B3', 'upper'],
-      [2, 'E2', 'lower'],
-      [3, 'C4', 'upper']
+    // Both hands sound at x=100: one choice (the preferred note); then the single note at x=200.
+    expect(choices.map((c) => [c.number, c.pitch])).toEqual([
+      [1, 'B3'],
+      [2, 'C4']
     ]);
   });
 });

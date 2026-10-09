@@ -44,7 +44,7 @@ def main():
                 continue
             name = f"{record['id']}.png"
             (args.out / name).write_bytes(get(f"{base}/{row['id']}/crop?view=placement", token))
-            items.append({"id": record["id"], "image": name, "kind": row["kind"], "text": record["text"], "note": f"{choice['pitch']}, measure {choice['measure']}" + (f" ({choice['hand']} hand)" if choice.get("hand") else ""), "placement": record["placement"] or "above"})
+            items.append({"id": record["id"], "image": name, "kind": row["kind"], "text": record["text"], "note": f"{choice['pitch']}, measure {choice['measure']}", "placement": record["placement"] or "above"})
     items.sort(key=lambda i: hashlib.sha256(("order" + i["id"]).encode()).hexdigest())
     (args.out / "items.json").write_text(json.dumps(items))
     (args.out / "index.html").write_bytes(Path(__file__).with_name("direction_placement_review.html").read_bytes())

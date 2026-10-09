@@ -90,7 +90,6 @@ export default function DirectionsReview({
                   {item.noteChoices.map((n) => (
                     <option key={n.noteId} value={n.noteId}>
                       {n.number} · {n.pitch} · m{n.measure}
-                      {n.hand ? ` · ${n.hand} hand` : ""}
                     </option>
                   ))}
                 </select>
