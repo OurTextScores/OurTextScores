@@ -77,7 +77,7 @@ test("ticking the lyrics box leads to lyrics added to the scan's score, and noth
   await open.click();
   const save = page.getByRole("button", { name: "Add lyrics to the score" });
   await expect(save).toBeDisabled(); // one explicit confirmation is required first
-  const listed = await page.locator("ol li").count();
+  const listed = await page.locator("ol.list-decimal li").count();
   expect(listed).toBeGreaterThan(0);
   await page.getByLabel(/I checked these syllables/).check();
   await save.click();
