@@ -36,6 +36,7 @@ export type NoteChoice = {
   pitch: string;
   measure: number;
   ordinal: number;
+  hand?: "upper" | "lower";
 };
 
 export type SyllableDecision = { text: string; noteId: string | null };

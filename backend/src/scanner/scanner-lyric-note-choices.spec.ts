@@ -78,3 +78,49 @@ describe('placement crop', () => {
     expect(svg).toContain('>2<');
   });
 });
+
+describe('collapsing chord tones for directions', () => {
+  // Two hands sounding together at x=100 (three tones in the right hand), then one note at x=200.
+  const piano = {
+    index: 0,
+    partIndex: 0,
+    systemIndex: 0,
+    region: [0, 100, 1000, 300],
+    tokens: [
+      ['clef_G2', 'upper'],
+      ['note_8', 'E4', 'b', '_', '_', 'upper'],
+      ['chord'],
+      ['note_8', 'B3', 'b', '_', '_', 'upper'],
+      ['chord'],
+      ['note_8', 'G3', 'b', '_', '_', 'upper'],
+      ['chord'],
+      ['note_2', 'E2', 'b', '_', '_', 'lower'],
+      ['note_4', 'C4', '_', '_', '_', 'upper']
+    ],
+    symbols: [1, 3, 5, 7]
+      .map((index) => ({ index, attention: [128, 0] }))
+      .concat([{ index: 8, attention: [256, 0] }])
+  };
+  const pianoIds = new Map([
+    ['0:1', '["P1",1,1]'],
+    ['0:3', '["P1",1,2]'],
+    ['0:5', '["P1",1,3]'],
+    ['0:7', '["P1",1,4]'],
+    ['0:8', '["P1",1,5]']
+  ]);
+
+  it('keeps every tone by default', () => {
+    expect(noteChoicesForRow(piano, [50, 20, 250, 50], pianoIds, 100)).toHaveLength(5);
+  });
+
+  it('offers one choice per hand and onset, keeping the preferred note, and numbers them again', () => {
+    const choices = noteChoicesForRow(piano, [50, 20, 250, 50], pianoIds, 100, {
+      prefer: '["P1",1,2]'
+    });
+    expect(choices.map((c) => [c.number, c.pitch, c.hand])).toEqual([
+      [1, 'B3', 'upper'],
+      [2, 'E2', 'lower'],
+      [3, 'C4', 'upper']
+    ]);
+  });
+});

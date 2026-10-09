@@ -9,9 +9,13 @@ export interface NoteChoice {
   pitch: string;
   measure: number;
   ordinal: number;
+  /** Grand staff only: which hand's notes the token belongs to. */
+  hand?: 'upper' | 'lower';
 }
 
 const MAX_CHOICES = 30;
+/** Notes of one chord share an x to within this (page px). */
+const CHORD_X_PX = 8;
 
 /**
  * The recognised notes around a lyric row, left to right, each with the writer's note id. Only notes that
@@ -21,7 +25,9 @@ export function noteChoicesForRow(
   staff: AnchorStaff,
   box: number[],
   ids: Map<string, string>,
-  margin = 160
+  margin = 160,
+  /** Collapse chord tones (same x, same hand) into one choice, keeping `prefer` when it is among them. */
+  collapseChords?: { prefer?: string | null }
 ): NoteChoice[] {
   const positions = noteXPositions(staff);
   const found: Omit<NoteChoice, 'number'>[] = [];
@@ -32,10 +38,25 @@ export function noteChoicesForRow(
     if (!noteId || !where) return;
     if (where.x < box[0] - margin || where.x > box[2] + margin) return;
     const [, measure, ordinal] = JSON.parse(noteId);
-    found.push({ noteId, x: where.x, pitch: String(token[1] ?? ''), measure, ordinal });
+    const hand = token[token.length - 1];
+    found.push({
+      noteId,
+      x: where.x,
+      pitch: String(token[1] ?? ''),
+      measure,
+      ordinal,
+      ...(hand === 'upper' || hand === 'lower' ? { hand } : {})
+    });
   });
-  return found
-    .sort((a, b) => a.x - b.x)
-    .slice(0, MAX_CHOICES)
-    .map((choice, i) => ({ ...choice, number: i + 1 }));
+  found.sort((a, b) => a.x - b.x);
+  const kept = collapseChords
+    ? found.filter((choice, i) => {
+        const cluster = found.filter(
+          (other) => other.hand === choice.hand && Math.abs(other.x - choice.x) <= CHORD_X_PX
+        );
+        const winner = cluster.find((o) => o.noteId === collapseChords.prefer) ?? cluster[0];
+        return winner === choice && found.indexOf(choice) === i;
+      })
+    : found;
+  return kept.slice(0, MAX_CHOICES).map((choice, i) => ({ ...choice, number: i + 1 }));
 }
