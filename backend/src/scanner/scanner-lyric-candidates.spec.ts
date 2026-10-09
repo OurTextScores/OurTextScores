@@ -1,5 +1,6 @@
 import {
   buildLyricCandidateInventory,
+  settleUnplaced,
   looksLikeCredit,
   lyricCandidateCrop,
   LYRIC_CANDIDATE_SCHEMA
@@ -353,6 +354,28 @@ describe('direction rows in the inventory', () => {
     });
   });
 
+  it('offers a direction a staff reaches but no note is near as unplaced, instead of withholding it', () => {
+    const inventory = buildLyricCandidateInventory(
+      artifact([
+        row('p', [940, 175, 975, 195], 'dynamic', { mark: 'p' }),
+        row('cresc.', [920, 60, 990, 85]),
+        row('dolce', [90, 60, 180, 85])
+      ]),
+      1,
+      raster,
+      [staffForTest]
+    );
+    const byText = Object.fromEntries(inventory.ocrRows.map((r) => [r.text, r]));
+    expect(byText['p']).toMatchObject({
+      proposedDirection: true,
+      unplaced: true,
+      withheldReason: null
+    });
+    expect(byText['cresc.']).toMatchObject({ proposedDirection: true, unplaced: true });
+    expect(byText['dolce'].unplaced).toBeUndefined();
+    expect(byText['p'].anchor!.syllables[0].noteTokenIndex).toBeNull();
+  });
+
   it('keeps who read a direction row, and ignores an unknown source', () => {
     const inventory = buildLyricCandidateInventory(
       artifact([
@@ -377,5 +400,35 @@ describe('direction rows in the inventory', () => {
     expect(() =>
       buildLyricCandidateInventory(artifact([row('p', [10, 10, 30, 30], 'lyric')]), 1, raster, [])
     ).toThrow(/direction row/);
+  });
+});
+
+describe('settleUnplaced', () => {
+  const base = {
+    id: 'r',
+    box: [0, 0, 5, 5],
+    text: 'p',
+    unplaced: true,
+    proposedDirection: true,
+    withheldReason: null
+  } as any;
+
+  it('keeps an unplaced row that has notes to choose from', () => {
+    const row = { ...base, noteChoices: [{ number: 1 }] };
+    settleUnplaced(row);
+    expect(row).toMatchObject({ unplaced: true, proposedDirection: true, withheldReason: null });
+  });
+
+  it('withholds it again when there are none, and leaves placed rows alone', () => {
+    const row = { ...base, noteChoices: [] };
+    settleUnplaced(row);
+    expect(row).toMatchObject({
+      unplaced: false,
+      proposedDirection: false,
+      withheldReason: 'far-from-notes'
+    });
+    const placed = { ...base, unplaced: undefined, noteChoices: [] };
+    settleUnplaced(placed);
+    expect(placed.proposedDirection).toBe(true);
   });
 });

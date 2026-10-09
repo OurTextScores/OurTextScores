@@ -74,6 +74,16 @@ describe("direction review model", () => {
     expect(directionItems(inv).map((i) => [i.id, i.source])).toEqual([["c-1", "classifier"], ["o-1", "ocr"]]);
   });
 
+  it("lists an unplaced row with no default note, and it cannot be planned until a note is chosen", () => {
+    const unplaced = row({ id: "u-1", text: "p", kind: "dynamic", mark: "p", unplaced: true, anchor: { staffIndex: 0, printedLine: 1, placement: "below", syllables: [{ text: "p", measureInStaff: 0, noteOrdinalInMeasure: null, notePitch: null, position: "none", noteId: null, distancePx: null }] } });
+    const items = directionItems(inventory([unplaced]));
+    expect(items.map((i) => [i.id, i.unplaced, i.defaultNoteId])).toEqual([["u-1", true, null]]);
+    const start = blankDirection(items[0]);
+    expect(directionPlan(items, { "u-1": { ...start, state: "accept" } }).directions).toEqual([]);
+    const chosen = directionPlan(items, { "u-1": { ...start, state: "accept", noteId: choices[1].noteId } });
+    expect(chosen.directions).toEqual([{ candidateId: "u-1", kind: "dynamic", text: "p", mark: "p", noteId: choices[1].noteId, placement: "below" }]);
+  });
+
   it("flags the same mark twice on one note", () => {
     const items = directionItems(inventory([row({ id: "a", text: "p", kind: "dynamic", mark: "p" }), row({ id: "b", text: "p", kind: "dynamic", mark: "p" })]));
     const accepted = Object.fromEntries(items.map((i) => [i.id, { ...blankDirection(i), state: "accept" as const }]));
@@ -99,6 +109,7 @@ describe("directions in the review page", () => {
     await waitFor(() => screen.getByLabelText("Direction text for cresc. poco a poco"));
     expect(screen.getByRole("heading", { name: "Directions and dynamics" })).toBeInTheDocument();
     expect(screen.getAllByText(/read by OCR, not yet checked/).length).toBe(2);
+    expect(screen.queryByText(/could not tell which note/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Direction text for cresc. poco a poco"), { target: { value: "cresc." } });
     fireEvent.change(screen.getByLabelText("Dynamic mark for mf"), { target: { value: "f" } });
     const accepts = screen.getAllByRole("button", { name: "Accept" });
@@ -117,5 +128,21 @@ describe("directions in the review page", () => {
       ["d-1", "words", "cresc.", undefined, choices[0].noteId, "above", true, true],
       ["d-2", "dynamic", "f", "f", choices[1].noteId, "below", true, true],
     ]);
+  });
+
+  it("asks the reviewer to choose a note for an unplaced row, and enables Accept only once one is chosen", async () => {
+    window.localStorage.clear();
+    const unplaced = row({ id: "u-1", text: "p", kind: "dynamic", mark: "p", unplaced: true, anchor: { staffIndex: 0, printedLine: 1, placement: "below", syllables: [{ text: "p", measureInStaff: 0, noteOrdinalInMeasure: null, notePitch: null, position: "none", noteId: null, distancePx: null }] } });
+    global.fetch = jest.fn(async (url: string) =>
+      String(url).endsWith("/notes")
+        ? { ok: true, json: async () => ({ musicXmlSha256: "sha", notes: [] }) }
+        : { ok: true, json: async () => inventory([unplaced]) },
+    ) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={1} />);
+    await waitFor(() => screen.getByText(/could not tell which note/));
+    const accept = screen.getByRole("button", { name: "Accept" });
+    expect(accept).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Note for p"), { target: { value: choices[0].noteId } });
+    expect(accept).toBeEnabled();
   });
 });

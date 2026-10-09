@@ -55,6 +55,8 @@ export type OcrRow = {
   mark?: string;
   source?: "ocr" | "classifier";
   proposedDirection?: boolean;
+  /** Offered with no note proposed: the reviewer chooses one. */
+  unplaced?: boolean;
   anchor?: RowAnchor | null;
   noteChoices?: NoteChoice[];
   withheldReason?: "no-staff" | "far-from-notes" | "credit-like" | "footer" | null;

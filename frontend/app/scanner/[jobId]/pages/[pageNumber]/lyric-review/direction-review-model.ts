@@ -25,6 +25,8 @@ export type DirectionItem = {
   measureLabel: string | null;
   /** Who read it: the page OCR or the dynamics classifier. */
   source: "ocr" | "classifier";
+  /** No note could be proposed: the reviewer must choose one before accepting. */
+  unplaced: boolean;
 };
 
 export type DirectionPayload = {
@@ -56,6 +58,7 @@ export function directionItems(inventory: Inventory): DirectionItem[] {
         defaultPlacement: r.anchor?.placement ?? "above",
         measureLabel: chosen ? `m${chosen.measure}` : null,
         source: r.source ?? "ocr",
+        unplaced: r.unplaced === true,
       };
     });
 }

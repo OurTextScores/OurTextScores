@@ -40,6 +40,11 @@ export default function DirectionsReview({
               {item.kind === "dynamic" ? "Dynamic mark" : "Written direction"} (read by{" "}
               {item.source === "classifier" ? "the dynamics classifier" : "OCR"}, not yet checked)
             </p>
+            {item.unplaced && (
+              <p className="mt-1 text-xs text-amber-800" role="note">
+                The scanner could not tell which note this belongs to: choose the note it governs, or exclude it.
+              </p>
+            )}
             <p className="mt-1 text-base">
               <span className="text-xs text-slate-500">Read from the scan: </span>
               <strong>{item.initialText}</strong>
@@ -87,7 +92,7 @@ export default function DirectionsReview({
                   onChange={(e) => set({ noteId: e.target.value || null })}
                   className="rounded border px-1"
                 >
-                  <option value="">(none: leave out)</option>
+                  <option value="">{item.unplaced ? "(choose a note)" : "(none: leave out)"}</option>
                   {item.noteChoices.map((n) => (
                     <option key={n.noteId} value={n.noteId}>
                       {n.number} · {n.pitch} · m{n.measure}

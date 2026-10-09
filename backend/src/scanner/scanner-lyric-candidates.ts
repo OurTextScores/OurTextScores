@@ -58,6 +58,11 @@ export interface LyricOcrRow {
   source?: 'ocr' | 'classifier';
   /** The row is offered as a direction or dynamic (kind words/dynamic) and was not withheld. */
   proposedDirection?: boolean;
+  /**
+   * Offered, but the scanner could not tell which note it belongs to (no note near it): the reviewer chooses one or
+   * excludes the row. Replaces withholding such rows as 'far-from-notes' (a real mark is often printed away from its note).
+   */
+  unplaced?: boolean;
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
   /** Recognised notes around the row, each a note the copy writer accepts; empty when the part did not align. */
@@ -281,7 +286,8 @@ export function buildLyricCandidateInventory(
     if (row.kind === 'words' && looksLikeCredit(row.text)) reject('credit-like');
     else if (!row.anchor) reject('no-staff');
     else if (row.anchor.syllables.every((syllable) => syllable.noteTokenIndex === null))
-      reject('far-from-notes');
+      // A staff reaches it, the text passed the provider's checks, only the note is unknown: let a person choose.
+      row.unplaced = true;
   }
   return {
     schemaVersion: LYRIC_CANDIDATE_SCHEMA,
@@ -302,4 +308,16 @@ export function lyricCandidateCrop(
 ): CropRect | null {
   const rect = padAndClamp(candidate.box, CROP_PADDING_PX, raster);
   return rect.width * rect.height > MAX_CROP_PIXELS ? null : rect;
+}
+
+/**
+ * An unplaced row is only useful when the reviewer has notes to choose from. When the part did not align (or no note
+ * lies near enough), there are none, so the row goes back to being withheld as far from notes.
+ */
+export function settleUnplaced(row: LyricOcrRow): void {
+  if (row.unplaced && (row.noteChoices?.length ?? 0) === 0) {
+    row.unplaced = false;
+    row.proposedDirection = false;
+    row.withheldReason = 'far-from-notes';
+  }
 }

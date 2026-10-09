@@ -7,6 +7,7 @@ import {
 import { alignAllParts } from './scanner-lyric-note-alignment';
 import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
 import { noteChoicesForRow } from './scanner-lyric-note-choices';
+import { settleUnplaced } from './scanner-lyric-candidates';
 import { placementCropRect, placementOverlaySvg } from './scanner-lyric-placement-crop';
 import {
   ScannerFindingEdit,
@@ -3222,6 +3223,15 @@ export class ScannerService implements OnModuleInit {
    * with its MusicXML. Failure to align (or to read the score) just leaves the proposals without ids.
    */
   private async attachProposedNoteIds(inventory: LyricCandidateInventory, page: any) {
+    try {
+      await this.alignInventoryNotes(inventory, page);
+    } finally {
+      // Whatever happened above (no score, no alignment), a row left unplaced with no note to choose is withheld.
+      for (const row of inventory.ocrRows) settleUnplaced(row);
+    }
+  }
+
+  private async alignInventoryNotes(inventory: LyricCandidateInventory, page: any) {
     if (!inventory.ocrRows.some((row) => row.anchor)) return;
     const run = page.engines?.['ots-homr' as ScannerEngineId];
     // The page as it currently stands: the reviewed score when one exists (it carries note corrections).
@@ -3249,7 +3259,7 @@ export class ScannerService implements OnModuleInit {
         // A direction starts over its note, so fewer neighbours are offered than for a wide lyric row.
         row.noteChoices = staff
           ? row.kind && row.kind !== 'lyric'
-            ? noteChoicesForRow(staff, row.box, ids, 70, {
+            ? noteChoicesForRow(staff, row.box, ids, row.unplaced ? 260 : 70, {
                 prefer: row.anchor?.syllables[0]?.noteId ?? undefined
               })
             : noteChoicesForRow(staff, row.box, ids)
