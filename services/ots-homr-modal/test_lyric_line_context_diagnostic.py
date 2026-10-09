@@ -39,6 +39,13 @@ class ContextTests(unittest.TestCase):
         self.peers[1]["box"] = [140, 160, 160, 180]
         self.assertIsNone(lyric_line_context(self.candidate, self.peers, Gate()))
 
+    def test_single_peer_variant_is_explicit_and_still_requires_anchor(self):
+        self.assertIsNotNone(
+            lyric_line_context(self.candidate, self.peers[:1], Gate(), 1)
+        )
+        self.peers[0]["anchor"] = None
+        self.assertIsNone(lyric_line_context(self.candidate, self.peers[:1], Gate(), 1))
+
     def test_different_staff_peers_do_not_combine(self):
         self.peers[1]["anchor"]["staffIndex"] = 1
         self.assertIsNone(lyric_line_context(self.candidate, self.peers, Gate()))

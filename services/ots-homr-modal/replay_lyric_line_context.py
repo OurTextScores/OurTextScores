@@ -18,9 +18,12 @@ def main():
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--minimum-peers", type=int, choices=[1, 2], default=2)
+    parser.add_argument(
+        "--replay-root", type=Path, help="Alternative prepared replay directory"
+    )
     args = parser.parse_args()
     source = Path(__file__).parent
-    replay = args.base / "lyric-prepared-full25-20261008"
+    replay = args.replay_root or args.base / "lyric-prepared-full25-20261008"
     ocr = replay / "ocr/rows.jsonl"
     pages = [json.loads(line) for line in ocr.read_text().splitlines()]
     binding = {
