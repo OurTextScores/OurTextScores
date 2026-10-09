@@ -1,4 +1,17 @@
-# Local review-assisted lyric score copies
+# Local review-assisted lyrics
+
+**Current flow (2026-10-08, supersedes the per-syllable form described further down, which is now the
+"Place syllables by hand (advanced)" section).** Each row's card shows the lyric row with its staff and numbered
+lines for the recognised notes around it (the proposed notes in blue), editable syllables, a note choice per
+syllable (pre-selected to the proposal, or "Leave out"), and the lyric line. **Accept** means the text, lyric line
+and notes shown are right (any edit withdraws it). "Accept all suggested rows" is a shortcut. "Add accepted lyrics
+to the score" lists exactly what will be written and asks for one confirmation; "Add lyrics to the score" saves it
+as the page's reviewed score, so the scan's MusicXML (job-level download, combined score) carries the lyrics and the
+engine's own recognition output stays untouched. Saving again replaces the lyrics a previous save added.
+"Download a copy instead" produces the file without changing the scan. Later token-level note corrections on the
+page regenerate its score and drop the lyrics, so correct notes first. Routes: `crop?view=placement`,
+`POST .../save-lyrics`.
+
 
 The page-specific scanner lyric review (`/scanner/<job>/pages/<page>/lyric-review`)
 can now create a download containing explicitly reviewed syllables. It remains

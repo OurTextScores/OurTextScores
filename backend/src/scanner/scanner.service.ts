@@ -1,9 +1,12 @@
 import {
   applyReviewedLyricCopy,
   lyricNoteInventory,
-  reviewedLyricNotes
+  reviewedLyricNotes,
+  withoutLyrics
 } from './scanner-reviewed-lyric-copy';
 import { alignAllParts } from './scanner-lyric-note-alignment';
+import { noteChoicesForRow } from './scanner-lyric-note-choices';
+import { placementCropRect, placementOverlaySvg } from './scanner-lyric-placement-crop';
 import {
   ScannerFindingEdit,
   ScannerFindingEditDocument
@@ -3219,8 +3222,10 @@ export class ScannerService implements OnModuleInit {
    */
   private async attachProposedNoteIds(inventory: LyricCandidateInventory, page: any) {
     if (!inventory.ocrRows.some((row) => row.anchor)) return;
-    const locator = page.engines?.['ots-homr' as ScannerEngineId]?.artifacts?.musicXml;
-    const staves = page.engines?.['ots-homr' as ScannerEngineId]?.review?.staves;
+    const run = page.engines?.['ots-homr' as ScannerEngineId];
+    // The page as it currently stands: the reviewed score when one exists (it carries note corrections).
+    const locator = run?.reviewedMusicXml || run?.artifacts?.musicXml;
+    const staves = run?.review?.staves;
     if (!locator || !Array.isArray(staves)) return;
     try {
       const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
@@ -3231,6 +3236,10 @@ export class ScannerService implements OnModuleInit {
         return;
       const ids = alignAllParts(staves as never, reviewedLyricNotes(body).sequence);
       for (const row of inventory.ocrRows) {
+        const staff = row.anchor
+          ? (staves as any[]).find((entry) => entry.index === row.anchor!.staffIndex)
+          : undefined;
+        row.noteChoices = staff ? noteChoicesForRow(staff, row.box, ids) : [];
         for (const syllable of row.anchor?.syllables ?? []) {
           syllable.noteId =
             syllable.noteTokenIndex === null
@@ -3245,15 +3254,17 @@ export class ScannerService implements OnModuleInit {
 
   private async lyricCopySource(userId: string, jobId: string, pageNumber: number) {
     const context = await this.lyricCandidateContext(userId, jobId, pageNumber);
-    const locator = context.page.engines?.['ots-homr' as ScannerEngineId]?.artifacts?.musicXml;
+    const run = context.page.engines?.['ots-homr' as ScannerEngineId];
+    const locator = run?.reviewedMusicXml || run?.artifacts?.musicXml;
     if (!locator) throw new NotFoundException('Recognised MusicXML is not available');
-    const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
+    const stored = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
     if (
       locator.checksumSha256 &&
-      createHash('sha256').update(body).digest('hex') !== locator.checksumSha256
+      createHash('sha256').update(stored).digest('hex') !== locator.checksumSha256
     )
       throw new ConflictException('Recognised score changed');
-    return { ...context, body };
+    // The base for lyrics is the page without any lyrics a previous review saved.
+    return { ...context, body: withoutLyrics(stored) };
   }
 
   async pageLyricNoteInventory(userId: string, jobId: string, pageNumber: number) {
@@ -3279,6 +3290,75 @@ export class ScannerService implements OnModuleInit {
     }
   }
 
+  /**
+   * Make the reviewed lyrics part of the scan result: the copy becomes the page's reviewed score, so the
+   * scan's MusicXML downloads, preview and combined score carry the lyrics. Built on the page as it stands
+   * (corrected notes kept, lyrics from an earlier save replaced). Later token-level note corrections
+   * regenerate the score from the tokens and would drop the lyrics, so review notes first.
+   */
+  async saveReviewedLyrics(userId: string, jobId: string, pageNumber: number, request: any) {
+    const output = await this.pageReviewedLyricCopy(userId, jobId, pageNumber, request);
+    const job = await this.ownedJob(userId, jobId);
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    const run = page?.engines?.['ots-homr' as ScannerEngineId];
+    if (!page || !run) throw new NotFoundException('Scanner page not found');
+    const contentType = 'application/vnd.recordare.musicxml+xml';
+    const stored = await this.storage.putDerivativeObject(
+      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-ots-homr-reviewed-${randomUUID()}.musicxml`,
+      output,
+      output.length,
+      contentType
+    );
+    const locator: ScannerStorageLocator = {
+      bucket: stored.bucket,
+      objectKey: stored.objectKey,
+      sizeBytes: output.length,
+      contentType,
+      checksumSha256: createHash('sha256').update(output).digest('hex')
+    };
+    const updatedPage = withScannerEngineRun(page, { ...run, reviewedMusicXml: locator });
+    const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
+    const write = await this.jobs
+      .updateOne(
+        { _id: job._id, statusVersion: job.statusVersion || 1 },
+        {
+          $set: {
+            pages: job.pages.map((entry) =>
+              entry.pageNumber === pageNumber ? updatedPage : entry
+            ),
+            ...(hadCombined ? { combinedStale: true } : {}),
+            ...(['succeeded', 'partial'].includes(job.status)
+              ? { reassembleRequestedAt: new Date() }
+              : {})
+          },
+          $inc: { statusVersion: 1 }
+        }
+      )
+      .exec();
+    if (write?.matchedCount === 0) {
+      await this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined);
+      throw new ConflictException('Scanner review content changed; refresh and try again');
+    }
+    const previous = run.reviewedMusicXml;
+    if (
+      previous &&
+      (previous.bucket !== locator.bucket || previous.objectKey !== locator.objectKey)
+    ) {
+      await this.storage
+        .deleteObject(previous.bucket, previous.objectKey)
+        .catch((error) =>
+          this.logger.warn(
+            `Unable to retire superseded reviewed score: ${error instanceof Error ? error.message : String(error)}`
+          )
+        );
+    }
+    return {
+      ok: true,
+      syllables: request.placements.length,
+      musicXmlSha256: locator.checksumSha256
+    };
+  }
+
   async pageLyricReviewRaster(userId: string, jobId: string, pageNumber: number) {
     const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
     const locator = page.recognitionRaster!.storage!;
@@ -3297,9 +3377,11 @@ export class ScannerService implements OnModuleInit {
     userId: string,
     jobId: string,
     pageNumber: number,
-    candidateId: string
+    candidateId: string,
+    view?: string
   ): Promise<{ body: Buffer; contentType: 'image/png' }> {
     const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
+    if (view === 'placement') await this.attachProposedNoteIds(inventory, page);
     const candidate =
       inventory.candidates.find((entry) => entry.id === candidateId) ??
       inventory.ocrRows.find((entry) => entry.id === candidateId);
@@ -3315,6 +3397,28 @@ export class ScannerService implements OnModuleInit {
       Number(metadata.height || 0) !== inventory.raster.height
     ) {
       throw new ConflictException('Scanner recognition raster changed; refresh and try again');
+    }
+    if (view === 'placement') {
+      const row = inventory.ocrRows.find((entry) => entry.id === candidateId);
+      const staves = page.engines?.['ots-homr' as ScannerEngineId]?.review?.staves as
+        | any[]
+        | undefined;
+      const staff = staves?.find((entry) => entry.index === row?.anchor?.staffIndex);
+      if (row && staff && row.noteChoices?.length) {
+        const crop = placementCropRect(row.box, staff.region, row.noteChoices, inventory.raster);
+        const proposed = new Set(
+          (row.anchor?.syllables ?? []).map((s) => s.noteId).filter((id): id is string => !!id)
+        );
+        const svg = placementOverlaySvg(crop, row.box, staff.region, row.noteChoices, proposed);
+        return {
+          body: await sharp(source)
+            .extract(crop)
+            .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+            .png()
+            .toBuffer(),
+          contentType: 'image/png'
+        };
+      }
     }
     return { body: await sharp(source).extract(rect).png().toBuffer(), contentType: 'image/png' };
   }

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { CropRect, padAndClamp } from './scanner-crop';
 import { AnchorStaff, RowAnchor, anchorRows } from './scanner-lyric-anchors';
+import { NoteChoice } from './scanner-lyric-note-choices';
 
 /**
  * Lyric candidate inventory for one scanned page, derived only from the stored
@@ -51,6 +52,8 @@ export interface LyricOcrRow {
   proposedLyric: boolean;
   /** Where the row sits in the recognised score; null when no staff could be assigned. */
   anchor: RowAnchor | null;
+  /** Recognised notes around the row, each a note the copy writer accepts; empty when the part did not align. */
+  noteChoices?: NoteChoice[];
   /** Why a row the semantic gate liked was withheld anyway; null when it was not. */
   withheldReason: 'no-staff' | 'far-from-notes' | 'credit-like' | 'footer' | null;
 }

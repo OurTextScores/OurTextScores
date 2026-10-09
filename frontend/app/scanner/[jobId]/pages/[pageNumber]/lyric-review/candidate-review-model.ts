@@ -28,6 +28,17 @@ export type RowAnchor = {
   syllables: SyllableAnchor[];
 };
 
+export type NoteChoice = {
+  number: number;
+  noteId: string;
+  x: number;
+  pitch: string;
+  measure: number;
+  ordinal: number;
+};
+
+export type SyllableDecision = { text: string; noteId: string | null };
+
 export type OcrRow = {
   id: string;
   box: [number, number, number, number];
@@ -38,6 +49,7 @@ export type OcrRow = {
   semanticScore: number | null;
   proposedLyric: boolean;
   anchor?: RowAnchor | null;
+  noteChoices?: NoteChoice[];
   withheldReason?: "no-staff" | "far-from-notes" | "credit-like" | "footer" | null;
 };
 
@@ -53,6 +65,10 @@ export type ReviewItem = {
   /** Where the row sits in the recognised score; geometry only, unconfirmed. */
   placement: string | null;
   anchor: RowAnchor | null;
+  /** Notes the reviewer may attach this row's syllables to (exact notes the writer accepts). */
+  noteChoices: NoteChoice[];
+  defaultLine: number | null;
+  defaultSyllables: SyllableDecision[];
 };
 
 export type Inventory = {
@@ -69,6 +85,9 @@ export type CandidateDecision = {
   id: string;
   text: string;
   state: "pending" | "accept" | "exclude";
+  /** Placement for rows the scanner anchored: one entry per syllable (note null = leave it out). */
+  printedLine?: number;
+  syllables?: SyllableDecision[];
 };
 
 /** OCR rows when the provider read the page; otherwise the bare detector boxes. */
@@ -86,7 +105,18 @@ export function describePlacement(anchor: RowAnchor | null | undefined): string 
 }
 
 export function reviewItems(inventory: Inventory): ReviewItem[] {
-  if (inventory.ocrRows && inventory.ocrRows.length > 0)
+  if (inventory.ocrRows && inventory.ocrRows.length > 0) {
+    // One syllable per note per printed line: where several proposals land on one note the nearest keeps it
+    // and the others start as "leave out", so no default selection is one the copy writer would refuse.
+    const best = new Map<string, number>();
+    for (const r of inventory.ocrRows)
+      for (const s of r.anchor?.syllables ?? []) {
+        if (!s.noteId) continue;
+        const key = `${s.noteId}|${r.anchor!.printedLine}`;
+        const distance = s.distancePx ?? Number.POSITIVE_INFINITY;
+        if (!best.has(key) || distance < best.get(key)!) best.set(key, distance);
+      }
+    const claimed = new Set<string>();
     return inventory.ocrRows.map((r) => ({
       id: r.id,
       kind: "ocr" as const,
@@ -106,7 +136,19 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
             : "Withheld: reads like a direction or unclear. You can still accept it.",
       placement: describePlacement(r.anchor),
       anchor: r.anchor ?? null,
+      noteChoices: r.noteChoices ?? [],
+      defaultLine: r.anchor?.printedLine ?? null,
+      defaultSyllables: (r.anchor?.syllables ?? []).map((s) => {
+        const key = `${s.noteId}|${r.anchor!.printedLine}`;
+        const wins =
+          !!s.noteId &&
+          !claimed.has(key) &&
+          (s.distancePx ?? Number.POSITIVE_INFINITY) === best.get(key);
+        if (wins) claimed.add(key);
+        return { text: s.text, noteId: wins ? s.noteId! : null };
+      }),
     }));
+  }
   return inventory.candidates.map((c) => ({
     id: c.id,
     kind: "box" as const,
@@ -120,14 +162,48 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
       (c.competingText ? " — may be a direction or dynamic" : ""),
     placement: null,
     anchor: null,
+    noteChoices: [],
+    defaultLine: null,
+    defaultSyllables: [],
   }));
 }
 
-export const blankCandidate = (c: { id: string; initialText?: string }): CandidateDecision => ({
+export const blankCandidate = (c: {
+  id: string;
+  initialText?: string;
+  defaultLine?: number | null;
+  defaultSyllables?: SyllableDecision[];
+}): CandidateDecision => ({
   id: c.id,
   text: c.initialText ?? "",
   state: "pending",
+  ...(c.defaultSyllables && c.defaultSyllables.length > 0
+    ? {
+        printedLine: c.defaultLine ?? 1,
+        syllables: c.defaultSyllables.map((x) => ({ ...x })),
+      }
+    : {}),
 });
+
+/** Any change to what the reviewer is accepting withdraws the acceptance. */
+export function setSyllable(
+  d: CandidateDecision,
+  index: number,
+  patch: Partial<SyllableDecision>,
+): CandidateDecision {
+  const syllables = (d.syllables ?? []).map((x, i) =>
+    i === index ? { ...x, ...patch } : x,
+  );
+  return {
+    ...d,
+    syllables,
+    state: d.state === "accept" ? "pending" : d.state,
+  };
+}
+
+export function setLine(d: CandidateDecision, line: number): CandidateDecision {
+  return { ...d, printedLine: line, state: d.state === "accept" ? "pending" : d.state };
+}
 
 /** Editing text withdraws an acceptance; empty text can never be accepted. */
 export function setText(d: CandidateDecision, text: string): CandidateDecision {
@@ -161,6 +237,8 @@ export function buildCandidateExport(
       originalOcrText: c.kind === "ocr" ? c.initialText : null,
       proposedLyric: c.proposedLyric,
       proposedPlacement: c.anchor,
+      printedLine: (decisions[c.id] ?? blankCandidate(c)).printedLine ?? null,
+      syllables: (decisions[c.id] ?? blankCandidate(c)).syllables ?? null,
     })),
   };
 }
@@ -217,4 +295,51 @@ export function duplicateSlots(
     seen.add(key);
   });
   return out;
+}
+
+export type Placement = {
+  candidateId: string;
+  text: string;
+  noteId: string;
+  printedLine: number;
+};
+
+/** What accepted rows put on the score: each syllable with a chosen note, plus any note/line collisions. */
+export function placementsFrom(
+  items: ReviewItem[],
+  decisions: Record<string, CandidateDecision>,
+): { placements: Placement[]; conflicts: string[]; leftOut: string[] } {
+  const placements: Placement[] = [];
+  const conflicts: string[] = [];
+  const leftOut: string[] = [];
+  const seen = new Map<string, string>();
+  for (const item of items) {
+    const d = decisions[item.id];
+    if (!d || d.state !== "accept") continue;
+    if (!d.syllables || d.syllables.length === 0) {
+      if (d.text.trim()) leftOut.push(d.text);
+      continue;
+    }
+    for (const syllable of d.syllables) {
+      if (!syllable.text.trim()) continue;
+      if (!syllable.noteId) {
+        leftOut.push(syllable.text);
+        continue;
+      }
+      const line = d.printedLine ?? 1;
+      const key = `${syllable.noteId}|${line}`;
+      if (seen.has(key)) {
+        conflicts.push(`${seen.get(key)} / ${syllable.text}`);
+        continue;
+      }
+      seen.set(key, syllable.text);
+      placements.push({
+        candidateId: item.id,
+        text: syllable.text.trim(),
+        noteId: syllable.noteId,
+        printedLine: line,
+      });
+    }
+  }
+  return { placements, conflicts, leftOut };
 }

@@ -4,7 +4,8 @@ const { encode } = require("../../frontend/node_modules/next-auth/jwt");
 const { XMLParser } = require("../../backend/node_modules/fast-xml-parser");
 
 /**
- * Checkbox -> review -> corrected score, through the real browser, proxy and backend.
+ * Checkbox -> review (text, lyric line and note decisions per row) -> lyrics saved into the scan's score,
+ * through the real browser, proxy and backend.
  *
  * Opt in with LYRIC_FLOW_SMOKE=1, LYRIC_FLOW_OWNER_EMAIL and either
  *   LYRIC_FLOW_IMAGE   a page image: uploads it with "This score has lyrics" ticked, starts the scan (needs a
@@ -26,7 +27,7 @@ const strip = (nodes) =>
     );
 const lyricCount = (xml) => (xml.match(/<lyric[ >]/g) || []).length;
 
-test("ticking the lyrics box leads to a reviewed score copy with only lyrics added", async ({
+test("ticking the lyrics box leads to lyrics added to the scan's score, and nothing else changed", async ({
   page,
   context,
 }) => {
@@ -68,42 +69,34 @@ test("ticking the lyrics box leads to a reviewed score copy with only lyrics add
   }
 
   await expect(page.locator("article").first()).toBeVisible({ timeout: 180000 });
-  const articles = page.locator("article");
-  for (let i = 0; i < (await articles.count()); i += 1) {
-    const article = articles.nth(i);
-    if (/Suggested lyric/.test((await article.locator("p").first().textContent()) || ""))
-      await article.getByRole("button", { name: "Accept", exact: true }).click();
-  }
-  const add = page.getByRole("button", { name: /Add \d+ proposed syllables/ });
-  await expect(add).toBeEnabled({ timeout: 90000 }); // waits for the recognised note choices
-  await add.click();
-  const forms = page.locator("fieldset");
-  const count = await forms.count();
-  expect(count).toBeGreaterThan(0);
-  const download = page.getByRole("button", { name: "Download corrected score copy" });
-  await expect(download).toBeDisabled(); // proposals arrive unconfirmed
-  for (let i = 0; i < count; i += 1)
-    for (const label of [
-      "Syllable text confirmed",
-      "Printed line confirmed",
-      "Note placement confirmed",
-    ])
-      await forms.nth(i).getByLabel(label).check();
-  const downloaded = page.waitForEvent("download");
-  await download.click();
-  const stream = await (await downloaded).createReadStream();
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  const copy = Buffer.concat(chunks).toString("utf8");
+  // Every card shows its syllables with a note choice (the proposal is pre-selected) and a lyric line.
+  await expect(page.getByLabel(/^Note for syllable 1 of /).first()).toBeVisible();
+  await page.getByRole("button", { name: "Accept all suggested rows" }).click();
+  const open = page.getByRole("button", { name: "Add accepted lyrics to the score" });
+  await expect(open).toBeEnabled({ timeout: 90000 }); // waits for the recognised note choices
+  await open.click();
+  const save = page.getByRole("button", { name: "Add lyrics to the score" });
+  await expect(save).toBeDisabled(); // one explicit confirmation is required first
+  const listed = await page.locator("ol li").count();
+  expect(listed).toBeGreaterThan(0);
+  await page.getByLabel(/I checked these syllables/).check();
+  await save.click();
+  await expect(page.getByText(new RegExp(`Added ${listed} lyric syllables`))).toBeVisible({
+    timeout: 60000,
+  });
+  await page.getByRole("link", { name: "View the score with lyrics" }).click();
+  await page.waitForURL(new RegExp(`/scanner/${jobId}$`));
 
-  const originalResponse = await page.request.get(
-    `/api/proxy/scanner/jobs/${jobId}/artifacts/musicxml?page=1&engine=ots-homr`,
-  );
-  expect(originalResponse.ok()).toBeTruthy();
-  const original = await originalResponse.text();
-  expect(lyricCount(original)).toBe(0);
-  expect(lyricCount(copy)).toBe(count);
-  expect(JSON.stringify(strip(parser().parse(copy)))).toBe(
-    JSON.stringify(strip(parser().parse(original))),
+  // The scan's score (job level) now carries the lyrics; the engine's own recognition output does not.
+  const recognised = await (
+    await page.request.get(`/api/proxy/scanner/jobs/${jobId}/artifacts/musicxml?page=1&engine=ots-homr`)
+  ).text();
+  const scanScore = await (
+    await page.request.get(`/api/proxy/scanner/jobs/${jobId}/artifacts/musicxml?page=1`)
+  ).text();
+  expect(lyricCount(recognised)).toBe(0);
+  expect(lyricCount(scanScore)).toBe(listed);
+  expect(JSON.stringify(strip(parser().parse(scanScore)))).toBe(
+    JSON.stringify(strip(parser().parse(recognised))),
   );
 });

@@ -171,3 +171,26 @@ export function applyReviewedLyricCopy(body: Buffer, request: any, allowedIds: S
     throw new Error('Non-lyric score content changed');
   return output;
 }
+
+/**
+ * The score without any lyric elements: the base for adding reviewed lyrics. The scanner's recognition
+ * writes none, so what this removes is only lyrics a previous review saved; saving again replaces them
+ * instead of colliding with them. A score with no lyrics is returned byte for byte.
+ */
+export function withoutLyrics(body: Buffer): Buffer {
+  if (!/<lyric[\s>]/.test(body.toString('utf8'))) return body;
+  const strip = (nodes: Node[]): Node[] =>
+    nodes
+      .filter((n) => !('lyric' in n))
+      .map((n) =>
+        Object.fromEntries(Object.entries(n).map(([k, v]) => [k, Array.isArray(v) ? strip(v) : v]))
+      );
+  const document = orderedParser().parse(body.toString('utf8'));
+  const output = Buffer.from(
+    new XMLBuilder({ preserveOrder: true, ignoreAttributes: false, processEntities: true }).build(
+      strip(document)
+    )
+  );
+  parseValidMusicXml(output);
+  return output;
+}

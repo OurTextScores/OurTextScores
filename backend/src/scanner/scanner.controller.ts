@@ -502,19 +502,31 @@ export class ScannerController {
     return new StreamableFile(output);
   }
 
+  @Post(':jobId/pages/:pageNumber/lyric-candidates/save-lyrics')
+  async saveReviewedLyrics(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body() body: unknown
+  ) {
+    return this.scanner.saveReviewedLyrics(user.userId, jobId, pageNumber, body);
+  }
+
   @Get(':jobId/pages/:pageNumber/lyric-candidates/:candidateId/crop')
   async lyricCandidateCrop(
     @CurrentUser() user: RequestUser,
     @Param('jobId') jobId: string,
     @Param('pageNumber', ParseIntPipe) pageNumber: number,
     @Param('candidateId') candidateId: string,
+    @Query('view') view: string | undefined,
     @Res({ passthrough: true }) response: Response
   ) {
     const crop = await this.scanner.pageLyricCandidateCrop(
       user.userId,
       jobId,
       pageNumber,
-      candidateId
+      candidateId,
+      view
     );
     response.setHeader('Content-Type', crop.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

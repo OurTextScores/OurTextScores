@@ -4,6 +4,9 @@ import {
   blankCandidate,
   buildCandidateExport,
   duplicateSlots,
+  placementsFrom,
+  setLine,
+  setSyllable,
   proposedSyllables,
   reviewItems,
   setState,
@@ -185,7 +188,8 @@ describe("LyricCandidatesClient with OCR rows", () => {
     render(<LyricCandidatesClient jobId="job-1" pageNumber={2} />);
     await waitFor(() => screen.getByText(/Suggested lyric/));
     expect(screen.getByText(/Withheld/)).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox").map((t) => (t as HTMLInputElement).value)).toEqual(["kind,", "a tempo."]);
+    // The anchored row shows its syllables; the unanchored one keeps the whole-text field.
+    expect(screen.getAllByRole("textbox").map((t) => (t as HTMLInputElement).value)).toEqual(["kind", "a tempo."]);
     fireEvent.click(screen.getAllByRole("button", { name: "Accept" })[0]);
     expect(screen.getByTestId("accepted-count")).toHaveTextContent("1 accepted");
   });
@@ -279,5 +283,98 @@ describe("proposed syllables for the corrected copy", () => {
     };
     expect(proposedSyllables(crowded, accepted).map((p) => p.text)).toEqual(["near"]);
     expect(duplicateSlots([{ noteId: "n", printedLine: 1 }, { noteId: "n", printedLine: 2 }, { noteId: "n", printedLine: 1 }, { noteId: "", printedLine: 1 }])).toEqual([2]);
+  });
+});
+
+describe("note decisions on each row", () => {
+  const choices = [
+    { number: 1, noteId: '["P1",1,1]', x: 100, pitch: "C4", measure: 1, ordinal: 1 },
+    { number: 2, noteId: '["P1",1,2]', x: 160, pitch: "D4", measure: 1, ordinal: 2 },
+  ];
+  const placed: Inventory = {
+    ...ocrInventory,
+    ocrRows: [
+      {
+        ...ocrInventory.ocrRows![0],
+        text: "wish -ing",
+        noteChoices: choices,
+        anchor: {
+          staffIndex: 0,
+          printedLine: 1,
+          syllables: [
+            { text: "wish", measureInStaff: 0, noteOrdinalInMeasure: 1, notePitch: "C4", position: "attention" as const, noteId: choices[0].noteId, distancePx: 5 },
+            { text: "ing", measureInStaff: 0, noteOrdinalInMeasure: 2, notePitch: "D4", position: "attention" as const, noteId: choices[1].noteId, distancePx: 9 },
+          ],
+        },
+      },
+    ],
+  };
+
+  it("defaults each syllable to its proposed note, lets the reviewer change it, and withdraws acceptance on any change", () => {
+    const [item] = reviewItems(placed);
+    expect(item.defaultSyllables.map((x) => x.noteId)).toEqual([choices[0].noteId, choices[1].noteId]);
+    let d = setState(blankCandidate(item), "accept");
+    d = setSyllable(d, 1, { noteId: null });
+    expect(d.state).toBe("pending");
+    d = setLine(setState(d, "accept"), 2);
+    expect(d.state).toBe("pending");
+    const accepted = { [item.id]: setState(d, "accept") };
+    const plan = placementsFrom([item], accepted);
+    expect(plan.placements).toEqual([{ candidateId: "ocr-1", text: "wish", noteId: choices[0].noteId, printedLine: 2 }]);
+    expect(plan.leftOut).toEqual(["ing"]);
+    expect(plan.conflicts).toEqual([]);
+  });
+
+  it("reports two syllables on one note and line, and starts proposals conflict-free", () => {
+    const crowded: Inventory = {
+      ...placed,
+      ocrRows: [
+        {
+          ...placed.ocrRows![0],
+          anchor: {
+            ...placed.ocrRows![0].anchor!,
+            syllables: placed.ocrRows![0].anchor!.syllables.map((s) => ({ ...s, noteId: choices[0].noteId })),
+          },
+        },
+      ],
+    };
+    const [item] = reviewItems(crowded);
+    // The nearer syllable (5px) keeps the note; the other starts as "leave out".
+    expect(item.defaultSyllables.map((x) => x.noteId)).toEqual([choices[0].noteId, null]);
+    const both = { [item.id]: setState({ ...blankCandidate(item), syllables: [{ text: "a", noteId: "n" }, { text: "b", noteId: "n" }] }, "accept") };
+    expect(placementsFrom([item], both).conflicts).toEqual(["a / b"]);
+  });
+
+  it("adds the accepted, decided syllables to the score from the card flow", async () => {
+    window.localStorage.clear();
+    const calls: { url: string; body?: string }[] = [];
+    global.fetch = jest.fn(async (url: string, init?: { body?: string }) => {
+      calls.push({ url: String(url), body: init?.body });
+      if (String(url).endsWith("/notes"))
+        return { ok: true, json: async () => ({ musicXmlSha256: "sha", notes: choices.map((c) => ({ id: c.noteId, measureLabel: "1", noteOrdinal: c.ordinal, pitch: c.pitch })) }) };
+      if (String(url).endsWith("/save-lyrics")) return { ok: true, json: async () => ({ ok: true }) };
+      return { ok: true, json: async () => placed };
+    }) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={2} />);
+    await waitFor(() => screen.getByLabelText("Note for syllable 2 of wish -ing"));
+    expect(screen.getByAltText(/numbered lines mark the notes/)).toHaveAttribute("src", expect.stringContaining("?view=placement"));
+    // Move "ing" to note 1's neighbour choice and leave "wish" on its proposal.
+    fireEvent.change(screen.getByLabelText("Note for syllable 2 of wish -ing"), { target: { value: choices[1].noteId } });
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    const open = await screen.findByRole("button", { name: "Add accepted lyrics to the score" });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    const confirm = screen.getByRole("button", { name: "Add lyrics to the score" });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/I checked these syllables/));
+    fireEvent.click(confirm);
+    expect(await screen.findByText(/Added 2 lyric syllables to the scan's score/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View the score with lyrics" })).toHaveAttribute("href", "/scanner/job-1");
+    const posted = JSON.parse(calls.find((c) => c.url.endsWith("/save-lyrics"))!.body!);
+    expect(posted.automaticAttachment).toBe(false);
+    expect(posted.placements.map((p: { text: string; noteId: string; printedLine: number; noteConfirmed: boolean }) => [p.text, p.noteId, p.printedLine, p.noteConfirmed])).toEqual([
+      ["wish", choices[0].noteId, 1, true],
+      ["ing", choices[1].noteId, 1, true],
+    ]);
   });
 });
