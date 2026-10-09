@@ -38,7 +38,7 @@ def main():
             anchor = row.get("anchor") or {}
             syllable = (anchor.get("syllables") or [{}])[0]
             choice = next((c for c in row.get("noteChoices") or [] if c["noteId"] == syllable.get("noteId")), None)
-            record = {"id": hashlib.sha256(f"{job['jobId']}:{row['id']}".encode()).hexdigest()[:16], "image": job["image"], "jobId": job["jobId"], "rowId": row["id"], "kind": row["kind"], "text": row.get("mark") or row["text"], "offered": bool(row.get("proposedDirection")), "withheld": row.get("withheldReason"), "noteChoices": len(row.get("noteChoices") or []), "proposedNote": choice, "placement": anchor.get("placement")}
+            record = {"id": hashlib.sha256(f"{job['jobId']}:{row['id']}".encode()).hexdigest()[:16], "image": job["image"], "jobId": job["jobId"], "rowId": row["id"], "kind": row["kind"], "text": row.get("mark") or row["text"], "offered": bool(row.get("proposedDirection")), "withheld": row.get("withheldReason"), "noteChoices": len(row.get("noteChoices") or []), "source": row.get("source") or "ocr", "proposedNote": choice, "placement": anchor.get("placement")}
             key.append(record)
             if not record["offered"] or not choice:
                 continue
