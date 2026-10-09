@@ -1,3 +1,4 @@
+import { isBarlineRhythm } from './scanner-barline';
 /**
  * Locate a spot horizontally within its staff, so the crop can point at it.
  *
@@ -39,11 +40,6 @@ const MAX_NOTE_HALF_WIDTH = 0.02;
  */
 const MIN_NOTE_HALF_WIDTH = 0.004;
 
-const BARLINE_RHYTHMS = new Set(['barline', 'barline_repeat', 'repeat']);
-
-function isBarline(rhythm: string): boolean {
-  return BARLINE_RHYTHMS.has(rhythm) || rhythm.startsWith('barline') || rhythm.includes('repeat');
-}
 
 export interface SpotBand {
   /** Fraction of the staff width, 0-1. */
@@ -164,7 +160,7 @@ export function locateSymbol(
 
   const barlineIndices: number[] = [];
   tokens.forEach((token, index) => {
-    if (isBarline(String(token?.[0] || ''))) barlineIndices.push(index);
+    if (isBarlineRhythm(String(token?.[0] || ''))) barlineIndices.push(index);
   });
 
   if (barlineIndices.length >= 2) {

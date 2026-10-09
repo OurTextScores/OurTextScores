@@ -186,9 +186,10 @@ describe('anchorRows', () => {
 
 
 describe('double-bar measure boundaries', () => {
-  it('keeps lyrics after a double bar in their own measure, including interpolation', () => {
+  it.each(['doublebarline', 'bolddoublebarline', 'repeatStart', 'repeatEnd', 'repeatEndStart'])(
+    'keeps lyrics after %s in their own measure, including interpolation', (boundary) => {
     const context = staff({
-      tokens: [['rest_1'], ['doublebarline'], ['note_4', 'B3'], ['note_4', 'E4'], ['barline']],
+      tokens: [['rest_1'], [boundary], ['note_4', 'B3'], ['note_4', 'E4'], ['barline']],
       barLines: [300, 700],
       symbols: []
     });

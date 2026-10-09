@@ -1,3 +1,4 @@
+import { isBarlineRhythm } from './scanner-barline';
 import { attentionIsOrdered } from './scanner-locate';
 
 /**
@@ -67,10 +68,7 @@ export interface RowAnchor {
 
 const isNoteLike = (token: string[] | undefined) =>
   !!token && /^(note|rest|gracenote)/.test(String(token[0] || ''));
-const isBar = (token: string[] | undefined) => {
-  const value = String(token?.[0] || '');
-  return value.startsWith('barline') || value === 'doublebarline';
-};
+const isBar = (token: string[] | undefined) => isBarlineRhythm(String(token?.[0] || ''));
 
 /** Whitespace-, hyphen- and underscore-separated pieces, each placed proportionally by characters. */
 /**
