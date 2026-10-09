@@ -13,6 +13,8 @@ SERVICE_REVISION = "ots-ots-homr-provider-v8"
 HARD_TIMEOUT_SECONDS = 280
 CUDA_BASE = "nvidia/cuda@sha256:17e2934e1fa96152b14f78078bfbafd0f00f391df995dc6c641a720fce1202bb"
 HERE = Path(__file__).resolve().parent
+#: Where the provider sources live inside the image (the app file itself is copied elsewhere, so HERE is wrong there).
+PROVIDER_ROOT = "/opt/ots-homr-provider"
 PATCH = HERE / "patches" / "homr-runtime-glue.patch"
 SOURCE_ARCHIVE = HERE / "source" / "homr-b6eca7-source.tar.gz"
 SOURCE_ARCHIVE_SHA256 = (
@@ -96,14 +98,14 @@ image = (
     )
     .add_local_dir(
         HERE,
-        remote_path="/opt/ots-homr-provider",
+        remote_path=PROVIDER_ROOT,
         copy=True,
         ignore=["__pycache__", "*.pyc", "patches", "source/"],
     )
     .env(
         {
             "PYTHONPATH": (
-                "/opt/homr:/opt/ots-homr-provider:/opt/homr-provider-support"
+                f"/opt/homr:{PROVIDER_ROOT}:/opt/homr-provider-support"
             ),
             "PYTHONUNBUFFERED": "1",
             "HOMR_WARMUP_PAGE": "/opt/homr-provider-support/warmup-page.png",
@@ -153,8 +155,9 @@ def ots_homr_api():
         # The manifest is deliberately absent until both models have a
         # score-disjoint calibration. Enabling fusion before it lands prevents
         # readiness rather than silently using lyrics-only calibration.
+        # The container path, not HERE: modal_app.py itself is copied to /root, the provider sources to PROVIDER_ROOT.
         fusion_manifest = load_calibration_manifest(
-            HERE / "calibration" / "fusion-v1.json"
+            Path(PROVIDER_ROOT) / "calibration" / "fusion-v1.json"
         )
         if fusion_manifest.policy != "fusion-v1":
             raise RuntimeError("Fusion needs its own pinned calibration")
