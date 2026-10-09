@@ -20,6 +20,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument(
+        "--page-id", help="Exact prepared page ID; defaults to inspected IMSLP508574"
+    )
+    parser.add_argument(
+        "--detector", choices=["lyrics", "non-lyric-text"], default="lyrics"
+    )
     args = parser.parse_args()
     torch.set_num_threads(4)
     torch.set_num_interop_threads(1)
@@ -27,14 +33,14 @@ def main():
     page = next(
         p
         for p in json.loads((prepared / "pages.json").read_text())
-        if p["score"] == "IMSLP508574"
+        if (p["id"] == args.page_id if args.page_id else p["score"] == "IMSLP508574")
     )
     image_path = Path(page["image"])
     if sha(image_path) != page["image_sha256"]:
         raise ValueError("Prepared image changed")
-    repo, revision, filename, digest = DETECTORS["lyrics"]
+    repo, revision, filename, digest = DETECTORS[args.detector]
     model = TextDetector(
-        detector_id="lyrics",
+        detector_id=args.detector,
         checkpoint=args.base
         / "c2-latency-20260925/models/ots-homr"
         / repo.replace("/", "--")
@@ -58,7 +64,7 @@ def main():
     )
     old_records = {
         (d["label"], d["left"], d["top"], d["right"], d["bottom"]): d
-        for d in previous["rawDetections"]["lyrics"]
+        for d in previous["rawDetections"][args.detector]
     }
     compared = []
     for box in boxes:
@@ -103,6 +109,7 @@ def main():
     report = {
         "scope": "Same-probability component score audit on one inspected prepared page; no calibration/threshold/accuracy promotion",
         "page": page["id"],
+        "detector": args.detector,
         "modelSha256": digest,
         "imageSha256": sha(image_path),
         "runnerSha256": sha(Path(__file__)),
@@ -111,7 +118,9 @@ def main():
         "boxCount": len(compared),
         "changedScoreCount": len(changed),
         "thresholdCrossingCount": sum(r["crossesPoint5"] for r in compared),
-        "kissedHits": hits,
+        "kissedHits": (
+            hits if page["score"] == "IMSLP508574" and args.detector == "lyrics" else []
+        ),
         "changedBoxes": changed,
     }
     args.out.mkdir(parents=True, exist_ok=True)
