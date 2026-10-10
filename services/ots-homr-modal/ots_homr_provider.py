@@ -27,7 +27,9 @@ SCHEMA_VERSION = "ots-ots-homr-provider.v2"
 SUPPORTED_CONTENT_TYPES = {"image/png", "image/jpeg"}
 TEXT_DETECTORS = {"lyrics", "non-lyric-text", "none"}
 MAX_FUSED_REGIONS = 500
-STRUCTURED_FAMILIES = {"beam", "advance", "stem", "tie", "slur"}
+# "beam" is deliberately absent: the beam head did not beat the editor's default beaming on held-out pages, so beams are
+# neither emitted nor selectable (see markup_repair.py and beam_fair.py).
+STRUCTURED_FAMILIES = {"advance", "stem", "tie", "slur"}
 #: A page with more disagreements than this has a bigger problem than a review queue.
 MAX_CROSS_STAFF_FINDINGS = 200
 ERROR_STATUS = {

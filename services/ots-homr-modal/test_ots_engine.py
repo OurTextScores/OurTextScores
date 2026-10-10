@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import cv2
 import numpy as np
 
-from calibration_manifest import CalibrationManifest, DetectorIdentity
+from calibration_manifest import CalibrationManifest, ConfidenceExtraction, DetectorIdentity
+from confidence_extraction import confidence_extraction_identity
 from fusion_policy import CLASS_ALLOWLIST
 from ots_engine import OtsHomrEngine
 from pins import (
@@ -151,6 +152,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
+            confidence_extraction=ConfidenceExtraction(**{"id": confidence_extraction_identity()["id"], "source_sha256": confidence_extraction_identity()["sourceSha256"]}),
             accept={},
             iou_threshold=0.3,
             containment_threshold=0.6,
@@ -178,6 +180,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
+            confidence_extraction=ConfidenceExtraction(**{"id": confidence_extraction_identity()["id"], "source_sha256": confidence_extraction_identity()["sourceSha256"]}),
             accept={},
             iou_threshold=0.3,
             containment_threshold=0.6,
@@ -193,7 +196,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             def __init__(self, fail):
                 self.fail, self.seen = fail, []
 
-            def lyric_rows(self, page, boxes):
+            def lyric_rows(self, page, boxes, classifier_rows=None):
                 self.seen.append(boxes)
                 if self.fail:
                     raise RuntimeError("ocr down")
@@ -234,6 +237,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
+            confidence_extraction=ConfidenceExtraction(**{"id": confidence_extraction_identity()["id"], "source_sha256": confidence_extraction_identity()["sourceSha256"]}),
             accept={},
             iou_threshold=0.3,
             containment_threshold=0.6,
@@ -258,6 +262,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
+            confidence_extraction=ConfidenceExtraction(**{"id": confidence_extraction_identity()["id"], "source_sha256": confidence_extraction_identity()["sourceSha256"]}),
             accept={},
             iou_threshold=0.3,
             containment_threshold=0.6,
@@ -296,6 +301,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
+            confidence_extraction=ConfidenceExtraction(**{"id": confidence_extraction_identity()["id"], "source_sha256": confidence_extraction_identity()["sourceSha256"]}),
             accept={},
             iou_threshold=0.3,
             containment_threshold=0.6,
@@ -320,6 +326,7 @@ class OtsHomrEngineTest(unittest.TestCase):
             },
             class_allowlist=CLASS_ALLOWLIST,
             calibration={},
+            confidence_extraction=ConfidenceExtraction(**{"id": confidence_extraction_identity()["id"], "source_sha256": confidence_extraction_identity()["sourceSha256"]}),
             accept={},
             iou_threshold=0.3,
             containment_threshold=0.6,

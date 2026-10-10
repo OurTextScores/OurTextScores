@@ -216,11 +216,11 @@ class ProviderTest(unittest.TestCase):
                     "title": "Title",
                     "staves": [[ ["note_4", "C4", "_", "_", "_", "upper"] ]],
                     "structured": [[{"beamLevels": ["none"]}]],
-                    "families": ["beam", "tie"],
+                    "families": ["advance", "tie"],
                 },
             )
             self.assertEqual(materialized.status_code, 200, materialized.text)
-            self.assertEqual(materialized.json()["result"]["families"], ["beam", "tie"])
+            self.assertEqual(materialized.json()["result"]["families"], ["advance", "tie"])
 
             changed_policy = client.post(
                 "/v1/scan-page",
@@ -352,7 +352,7 @@ class ProviderTest(unittest.TestCase):
             self.assertEqual(body["outputCandidates"], ["core", "additional-heads"])
             self.assertEqual(
                 body["allowedStructuredFamilies"],
-                ["advance", "beam", "slur", "stem", "tie"],
+                ["advance", "slur", "stem", "tie"],
             )
 
     def test_rejects_dynamic_as_a_materialized_family(self):
@@ -388,3 +388,10 @@ class ProviderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BeamsAreNotOfferedTest(unittest.TestCase):
+    def test_beam_is_not_an_allowed_family(self):
+        from ots_homr_provider import STRUCTURED_FAMILIES
+
+        self.assertNotIn("beam", STRUCTURED_FAMILIES)

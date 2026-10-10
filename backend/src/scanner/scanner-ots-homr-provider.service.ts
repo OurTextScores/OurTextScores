@@ -55,7 +55,8 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
   }
 
   async materializeStructured(proposals: Buffer, families: string[]): Promise<Buffer> {
-    const allowed = new Set(['beam', 'advance', 'stem', 'tie', 'slur']);
+    // Beams are deliberately not a choice: the beam head did not beat the editor's default beaming on held-out pages.
+    const allowed = new Set(['advance', 'stem', 'tie', 'slur']);
     if (
       families.length !== new Set(families).size ||
       families.some((family) => !allowed.has(family))
@@ -324,7 +325,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
           review: headsCandidate.review
         }
       },
-      availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
+      availableStructuredHeadFamilies: ['advance', 'stem', 'tie', 'slur'],
       crossStaffFindings: this.crossStaffFindings(
         envelope?.result?.crossStaffFindings,
         options.scoreProfile

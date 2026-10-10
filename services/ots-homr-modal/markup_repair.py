@@ -260,11 +260,18 @@ def repair_slurs(part, stats):
         stats["slurs kept"] += 1
 
 
-def repair_musicxml(data: bytes, beam_groups=False):
-    """Return (repaired MusicXML bytes, Counter of what was done). `beam_groups=True` also drops every beam group that is not closed and well formed; it is off by default because
+def repair_musicxml(data: bytes, beam_groups=False, drop_beams=False):
+    """Return (repaired MusicXML bytes, Counter of what was done). `drop_beams=True` removes every <beam> in the file, so the
+    editor beams it by its own default (the provider's policy: the beam head did not beat that default on held-out
+    pages, see beam_fair.py). `beam_groups=True` also drops every beam group that is not closed and well formed; it is off by default because
     MuseScore reads the model's own groups better than it beams the dropped notes itself (see beam_fair.py)."""
     stats = Counter()
     tree = ET.ElementTree(ET.fromstring(data))
+    if drop_beams:
+        for note in tree.getroot().iter("note"):
+            for beam in note.findall("beam"):
+                note.remove(beam)
+                stats["beams removed (policy)"] += 1
     for part in tree.getroot().iter("part"):
         for measure in part.findall("measure"):
             repair_measure(measure, stats, beam_groups)

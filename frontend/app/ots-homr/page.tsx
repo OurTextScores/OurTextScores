@@ -95,7 +95,7 @@ export default function OtsHomrPage() {
           rows={[
             [
               "OTS-HOMR",
-              "Built for ensemble scores. Reads staves together, reads beams, stems, ties and slurs as printed, and suggests lyrics, directions and dynamics for review. This page.",
+              "Built for ensemble scores. Reads staves together, reads stems, ties and slurs as printed, and suggests lyrics, directions and dynamics for review. This page.",
             ],
             [
               "HOMR",
@@ -218,14 +218,12 @@ export default function OtsHomrPage() {
       <Section id="engraving" title="Notation as printed">
         <p>
           Standard recognition gives you pitches and rhythms and leaves the rest
-          to a default. OTS-HOMR also writes out the beam grouping, stem
-          directions, ties, slurs and horizontal spacing it reads from the page,
-          so you can see and edit them as separate marks. Reading them is harder
-          than reading the notes: on clean song pages its beaming matches the
-          printed score on 56% of beamable notes, below the 64% the
-          editor&rsquo;s own default beaming reaches on the same notes, so treat
-          beams and slurs as suggestions and check them as you would any other
-          mark.
+          to a default. OTS-HOMR also writes out the stem directions, ties,
+          slurs and horizontal spacing it reads from the page, so you can see
+          and edit them as separate marks. Reading them is harder than reading
+          the notes, so treat them as suggestions and check them as you would
+          any other mark. Beaming is left to the editor, which groups notes by
+          its own rules.
         </p>
       </Section>
 

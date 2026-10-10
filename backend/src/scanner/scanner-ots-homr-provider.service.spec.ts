@@ -140,7 +140,7 @@ describe('ScannerOtsHomrProviderService', () => {
         executionProvider: 'CUDAExecutionProvider'
       },
       review: { staves: [expect.objectContaining({ index: 0 })] },
-      availableStructuredHeadFamilies: ['beam', 'advance', 'stem', 'tie', 'slur'],
+      availableStructuredHeadFamilies: ['advance', 'stem', 'tie', 'slur'],
       outputCandidates: {
         core: { artifactKind: 'musicxml' },
         'all-structured': { artifactKind: 'additional-heads-musicxml' }
@@ -573,7 +573,7 @@ describe('ScannerOtsHomrProviderService', () => {
       result: {
         musicXmlBase64: musicXml.toString('base64'),
         musicXmlSha256: sha256(musicXml),
-        families: ['beam', 'tie']
+        families: ['advance', 'tie']
       }
     };
     const fetchSpy = jest
@@ -589,14 +589,14 @@ describe('ScannerOtsHomrProviderService', () => {
     );
 
     await expect(
-      new ScannerOtsHomrProviderService(config).materializeStructured(proposals, ['beam', 'tie'])
+      new ScannerOtsHomrProviderService(config).materializeStructured(proposals, ['advance', 'tie'])
     ).resolves.toEqual(musicXml);
     expect(String(fetchSpy.mock.calls[0][0])).toBe(
       'https://ots-homr.example/v1/materialize-structured'
     );
     expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
       title: 'Example',
-      families: ['beam', 'tie']
+      families: ['advance', 'tie']
     });
   });
 

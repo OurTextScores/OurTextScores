@@ -17,14 +17,15 @@ SEGMENTATION_SHA256 = "60f495496cb41473c0521d0811d8f44b9d5cff892d287974a8aebb3ea
 
 
 def repaired_musicxml(data: Any) -> Any:
-    """Return the page MusicXML with structurally invalid beam, tremolo and slur markup removed (see markup_repair).
+    """Return the page MusicXML with no beams (the editor beams by default) and with unpaired tremolos and slurs removed (see
+    markup_repair).
 
     Fails open: anything that is not parseable MusicXML, or any repair error, returns the bytes unchanged, because a
     repair problem must never cost a page its result."""
     if not isinstance(data, bytes):
         return data
     try:
-        return repair_musicxml(data)[0]
+        return repair_musicxml(data, drop_beams=True)[0]
     except (ElementTree.ParseError, ValueError, StopIteration):
         return data
 

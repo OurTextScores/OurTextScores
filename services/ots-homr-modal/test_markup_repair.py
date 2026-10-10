@@ -131,3 +131,8 @@ def test_slur_spanning_many_measures_is_removed():
 def test_by_default_beam_groups_are_left_alone_but_impossible_beams_go():
     out, _ = repair_musicxml(score(note("eighth", [(1, "begin")]), note("eighth"), note("quarter", [(1, "begin")], rest=True)))
     assert beams_of(out) == [[("1", "begin")], [], []]
+
+
+def test_drop_beams_removes_every_beam_so_the_editor_beams_by_default():
+    out, stats = repair_musicxml(score(note("eighth", [(1, "begin")]), note("eighth", [(1, "end")])), drop_beams=True)
+    assert beams_of(out) == [[], []] and stats["beams removed (policy)"] == 2

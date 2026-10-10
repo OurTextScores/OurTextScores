@@ -314,6 +314,20 @@ Deployed with `OTS_SOURCE_COMMIT=$(git rev-parse HEAD) OTS_HOMR_FUSION_ENABLED=1
 scanner. First live scan (IMSLP589001-p006): beams on rests/long notes 162 -> 0, tremolo pairs crossing a barline 2 -> 0, slur
 starts never closed 4 -> 0. `markup_repair.py` does not enter the review-text identity (it never touches text).
 
+### 4c. v10: no beams (code ready, not deployed)
+
+`ots-ots-homr-provider-v10` stops emitting beams. Every MusicXML leaving the core has its `<beam>` elements removed
+(`repair_musicxml(drop_beams=True)`), so the editor beams the file by its own rules, and `beam` is no longer an
+allowed structured family: `/v1/materialize-structured` rejects it, `allowedStructuredFamilies` is
+`advance, slur, stem, tie`, and the scanner backend no longer lists it in `availableStructuredHeadFamilies`, which is what
+drives the per-family checkboxes, so the Beams checkbox and the beam review questions disappear for new jobs. Why: on
+1,108 beamable notes from 27 held-out pages, scored against the printed beaming (owner-verified), HOMR with the
+editor's default beaming was right on 63.7%, OTS-HOMR's own beams on 56.1% (best variant 63.0%); the head recovers 71% of
+the notes the default gets wrong but loses 52% of those it gets right, mostly by leaving printed beams out (see
+RUNLOG 2026-10-10, `beam_fair.py`, `native_beam_default.py`). The beam head stays in the model identity
+(`emittedHeadFamilies` still lists `beam.level`); only emission and selection are off. Older jobs that stored a beam
+selection still read.
+
 ## 5. Create a dedicated proxy token
 
 ```bash

@@ -159,7 +159,7 @@ class RepairedMusicXmlTest(unittest.TestCase):
         b"</measure></part></score-partwise>"
     )
 
-    def test_invalid_beams_are_removed(self):
+    def test_beams_are_never_emitted(self):
         self.assertNotIn(b"<beam", repaired_musicxml(self.BROKEN))
 
     def test_anything_unparseable_passes_through_unchanged(self):

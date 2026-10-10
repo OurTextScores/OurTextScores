@@ -80,7 +80,7 @@ def build_case(node, modules, case_id, title, left_xml, right_xml, mode, out_dir
             rx = render(node, rcut, rbase, modules, normalise)
             llay = json.loads(Path(str(lbase) + ".layout.json").read_text())
             rlay = json.loads(Path(str(rbase) + ".layout.json").read_text())
-            result = compare(lx, rx, llay, rlay, mode)
+            result = compare(lx, rx, llay, rlay, mode, beams=False)  # neither reading writes beams; the editor beams both
             (case_dir / f"L{index}-left.svg").write_bytes(Path(str(lbase) + ".svg").read_bytes())
             (case_dir / f"L{index}-right.svg").write_bytes(Path(str(rbase) + ".svg").read_bytes())
         for kind, n in result["counts"].items():

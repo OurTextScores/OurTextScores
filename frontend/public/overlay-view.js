@@ -3,7 +3,7 @@
 (() => {
   const BASE = "devs-assets/ots-homr-overlay/";
   const KINDS = {
-    engines: [["notes", "Notes or rhythm", "#d93025"], ["beam", "Beaming", "#1a73e8"], ["marks", "Ties and slurs", "#9334e6"]],
+    engines: [["notes", "Notes or rhythm", "#d93025"], ["marks", "Ties and slurs", "#9334e6"]],
     review: [["lyric", "Added lyrics", "#188038"], ["direction", "Added directions and dynamics", "#e37400"]],
   };
   const NS = "http://www.w3.org/2000/svg";

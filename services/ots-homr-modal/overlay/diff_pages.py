@@ -87,7 +87,7 @@ def by_staff(side):
     return {k: sorted(v, key=lambda e: e[0]) for k, v in grouped.items()}
 
 
-def diff(left, right, mode="engines"):
+def diff(left, right, mode="engines", beams=True):
     """Differences per side, each keyed by that side's own (measure, staff, onset) -> kind.
 
     Within every (measure, staff) the two event sequences are aligned with difflib, so one wrong duration flags
@@ -117,7 +117,7 @@ def diff(left, right, mode="engines"):
             if tag == "equal":
                 for x, y in zip(a[i1:i2], b[j1:j2]):
                     ea, eb = x[2], y[2]
-                    kind = "beam" if sorted(ea["beam"]) != sorted(eb["beam"]) else "marks" if ea["tie"] != eb["tie"] or ea["slur"] != eb["slur"] else None
+                    kind = "beam" if beams and sorted(ea["beam"]) != sorted(eb["beam"]) else "marks" if ea["tie"] != eb["tie"] or ea["slur"] != eb["slur"] else None
                     if kind:
                         left_diffs[(group[0], group[1], x[1])] = kind
                         right_diffs[(group[0], group[1], y[1])] = kind
@@ -206,9 +206,9 @@ def place(side, layout, differences):
     return {"boxes": boxes, "fallbackMeasures": unique, "differences": total, "mapped": mapped}
 
 
-def compare(left_xml, right_xml, left_layout, right_layout, mode="engines"):
+def compare(left_xml, right_xml, left_layout, right_layout, mode="engines", beams=True):
     left, right = parse_events(left_xml), parse_events(right_xml)
-    left_diffs, right_diffs = diff(left, right, mode)
+    left_diffs, right_diffs = diff(left, right, mode, beams)
     counts = defaultdict(int)
     for kind in right_diffs.values():
         counts[kind] += 1
