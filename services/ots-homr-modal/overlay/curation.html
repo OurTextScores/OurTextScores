@@ -1,0 +1,59 @@
+<!doctype html><meta charset="utf-8"><title>Choose the examples</title>
+<style>
+body{margin:0;font:15px system-ui;color:#1c2321;background:#fff}
+main{max-width:1500px;margin:0 auto;padding:16px}
+.top{position:sticky;top:0;background:#fff;border-bottom:1px solid #d8dfda;padding:8px 16px;z-index:5;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+button{font:inherit;border:1px solid #b9c4be;background:#fff;border-radius:4px;padding:.25rem .8rem;cursor:pointer}
+button.primary{background:#183c28;color:#fff;border-color:#183c28}
+.case{border:1px solid #d8dfda;margin:16px 0;padding:10px}
+.case.out{opacity:.35}
+.head{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.head b{font-size:16px}
+.pill{border-radius:999px;padding:0 .6rem;background:#edf3ef;color:#183c28;font-size:13px}
+.pill.q{background:#e8eefc;color:#1a3c8c}
+.excl{margin-left:auto;background:#fdecea;border:1px solid #e8b4ae;border-radius:4px;padding:.15rem .6rem;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start;margin-bottom:6px}
+.cell{position:relative}
+.cell img,.cell svg{display:block;width:100%;height:auto;background:#fff;border:1px solid #e3e8e5}
+.tag{position:absolute;top:3px;left:4px;z-index:1;background:#183c28;color:#fff;border-radius:3px;padding:0 6px;font-size:11px}
+.hl{stroke-width:3;fill-opacity:.18}
+.hl.notes{fill:#d93025;stroke:#d93025}.hl.marks{fill:#9334e6;stroke:#9334e6}.hl.beam{fill:#1a73e8;stroke:#1a73e8}
+.hl.weak,.hl.fb{fill:none!important;stroke:#59615e;stroke-dasharray:10 8}
+.help{background:#f4f6f5;border:1px solid #d8dfda;padding:10px 14px;margin:12px 0;border-radius:4px}
+small{color:#59615e}
+</style>
+<div class=top><b id=count>Loading…</b><button class=primary id=export>Export selection</button><button id=reset>Include everything</button><small>Saved in this browser as you go.</small></div>
+<main>
+<div class=help><b>How this works.</b> Candidates are ranked by how much better OTS-HOMR reads the page than HOMR (its notes and rhythm match the encoded score more closely), best first. Tick <b>Exclude</b> on any you don't want on the product page. <b>Export selection</b> saves the kept examples in rank order. Boxes mark notes the two readings disagree on.</div>
+<div id=summary class=help></div>
+<div id=app></div>
+</main>
+<script>
+const NS="http://www.w3.org/2000/svg",KEY="curation-v1";
+const el=(t,a={},x)=>{const n=document.createElement(t);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);if(x!==undefined)n.textContent=x;return n};
+const sv=(t,a={})=>{const n=document.createElementNS(NS,t);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);return n};
+let excluded={};try{excluded=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(excluded))}catch(e){}};
+const pct=x=>(x*100).toFixed(1)+"%";
+function reading(side,label){const c=side.content,cell=el("div",{class:"cell"});cell.append(el("span",{class:"tag"},label));
+ const s=sv("svg",{viewBox:`${c.x} ${c.y} ${c.w} ${c.h}`});s.append(sv("image",{href:side.svg,x:0,y:0,width:side.width,height:side.height}));
+ for(const m of side.fallbackMeasures)s.append(sv("rect",{x:m.x,y:m.y-20,width:m.w,height:m.h+40,class:"hl fb"}));
+ for(const b of side.boxes)s.append(sv("rect",{x:b.x,y:b.y,width:b.w,height:b.h,rx:10,class:"hl "+b.kind+(b.weak?" weak":"")}));
+ cell.append(s);return cell}
+fetch("manifest.json",{cache:"no-store"}).then(r=>r.json()).then(m=>{
+ const app=document.getElementById("app");
+ const upd=()=>{const kept=m.cases.filter(c=>!excluded[c.id]).length;document.getElementById("count").textContent=`${kept} of ${m.cases.length} examples kept`};
+ const s=m.summary.byKind,sm=(k,n)=>`${n}: ${s[k].pages} pages scored, mean match OTS-HOMR ${pct(s[k].meanOts)} vs HOMR ${pct(s[k].meanHomr)}; OTS-HOMR better on ${s[k].otsBetter}, HOMR better on ${s[k].homrBetter}`;
+ document.getElementById("summary").innerHTML=`<b>The whole pool, for the record</b> (${m.summary.pagesScored} pages from songs and quartets OTS-HOMR was not trained on):<br>${sm("song","Songs")}<br>${sm("quartet","Quartets")}`;
+ m.cases.forEach(c=>{const box=el("section",{class:"case"+(excluded[c.id]?" out":""),id:"c"+c.rank});
+  const h=el("div",{class:"head"});h.append(el("b",{},`#${c.rank}  ${c.id}`),el("span",{class:"pill"+(c.kind==="quartet"?" q":"")},c.kind),el("span",{},`OTS-HOMR ${pct(c.ots)} · HOMR ${pct(c.homr)} · +${(c.gain*100).toFixed(1)} points`));
+  const lab=el("label",{class:"excl"}),cb=el("input",{type:"checkbox"});cb.checked=!!excluded[c.id];
+  cb.addEventListener("change",()=>{if(cb.checked)excluded[c.id]=1;else delete excluded[c.id];save();box.classList.toggle("out",cb.checked);upd()});lab.append(cb," Exclude");h.append(lab);box.append(h);
+  c.rows.forEach(r=>{const g=el("div",{class:"grid"});const sc=el("div",{class:"cell"});sc.append(el("span",{class:"tag"},"Scan"));if(r.scan)sc.append(el("img",{src:r.scan.src.startsWith("http")?r.scan.src:r.scan.src,alt:"scan",loading:"lazy"}));g.append(sc,reading(r.left,"HOMR"),reading(r.right,"OTS-HOMR"));box.append(g)});
+  app.append(box)});
+ upd();
+ document.getElementById("reset").onclick=()=>{excluded={};save();location.reload()};
+ document.getElementById("export").onclick=()=>{const out={version:1,kept:m.cases.filter(c=>!excluded[c.id]).map(c=>({id:c.id,rank:c.rank,kind:c.kind,ots:c.ots,homr:c.homr,gain:c.gain})),excluded:m.cases.filter(c=>excluded[c.id]).map(c=>c.id)};
+  const a=el("a",{href:URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:"application/json"})),download:"example-selection.json"});document.body.append(a);a.click();a.remove()};
+});
+</script>

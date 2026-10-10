@@ -98,3 +98,19 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def mean_part_score(root, candidates, parser=parse_rhythm_parts):
+    """Average over the page's parts of each part's best match with any part of the best-fitting native source.
+
+    `page_score` takes the single best part, so a four-part page scores 1.0 when one part is perfect; this one makes
+    every part count, which is what ranking quartet pages needs."""
+    parts = [p for p in parser(root) if p]
+    best = 0.0
+    for _, native_root in candidates:
+        natives = [n for n in parser(native_root) if n]
+        if not natives or not parts:
+            continue
+        total = sum(max(align(part, native)[1] for native in natives) for part in parts)
+        best = max(best, total / len(parts))
+    return best, [len(p) for p in parts]
