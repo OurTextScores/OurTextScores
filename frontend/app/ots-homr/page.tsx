@@ -120,7 +120,7 @@ function Table({
   );
 }
 
-/* The galleries are the original static pages, served from `public/`, because they
+/* The galleries are static pages, served from `public/`, because they
    build their own compare embeds against the score editor and rewriting them in React
    would be transcription with a chance of error and no gain. They reference
    `/devs-assets/...` absolutely, which is why those live at the public root.
@@ -130,35 +130,16 @@ function Table({
    the largest asset for the weakest claim. */
 const GALLERIES = [
   {
-    title: "Beams",
+    title: "Upstream homr and OTS-HOMR on the same pages",
     caption:
-      "identical decoded symbols, without and with emitted beam references",
-    src: "/beam-gallery.html",
+      "whole pages of clean songs read by both, compared with the encoded score; every page where they differ",
+    src: "/upstream-vs-ots-gallery.html",
   },
   {
-    title: "Cross-staff reranking",
-    caption: "systems where agreeing with the siblings changed the reading",
-    src: "/crossstaff-gallery.html",
-  },
-  {
-    title: "Structured heads",
-    caption: "the same crop with one structured field cleared, then emitted",
-    src: "/structured-head-gallery.html",
-  },
-  {
-    title: "Tuplet repair",
-    caption: "bars that overflowed their metre, before and after",
-    src: "/tuplet-gallery.html",
-  },
-  {
-    title: "Page text",
-    caption: "what the text detector finds, isolated from recognition",
-    src: "/stage3-gallery.html",
-  },
-  {
-    title: "Checkpoint comparison",
-    caption: "held-out pages read by the upstream checkpoint and by ours",
-    src: "/checkpoint-gallery.html",
+    title: "Lyrics and staff text, before and after review",
+    caption:
+      "the scan result, and the same page with every suggested lyric, direction and dynamic accepted",
+    src: "/lyrics-review-gallery.html",
   },
 ];
 
@@ -184,8 +165,8 @@ export default function OtsHomrPage() {
         specialised for scores where several staves sound at once — string
         quartets, piano trios, voice and piano. A new recognition core rebuilt
         from published training corpora makes fewer symbol errors than upstream
-        on all three validation sets. The scanner also uses agreement between
-        a system&rsquo;s staves to check and repair readings.
+        on all three validation sets. The scanner also uses agreement between a
+        system&rsquo;s staves to check and repair readings.
       </p>
 
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -239,7 +220,10 @@ export default function OtsHomrPage() {
         </p>
       </Section>
 
-      <Section id="what-it-reads-better" title="The core rebuilt from public data">
+      <Section
+        id="what-it-reads-better"
+        title="The core rebuilt from public data"
+      >
         <p>
           On 28 September 2026 we compared upstream HOMR checkpoint 426, the
           pinned OTS core, and <code>public-rareNum-20260927</code> on identical
@@ -257,11 +241,35 @@ export default function OtsHomrPage() {
           as independent samples.
         </p>
         <Table
-          head={["Validation set", "Staves / scores", "Upstream error", "Public core error", "Change (95% CI)"]}
+          head={[
+            "Validation set",
+            "Staves / scores",
+            "Upstream error",
+            "Public core error",
+            "Change (95% CI)",
+          ]}
           rows={[
-            ["String quartet scans", "792 / 9", "14.47%", "5.22%", "−9.25 pp (−12.13, −7.23)"],
-            ["Mixed repertoire (PDMX)", "3,422 / 632", "7.44%", "4.69%", "−2.75 pp (−3.81, −1.95)"],
-            ["Voice and piano scans", "300 / 13", "5.76%", "2.53%", "−3.23 pp (−5.02, −1.71)"],
+            [
+              "String quartet scans",
+              "792 / 9",
+              "14.47%",
+              "5.22%",
+              "−9.25 pp (−12.13, −7.23)",
+            ],
+            [
+              "Mixed repertoire (PDMX)",
+              "3,422 / 632",
+              "7.44%",
+              "4.69%",
+              "−2.75 pp (−3.81, −1.95)",
+            ],
+            [
+              "Voice and piano scans",
+              "300 / 13",
+              "5.76%",
+              "2.53%",
+              "−3.23 pp (−5.02, −1.71)",
+            ],
           ]}
         />
         <p>
@@ -271,35 +279,46 @@ export default function OtsHomrPage() {
           13,542 staff readings completed; failures were not filtered out.
         </p>
         <p>
-          The expanded vocabulary also recognizes uncommon time signatures.
-          On PDMX it identifies 5/x at the correct sequence position in 45 of
-          84 cases, and 12/x in 60 of 115. Upstream identifies none of these
+          The expanded vocabulary also recognizes uncommon time signatures. On
+          PDMX it identifies 5/x at the correct sequence position in 45 of 84
+          cases, and 12/x in 60 of 115. Upstream identifies none of these
           explicit numerator symbols. This is an added capability; it is
           separate from the shared-symbol error improvement above.
         </p>
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-          <span className="font-semibold">Candidate, not yet the scanner default.</span>{" "}
+          <span className="font-semibold">
+            Candidate, not yet the scanner default.
+          </span>{" "}
           Its error-rate differences from the pinned OTS core are inconclusive
           on all three sets. The new core&rsquo;s structured-head refits still
-          need to pass their checks. The build uses published corpora, but
-          omits 226 unavailable historical replay rows; it is not an exact
-          reconstruction of the old training run. These are previously
-          inspected validation sets, not a fresh test set, and the results
-          measure staff recognition rather than complete page or MusicXML
-          correctness. OSSQ contains only nine scores.
+          need to pass their checks. The build uses published corpora, but omits
+          226 unavailable historical replay rows; it is not an exact
+          reconstruction of the old training run. These are previously inspected
+          validation sets, not a fresh test set, and the results measure staff
+          recognition rather than complete page or MusicXML correctness. OSSQ
+          contains only nine scores.
         </p>
         <p>
-          <a href="/benchmarks/public-core-vs-upstream-20260928.md" className="text-blue-600 hover:underline dark:text-blue-400">
+          <a
+            href="/benchmarks/public-core-vs-upstream-20260928.md"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
             Full three-model results and confidence intervals
           </a>{" "}
           &middot;{" "}
-          <a href="/benchmarks/public-core-vs-upstream-20260928-protocol.md" className="text-blue-600 hover:underline dark:text-blue-400">
+          <a
+            href="/benchmarks/public-core-vs-upstream-20260928-protocol.md"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
             Evaluation protocol
           </a>
         </p>
       </Section>
 
-      <Section id="historical-recognition" title="Earlier deployed-model comparison">
+      <Section
+        id="historical-recognition"
+        title="Earlier deployed-model comparison"
+      >
         <p>
           These earlier positional-accuracy measurements concern the deployed
           model, with older evaluation inputs. Higher is better. They use a
@@ -343,7 +362,8 @@ export default function OtsHomrPage() {
           Upstream checkpoint 426 predates the explicit numerator vocabulary;
           numerator symbols were suppressed in these comparisons. It already
           includes natural signs. These earlier figures do not attribute the
-          gain to any single change or establish the new candidate&rsquo;s performance.
+          gain to any single change or establish the new candidate&rsquo;s
+          performance.
         </p>
       </Section>
 
@@ -551,14 +571,16 @@ export default function OtsHomrPage() {
 
       <Section id="examples" title="Worked examples" wide>
         <p className="max-w-5xl">
-          Every claim above is a number. These are the pages behind them — real
-          held-out material, each pair showing the same decode with one thing
-          changed, so what you are looking at is the effect of that one thing
-          rather than two different readings of a page.
+          Two galleries, both on whole pages that no development step used. The
+          first puts upstream homr and OTS-HOMR on the same pages and shows
+          every page where they differ, including how little separates them on
+          clean engravings. The second shows what the review-assisted lyrics,
+          directions and dynamics add to a scanned page.
         </p>
         <p className="max-w-5xl text-slate-600 dark:text-slate-400">
           The comparisons open in the score editor, the same one the scanner
-          review tools use, so you can page through a system at a time.
+          review tools use, so you can page through a system at a time. The
+          numbers above come from staff-level benchmarks; these are whole pages.
         </p>
         {GALLERIES.map((gallery) => (
           /* Full-bleed: `50% - 50vw` is measured from this element's own centred

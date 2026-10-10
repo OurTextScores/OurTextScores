@@ -1,0 +1,65 @@
+{
+ "summary": {
+  "pagesWithSuggestions": 26,
+  "eligible": 26,
+  "lyricsAdded": 843,
+  "wordsAdded": 52,
+  "dynamicsAdded": 66
+ },
+ "cases": [
+  {
+   "id": "IMSLP580250-p005",
+   "lyricsAdded": 22,
+   "wordsAdded": 1,
+   "dynamicsAdded": 0,
+   "image": "IMSLP580250-p005.jpg",
+   "left": "IMSLP580250-p005__scan.musicxml",
+   "right": "IMSLP580250-p005__reviewed.musicxml"
+  },
+  {
+   "id": "IMSLP456168-p006",
+   "lyricsAdded": 25,
+   "wordsAdded": 1,
+   "dynamicsAdded": 2,
+   "image": "IMSLP456168-p006.jpg",
+   "left": "IMSLP456168-p006__scan.musicxml",
+   "right": "IMSLP456168-p006__reviewed.musicxml"
+  },
+  {
+   "id": "IMSLP637442-p003",
+   "lyricsAdded": 22,
+   "wordsAdded": 6,
+   "dynamicsAdded": 5,
+   "image": "IMSLP637442-p003.jpg",
+   "left": "IMSLP637442-p003__scan.musicxml",
+   "right": "IMSLP637442-p003__reviewed.musicxml"
+  },
+  {
+   "id": "IMSLP11784-p001",
+   "lyricsAdded": 61,
+   "wordsAdded": 0,
+   "dynamicsAdded": 3,
+   "image": "IMSLP11784-p001.jpg",
+   "left": "IMSLP11784-p001__scan.musicxml",
+   "right": "IMSLP11784-p001__reviewed.musicxml"
+  },
+  {
+   "id": "IMSLP657998-p007",
+   "lyricsAdded": 26,
+   "wordsAdded": 3,
+   "dynamicsAdded": 3,
+   "image": "IMSLP657998-p007.jpg",
+   "left": "IMSLP657998-p007__scan.musicxml",
+   "right": "IMSLP657998-p007__reviewed.musicxml"
+  },
+  {
+   "id": "IMSLP55434-p004",
+   "lyricsAdded": 28,
+   "wordsAdded": 1,
+   "dynamicsAdded": 7,
+   "image": "IMSLP55434-p004.jpg",
+   "left": "IMSLP55434-p004__scan.musicxml",
+   "right": "IMSLP55434-p004__reviewed.musicxml"
+  }
+ ]
+}
