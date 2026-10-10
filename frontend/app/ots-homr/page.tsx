@@ -203,7 +203,7 @@ export default function OtsHomrPage() {
             [
               "HOMR",
               "General-purpose recognition",
-              "Upstream, actively maintained by its own authors. On the mixed repertoire we measured, the OTS-HOMR core made fewer errors, by a smaller margin than on ensemble scans. Single-staff and solo keyboard music are not measured separately yet.",
+              "Upstream, actively maintained by its own authors. On the mixed repertoire we measured, the OTS-HOMR core made fewer errors, by a smaller margin than on ensemble scans, and also on the scores with a single track (solo instruments including piano: 9.23% → 6.33%, 1,407 staves, 156 scores). Solo keyboard is not separated from other solo instruments yet.",
             ],
             [
               "Transcoda",
