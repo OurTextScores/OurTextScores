@@ -256,6 +256,13 @@ class OtsHomrEngine:
                     for detector_id in FUSION_DETECTORS
                 ],
             }
+            # Everything between the detections and the rows a reviewer sees, pinned like the detectors. Absent when
+            # the engine was built without the OCR pipeline or the dynamics reader, so a scanner that requires it
+            # refuses such a provider instead of trusting an unpinned one.
+            if self.lyric_text is not None and self.dynamics_reader is not None:
+                from review_identity import review_text_identity
+
+                identity["textPolicy"]["reviewText"] = review_text_identity()
         return identity
 
     def capabilities_identity(self) -> dict[str, Any]:

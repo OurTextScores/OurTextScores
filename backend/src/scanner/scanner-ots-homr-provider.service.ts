@@ -1,3 +1,4 @@
+import { reviewTextIdentityConsistent } from './scanner-review-text-identity';
 import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -113,6 +114,7 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       ? `;lyrics=${this.text('SCANNER_EXPECTED_OTS_HOMR_LYRICS_REVISION')}:${this.text('SCANNER_EXPECTED_OTS_HOMR_LYRICS_SHA256')}` +
         `;nonLyric=${this.text('SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION')}:${this.text('SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256')}` +
         `;calibration=${this.text('SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION')}` +
+        `;reviewText=${this.text('SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256')}` +
         ';materializer=review-only-v1'
       : '';
     return scannerProviderIdempotencyKey({
@@ -418,6 +420,15 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         'SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION',
         'provider_model_revision_mismatch'
       );
+      // The review pipeline (OCR, semantic gate, dynamics classifier, row selection code): its reported details must
+      // give the digest it claims, and that digest must be the pinned one.
+      if (!reviewTextIdentityConsistent(policy.reviewText))
+        throw this.invalid('Scanner OTS-HOMR review-text identity is invalid');
+      this.expectSha(
+        policy.reviewText.sha256,
+        'SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256',
+        'provider_model_artifact_mismatch'
+      );
       for (const [id, suffix] of [
         ['lyrics', 'LYRICS'],
         ['non-lyric-text', 'NON_LYRIC_TEXT'],
@@ -506,7 +517,8 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         'SCANNER_EXPECTED_OTS_HOMR_LYRICS_SHA256',
         'SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION',
         'SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256',
-        'SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION'
+        'SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION',
+        'SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256'
       );
     } else if (options.textDetector !== 'none')
       keys.push(

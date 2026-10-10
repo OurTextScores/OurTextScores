@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { reviewTextIdentitySha256 } from './scanner-review-text-identity';
 import { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
 import { isMergedGrandStaffDeviation } from './scanner-profile-findings';
+
+const reviewIdentity = JSON.parse(
+  readFileSync(join(__dirname, 'scanner-review-text-identity.fixture.json'), 'utf8')
+);
 
 describe('ScannerOtsHomrProviderService', () => {
   const image = Buffer.from('page-image');
@@ -206,6 +213,92 @@ describe('ScannerOtsHomrProviderService', () => {
     ).rejects.toMatchObject({ code: 'provider_invalid_response' });
   });
 
+  it('requires the pinned review-text identity and recomputes it from the reported details', async () => {
+    const pins = {
+      SCANNER_OTS_HOMR_FUSION_ENABLED: '1',
+      SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION: 'non-lyric-revision',
+      SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256: 'e'.repeat(64),
+      SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION: 'non-lyric-revision',
+      SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256: 'e'.repeat(64),
+      SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION: 'fusion-calibration',
+      SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256: reviewIdentity.sha256
+    };
+    const fusedWith = (reviewText: unknown) => {
+      const base = envelope();
+      return envelope({
+        engine: {
+          ...base.engine,
+          textDetector: undefined,
+          textPolicy: {
+            mode: 'fusion-v1',
+            fusionRevision: 'fusion-v1',
+            calibrationRevision: 'fusion-calibration',
+            ...(reviewText === undefined ? {} : { reviewText }),
+            detectors: [
+              { id: 'lyrics', revision: 'lyrics-revision', sha256: 'b'.repeat(64) },
+              { id: 'non-lyric-text', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) },
+              { id: 'dynamics', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) }
+            ]
+          }
+        },
+        result: {
+          ...base.result,
+          fusionSummary: {
+            accepted: 0,
+            review: 0,
+            reviewOmitted: 0,
+            rejected: 0,
+            rejectedByReason: {},
+            rejectedByClass: {},
+            byClass: {}
+          },
+          fusedRegions: []
+        }
+      });
+    };
+    const scan = (key: string) =>
+      new ScannerOtsHomrProviderService(config).scanPage({
+        image,
+        filename: 'page.png',
+        contentType: 'image/png',
+        detectTitle: false,
+        idempotencyKey: key.repeat(64),
+        engineOptions: { textPolicy: { mode: 'fusion-v1' } }
+      });
+    const tampered = JSON.parse(JSON.stringify(reviewIdentity));
+    tampered.dynamicsClassifier.minProbability = 0.1; // details changed, digest left as claimed
+    const cases: [string, unknown, string][] = [
+      ['a provider that reports no review identity', undefined, 'provider_invalid_response'],
+      ['details that do not give the claimed digest', tampered, 'provider_invalid_response']
+    ];
+    try {
+      Object.assign(values, pins);
+      for (const [index, [, reviewText, code]] of cases.entries()) {
+        jest
+          .spyOn(global, 'fetch')
+          .mockImplementation(
+            async () => new Response(JSON.stringify(fusedWith(reviewText)), { status: 200 })
+          );
+        await expect(scan(String(index + 1))).rejects.toMatchObject({ code });
+      }
+      // A consistent identity that is not the pinned one is a mismatch, not an invalid response.
+      const other = JSON.parse(JSON.stringify(reviewIdentity));
+      other.dynamicsClassifier.minProbability = 0.9;
+      other.sha256 = reviewTextIdentitySha256(other);
+      jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(
+          async () => new Response(JSON.stringify(fusedWith(other)), { status: 200 })
+        );
+      await expect(scan('7')).rejects.toMatchObject({ code: 'provider_model_artifact_mismatch' });
+      // The pin itself is mandatory.
+      delete (values as Record<string, string>).SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256;
+      await expect(scan('8')).rejects.toMatchObject({ code: 'provider_not_configured' });
+    } finally {
+      for (const key of Object.keys(pins)) delete (values as Record<string, string>)[key];
+    }
+  });
+
   it('verifies all three logical fusion pins and retains bounded review evidence', async () => {
     Object.assign(values, {
       SCANNER_OTS_HOMR_FUSION_ENABLED: '1',
@@ -213,7 +306,8 @@ describe('ScannerOtsHomrProviderService', () => {
       SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256: 'e'.repeat(64),
       SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION: 'non-lyric-revision',
       SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256: 'e'.repeat(64),
-      SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION: 'fusion-calibration'
+      SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION: 'fusion-calibration',
+      SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256: reviewIdentity.sha256
     });
     try {
       const base = envelope();
@@ -225,6 +319,7 @@ describe('ScannerOtsHomrProviderService', () => {
             mode: 'fusion-v1',
             fusionRevision: 'fusion-v1',
             calibrationRevision: 'fusion-calibration',
+            reviewText: reviewIdentity,
             detectors: [
               { id: 'lyrics', revision: 'lyrics-revision', sha256: 'b'.repeat(64) },
               { id: 'non-lyric-text', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) },

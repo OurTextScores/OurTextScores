@@ -244,9 +244,14 @@ Scanner side, to use it: `SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-ho
 `SCANNER_OTS_HOMR_FUSION_ENABLED=1` (API and worker) and, for the review pages, `NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED=1`
 and `NEXT_PUBLIC_OTS_HOMR_LYRIC_REVIEW_ENABLED=1` (these are baked into the frontend at build). Measured on the
 test deployment of this code (87 page runs, L4, cold starts included): median 28 s, p90 57 s, max 99 s per page, against the
-280 s decode limit. Not yet pinned by the scanner: the OCR library, semantic gate and dynamics classifier identities
-are checked inside the provider only (they are not in the response envelope), so a changed one fails the container start
-rather than being rejected by the API. Rollback: redeploy without the flag (v8 then behaves as v7), or set
+280 s decode limit. The review pipeline is pinned by one digest, `SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256` (required whenever text
+fusion is requested; it is part of the idempotency key). The provider reports `textPolicy.reviewText`: the OCR
+library version and its three model hashes, the semantic gate model hash, the dynamics classifier weights hash and
+thresholds, the row-selection settings and the SHA-256 of ten shipped modules, plus a digest of all of it; the scanner
+recomputes the digest from the reported details (a provider cannot claim a digest its details do not give) and refuses
+a mismatch with the pin. Because the code hashes are part of it, **any edit to those modules changes the digest**:
+recompute the pin from the checkout you deploy, before deploying, with
+`python services/ots-homr-modal/review_identity.py | python -c 'import sys,json;print(json.load(sys.stdin)["sha256"])'`. Rollback: redeploy without the flag (v8 then behaves as v7), or set
 `SCANNER_OTS_HOMR_ENABLED=false` (below). The core still has the grand-staff profile-layout false alarm (fixed in HOMR
 `40fe6a6`, needs a source pin); the API filters that finding meanwhile.
 
