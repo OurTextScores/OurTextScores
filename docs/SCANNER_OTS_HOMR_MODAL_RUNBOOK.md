@@ -314,7 +314,7 @@ Deployed with `OTS_SOURCE_COMMIT=$(git rev-parse HEAD) OTS_HOMR_FUSION_ENABLED=1
 scanner. First live scan (IMSLP589001-p006): beams on rests/long notes 162 -> 0, tremolo pairs crossing a barline 2 -> 0, slur
 starts never closed 4 -> 0. `markup_repair.py` does not enter the review-text identity (it never touches text).
 
-### 4c. v10: no beams (code ready, not deployed)
+### 4c. v10: no beams (deployed for local testing 2026-10-10)
 
 `ots-ots-homr-provider-v10` stops emitting beams. Every MusicXML leaving the core has its `<beam>` elements removed
 (`repair_musicxml(drop_beams=True)`), so the editor beams the file by its own rules, and `beam` is no longer an
