@@ -197,13 +197,13 @@ export default function OtsHomrPage() {
           rows={[
             [
               "OTS-HOMR",
-              "Ensemble scores: quartets, trios, voice and piano",
+              "Ensemble scores, where it gains most: quartets, trios, voice and piano",
               "This page. Reads cross-staff agreement; emits beams, stems, ties and slurs explicitly.",
             ],
             [
               "HOMR",
-              "Single-staff and keyboard music",
-              "Upstream, general-purpose, actively maintained by its own authors.",
+              "General-purpose recognition",
+              "Upstream, actively maintained by its own authors. On the mixed repertoire we measured, the OTS-HOMR core made fewer errors, by a smaller margin than on ensemble scans. Single-staff and solo keyboard music are not measured separately yet.",
             ],
             [
               "Transcoda",
