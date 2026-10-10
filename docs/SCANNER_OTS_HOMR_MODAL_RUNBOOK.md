@@ -293,7 +293,7 @@ reserved for detector and HTTP overhead.
 
 ---
 
-### 4b. v9: MusicXML markup repair (not yet deployed)
+### 4b. v9: MusicXML markup repair (deployed for local testing 2026-10-10)
 
 `ots-ots-homr-provider-v9` runs every page MusicXML (both candidates, `regenerate`, `materialize-structured`) through
 `services/ots-homr-modal/markup_repair.py` before it leaves the provider, failing open (anything unparseable passes
@@ -309,8 +309,10 @@ Whole beam groups are deliberately left alone (`beam_groups=False`): measured on
 the validator calls invalid lowers agreement with the printed beaming from 68.4% to 51.6% of beamable notes, because
 MuseScore reads the model's own groups better than it beams by default. Evidence scripts: `beam_fair.py`,
 `slur_vs_native.py`; slurs found in the encoded score rise from 78% to 93% (HOMR 93%).
-Deploying v9 means `modal deploy modal_app.py`, then `SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v9`
-on the scanner. `markup_repair.py` does not enter the review-text identity (it never touches text).
+Deployed with `OTS_SOURCE_COMMIT=$(git rev-parse HEAD) OTS_HOMR_FUSION_ENABLED=1 modal deploy modal_app.py` (source commit
+`38cc48cb2910eb07667073e79549ed0776d494bf`), then `SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v9` on the
+scanner. First live scan (IMSLP589001-p006): beams on rests/long notes 162 -> 0, tremolo pairs crossing a barline 2 -> 0, slur
+starts never closed 4 -> 0. `markup_repair.py` does not enter the review-text identity (it never touches text).
 
 ## 5. Create a dedicated proxy token
 
