@@ -8,6 +8,21 @@ const nextConfig = {
   experimental: {
     proxyTimeout: 15 * 60 * 1000, // 15 minutes
   },
+  async redirects() {
+    // The benchmark write-ups were plain markdown files; they are pages now.
+    return [
+      {
+        source: '/benchmarks/public-core-vs-upstream-20260928.md',
+        destination: '/ots-homr/benchmark',
+        permanent: false,
+      },
+      {
+        source: '/benchmarks/public-core-vs-upstream-20260928-protocol.md',
+        destination: '/ots-homr/benchmark/method',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     const rewrites = [
       // Editor API proxy. /api/score-editor/music/* and /llm/* are handled by

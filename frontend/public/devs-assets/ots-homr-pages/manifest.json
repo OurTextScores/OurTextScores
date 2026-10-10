@@ -1,6 +1,6 @@
 {
  "summary": {
-  "upstreamCommit": "2d0c0a6 (liebharc/homr, 2026-08-10)",
+  "upstreamCommit": "1ddc6fc (liebharc/homr, the commit the scanner's HOMR engine runs; model 426)",
   "pagesScanned": 30,
   "nonMusicExcluded": [
    "IMSLP183800-p001",
