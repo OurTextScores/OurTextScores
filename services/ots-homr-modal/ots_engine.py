@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from calibration_manifest import CalibrationManifest
+from confidence_extraction import confidence_extraction_identity
 from fusion_v1 import fuse_page
 from fusion_policy import CLASS_ALLOWLIST
 from detector_routes import route_detections
@@ -118,6 +119,10 @@ class OtsHomrEngine:
             raise TextFusionError("calibration")
         if self.fusion_manifest.policy != "fusion-v1":
             raise TextFusionError("calibration")
+        try:
+            self.fusion_manifest.assert_extraction_matches(confidence_extraction_identity())
+        except Exception as error:
+            raise TextFusionError("calibration") from error
         identities = {}
         for detector_id in FUSION_DETECTORS:
             detector = self.artifacts.detectors.get(detector_id)
@@ -247,6 +252,11 @@ class OtsHomrEngine:
                 "mode": "fusion-v1",
                 "fusionRevision": "fusion-v1",
                 "calibrationRevision": self.fusion_manifest.policy_revision,
+                "confidenceExtraction": {
+                    key: value
+                    for key, value in confidence_extraction_identity().items()
+                    if key in ("id", "sourceSha256")
+                },
                 "detectors": [
                     {
                         "id": detector_id,

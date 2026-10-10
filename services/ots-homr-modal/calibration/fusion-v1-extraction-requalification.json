@@ -1,0 +1,133 @@
+{
+ "bins": {
+  "acceptCalibrated": {
+   "requalified": 0.9223,
+   "superseded": 0.9315
+  },
+  "edges": [
+   0.5,
+   0.7,
+   0.8,
+   0.9
+  ],
+  "requalified": [
+   0.8707,
+   0.9223,
+   0.9255,
+   0.9869
+  ],
+  "superseded": [
+   0.8612,
+   0.9315,
+   0.9315,
+   0.9869
+  ]
+ },
+ "calibrationPages": {
+  "acceptLineTransitions": 2,
+  "bandTransitions": 7,
+  "boxes": 6182,
+  "deltaSummary": {
+   "max": 0.07423609495162964,
+   "meanAbs": 0.0013016897711769378,
+   "median": 5.513429641723633e-05,
+   "min": -0.011730849742889404,
+   "p05": -4.509091377258301e-05,
+   "p95": 0.004533052444458008
+  },
+  "geometryMismatchPages": 0,
+  "pages": 218,
+  "scoresChanged": 614
+ },
+ "confidenceExtraction": {
+  "id": "component-pixels-v2",
+  "sourceSha256": "770fff90054fa618f2e6597e9c3df73d908afe45b369dd86b9e34413b61de4f7"
+ },
+ "heldOutEvaluation": {
+  "requalified": {
+   "acceptThreshold": 0.9223,
+   "acceptedVocalBoxes": 1944,
+   "falsePositivesPerInstrumentalPage": 0.8,
+   "instrumentalFalsePositives": 12,
+   "judgedLyricRateAssumed": 0.898876404494382,
+   "matched": 1045,
+   "matchedShare": 0.5375514403292181,
+   "pages": {
+    "instrumental": 15,
+    "vocal": 128
+   },
+   "perScoreMatchedShare": {
+    "max": 1.0,
+    "median": 0.5454545454545454,
+    "min": 0.0,
+    "scores": 63
+   },
+   "policyRevision": "5084984c73fb043d115baac72f9ef65863c15ee1e4271f1310b719103a48ac47",
+   "projectedPrecision": 0.9532355389096963,
+   "tallBoxProxy": {
+    "boxes": 2252,
+    "rate": 0.03197158081705151,
+    "ratio": 1.6,
+    "rawAtLeast": 0.6,
+    "taller": 72
+   },
+   "unmatched": 899
+  },
+  "superseded": {
+   "acceptThreshold": 0.9315,
+   "acceptedVocalBoxes": 1941,
+   "falsePositivesPerInstrumentalPage": 0.8,
+   "instrumentalFalsePositives": 12,
+   "judgedLyricRateAssumed": 0.9090909090909091,
+   "matched": 1045,
+   "matchedShare": 0.538382277176713,
+   "pages": {
+    "instrumental": 15,
+    "vocal": 128
+   },
+   "perScoreMatchedShare": {
+    "max": 1.0,
+    "median": 0.5454545454545454,
+    "min": 0.0,
+    "scores": 63
+   },
+   "policyRevision": "c2bfa72e10543e1b4e1818056c5f404da1c643bb6c1f2a66ec5a24e1d6e1d31e",
+   "projectedPrecision": 0.9580347524706102,
+   "tallBoxProxy": {
+    "boxes": 2252,
+    "rate": 0.03197158081705151,
+    "ratio": 1.6,
+    "rawAtLeast": 0.6,
+    "taller": 72
+   },
+   "unmatched": 896
+  }
+ },
+ "heldOutPages": {
+  "acceptLineTransitions": 3,
+  "bandTransitions": 8,
+  "boxes": 4368,
+  "deltaSummary": {
+   "max": 0.0541614294052124,
+   "meanAbs": 0.001429113857530337,
+   "median": 5.459785461425781e-05,
+   "min": -0.025199592113494873,
+   "p05": -9.971857070922852e-05,
+   "p95": 0.004143178462982178
+  },
+  "geometryMismatchPages": 0,
+  "pages": 143,
+  "scoresChanged": 453
+ },
+ "inputSha256": {
+  "calibrationPages": "27e2bb7fec62b3021a43fa10c7c1b32434f0143b342eeda6180dc732c915d1ef",
+  "heldOutPages": "60f7ead747cbff75ecc8454bb21562d0304d479c7abf747f20b407de0a72c081",
+  "judgements": "1aa14e483189727f9a99e4463c2034a86143361a835eee79ef6782fcc9c0745a"
+ },
+ "limits": "CPU rerun, not the GPU path; the 150 judgements are the original sample (stratified on the old scores; no box that was judged moved band); the held-out evaluation is bounds, not new human judgement; the training-membership audit still names the superseded policy revision (its subject is the detector weights, which did not change).",
+ "method": "Same pages, same detector weights, same 150 human judgements, same prespecified procedure (fit_lyric_calibration.py with the owner's raw-0.7 accept line, recorded as post-hoc in the original fit). The detector was rerun on CPU with the corrected runtime; the fit pipeline was first shown to reproduce the superseded fit report exactly from the original detections.",
+ "policyRevision": "5084984c73fb043d115baac72f9ef65863c15ee1e4271f1310b719103a48ac47",
+ "reason": "The detector confidence extraction was corrected on 2026-10-08 19:47 (a box's confidence now averages only its own component's pixels, not every same-class pixel inside its bounding rectangle). The manifest fadb96af... was fitted on scores from the earlier extraction, after which no weight pin changed.",
+ "schemaVersion": "ots.calibration-requalification.v1",
+ "supersedes": "fadb96afaa0a3a1dac76d8dc57290c5ecb53744faf5aa782edf476f13525a270"
+}

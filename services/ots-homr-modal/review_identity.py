@@ -19,6 +19,7 @@ HERE = Path(__file__).resolve().parent
 #: Modules whose behaviour decides which rows a reviewer is offered (hashed by file bytes).
 CODE_MODULES = (
     "calibration_manifest.py",
+    "confidence_extraction.py",
     "detector_routes.py",
     "direction_text.py",
     "dynamics_reader.py",
@@ -47,6 +48,7 @@ def _file_sha256(name: str) -> str:
 
 def review_text_identity() -> dict[str, Any]:
     """Identity of the review pipeline as shipped. Models are the pinned values their loaders verify at start."""
+    import confidence_extraction
     import direction_text
     import dynamics_reader
     import lyric_ocr
@@ -63,6 +65,7 @@ def review_text_identity() -> dict[str, Any]:
             "maxRows": lyric_ocr.MAX_ROWS,
         },
         "semanticGate": {"modelSha256": semantic_gate.MODEL_SHA256},
+        "confidenceExtraction": confidence_extraction.confidence_extraction_identity(),
         "directionRows": {
             "maxRows": direction_text.MAX_DIRECTION_ROWS,
             "minWordLetters": direction_text.MIN_WORD_LETTERS,

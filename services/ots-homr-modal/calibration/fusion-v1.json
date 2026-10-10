@@ -4,7 +4,7 @@
    "Dynamic": null
   },
   "lyrics": {
-   "Lyrics": 0.9315
+   "Lyrics": 0.9223
   },
   "non-lyric-text": {
    "Expression": null,
@@ -23,9 +23,9 @@
      0.9
     ],
     "binValues": [
-     0.8612,
-     0.9315,
-     0.9315,
+     0.8707,
+     0.9223,
+     0.9255,
      0.9869
     ],
     "kind": "isotonic-binned",
@@ -33,7 +33,11 @@
    }
   }
  },
- "createdAt": "2026-10-08",
+ "confidenceExtraction": {
+  "id": "component-pixels-v2",
+  "sourceSha256": "770fff90054fa618f2e6597e9c3df73d908afe45b369dd86b9e34413b61de4f7"
+ },
+ "createdAt": "2026-10-09",
  "detectors": {
   "dynamics": {
    "artifact": "non-lyric-text.pth",
@@ -109,9 +113,10 @@
    "instrumental": 45,
    "vocal": 173
   },
+  "supersedes": "fadb96afaa0a3a1dac76d8dc57290c5ecb53744faf5aa782edf476f13525a270",
   "tallBoxProxy": {
-   "boxes": 3098,
-   "rate": 0.036797934151065206,
+   "boxes": 3099,
+   "rate": 0.036786060019361085,
    "ratio": 1.6,
    "rawAtLeast": 0.6,
    "taller": 114
@@ -133,6 +138,6 @@
  "minimumWinnerMargin": 0.0,
  "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
  "policy": "fusion-v1",
- "policyRevision": "fadb96afaa0a3a1dac76d8dc57290c5ecb53744faf5aa782edf476f13525a270",
+ "policyRevision": "5084984c73fb043d115baac72f9ef65863c15ee1e4271f1310b719103a48ac47",
  "schemaVersion": "ots.text-fusion-calibration.v1"
 }

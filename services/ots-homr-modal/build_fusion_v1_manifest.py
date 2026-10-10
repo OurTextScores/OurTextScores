@@ -10,13 +10,14 @@ import hashlib
 import json
 from pathlib import Path
 
+from confidence_extraction import confidence_extraction_identity
 from fusion_policy import CLASS_ALLOWLIST
 from pins import FUSION_DETECTORS, LOGICAL_DETECTORS
 
 SCHEMA_VERSION = "ots.text-fusion-calibration.v1"
 
 
-def build(report, created_at):
+def build(report, created_at, supersedes=None):
     if report.get("schemaVersion") != "ots.lyric-calibration-fit.v1":
         raise ValueError("Unsupported fit report")
     if report["acceptLowerEdge"] is None:
@@ -32,6 +33,13 @@ def build(report, created_at):
             "judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, "
             "so they always stay in review."
         ),
+        # The scores the bins were fitted on were produced by this extraction; the provider refuses to apply the
+        # bins to any other (see calibration_manifest.assert_extraction_matches).
+        "confidenceExtraction": {
+            key: value
+            for key, value in confidence_extraction_identity().items()
+            if key in ("id", "sourceSha256")
+        },
         "detectors": {
             detector_id: {
                 "repository": LOGICAL_DETECTORS[detector_id][0],
@@ -74,6 +82,8 @@ def build(report, created_at):
             "definition": report["definition"],
             "tallBoxProxy": report["tallBoxProxy"],
             "caveats": report["caveats"],
+            # Set when this manifest replaces one fitted on a different confidence extraction.
+            **({"supersedes": supersedes} if supersedes else {}),
         },
     }
     revision = hashlib.sha256(json.dumps(body, indent=1, sort_keys=True).encode()).hexdigest()
@@ -85,8 +95,9 @@ if __name__ == "__main__":
     parser.add_argument("--fit", type=Path, required=True)
     parser.add_argument("--created-at", required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--supersedes", help="policyRevision of the manifest this one replaces")
     args = parser.parse_args()
-    manifest = build(json.loads(args.fit.read_text()), args.created_at)
+    manifest = build(json.loads(args.fit.read_text()), args.created_at, args.supersedes)
     with args.out.open("x") as handle:
         json.dump(manifest, handle, indent=1, sort_keys=True)
     print(manifest["policyRevision"])

@@ -175,8 +175,12 @@ def ots_homr_api():
         )
         if fusion_manifest.policy != "fusion-v1":
             raise RuntimeError("Fusion needs its own pinned calibration")
+        from confidence_extraction import confidence_extraction_identity
         from pins import FUSION_DETECTORS
         from fusion_policy import CLASS_ALLOWLIST
+
+        # The bins describe scores produced one way; refuse readiness when this image extracts them another way.
+        fusion_manifest.assert_extraction_matches(confidence_extraction_identity())
 
         for detector_id in FUSION_DETECTORS:
             detector = artifacts.detectors[detector_id]

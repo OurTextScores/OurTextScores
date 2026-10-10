@@ -1,0 +1,148 @@
+{
+ "schemaVersion": "ots.lyric-calibration-fit.v1",
+ "targetPrecision": 0.9,
+ "matchCoverage": 0.5,
+ "pages": {
+  "vocal": 173,
+  "instrumental": 45
+ },
+ "scores": {
+  "vocal": 89
+ },
+ "bands": [
+  {
+   "lowerEdge": 0.5,
+   "matched": 318,
+   "unmatched": 684,
+   "judged": 59,
+   "usable": 59,
+   "unsure": 0,
+   "judgedLyricRate": 0.7966101694915254,
+   "precision": 0.8611590378564904,
+   "boxes": 1002,
+   "calibrated": 0.8612,
+   "calibratedInterval90": [
+    0.8,
+    0.9159
+   ]
+  },
+  {
+   "lowerEdge": 0.6,
+   "matched": 0,
+   "unmatched": 0,
+   "judged": 0,
+   "usable": 0,
+   "unsure": 0,
+   "judgedLyricRate": 0.0,
+   "precision": null,
+   "boxes": 0,
+   "calibratedInterval90": null
+  },
+  {
+   "lowerEdge": 0.7,
+   "matched": 243,
+   "unmatched": 338,
+   "judged": 29,
+   "usable": 29,
+   "unsure": 0,
+   "judgedLyricRate": 0.896551724137931,
+   "precision": 0.9398183868478842,
+   "boxes": 581,
+   "calibrated": 0.9315,
+   "calibratedInterval90": [
+    0.8747,
+    0.9649
+   ]
+  },
+  {
+   "lowerEdge": 0.8,
+   "matched": 368,
+   "unmatched": 432,
+   "judged": 30,
+   "usable": 29,
+   "unsure": 1,
+   "judgedLyricRate": 0.8620689655172413,
+   "precision": 0.9255172413793104,
+   "boxes": 800,
+   "calibrated": 0.9315,
+   "calibratedInterval90": [
+    0.8961,
+    0.9796
+   ]
+  },
+  {
+   "lowerEdge": 0.9,
+   "matched": 779,
+   "unmatched": 503,
+   "judged": 30,
+   "usable": 30,
+   "unsure": 0,
+   "judgedLyricRate": 0.9666666666666667,
+   "precision": 0.9869214768590744,
+   "boxes": 1282,
+   "calibrated": 0.9869,
+   "calibratedInterval90": [
+    0.9633,
+    1.0
+   ]
+  }
+ ],
+ "negativeRates": [
+  {
+   "rawAtLeast": 0.5,
+   "falsePositives": 70,
+   "perInstrumentalPage": 1.5555555555555556
+  },
+  {
+   "rawAtLeast": 0.6,
+   "falsePositives": 44,
+   "perInstrumentalPage": 0.9777777777777777
+  },
+  {
+   "rawAtLeast": 0.7,
+   "falsePositives": 28,
+   "perInstrumentalPage": 0.6222222222222222
+  },
+  {
+   "rawAtLeast": 0.8,
+   "falsePositives": 20,
+   "perInstrumentalPage": 0.4444444444444444
+  },
+  {
+   "rawAtLeast": 0.9,
+   "falsePositives": 5,
+   "perInstrumentalPage": 0.1111111111111111
+  }
+ ],
+ "acceptChoice": {
+  "rule": "owner-override-post-hoc",
+  "prespecifiedLowerEdge": 0.7,
+  "reason": "Lower instrumental-page false positives at the same calibrated precision; chosen after seeing held-out results, not before."
+ },
+ "acceptLowerEdge": 0.7,
+ "acceptCalibrated": 0.9315,
+ "definition": "Precision is P(box contains lyric text) on a vocal page. A box that spans several words or stacked lyric lines still counts as lyric text; the judging could not separate them.",
+ "tallBoxProxy": {
+  "boxes": 3098,
+  "taller": 114,
+  "rate": 0.036797934151065206,
+  "ratio": 1.6,
+  "rawAtLeast": 0.6
+ },
+ "sizeGate": {
+  "minBoxArea": {
+   "Lyrics": 200,
+   "Tempo": 200,
+   "StaffText": 200,
+   "Expression": 200,
+   "Dynamic": 50
+  },
+  "maxPageAreaFraction": 0.25,
+  "lyricBoxesDropped": 1321
+ },
+ "caveats": [
+  "Detector training membership was reconstructed (fusion-v1-training-membership-audit.json): about 80% of the Lieder scores here sat in the OCR-first training pool. On the 29 verifiably clean scores the matched share is 57.8% against 51.3% on possibly-trained scores, and the judged lyric rate at raw 0.7+ is 18/19 against 63/70, so there is no sign of inflation; the clean judged sample is only 19 boxes.",
+  "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
+  "Boxes below raw 0.5 were not sampled; the bins carry no information about them."
+ ]
+}

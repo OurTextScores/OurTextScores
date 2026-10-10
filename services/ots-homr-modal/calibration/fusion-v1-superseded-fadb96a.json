@@ -1,0 +1,138 @@
+{
+ "accept": {
+  "dynamics": {
+   "Dynamic": null
+  },
+  "lyrics": {
+   "Lyrics": 0.9315
+  },
+  "non-lyric-text": {
+   "Expression": null,
+   "StaffText": null,
+   "Tempo": null
+  }
+ },
+ "calibration": {
+  "lyrics": {
+   "Lyrics": {
+    "belowLowestEdge": null,
+    "binLowerEdges": [
+     0.5,
+     0.7,
+     0.8,
+     0.9
+    ],
+    "binValues": [
+     0.8612,
+     0.9315,
+     0.9315,
+     0.9869
+    ],
+    "kind": "isotonic-binned",
+    "note": "Estimated probability that an e2 box is lyric text on a vocal page."
+   }
+  }
+ },
+ "createdAt": "2026-10-08",
+ "detectors": {
+  "dynamics": {
+   "artifact": "non-lyric-text.pth",
+   "classAllowlist": [
+    "Dynamic"
+   ],
+   "repository": "jhlusko/non-lyric-text",
+   "revision": "9073adb53d901c90419f63b0f7e3fb4372ed18cc",
+   "sha256": "fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82"
+  },
+  "lyrics": {
+   "artifact": "lyrics.pth",
+   "classAllowlist": [
+    "Lyrics"
+   ],
+   "repository": "jhlusko/lyrics",
+   "revision": "1bf2201d2eead54f78d79e2beba502b204614a92",
+   "sha256": "7ff21020d5fefe5b774af71dd50610d1b05011f040c4b2c9c58f249b43f39804"
+  },
+  "non-lyric-text": {
+   "artifact": "non-lyric-text.pth",
+   "classAllowlist": [
+    "Expression",
+    "StaffText",
+    "Tempo"
+   ],
+   "repository": "jhlusko/non-lyric-text",
+   "revision": "9073adb53d901c90419f63b0f7e3fb4372ed18cc",
+   "sha256": "fcb8ca529fa355b0427112bda1c4edd95b2d6cc6c369be0c32f3313987a4ec82"
+  }
+ },
+ "fit": {
+  "acceptChoice": {
+   "prespecifiedLowerEdge": 0.7,
+   "reason": "Lower instrumental-page false positives at the same calibrated precision; chosen after seeing held-out results, not before.",
+   "rule": "owner-override-post-hoc"
+  },
+  "acceptRawLowerEdge": 0.7,
+  "caveats": [
+   "Detector training membership was reconstructed (fusion-v1-training-membership-audit.json): about 80% of the Lieder scores here sat in the OCR-first training pool. On the 29 verifiably clean scores the matched share is 57.8% against 51.3% on possibly-trained scores, and the judged lyric rate at raw 0.7+ is 18/19 against 63/70, so there is no sign of inflation; the clean judged sample is only 19 boxes.",
+   "Matched boxes are true by OCR/score agreement; unmatched boxes use a sampled human rate.",
+   "Boxes below raw 0.5 were not sampled; the bins carry no information about them."
+  ],
+  "definition": "Precision is P(box contains lyric text) on a vocal page. A box that spans several words or stacked lyric lines still counts as lyric text; the judging could not separate them.",
+  "negativeRates": [
+   {
+    "falsePositives": 70,
+    "perInstrumentalPage": 1.5555555555555556,
+    "rawAtLeast": 0.5
+   },
+   {
+    "falsePositives": 44,
+    "perInstrumentalPage": 0.9777777777777777,
+    "rawAtLeast": 0.6
+   },
+   {
+    "falsePositives": 28,
+    "perInstrumentalPage": 0.6222222222222222,
+    "rawAtLeast": 0.7
+   },
+   {
+    "falsePositives": 20,
+    "perInstrumentalPage": 0.4444444444444444,
+    "rawAtLeast": 0.8
+   },
+   {
+    "falsePositives": 5,
+    "perInstrumentalPage": 0.1111111111111111,
+    "rawAtLeast": 0.9
+   }
+  ],
+  "pages": {
+   "instrumental": 45,
+   "vocal": 173
+  },
+  "tallBoxProxy": {
+   "boxes": 3098,
+   "rate": 0.036797934151065206,
+   "ratio": 1.6,
+   "rawAtLeast": 0.6,
+   "taller": 114
+  },
+  "targetPrecision": 0.9
+ },
+ "geometry": {
+  "containmentThreshold": 0.6,
+  "iouThreshold": 0.3,
+  "maxPageAreaFraction": 0.25,
+  "minBoxArea": {
+   "Dynamic": 50,
+   "Expression": 200,
+   "Lyrics": 200,
+   "StaffText": 200,
+   "Tempo": 200
+  }
+ },
+ "minimumWinnerMargin": 0.0,
+ "note": "Lyrics (e2) are calibrated against OCR-confirmed positives and a sampled human judgement of unmatched boxes; directions and dynamics (e4) are pinned but uncalibrated, so they always stay in review.",
+ "policy": "fusion-v1",
+ "policyRevision": "fadb96afaa0a3a1dac76d8dc57290c5ecb53744faf5aa782edf476f13525a270",
+ "schemaVersion": "ots.text-fusion-calibration.v1"
+}

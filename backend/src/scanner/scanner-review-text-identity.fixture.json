@@ -1,15 +1,28 @@
 {
   "codeSha256": {
-    "calibration_manifest.py": "0d0372fc969c407cf48930eddfff7e2c75bf9b88cb1798811212f62ffe18893d",
+    "calibration_manifest.py": "54cc837e5675a94b6bbf852c04f9525e5588f0d0f102022b6a229177f3baef25",
+    "confidence_extraction.py": "1297f4b33542d845ecf26dddd1984c0ae3f25ee2ff12a9c1c242c2a226a6be30",
     "detector_routes.py": "680feaa7316b91c9649167e59deef14b8dd31e7202ec2401eccdc635d7f00241",
     "direction_text.py": "3106fb628dd8e10d097f05d1b3ae9e2007fa9d14ecbfe1fd2106759334a8da49",
     "dynamics_reader.py": "66da478c6a3234f1ae5f006b55ae4e877917d4dabbd6489258529c78c2acc2e5",
     "fusion_policy.py": "aa04c4f9e87011c49d6309b9fa1cfac32b3f07749e723663e3249f756c8a1ad6",
     "fusion_v1.py": "852bd8dc7968073018018d98f5e87f29545d63af2b1a3cf3e1f82d1c00014428",
     "lyric_ocr.py": "84ce466a8e46c9f6cb568268f6b0dda41b50ffd01fd8f54504e78123cd651411",
-    "ots_engine.py": "b1b682fe69564bbc31b7641ae41b96aa5cb0bbf60a871ebaa28e029ecd521e1c",
-    "review_identity.py": "f659679db559764d7a0e48c4cb1f61a2b696e2035e1d08abd75e49c63e8d1b2c",
+    "ots_engine.py": "e7c3c1e91377eb0451ce909c7684263a31e1ac2b200ce5d5663a4c144088d75f",
+    "review_identity.py": "7df685ecffa027d26f9cf13f8b27a03d2279a49ba71226df547c9efc1a7af1eb",
     "semantic_gate.py": "e8ebea120704a3a89700ef2ea55e53dc9e83b7eec74d7484c5c9dc172261a4c7"
+  },
+  "confidenceExtraction": {
+    "files": [
+      "camvid_model.py",
+      "detector_data.py",
+      "detector_inference.py",
+      "detector_masks.py",
+      "detector_patches.py",
+      "runtime.py"
+    ],
+    "id": "component-pixels-v2",
+    "sourceSha256": "770fff90054fa618f2e6597e9c3df73d908afe45b369dd86b9e34413b61de4f7"
   },
   "directionRows": {
     "maxRows": 120,
@@ -43,5 +56,5 @@
   "semanticGate": {
     "modelSha256": "82da7a641985d4c2baf75e57efe06dbe9bf57f5a49c9186cfd30f50a8887d5d1"
   },
-  "sha256": "423d538025574c3398863e560e852c0c96e9dea30c2c447cd5f3518b6e696492"
+  "sha256": "7ce337a16ae6cc9c14bd07b7d04ee4d2f600052a9a4da34c040f95e2fecb3ebc"
 }

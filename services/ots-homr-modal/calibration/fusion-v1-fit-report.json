@@ -13,17 +13,17 @@
   {
    "lowerEdge": 0.5,
    "matched": 318,
-   "unmatched": 684,
-   "judged": 59,
-   "usable": 59,
+   "unmatched": 682,
+   "judged": 58,
+   "usable": 58,
    "unsure": 0,
-   "judgedLyricRate": 0.7966101694915254,
-   "precision": 0.8611590378564904,
-   "boxes": 1002,
-   "calibrated": 0.8612,
+   "judgedLyricRate": 0.8103448275862069,
+   "precision": 0.870655172413793,
+   "boxes": 1000,
+   "calibrated": 0.8707,
    "calibratedInterval90": [
-    0.8,
-    0.9159
+    0.8103,
+    0.9203
    ]
   },
   {
@@ -41,17 +41,17 @@
   {
    "lowerEdge": 0.7,
    "matched": 243,
-   "unmatched": 338,
-   "judged": 29,
-   "usable": 29,
+   "unmatched": 339,
+   "judged": 30,
+   "usable": 30,
    "unsure": 0,
-   "judgedLyricRate": 0.896551724137931,
-   "precision": 0.9398183868478842,
-   "boxes": 581,
-   "calibrated": 0.9315,
+   "judgedLyricRate": 0.8666666666666667,
+   "precision": 0.9223367697594501,
+   "boxes": 582,
+   "calibrated": 0.9223,
    "calibratedInterval90": [
-    0.8747,
-    0.9649
+    0.8612,
+    0.9552
    ]
   },
   {
@@ -64,25 +64,25 @@
    "judgedLyricRate": 0.8620689655172413,
    "precision": 0.9255172413793104,
    "boxes": 800,
-   "calibrated": 0.9315,
+   "calibrated": 0.9255,
    "calibratedInterval90": [
-    0.8961,
+    0.8913,
     0.9796
    ]
   },
   {
    "lowerEdge": 0.9,
    "matched": 779,
-   "unmatched": 503,
+   "unmatched": 504,
    "judged": 30,
    "usable": 30,
    "unsure": 0,
    "judgedLyricRate": 0.9666666666666667,
-   "precision": 0.9869214768590744,
-   "boxes": 1282,
+   "precision": 0.9869056897895557,
+   "boxes": 1283,
    "calibrated": 0.9869,
    "calibratedInterval90": [
-    0.9633,
+    0.9634,
     1.0
    ]
   }
@@ -120,12 +120,12 @@
   "reason": "Lower instrumental-page false positives at the same calibrated precision; chosen after seeing held-out results, not before."
  },
  "acceptLowerEdge": 0.7,
- "acceptCalibrated": 0.9315,
+ "acceptCalibrated": 0.9223,
  "definition": "Precision is P(box contains lyric text) on a vocal page. A box that spans several words or stacked lyric lines still counts as lyric text; the judging could not separate them.",
  "tallBoxProxy": {
-  "boxes": 3098,
+  "boxes": 3099,
   "taller": 114,
-  "rate": 0.036797934151065206,
+  "rate": 0.036786060019361085,
   "ratio": 1.6,
   "rawAtLeast": 0.6
  },

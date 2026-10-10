@@ -51,6 +51,9 @@ def ots_homr_api():
     manifest = load_calibration_manifest(
         Path("/opt/ots-homr-provider/calibration/fusion-v1.json")
     )
+    from confidence_extraction import confidence_extraction_identity
+
+    manifest.assert_extraction_matches(confidence_extraction_identity())
     for detector_id in FUSION_DETECTORS:
         detector = artifacts.detectors[detector_id]
         manifest.assert_detector_matches(

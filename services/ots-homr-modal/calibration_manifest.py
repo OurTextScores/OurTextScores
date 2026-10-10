@@ -38,6 +38,14 @@ class DetectorIdentity:
 
 
 @dataclass(frozen=True)
+class ConfidenceExtraction:
+    """The extraction semantics the calibrated scores were produced with (see `confidence_extraction`)."""
+
+    id: str
+    source_sha256: str
+
+
+@dataclass(frozen=True)
 class CalibrationManifest:
     policy: str
     policy_revision: str
@@ -50,6 +58,9 @@ class CalibrationManifest:
     minimum_winner_margin: float
     min_box_area: dict[str, int] = field(default_factory=dict)
     max_page_area_fraction: float | None = None
+    #: None for a manifest fitted before the extraction was bound; such a manifest is refused by
+    #: `assert_extraction_matches`, so it cannot be applied to scores of unknown semantics.
+    confidence_extraction: ConfidenceExtraction | None = None
 
     def calibrate(self, detector_id: str, label: str, raw_confidence: float) -> float | None:
         """Raw confidence to an estimated probability, or None where none is defined.
@@ -75,6 +86,23 @@ class CalibrationManifest:
         """A `resolve_component`-shaped lookup: label -> threshold or None."""
         table = self.accept.get(detector_id, {})
         return lambda label: table.get(label)
+
+    def assert_extraction_matches(self, identity: dict[str, Any]) -> None:
+        """Refuse when the running confidence extraction is not the one the calibration was fitted on.
+
+        Same reasoning as `assert_detector_matches`: the bin edges and values describe scores produced one way.
+        Scores produced another way look the same and fall in the same bins, so the failure would be silent.
+        """
+        bound = self.confidence_extraction
+        if bound is None:
+            raise CalibrationManifestError(
+                f"{self.policy} does not bind a confidence-extraction source; its scores' semantics are unknown"
+            )
+        if identity.get("id") != bound.id or str(identity.get("sourceSha256", "")).lower() != bound.source_sha256.lower():
+            raise CalibrationManifestError(
+                f"confidence extraction {identity.get('id')} {identity.get('sourceSha256')} is not the calibrated "
+                f"{bound.id} {bound.source_sha256}; refusing {self.policy}"
+            )
 
     def assert_detector_matches(self, detector_id: str, *, sha256: str, revision: str | None = None) -> None:
         """Refuse when the running artifact is not the one this manifest calibrated.
@@ -145,6 +173,9 @@ def load_calibration_manifest(path: str | Path) -> CalibrationManifest:
         raise CalibrationManifestError("manifest pins no detectors")
 
     geometry = data.get("geometry") or {}
+    extraction = data.get("confidenceExtraction")
+    if extraction is not None and (not extraction.get("id") or len(str(extraction.get("sourceSha256", ""))) != 64):
+        raise CalibrationManifestError("confidenceExtraction needs an id and a 64-hex sourceSha256")
     return CalibrationManifest(
         policy=data["policy"],
         policy_revision=stated,
@@ -159,6 +190,11 @@ def load_calibration_manifest(path: str | Path) -> CalibrationManifest:
         max_page_area_fraction=(
             float(geometry["maxPageAreaFraction"])
             if geometry.get("maxPageAreaFraction") is not None
+            else None
+        ),
+        confidence_extraction=(
+            ConfidenceExtraction(id=extraction["id"], source_sha256=extraction["sourceSha256"])
+            if extraction is not None
             else None
         ),
     )

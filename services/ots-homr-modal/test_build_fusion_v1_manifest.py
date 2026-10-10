@@ -35,6 +35,24 @@ def test_manifest_loads_calibrates_lyrics_and_leaves_e4_in_review(tmp_path):
         assert manifest.accept_threshold(logical)(label) is None
 
 
+def test_the_manifest_binds_the_extraction_it_was_built_with(tmp_path):
+    from confidence_extraction import confidence_extraction_identity
+
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps(build(report(), "2026-10-09"), indent=1, sort_keys=True))
+    manifest = load_calibration_manifest(path)
+    identity = confidence_extraction_identity()
+    assert manifest.confidence_extraction.id == identity["id"]
+    assert manifest.confidence_extraction.source_sha256 == identity["sourceSha256"]
+    manifest.assert_extraction_matches(identity)
+
+
+def test_a_replacement_manifest_records_what_it_supersedes(tmp_path):
+    body = build(report(), "2026-10-09", supersedes="f" * 64)
+    assert body["fit"]["supersedes"] == "f" * 64
+    assert "supersedes" not in build(report(), "2026-10-09")["fit"]
+
+
 def test_no_accept_line_means_no_manifest():
     bad = report()
     bad["acceptLowerEdge"] = None

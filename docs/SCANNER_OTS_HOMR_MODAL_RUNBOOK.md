@@ -255,6 +255,20 @@ recompute the pin from the checkout you deploy, before deploying, with
 `SCANNER_OTS_HOMR_ENABLED=false` (below). The core still has the grand-staff profile-layout false alarm (fixed in HOMR
 `40fe6a6`, needs a source pin); the API filters that finding meanwhile.
 
+### Confidence extraction is part of the calibration
+
+A calibration manifest maps raw detector confidences to probabilities, so it describes the *extraction* that produced
+those confidences as well as the weights. `confidence_extraction.py` hashes the six `detector_runtime` files that
+turn a checkpoint's output into a box confidence; the manifest binds that identity (`confidenceExtraction`) and the
+provider refuses to start, and refuses a page, when the running extraction differs, or when a manifest binds none.
+Changing any of those files therefore requires requalifying the calibration: rerun
+`collect_lyric_calibration.py` on the calibration pages (CPU, about an hour with three shards), refit with
+`fit_lyric_calibration.py` and the original judgements, rebuild with `build_fusion_v1_manifest.py --supersedes <old
+policyRevision>`, evaluate on the held-out pages (`evaluate_lyric_calibration.py`) and keep the superseded files. The
+2026-10-09 requalification is recorded in `calibration/fusion-v1-extraction-requalification.json` (every band moved by
+at most 0.01; accept line unchanged at raw 0.7, calibrated 0.9315 -> 0.9223). The scanner pins the manifest by
+`SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION` and the extraction identity through the review-text digest.
+
 ## 4. Build and deploy the provider
 
 After the service exists, deploy it from the clean checkout:

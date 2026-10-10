@@ -1,16 +1,16 @@
 {
- "policyRevision": "c2bfa72e10543e1b4e1818056c5f404da1c643bb6c1f2a66ec5a24e1d6e1d31e",
- "acceptThreshold": 0.9315,
+ "policyRevision": "5084984c73fb043d115baac72f9ef65863c15ee1e4271f1310b719103a48ac47",
+ "acceptThreshold": 0.9223,
  "pages": {
   "vocal": 128,
   "instrumental": 15
  },
- "acceptedVocalBoxes": 1941,
+ "acceptedVocalBoxes": 1944,
  "matched": 1045,
- "unmatched": 896,
- "matchedShare": 0.538382277176713,
- "projectedPrecision": 0.9580347524706102,
- "judgedLyricRateAssumed": 0.9090909090909091,
+ "unmatched": 899,
+ "matchedShare": 0.5375514403292181,
+ "projectedPrecision": 0.9532355389096963,
+ "judgedLyricRateAssumed": 0.898876404494382,
  "instrumentalFalsePositives": 12,
  "falsePositivesPerInstrumentalPage": 0.8,
  "perScoreMatchedShare": {

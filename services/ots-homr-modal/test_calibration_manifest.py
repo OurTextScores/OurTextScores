@@ -200,3 +200,44 @@ class DrivingTheResolver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FUSION = Path(__file__).parent / "calibration" / "fusion-v1.json"
+
+
+class TestConfidenceExtractionBinding(unittest.TestCase):
+    """A manifest describes the scores of one extraction; it must say which and refuse any other."""
+
+    IDENTITY = {"id": "component-pixels-v2", "sourceSha256": "a" * 64}
+
+    def _load(self, **changes):
+        return load_calibration_manifest(rewritten(**changes))
+
+    def test_accepts_the_extraction_it_was_fitted_on(self):
+        manifest = self._load(confidenceExtraction=self.IDENTITY)
+        manifest.assert_extraction_matches({**self.IDENTITY, "files": ["x"]})
+
+    def test_refuses_a_different_source_even_with_the_same_name(self):
+        manifest = self._load(confidenceExtraction=self.IDENTITY)
+        with self.assertRaises(CalibrationManifestError):
+            manifest.assert_extraction_matches({"id": "component-pixels-v2", "sourceSha256": "b" * 64})
+
+    def test_refuses_a_different_extraction_id(self):
+        manifest = self._load(confidenceExtraction=self.IDENTITY)
+        with self.assertRaises(CalibrationManifestError):
+            manifest.assert_extraction_matches({"id": "bounding-box-v1", "sourceSha256": "a" * 64})
+
+    def test_refuses_a_manifest_that_does_not_bind_one(self):
+        manifest = load_calibration_manifest(PINNED)
+        self.assertIsNone(manifest.confidence_extraction)
+        with self.assertRaises(CalibrationManifestError):
+            manifest.assert_extraction_matches(self.IDENTITY)
+
+    def test_refuses_a_malformed_binding(self):
+        with self.assertRaises(CalibrationManifestError):
+            self._load(confidenceExtraction={"id": "x", "sourceSha256": "short"})
+
+    def test_the_shipped_fusion_manifest_binds_the_extraction_this_image_runs(self):
+        from confidence_extraction import confidence_extraction_identity
+
+        load_calibration_manifest(FUSION).assert_extraction_matches(confidence_extraction_identity())
