@@ -1,0 +1,97 @@
+diff --git a/homr/score_profile.py b/homr/score_profile.py
+index 3c91976..5effee4 100644
+--- a/homr/score_profile.py
++++ b/homr/score_profile.py
+@@ -98,6 +98,31 @@ class ScoreProfile:
+             pattern.extend([part.stable_id] * max(part.expected_staff_count, 0))
+         return tuple(pattern)
+ 
++    @property
++    def merged_grand_staff_pattern(self) -> tuple[str, ...]:
++        """The same top-to-bottom pattern when each pair of adjacent staves of a multi-staff part is
++        read as ONE unit, which is how a piano grand staff arrives once `MultiStaff.create_grandstaffs`
++        has merged its two staves into a single decoded `Staff` (its tokens carry both the upper and
++        the lower hand). A part with `expectedStaffCount=2` contributes its `stableId` once, 3 staves
++        twice (one pair, one single), and so on: `ceil(count / 2)` units."""
++        pattern: list[str] = []
++        for part in self.parts:
++            pattern.extend([part.stable_id] * ((max(part.expected_staff_count, 0) + 1) // 2))
++        return tuple(pattern)
++
++    def unit_pattern_for(self, detected_units: int) -> tuple[str, ...] | None:
++        """The expected pattern a system of `detected_units` decoded staves is compared against.
++
++        The detector may hand back every physical staff separately or merge each grand staff into one
++        unit; both are legitimate readings of a correct page, so a system matches the profile when its
++        count equals either the physical pattern's length or the merged pattern's. Anything else is a
++        genuine mismatch (None). When the two lengths coincide (no multi-staff part) they are the same
++        pattern, so nothing changes for quartets and other single-staff parts."""
++        for pattern in (self.expected_staff_pattern, self.merged_grand_staff_pattern):
++            if len(pattern) == detected_units:
++                return pattern
++        return None
++
+     def part_by_id(self, stable_id: str) -> ScorePart | None:
+         return next((part for part in self.parts if part.stable_id == stable_id), None)
+ 
+diff --git a/homr/score_profile_layout.py b/homr/score_profile_layout.py
+index 9e972d1..10e79dc 100644
+--- a/homr/score_profile_layout.py
++++ b/homr/score_profile_layout.py
+@@ -52,7 +52,6 @@ def propose_part_assignment(
+     function against a hand-built voice-slot pattern) never pays for or has to fake the
+     geometry twice.
+     """
+-    expected_pattern = profile.expected_staff_pattern
+     assignments = []
+     for group, slots in zip(partition.groups, voice_slots, strict=True):
+         if slots is None:
+@@ -64,12 +63,23 @@ def propose_part_assignment(
+                 )
+             )
+             continue
+-        if len(expected_pattern) != partition.staves_per_system:
++        # A system matches when its decoded staves equal the profile's physical staves OR the count
++        # with each grand staff read as one unit (the detector merges a piano's two staves into one
++        # decoded staff; comparing that unit count to the physical total reported a false deviation).
++        expected_pattern = profile.unit_pattern_for(partition.staves_per_system)
++        if expected_pattern is None:
++            physical = len(profile.expected_staff_pattern)
++            merged = len(profile.merged_grand_staff_pattern)
++            expected_text = (
++                f"{physical}"
++                if merged == physical
++                else f"{physical} (or {merged} with each grand staff read as one staff)"
++            )
+             assignments.append(
+                 SystemPartAssignment(
+                     staff_to_part={},
+                     deviations=(
+-                        f"profile expects {len(expected_pattern)} staff(s) per system, "
++                        f"profile expects {expected_text} staff(s) per system, "
+                         f"detected geometry implies {partition.staves_per_system}",
+                     ),
+                     evidence_score=0.0,
+@@ -81,9 +91,7 @@ def propose_part_assignment(
+             for staff_index, slot in zip(group, slots, strict=True)
+         }
+         assignments.append(
+-            SystemPartAssignment(
+-                staff_to_part=staff_to_part, deviations=(), evidence_score=1.0
+-            )
++            SystemPartAssignment(staff_to_part=staff_to_part, deviations=(), evidence_score=1.0)
+         )
+     return assignments
+ 
+@@ -126,9 +134,9 @@ def staff_to_part_by_system(
+     checking a decoded clef against the wrong instrument entirely is worse than a
+     caller checking nothing.
+     """
+-    pattern = profile.expected_staff_pattern
+     voices = len(voice_present_by_system[0]) if voice_present_by_system else 0
+-    if len(pattern) != voices:
++    pattern = profile.unit_pattern_for(voices)
++    if pattern is None:
+         return [{} for _ in voice_present_by_system]
+ 
+     results = []

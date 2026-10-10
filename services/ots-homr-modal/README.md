@@ -9,7 +9,11 @@ HOMR must remain independently deployable.
 The current `modal_app.py` uses source archive `homr-b6eca7-source.tar.gz`
 (commit `b6eca7c6af37df2764a9ca99033c947eb42aae90`, SHA-256
 `999d5071fe9bcfab8dc1534ec1614e125888651fcc6c72a9862bc605ba38d1a2`)
-and `patches/homr-runtime-glue.patch`. The older recipe below is historical.
+and `patches/homr-runtime-glue.patch`, then `patches/homr-grand-staff-profile-layout.patch` as its own
+layer (SHA-256 `6534e017f1eb597c8543adb63130c213bd67d7fa191d7f969d1b35de8f922b44`; HOMR `40fe6a6`: a piano grand staff
+the detector merges into one staff matches a voice+piano profile, so correct pages stop reporting `profile expects 3
+staff(s) per system, detected geometry implies 2`; it touches only `score_profile.py` and `score_profile_layout.py`,
+which the glue patch does not). The older recipe below is historical.
 
 `patches/homr-paired-tremolo-candidate.patch` is a separately qualified additive
 candidate, not wired into the shipping builder. SHA-256:

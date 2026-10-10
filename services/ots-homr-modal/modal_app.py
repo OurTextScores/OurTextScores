@@ -16,6 +16,11 @@ HERE = Path(__file__).resolve().parent
 #: Where the provider sources live inside the image (the app file itself is copied elsewhere, so HERE is wrong there).
 PROVIDER_ROOT = "/opt/ots-homr-provider"
 PATCH = HERE / "patches" / "homr-runtime-glue.patch"
+# HOMR 40fe6a6: a piano grand staff the detector merges into one staff matches a voice+piano profile (the profile-layout
+# check used to report "expects 3, detected 2" on correct pages). Only score_profile.py and score_profile_layout.py differ
+# from the pinned archive; applied as its own layer so the heavy dependency layers above stay cached.
+GRAND_STAFF_PATCH = HERE / "patches" / "homr-grand-staff-profile-layout.patch"
+GRAND_STAFF_PATCH_SHA256 = "6534e017f1eb597c8543adb63130c213bd67d7fa191d7f969d1b35de8f922b44"
 SOURCE_ARCHIVE = HERE / "source" / "homr-b6eca7-source.tar.gz"
 SOURCE_ARCHIVE_SHA256 = (
     "999d5071fe9bcfab8dc1534ec1614e125888651fcc6c72a9862bc605ba38d1a2"
@@ -89,6 +94,15 @@ image = (
     .run_commands(
         "python -m pip install --no-cache-dir --require-hashes --no-deps -r /tmp/ocr-requirements.txt",
         "python -c 'import rapidocr; print(rapidocr.__file__)'",
+    )
+    .add_local_file(
+        GRAND_STAFF_PATCH, remote_path="/tmp/homr-grand-staff-profile-layout.patch", copy=True
+    )
+    .run_commands(
+        f"echo '{GRAND_STAFF_PATCH_SHA256}  /tmp/homr-grand-staff-profile-layout.patch' | sha256sum --check --strict",
+        "cd /opt/homr && git apply --check /tmp/homr-grand-staff-profile-layout.patch && git apply /tmp/homr-grand-staff-profile-layout.patch",
+        # The patched module must be the one imported (PYTHONPATH puts /opt/homr ahead of the pip-installed copy).
+        "cd /tmp && PYTHONPATH=/opt/homr python -c \"import homr.score_profile as m; assert m.__file__.startswith('/opt/homr/'), m.__file__; assert hasattr(m.ScoreProfile, 'unit_pattern_for')\"",
     )
     .add_local_dir(
         HOMR_SHARED,
