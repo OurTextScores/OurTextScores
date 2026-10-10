@@ -192,8 +192,7 @@ export default function OtsHomrPage() {
           <li>
             When most staves state one key or time signature and a few state
             another, it moves the few onto a value another staff actually read.
-            It never invents one, never breaks a tie, and needs at least three
-            staves in the system.
+            It never invents one and never breaks a tie.
           </li>
           <li>
             When one staff&rsquo;s barlines drift from the rest, it tries other
@@ -204,6 +203,11 @@ export default function OtsHomrPage() {
             again, and a single staff cannot tell which reading is right.
           </li>
         </ul>
+        <p>
+          These apply to systems of at least three staves (four for the
+          barline-drift repair), so they matter for quartets and trios, not for
+          a single staff or a voice and piano pair.
+        </p>
         <p>
           It is deliberately cautious: music in several metres or keys at once
           is real, and a &ldquo;fix&rdquo; that overrides a genuine disagreement
