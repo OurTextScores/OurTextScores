@@ -388,15 +388,13 @@ describe("note decisions on each row", () => {
     fireEvent.change(screen.getByLabelText("Text for note 1 of wish -ing"), { target: { value: "wish" } });
     fireEvent.change(screen.getByLabelText("Text for note 2 of wish -ing"), { target: { value: "ing" } });
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    const open = await screen.findByRole("button", { name: "Add accepted lyrics to the score" });
+    const open = await screen.findByRole("button", { name: "Add accepted lyrics and staff text to the score" });
     await waitFor(() => expect(open).toBeEnabled());
     fireEvent.click(open);
-    const confirm = screen.getByRole("button", { name: "Add lyrics to the score" });
-    expect(confirm).toBeDisabled();
-    fireEvent.click(screen.getByLabelText(/I checked these syllables/));
+    const confirm = screen.getByRole("button", { name: "Add to the score" });
     fireEvent.click(confirm);
     expect(await screen.findByText(/Added 2 lyric syllables to the scan's score/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View the score with lyrics" })).toHaveAttribute("href", "/scanner/job-1");
+    expect(screen.getByRole("link", { name: "View the score" })).toHaveAttribute("href", "/scanner/job-1");
     const posted = JSON.parse(calls.find((c) => c.url.endsWith("/save-lyrics"))!.body!);
     expect(posted.automaticAttachment).toBe(false);
     expect(posted.placements.map((p: { text: string; noteId: string; printedLine: number; noteConfirmed: boolean }) => [p.text, p.noteId, p.printedLine, p.noteConfirmed])).toEqual([

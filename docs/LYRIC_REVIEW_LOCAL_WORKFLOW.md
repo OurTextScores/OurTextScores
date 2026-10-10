@@ -5,8 +5,10 @@
 lines for the recognised notes around it (the proposed notes in blue), a text box under each
 recognised notehead (numbered like the picture; filled where a syllable is proposed, blank elsewhere), and the lyric
 line. To split a word, put its parts in neighbouring boxes; to move one, clear a box and type in another. **Accept** means the text, lyric line
-and notes shown are right (any edit withdraws it). "Accept all suggested rows" is a shortcut. "Add accepted lyrics
-to the score" lists exactly what will be written and asks for one confirmation; "Add lyrics to the score" saves it
+and notes shown are right (any edit withdraws it). "Accept all suggested rows" is a shortcut: it accepts the suggested lyrics and also the
+directions and dynamics that already have a proposed note (rows with no proposed note stay for you to place). "Add accepted lyrics
+and staff text to the score" lists exactly what will be written; "Add to the score" saves it (no separate confirmation tick: the
+list is the review)
 as the page's reviewed score, so the scan's MusicXML (job-level download, combined score) carries the lyrics and the
 engine's own recognition output stays untouched. Saving again replaces the lyrics a previous save added.
 "Download a copy instead" produces the file without changing the scan. Later token-level note corrections on the
@@ -82,7 +84,7 @@ Frontend Docker image ots-lyric-review-local-20261008 built successfully (EXIT 0
 
 ## Entry point and end-to-end test
 
-On the scan's job page, a page whose OTS-HOMR run produced a text review shows **Review lyrics for this page**
+On the scan's job page, a page whose OTS-HOMR run produced a text review shows **Review lyrics and staff text for this page**
 (same flag as the review page). The upload form's **This score has lyrics** box (needs
 `NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED=1` and `SCANNER_OTS_HOMR_FUSION_ENABLED=1`) is what makes the scan run
 fusion-v1, OCR and the text classifier.

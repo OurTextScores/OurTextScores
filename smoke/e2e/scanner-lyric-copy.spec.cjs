@@ -32,7 +32,7 @@ test("reviewed syllable downloads a new score copy through the authenticated pro
   const base = `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/lyric-candidates`;
   await page.goto(`/scanner/${jobId}/pages/${pageNumber}/lyric-review`);
   await expect(
-    page.getByRole("heading", { name: `Lyric review — page ${pageNumber}` }),
+    page.getByRole("heading", { name: `Lyric and staff text review — page ${pageNumber}` }),
   ).toBeVisible();
   const inventoryResponse = await page.request.get(`${base}/notes`);
   expect(inventoryResponse.ok()).toBeTruthy();

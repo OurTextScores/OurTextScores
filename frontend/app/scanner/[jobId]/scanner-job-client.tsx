@@ -1508,11 +1508,11 @@ export default function ScannerJobClient({
                   href={`/scanner/${encodeURIComponent(jobId)}/pages/${selected.pageNumber}/lyric-review`}
                   className="font-medium text-blue-700 underline dark:text-blue-400"
                 >
-                  Review lyrics for this page
+                  Review lyrics and staff text for this page
                 </a>{" "}
                 <span className="text-slate-500">
-                  Check the text read from the scan, confirm where each syllable
-                  goes, and download a score copy with the lyrics added.
+                  Check the lyrics and staff text (directions and dynamics) read from the scan,
+                  confirm where each goes, and add them to the score.
                 </span>
               </p>
             )}

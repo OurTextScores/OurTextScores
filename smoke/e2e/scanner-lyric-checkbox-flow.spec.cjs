@@ -62,7 +62,7 @@ test("ticking the lyrics box leads to lyrics added to the scan's score, and noth
     jobId = page.url().match(/scanner\/([0-9a-f-]{36})/)[1];
     await page.getByRole("button", { name: /Start scanning/ }).click();
     await page
-      .getByRole("link", { name: /Review lyrics for this page/ })
+      .getByRole("link", { name: /Review lyrics and staff text for this page/ })
       .click({ timeout: 600000 });
   } else {
     await page.goto(`/scanner/${jobId}/pages/1/lyric-review`);
@@ -72,19 +72,18 @@ test("ticking the lyrics box leads to lyrics added to the scan's score, and noth
   // Every card shows a text box under each recognised note (the proposal filled in, blanks elsewhere) and a lyric line.
   await expect(page.getByLabel(/^Text for note 1 of /).first()).toBeVisible();
   await page.getByRole("button", { name: "Accept all suggested rows" }).click();
-  const open = page.getByRole("button", { name: "Add accepted lyrics to the score" });
+  const open = page.getByRole("button", { name: "Add accepted lyrics and staff text to the score" });
   await expect(open).toBeEnabled({ timeout: 90000 }); // waits for the recognised note choices
   await open.click();
-  const save = page.getByRole("button", { name: "Add lyrics to the score" });
-  await expect(save).toBeDisabled(); // one explicit confirmation is required first
+  const save = page.getByRole("button", { name: "Add to the score" });
+  await expect(save).toBeEnabled(); // the list of what will be written is the review; no extra checkbox
   const listed = await page.locator("ol.list-decimal li").count();
   expect(listed).toBeGreaterThan(0);
-  await page.getByLabel(/I checked these syllables/).check();
   await save.click();
   await expect(page.getByText(new RegExp(`Added ${listed} lyric syllables`))).toBeVisible({
     timeout: 60000,
   });
-  await page.getByRole("link", { name: "View the score with lyrics" }).click();
+  await page.getByRole("link", { name: "View the score" }).click();
   await page.waitForURL(new RegExp(`/scanner/${jobId}$`));
 
   // The scan's score (job level) now carries the lyrics; the engine's own recognition output does not.

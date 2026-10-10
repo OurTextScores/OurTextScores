@@ -7,6 +7,7 @@ import DirectionsReview from "./directions-review";
 import {
   directionItems,
   directionPlan,
+  blankDirection,
   type DirectionDecision,
 } from "./direction-review-model";
 import {
@@ -107,6 +108,19 @@ export default function LyricCandidatesClient({
       return merged;
     });
 
+  // Directions and dynamics that can be accepted in one go: undecided, with a note and text already proposed.
+  const suggestedDirections = directionList.filter((item) => {
+    const d = directionDecisions[item.id] ?? blankDirection(item);
+    return (
+      d.state === "pending" &&
+      d.noteId !== null &&
+      (item.kind === "dynamic" ? d.mark : d.text).trim() !== ""
+    );
+  });
+
+  const directionCount = (state: "accept" | "exclude" | "pending") =>
+    directionList.filter((item) => (directionDecisions[item.id]?.state ?? "pending") === state).length;
+
   const accepted = items.filter(
     (c) => decisions[c.id]?.state === "accept",
   ).length;
@@ -136,10 +150,12 @@ export default function LyricCandidatesClient({
   return (
     <div>
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        Each row below was read from the scan. Check its text, the note each
-        syllable goes to (numbered lines on the picture) and its lyric line,
-        then Accept it, or Exclude a row that is not lyrics. Nothing changes
-        your score until you press &quot;Add accepted lyrics to the score&quot;.
+        Each row below was read from the scan: lyrics, then written directions
+        and dynamic marks (staff text). Check its text, the note it goes to
+        (numbered lines on the picture) and, for lyrics, its lyric line, then
+        Accept it, or Exclude a row that is not one. Nothing changes your
+        score until you press &quot;Add accepted lyrics and staff text to the
+        score&quot;.
       </p>
       <QuickCopy
         base={base}
@@ -147,26 +163,26 @@ export default function LyricCandidatesClient({
         fileStem={`${jobId.slice(0, 8)}-page-${pageNumber}`}
         placements={plan.placements}
         conflicts={plan.conflicts}
-        acceptedCount={accepted}
-        excludedCount={items.filter((c) => decisions[c.id]?.state === "exclude").length}
-        undecidedCount={items.filter((c) => (decisions[c.id]?.state ?? "pending") === "pending").length}
+        acceptedCount={accepted + directionCount("accept")}
+        excludedCount={items.filter((c) => decisions[c.id]?.state === "exclude").length + directionCount("exclude")}
+        undecidedCount={items.filter((c) => (decisions[c.id]?.state ?? "pending") === "pending").length + directionCount("pending")}
         leftOut={[...plan.leftOut, ...directionOutcome.leftOut]}
         directions={directionOutcome.directions}
         directionConflicts={directionOutcome.conflicts}
         acceptedDirections={directionOutcome.directions.length}
         jobHref={`/scanner/${encodeURIComponent(jobId)}`}
       />
-      {items.some(
+      {(items.some(
         (c) =>
           c.proposedLyric === true &&
           (decisions[c.id]?.state ?? "pending") === "pending" &&
           (decisions[c.id]?.text ?? c.initialText).trim() !== "",
-      ) && (
+      ) || suggestedDirections.length > 0) && (
         <p className="my-2">
           <button
             type="button"
             className="rounded border border-blue-600 px-3 py-1 text-sm text-blue-700"
-            onClick={() =>
+            onClick={() => {
               items
                 .filter(
                   (c) =>
@@ -174,13 +190,21 @@ export default function LyricCandidatesClient({
                     (decisions[c.id]?.state ?? "pending") === "pending" &&
                     (decisions[c.id]?.text ?? c.initialText).trim() !== "",
                 )
-                .forEach((c) => update(c.id, (x) => setState(x, "accept")))
-            }
+                .forEach((c) => update(c.id, (x) => setState(x, "accept")));
+              suggestedDirections.forEach((item) =>
+                updateDirection(item.id, {
+                  ...(directionDecisions[item.id] ?? blankDirection(item)),
+                  state: "accept",
+                }),
+              );
+            }}
           >
             Accept all suggested rows
           </button>{" "}
           <span className="text-xs text-slate-500">
-            Only rows marked as suggested lyrics; exclude any that are not.
+            Covers the lyrics the scanner suggests plus directions and dynamics
+            that already have a proposed note; exclude any that are not right.
+            Rows with no proposed note stay for you to place.
           </span>
         </p>
       )}

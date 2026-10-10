@@ -45,7 +45,6 @@ export default function QuickCopy({
   const [notes, setNotes] = useState<Record<string, NoteChoice>>({});
   const [sha, setSha] = useState("");
   const [open, setOpen] = useState(false);
-  const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState("");
   const [error, setError] = useState("");
@@ -73,7 +72,6 @@ export default function QuickCopy({
     "\n--\n" +
     directions.map((d) => `${d.candidateId}|${d.noteId}|${d.kind}|${d.text}|${d.placement}`).join("\n");
   useEffect(() => {
-    setChecked(false);
     setSaved("");
   }, [signature]);
 
@@ -174,7 +172,7 @@ export default function QuickCopy({
             href={jobHref}
             className="mt-2 inline-block rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
           >
-            View the score with lyrics
+            View the score
           </a>
           <p className="mt-2 text-xs text-slate-600">
             The preview and combined score rebuild in the background. Changing notes on this page later
@@ -189,7 +187,7 @@ export default function QuickCopy({
             onClick={() => setOpen(true)}
             className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
           >
-            Add accepted lyrics to the score
+            Add accepted lyrics and staff text to the score
           </button>
           <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
             {placements.length + directions.length > 0
@@ -202,8 +200,8 @@ export default function QuickCopy({
       ) : (
         <div className="mt-3">
           <p className="text-sm">
-            These syllables will be added to this page&apos;s score. Rows you excluded or left undecided add
-            nothing.
+            These lyrics and staff text will be added to this page&apos;s score. Rows you excluded or left undecided
+            add nothing.
           </p>
           <ol className="mt-2 max-h-72 list-decimal overflow-auto pl-6 text-sm">
             {placements.map((p, i) => {
@@ -237,27 +235,18 @@ export default function QuickCopy({
               Left out (no note chosen): {leftOut.join(", ")}.
             </p>
           )}
-          <label className="mt-3 flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={(e) => setChecked(e.target.checked)}
-              className="mt-1"
-            />
-            I checked these syllables, their lyric lines and their notes against the scan.
-          </label>
           <div className="mt-3 flex flex-wrap gap-3">
             <button
               type="button"
-              disabled={!checked || busy}
+              disabled={busy}
               onClick={saveToScore}
               className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
             >
-              {busy ? "Working…" : "Add lyrics to the score"}
+              {busy ? "Working…" : "Add to the score"}
             </button>
             <button
               type="button"
-              disabled={!checked || busy}
+              disabled={busy}
               onClick={downloadCopy}
               className="rounded border px-3 py-2 text-sm disabled:opacity-40"
             >

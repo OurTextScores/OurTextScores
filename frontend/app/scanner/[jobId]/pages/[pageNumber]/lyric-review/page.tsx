@@ -27,13 +27,13 @@ export default async function LyricCandidatesPage({
         ← Back to the scan
       </Link>
       <h1 className="mb-4 text-3xl font-bold text-slate-900 dark:text-slate-100">
-        Lyric review — page {pageNumber}
+        Lyric and staff text review — page {pageNumber}
       </h1>
       {enabled ? (
         <LyricCandidatesClient jobId={params.jobId} pageNumber={pageNumber} />
       ) : (
         <p className="text-slate-600 dark:text-slate-400">
-          Lyric review is not enabled for this deployment.
+          Lyric and staff text review is not enabled for this deployment.
         </p>
       )}
     </main>

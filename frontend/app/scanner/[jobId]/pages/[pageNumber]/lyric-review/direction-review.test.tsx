@@ -115,12 +115,11 @@ describe("directions in the review page", () => {
     const accepts = screen.getAllByRole("button", { name: "Accept" });
     accepts.forEach((button) => fireEvent.click(button));
     expect(screen.getByTestId("direction-state-d-1")).toHaveTextContent("accept");
-    const open = await screen.findByRole("button", { name: "Add accepted lyrics to the score" });
+    const open = await screen.findByRole("button", { name: "Add accepted lyrics and staff text to the score" });
     await waitFor(() => expect(open).toBeEnabled());
     fireEvent.click(open);
     expect(screen.getByRole("list", { name: "Directions to add" })).toHaveTextContent("cresc.");
-    fireEvent.click(screen.getByLabelText(/I checked these syllables/));
-    fireEvent.click(screen.getByRole("button", { name: "Add lyrics to the score" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to the score" }));
     expect(await screen.findByText(/and 2 directions or dynamics/)).toBeInTheDocument();
     const posted = JSON.parse(calls.find((c) => c.url.endsWith("/save-lyrics"))!.body!);
     expect(posted.placements).toEqual([]);
@@ -144,5 +143,38 @@ describe("directions in the review page", () => {
     expect(accept).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Note for p"), { target: { value: choices[0].noteId } });
     expect(accept).toBeEnabled();
+  });
+
+  it("Accept all suggested rows also accepts directions and dynamics that have a note, and leaves unplaced ones", async () => {
+    window.localStorage.clear();
+    const unplaced = row({ id: "u-1", text: "dim.", unplaced: true, anchor: { staffIndex: 0, printedLine: 1, placement: "above", syllables: [{ text: "dim.", measureInStaff: 0, noteOrdinalInMeasure: null, notePitch: null, position: "none", noteId: null, distancePx: null }] } });
+    const inv = inventory([row({}), row({ id: "d-2", text: "mf", kind: "dynamic", mark: "mf" }), unplaced]);
+    const calls: { url: string; body?: string }[] = [];
+    global.fetch = jest.fn(async (url: string, init?: { body?: string }) => {
+      calls.push({ url: String(url), body: init?.body });
+      if (String(url).endsWith("/notes"))
+        return { ok: true, json: async () => ({ musicXmlSha256: "sha", notes: choices.map((c) => ({ id: c.noteId, measureLabel: "1", noteOrdinal: c.ordinal, pitch: c.pitch })) }) };
+      if (String(url).endsWith("/save-lyrics")) return { ok: true, json: async () => ({ ok: true }) };
+      return { ok: true, json: async () => inv };
+    }) as unknown as typeof fetch;
+    render(<LyricCandidatesClient jobId="job-1" pageNumber={1} />);
+    await waitFor(() => screen.getByRole("button", { name: "Accept all suggested rows" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept all suggested rows" }));
+    expect(screen.getByTestId("direction-state-d-1")).toHaveTextContent("accept");
+    expect(screen.getByTestId("direction-state-d-2")).toHaveTextContent("accept");
+    expect(screen.getByTestId("direction-state-u-1")).toHaveTextContent("pending");
+    // The summary counts staff text too: 2 accepted directions/dynamics, the unplaced one still undecided.
+    expect(screen.getByTestId("review-summary")).toHaveTextContent("2 accepted · 0 excluded · 1 not decided yet");
+    const open = await screen.findByRole("button", { name: "Add accepted lyrics and staff text to the score" });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    // No separate "I checked" step: the save button is available straight away.
+    expect(screen.queryByLabelText(/I checked/)).not.toBeInTheDocument();
+    const save = screen.getByRole("button", { name: "Add to the score" });
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(await screen.findByText(/and 2 directions or dynamics/)).toBeInTheDocument();
+    const posted = JSON.parse(calls.find((c) => c.url.endsWith("/save-lyrics"))!.body!);
+    expect(posted.directions.map((x: { candidateId: string }) => x.candidateId)).toEqual(["d-1", "d-2"]);
   });
 });
