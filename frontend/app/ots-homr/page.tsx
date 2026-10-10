@@ -183,9 +183,10 @@ export default function OtsHomrPage() {
         <ul className="ml-5 list-disc space-y-2">
           <li>
             When a staff disagrees with the others about where bars fall, it
-            re-reads the doubtful rhythm and keeps the reading that fits best.
-            Over 200 pages this cut structural disagreements from 428 to 339,
-            improved 81 of 899 systems, and made{" "}
+            tries the other likely readings of its doubtful rhythms and keeps
+            the one that fits the other staves best. Over 200 pages this cut
+            structural disagreements from 428 to 339, improved 81 of 899
+            systems, and made{" "}
             <span className="font-semibold">no page worse</span>.
           </li>
           <li>
@@ -195,9 +196,12 @@ export default function OtsHomrPage() {
             staves in the system.
           </li>
           <li>
-            When one staff&rsquo;s barlines drift from the rest, it re-reads
-            that bar more carefully and accepts the new reading only if the
-            barlines then match exactly.
+            When one staff&rsquo;s barlines drift from the rest, it tries other
+            likely readings of that one bar, and keeps one only if its barlines
+            then match the other staves exactly. Checking against the other
+            staves is what makes this safe, and it is why this can&rsquo;t be
+            done on every staff from the start: each alternative means decoding
+            again, and a single staff cannot tell which reading is right.
           </li>
         </ul>
         <p>
