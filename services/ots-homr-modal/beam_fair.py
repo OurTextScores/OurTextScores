@@ -8,6 +8,7 @@ count matches. Reports pooled and per-page agreement.
 """
 
 import argparse
+from collections import Counter
 import json
 import os
 import statistics
@@ -50,9 +51,9 @@ def note_states(root):
     return parts
 
 
-def triples(readings, natives):
+def triples(readings, natives, keys=("ots", "homr")):
     """Per beamable native note in measures where all readings have the same note count: (native, ots, homr) beam states."""
-    parsed = {k: (parse_rhythm_parts(r), note_states(r)) for k, r in readings.items()}
+    parsed = {k: (parse_rhythm_parts(readings[k]), note_states(readings[k])) for k in keys}
     best = None
     for native_root in natives:
         n_rhythm, n_states = parse_rhythm_parts(native_root), note_states(native_root)
@@ -75,7 +76,7 @@ def triples(readings, natives):
             continue
         for index, (state, kind) in enumerate(native_measure):
             if kind in BEAMABLE:
-                out.append((state, rows["ots"][index][0], rows["homr"][index][0]))
+                out.append((state, rows[keys[0]][index][0], rows[keys[1]][index][0]))
     return out
 
 
@@ -107,6 +108,9 @@ def who_is_right(args):
     catalogue = yaml.safe_load((SOURCES / "data/scores.yaml").read_text())
     skip = set(filter(None, args.exclude.split(",")))
     totals = {"notes": 0, "agree": 0, "differ": 0, "ots right": 0, "homr right": 0, "neither": 0}
+    confusion = Counter()
+    hybrid = Counter()
+    cross = {"default right, OTS right": 0, "default right, OTS wrong": 0, "default wrong, OTS right": 0, "default wrong, OTS wrong": 0}
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         for line in args.jobs.read_text().splitlines():
@@ -116,15 +120,29 @@ def who_is_right(args):
                 continue
             natives = [root for _, root in native_candidates(score, catalogue)]
             raw = fetch(f"{args.api}/{job['jobId']}/artifacts/musicxml?page=1&engine=ots-homr", args.token)
-            readings = {"ots": roundtrip(args.node, args.modules, repair_musicxml(raw)[0], directory, "ots"), "homr": roundtrip(args.node, args.modules, (args.homr_xml / f"{page}.musicxml").read_bytes(), directory, "homr")}
-            for native, ots, homr in triples(readings, natives):
+            readings = {"ots": roundtrip(args.node, args.modules, repair_musicxml(raw)[0], directory, "ots"), "homr": roundtrip(args.node, args.modules, (args.homr_xml / f"{page}.musicxml").read_bytes(), directory, "homr"), "voice": roundtrip(args.node, args.modules, repair_musicxml(raw, beam_groups="voice")[0], directory, "voice")}
+            for (native, ots, homr), (_, voice, _) in zip(triples(readings, natives, ("ots", "homr")), triples(readings, natives, ("voice", "homr"))):
+                hybrid["voice-strip"] += voice == native
                 totals["notes"] += 1
+                hybrid["notes"] += 1
+                hybrid["default"] += homr == native
+                hybrid["OTS"] += ots == native
+                hybrid["OTS where it states a beam, else default"] += (homr if ots == "-" else ots) == native
+                if ots == "-":
+                    hybrid["OTS says no beam"] += 1
+                    hybrid["  ...and the printed score has no beam"] += native == "-"
+                if homr == native and ots != native:
+                    confusion[(native, ots)] += 1
+                cross[f"default {'right' if homr == native else 'wrong'}, OTS {'right' if ots == native else 'wrong'}"] += 1
                 if ots == homr:
                     totals["agree"] += 1
                     continue
                 totals["differ"] += 1
                 totals["ots right" if ots == native else "homr right" if homr == native else "neither"] += 1
     print(json.dumps(totals))
+    print(json.dumps(cross))
+    print(json.dumps(dict(hybrid)))
+    print(json.dumps([[f'native {a} -> OTS {b}', n] for (a, b), n in confusion.most_common(8)]))
 
 
 def main():

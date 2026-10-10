@@ -222,7 +222,7 @@ export default function OtsHomrPage() {
           directions, ties, slurs and horizontal spacing it reads from the page,
           so you can see and edit them as separate marks. Reading them is harder
           than reading the notes: on clean song pages its beaming matches the
-          printed score on 63% of beamable notes, a little below the 70% the
+          printed score on 56% of beamable notes, below the 64% the
           editor&rsquo;s own default beaming reaches on the same notes, so treat
           beams and slurs as suggestions and check them as you would any other
           mark.

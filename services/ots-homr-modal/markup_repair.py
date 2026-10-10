@@ -8,9 +8,11 @@ makes MuseScore stretch one beam across the page.
 Beams are removed from rests and from notes longer than an eighth, which cannot carry one. Optionally
 (`beam_groups=True`, off by default) a group (begin, continue*, end) is kept only if it is closed inside the measure,
 has at least two notes and its higher levels are well formed, and every other beamed note loses its beams so the editor
-beams it by default. Measured on held-out pages that group pass lowers agreement with the printed beaming (51.6% against
-68.4% for the file as written), because MuseScore reads the model's own groups better than it beams by default, so
-the provider leaves it off. It never invents a beam and never moves one.
+beams it by default. Measured on held-out pages (1,108 beamable notes, same notes for every reading, scored against the printed beaming):
+HOMR with MuseScore's default beaming 63.7%, OTS-HOMR as written 56.1%, with `beam_groups="voice"` 61.2% (a note with
+no <beam> in a file that has beams elsewhere is read as deliberately unbeamed, so the only way to hand a region back
+to the editor's default is to strip every beam of the voice in that measure), with True (drop invalid groups only) worse
+than as written. None beats the plain default on Lieder pages, and the provider leaves the group pass off. It never invents a beam and never moves one.
 
 Paired tremolos (`<tremolo type="start">` ... `<tremolo type="stop">`) draw one slanted bar between two notes, so a
 pair is kept only when both marks sit on consecutive notes of the same voice in the same measure. A `start` whose
@@ -85,6 +87,9 @@ def _levels_well_formed(group):
 
 
 def repair_measure(measure, stats, groups=False):
+    """groups: False leaves beam groups alone; True drops each invalid group's beams; \"voice\" strips every beam of a
+    voice in any measure holding an invalid group, so MuseScore beams that voice-measure by default (a note with no
+    <beam> in a file that has beams elsewhere is read as deliberately unbeamed, not as 'beam it for me')."""
     for events in _events(measure).values():
         # 1. beams cannot sit on rests or on notes longer than an eighth
         for event in events:
@@ -114,6 +119,12 @@ def repair_measure(measure, stats, groups=False):
                 group = None  # a stray level-1 state (hook or orphan) ends any open group
             elif event[0].find("rest") is None and state is None:
                 group = None
+        if groups == "voice":
+            if any(id(event) not in keep for event in beamed):
+                for event in beamed:
+                    _strip(event)
+                stats["voice-measures stripped for default beaming"] += 1
+                continue
         for event in beamed:
             if id(event) not in keep:
                 _strip(event)
