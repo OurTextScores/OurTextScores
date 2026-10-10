@@ -246,10 +246,6 @@ export default function OtsHomrPage() {
             offered, and about two in three of the offered ones landed in the
             right measure by a strict check against the encoded score.
           </li>
-          <li>
-            On pages with no lyrics (string quartets), it suggested a lyric on 2
-            of 41 pages, and neither was a word.
-          </li>
         </ul>
         <p>
           Treat it as a first pass: it saves typing the lyrics and many of the
