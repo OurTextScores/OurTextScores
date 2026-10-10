@@ -50,6 +50,35 @@ def note_states(root):
     return parts
 
 
+def triples(readings, natives):
+    """Per beamable native note in measures where all readings have the same note count: (native, ots, homr) beam states."""
+    parsed = {k: (parse_rhythm_parts(r), note_states(r)) for k, r in readings.items()}
+    best = None
+    for native_root in natives:
+        n_rhythm, n_states = parse_rhythm_parts(native_root), note_states(native_root)
+        for j, native in enumerate(n_rhythm):
+            found = {}
+            for key, (rhythm, states) in parsed.items():
+                for i, part in enumerate(rhythm):
+                    start, score = align(part, native)
+                    if score >= 0.7 and (key not in found or score > found[key][0]):
+                        found[key] = (score, states[i], start)
+            if len(found) == len(parsed) and (best is None or sum(v[0] for v in found.values()) > best[0]):
+                best = (sum(v[0] for v in found.values()), found, n_states[j])
+    if best is None:
+        return []
+    _, found, theirs = best
+    out = []
+    for k, native_measure in enumerate(theirs):
+        rows = {key: (val[1][k - val[2]] if 0 <= k - val[2] < len(val[1]) else None) for key, val in found.items()}
+        if any(v is None for v in rows.values()) or any(len(v) != len(native_measure) for v in rows.values()):
+            continue
+        for index, (state, kind) in enumerate(native_measure):
+            if kind in BEAMABLE:
+                out.append((state, rows["ots"][index][0], rows["homr"][index][0]))
+    return out
+
+
 def agreement(root, natives):
     rhythm, states = parse_rhythm_parts(root), note_states(root)
     best = None
@@ -74,6 +103,30 @@ def agreement(root, natives):
     return total, agree
 
 
+def who_is_right(args):
+    catalogue = yaml.safe_load((SOURCES / "data/scores.yaml").read_text())
+    skip = set(filter(None, args.exclude.split(",")))
+    totals = {"notes": 0, "agree": 0, "differ": 0, "ots right": 0, "homr right": 0, "neither": 0}
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        for line in args.jobs.read_text().splitlines():
+            job = json.loads(line)
+            page, score = Path(job["image"]).stem, Path(job["image"]).parent.name
+            if page in skip or not (args.homr_xml / f"{page}.musicxml").exists():
+                continue
+            natives = [root for _, root in native_candidates(score, catalogue)]
+            raw = fetch(f"{args.api}/{job['jobId']}/artifacts/musicxml?page=1&engine=ots-homr", args.token)
+            readings = {"ots": roundtrip(args.node, args.modules, repair_musicxml(raw)[0], directory, "ots"), "homr": roundtrip(args.node, args.modules, (args.homr_xml / f"{page}.musicxml").read_bytes(), directory, "homr")}
+            for native, ots, homr in triples(readings, natives):
+                totals["notes"] += 1
+                if ots == homr:
+                    totals["agree"] += 1
+                    continue
+                totals["differ"] += 1
+                totals["ots right" if ots == native else "homr right" if homr == native else "neither"] += 1
+    print(json.dumps(totals))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jobs", type=Path, required=True)
@@ -84,7 +137,10 @@ def main():
     parser.add_argument("--token", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--api", default="http://localhost:4000/api/scanner/jobs")
+    parser.add_argument("--who-is-right", action="store_true")
     args = parser.parse_args()
+    if args.who_is_right:
+        return who_is_right(args)
     catalogue = yaml.safe_load((SOURCES / "data/scores.yaml").read_text())
     skip = set(filter(None, args.exclude.split(",")))
     rows = []
