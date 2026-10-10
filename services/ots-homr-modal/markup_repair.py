@@ -5,24 +5,30 @@ model predicts every note on its own, so a noisy prediction becomes markup MuseS
 or on a quarter or longer note, a `begin` that never gets an `end`, an `end` with no `begin`. An unclosed `begin`
 makes MuseScore stretch one beam across the page.
 
-The repair works per voice and measure on the first beam level, which defines the groups:
-  * beams are removed from rests and from notes longer than an eighth;
-  * a group (begin, continue*, end) is kept only if it is closed inside the measure, has at least two notes, and every
-    higher beam level inside it is itself well formed (begin/continue/end runs, or a single hook on a lone note);
-  * every other beamed note loses all its beams, so the editor beams it by its own default (absence is how MusicXML
-    says "beam this automatically").
-It never invents a beam and never moves one.
+Beams are removed from rests and from notes longer than an eighth, which cannot carry one. Optionally
+(`beam_groups=True`, off by default) a group (begin, continue*, end) is kept only if it is closed inside the measure,
+has at least two notes and its higher levels are well formed, and every other beamed note loses its beams so the editor
+beams it by default. Measured on held-out pages that group pass lowers agreement with the printed beaming (51.6% against
+68.4% for the file as written), because MuseScore reads the model's own groups better than it beams by default, so
+the provider leaves it off. It never invents a beam and never moves one.
 
 Paired tremolos (`<tremolo type="start">` ... `<tremolo type="stop">`) draw one slanted bar between two notes, so a
 pair is kept only when both marks sit on consecutive notes of the same voice in the same measure. A `start` whose
 `stop` is in another measure, never comes, or comes with no `start` makes MuseScore draw one enormous slanted bar
 across the page, so every mark of such a pair is removed. HOMR itself writes such pairs, so this applies to both
 engines' output.
+
+Slurs are paired per staff in time order (OTS-HOMR and HOMR number slurs per staff, so a piano's two staves collide
+when numbers are read the MusicXML way). A `stop` with no open `start`, a `start` overwritten or never closed, and a pair
+spanning more than MAX_SLUR_MEASURES measures are removed; the remaining pairs are renumbered so no two overlapping
+slurs of a part share a number.
 """
 
 import xml.etree.ElementTree as ET
 from collections import Counter
+from fractions import Fraction
 
+MAX_SLUR_MEASURES = 4
 BEAMABLE = {"eighth", "16th", "32nd", "64th", "128th", "256th"}
 
 
@@ -78,7 +84,7 @@ def _levels_well_formed(group):
     return True
 
 
-def repair_measure(measure, stats):
+def repair_measure(measure, stats, groups=False):
     for events in _events(measure).values():
         # 1. beams cannot sit on rests or on notes longer than an eighth
         for event in events:
@@ -88,6 +94,8 @@ def repair_measure(measure, stats):
             if first.find("rest") is not None or first.findtext("type") not in BEAMABLE:
                 _strip(event)
                 stats["removed from rest or long note"] += 1
+        if not groups:
+            continue
         # 2. keep only closed, well-formed level-1 groups
         beamed = [e for e in events if _beam_states(e[0])]
         group, keep = None, set()
@@ -158,13 +166,98 @@ def repair_tremolos(part, stats):
             stats["tremolo pairs removed"] += 1
 
 
-def repair_musicxml(data: bytes):
-    """Return (repaired MusicXML bytes, Counter of what was done)."""
+def _timed_events(part):
+    """(measure, onset, staff, [notes of one chord]) for every non-grace note event of a part, in time order."""
+    events = []
+    for m_index, measure in enumerate(part.findall("measure")):
+        divisions = 1
+        cursor = previous = Fraction(0)
+        for element in measure:
+            if element.tag == "attributes" and element.findtext("divisions"):
+                divisions = int(element.findtext("divisions"))
+            elif element.tag == "backup":
+                cursor -= Fraction(int(element.findtext("duration") or 0), divisions)
+            elif element.tag == "forward":
+                cursor += Fraction(int(element.findtext("duration") or 0), divisions)
+            elif element.tag == "note":
+                chord = element.find("chord") is not None
+                onset = previous if chord else cursor
+                if chord and events and events[-1][0] == m_index and events[-1][1] == onset:
+                    events[-1][3].append(element)
+                else:
+                    events.append((m_index, onset, element.findtext("staff") or "1", [element]))
+                if not chord:
+                    previous = onset
+                    cursor += Fraction(int(element.findtext("duration") or 0), divisions)
+    events.sort(key=lambda e: (e[0], e[1]))
+    return events
+
+
+def _slur_elements(event, kind):
+    return [slur for note in event for slur in note.iter("slur") if slur.get("type") == kind]
+
+
+def _remove_slurs(event, kind=None):
+    for note in event:
+        for notations in note.findall("notations"):
+            for slur in list(notations.findall("slur")):
+                if kind is None or slur.get("type") == kind:
+                    notations.remove(slur)
+            if len(notations) == 0:
+                note.remove(notations)
+
+
+def repair_slurs(part, stats):
+    """Pair slurs per staff in time order; drop orphans and overlong spans; renumber the survivors."""
+    events = _timed_events(part)
+    open_by_staff = {}
+    pairs = []  # (start index, stop index) into `events`
+    for index, (m_index, onset, staff, notes) in enumerate(events):
+        stops = _slur_elements(notes, "stop")
+        starts = _slur_elements(notes, "start")
+        if stops:
+            if staff in open_by_staff:
+                pairs.append((open_by_staff.pop(staff), index))
+            else:
+                _remove_slurs(notes, "stop")
+                stats["slur stops removed (no start)"] += 1
+        if starts:
+            if staff in open_by_staff:
+                _remove_slurs(events[open_by_staff[staff]][3], "start")
+                stats["slur starts removed (overwritten)"] += 1
+            open_by_staff[staff] = index
+    for staff, index in open_by_staff.items():
+        _remove_slurs(events[index][3], "start")
+        stats["slur starts removed (never closed)"] += 1
+    kept = []
+    for a, b in pairs:
+        if events[b][0] - events[a][0] > MAX_SLUR_MEASURES:
+            _remove_slurs(events[a][3], "start")
+            _remove_slurs(events[b][3], "stop")
+            stats["slurs removed (span too long)"] += 1
+        else:
+            kept.append((a, b))
+    kept.sort()
+    active = []  # (stop index, number)
+    for a, b in kept:
+        active = [(stop, num) for stop, num in active if stop >= a]
+        used = {num for _, num in active}
+        number = next(n for n in range(1, 99) if n not in used)
+        active.append((b, number))
+        for slur in _slur_elements(events[a][3], "start") + _slur_elements(events[b][3], "stop"):
+            slur.set("number", str(number))
+        stats["slurs kept"] += 1
+
+
+def repair_musicxml(data: bytes, beam_groups=False):
+    """Return (repaired MusicXML bytes, Counter of what was done). `beam_groups=True` also drops every beam group that is not closed and well formed; it is off by default because
+    MuseScore reads the model's own groups better than it beams the dropped notes itself (see beam_fair.py)."""
     stats = Counter()
     tree = ET.ElementTree(ET.fromstring(data))
     for part in tree.getroot().iter("part"):
         for measure in part.findall("measure"):
-            repair_measure(measure, stats)
+            repair_measure(measure, stats, beam_groups)
         repair_tremolos(part, stats)
+        repair_slurs(part, stats)
     out = ET.tostring(tree.getroot(), encoding="utf-8", xml_declaration=True)
     return out, stats

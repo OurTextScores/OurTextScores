@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from homr_core import MODEL_NAME, PatchedHomrCore, install_runtime_artifacts
+from homr_core import MODEL_NAME, PatchedHomrCore, install_runtime_artifacts, repaired_musicxml
 
 
 class FakeHomrEngine:
@@ -150,3 +150,18 @@ class HomrCoreTest(unittest.TestCase):
             core.transcribe_both(b"page", "image/png", False)
             self.assertEqual([call[3] for call in plain.calls], [profile, None])
             self.assertEqual([call[3] for call in heads.calls], [profile, None])
+
+
+class RepairedMusicXmlTest(unittest.TestCase):
+    BROKEN = (
+        b"<score-partwise><part id='P1'><measure number='1'><note><pitch><step>C</step><octave>4</octave></pitch>"
+        b"<duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff><beam number='1'>begin</beam></note>"
+        b"</measure></part></score-partwise>"
+    )
+
+    def test_invalid_beams_are_removed(self):
+        self.assertNotIn(b"<beam", repaired_musicxml(self.BROKEN))
+
+    def test_anything_unparseable_passes_through_unchanged(self):
+        self.assertEqual(repaired_musicxml(b"regenerated"), b"regenerated")
+        self.assertEqual(repaired_musicxml(None), None)

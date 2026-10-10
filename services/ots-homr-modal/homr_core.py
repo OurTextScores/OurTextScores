@@ -4,14 +4,29 @@ from __future__ import annotations
 
 import os
 import shutil
+import xml.etree.ElementTree as ElementTree
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from markup_repair import repair_musicxml
 from pins import CORE_SHA256, TRAINING_REVISION
 
 MODEL_NAME = f"pytorch_model_464-{TRAINING_REVISION}-rareNum"
 SEGMENTATION_SHA256 = "60f495496cb41473c0521d0811d8f44b9d5cff892d287974a8aebb3eaee2fa83"
+
+
+def repaired_musicxml(data: Any) -> Any:
+    """Return the page MusicXML with structurally invalid beam, tremolo and slur markup removed (see markup_repair).
+
+    Fails open: anything that is not parseable MusicXML, or any repair error, returns the bytes unchanged, because a
+    repair problem must never cost a page its result."""
+    if not isinstance(data, bytes):
+        return data
+    try:
+        return repair_musicxml(data)[0]
+    except (ElementTree.ParseError, ValueError, StopIteration):
+        return data
 
 
 def install_runtime_artifacts(artifacts: Any, *, homr_root: Path) -> None:
@@ -99,18 +114,21 @@ class PatchedHomrCore:
         suffix = ".png" if content_type == "image/png" else ".jpg"
         # Both candidates are first-class outputs. Selection belongs to the
         # consuming Scanner job, so changing it never repeats GPU inference.
-        return {
+        candidates = {
             "core": self._plain.transcribe(page, suffix, detect_title, score_profile),
             "additional-heads": self._with_heads.transcribe(
                 page, suffix, detect_title, score_profile
             ),
         }
+        for candidate in candidates.values():
+            candidate["musicxml"] = repaired_musicxml(candidate.get("musicxml"))
+        return candidates
 
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes:
         result = self._plain.regenerate(staffs, title)
         if not result.get("ok") or not isinstance(result.get("musicxml"), bytes):
             raise RuntimeError("OTS-HOMR could not regenerate reviewed MusicXML")
-        return result["musicxml"]
+        return repaired_musicxml(result["musicxml"])
 
     def materialize_structured(
         self,
@@ -124,7 +142,7 @@ class PatchedHomrCore:
         )
         if not result.get("ok") or not isinstance(result.get("musicxml"), bytes):
             raise RuntimeError("OTS-HOMR could not materialize structured MusicXML")
-        return result["musicxml"]
+        return repaired_musicxml(result["musicxml"])
 
     def shutdown(self) -> None:
         self._plain.shutdown()

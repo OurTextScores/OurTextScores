@@ -293,6 +293,25 @@ reserved for detector and HTTP overhead.
 
 ---
 
+### 4b. v9: MusicXML markup repair (not yet deployed)
+
+`ots-ots-homr-provider-v9` runs every page MusicXML (both candidates, `regenerate`, `materialize-structured`) through
+`services/ots-homr-modal/markup_repair.py` before it leaves the provider, failing open (anything unparseable passes
+through unchanged). It removes only structurally impossible markup and never adds or moves any:
+
+- beams on rests and on notes longer than an eighth;
+- paired tremolo marks that are not two consecutive notes of one voice in one measure (HOMR writes such pairs too;
+  MuseScore draws each as one enormous slanted bar);
+- slur marks that do not pair per staff in time order (stops with no start, starts overwritten or never closed, pairs
+  spanning more than four measures), with the survivors renumbered so overlapping slurs never share a number.
+
+Whole beam groups are deliberately left alone (`beam_groups=False`): measured on the held-out pages, dropping the groups
+the validator calls invalid lowers agreement with the printed beaming from 68.4% to 51.6% of beamable notes, because
+MuseScore reads the model's own groups better than it beams by default. Evidence scripts: `beam_fair.py`,
+`slur_vs_native.py`; slurs found in the encoded score rise from 78% to 93% (HOMR 93%).
+Deploying v9 means `modal deploy modal_app.py`, then `SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION=ots-ots-homr-provider-v9`
+on the scanner. `markup_repair.py` does not enter the review-text identity (it never touches text).
+
 ## 5. Create a dedicated proxy token
 
 ```bash
