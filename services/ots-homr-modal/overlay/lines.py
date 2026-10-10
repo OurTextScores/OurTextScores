@@ -52,7 +52,7 @@ def widen_page(root):
         ET.SubElement(margins, f"{side}-margin").text = "80"
 
 
-def excerpt(root, system):
+def excerpt(root, system, fixed_range=None):
     """A copy of the score holding only system number `system` of every part."""
     result = copy.deepcopy(root)
     widen_page(result)
@@ -60,7 +60,10 @@ def excerpt(root, system):
         ranges = system_ranges(part)
         measures = part.findall("measure")
         state = {}
-        a, b = ranges[system] if system < len(ranges) else (len(measures), len(measures))
+        if fixed_range is not None:
+            a, b = fixed_range
+        else:
+            a, b = ranges[system] if system < len(ranges) else (len(measures), len(measures))
         for i, measure in enumerate(measures):
             all_attrs = measure.findall("attributes")
             if i < a:
@@ -118,3 +121,8 @@ def fetch_raster(job_id, token, api="http://localhost:4000/api/scanner/jobs"):
     request = urllib.request.Request(f"{api}/{job_id}/pages/1/lyric-candidates/scan", headers={"Authorization": f"Bearer {token}"})
     with urllib.request.urlopen(request, timeout=120) as response:
         return response.read()
+
+
+def write_range_excerpt(source_root, start, end, path):
+    """Excerpt of measures [start, end) of every part, standing alone."""
+    ET.ElementTree(excerpt(source_root, 0, fixed_range=(start, end))).write(path, encoding="utf-8", xml_declaration=True)
