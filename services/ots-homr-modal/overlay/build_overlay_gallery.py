@@ -53,7 +53,7 @@ def side(layout, placed, svg):
     return {"svg": svg, "width": layout["width"], "height": layout["height"], "content": content_box(layout), **placed}
 
 
-def build_case(node, modules, case_id, title, left_xml, right_xml, mode, out_dir, normalise, job):
+def build_case(node, modules, case_id, title, left_xml, right_xml, mode, out_dir, normalise, job, only=None):
     case_dir = out_dir / case_id
     case_dir.mkdir(parents=True, exist_ok=True)
     left_cuts = write_excerpts(left_xml, case_dir, "left")
@@ -74,6 +74,8 @@ def build_case(node, modules, case_id, title, left_xml, right_xml, mode, out_dir
                 scans.append({"src": f"{case_id}/{name}", "width": int(crop.shape[1]), "height": int(crop.shape[0])})
     rows, totals, totals_left = [], {}, {}
     for index, (lcut, rcut) in enumerate(zip(left_cuts, right_cuts), 1):
+        if only is not None and index not in only:
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             lbase, rbase = Path(tmp) / "left", Path(tmp) / "right"
             lx = render(node, lcut, lbase, modules, normalise)
@@ -87,6 +89,7 @@ def build_case(node, modules, case_id, title, left_xml, right_xml, mode, out_dir
             totals[kind] = totals.get(kind, 0) + n
         rows.append(
             {
+                "line": index,
                 "scan": scans[index - 1] if scans else None,
                 "left": side(llay, result["left"], f"{case_id}/L{index}-left.svg"),
                 "right": side(rlay, result["right"], f"{case_id}/L{index}-right.svg"),
