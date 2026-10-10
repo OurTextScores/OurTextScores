@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from markup_repair import repair_musicxml
 from engine_vs_native import parse_rhythm_parts
 from score_direction_placement import SOURCES, align, fetch, native_candidates
 
@@ -60,6 +61,7 @@ def main():
     parser.add_argument("--jobs", type=Path, required=True)
     parser.add_argument("--upstream-autobeamed", type=Path, required=True, help="HOMR output after MuseScore default beaming")
     parser.add_argument("--exclude", default="")
+    parser.add_argument("--repair", action="store_true", help="apply markup_repair to OTS-HOMR output first")
     parser.add_argument("--token", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--api", default="http://localhost:4000/api/scanner/jobs")
@@ -73,7 +75,10 @@ def main():
         if page in skip:
             continue
         natives = [root for _, root in native_candidates(score, catalogue)]
-        ours = agreement(ET.fromstring(fetch(f"{args.api}/{job['jobId']}/artifacts/musicxml?page=1&engine=ots-homr", args.token)), natives)
+        raw = fetch(f"{args.api}/{job['jobId']}/artifacts/musicxml?page=1&engine=ots-homr", args.token)
+        if args.repair:
+            raw, _ = repair_musicxml(raw)
+        ours = agreement(ET.fromstring(raw), natives)
         file = args.upstream_autobeamed / f"{page}.xml"
         theirs = agreement(ET.parse(file).getroot(), natives) if file.exists() else None
         rows.append({"page": page, "ots": ours, "homrDefault": theirs})
