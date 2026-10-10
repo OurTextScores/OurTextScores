@@ -17,15 +17,19 @@ const { XMLParser } = require("../../backend/node_modules/fast-xml-parser");
  */
 const parser = () =>
   new XMLParser({ preserveOrder: true, ignoreAttributes: false, parseTagValue: false });
+// What a review adds: lyrics, and the directions/dynamics it writes (marked with an ots-review id).
+const isReviewDirection = (n) =>
+  "direction" in n && String(n[":@"]?.["@_id"] ?? "").startsWith("ots-review-");
 const strip = (nodes) =>
   nodes
-    .filter((n) => !("lyric" in n))
+    .filter((n) => !("lyric" in n) && !isReviewDirection(n))
     .map((n) =>
       Object.fromEntries(
         Object.entries(n).map(([k, v]) => [k, Array.isArray(v) ? strip(v) : v]),
       ),
     );
 const lyricCount = (xml) => (xml.match(/<lyric[ >]/g) || []).length;
+const reviewDirectionCount = (xml) => (xml.match(/<direction [^>]*id="ots-review-/g) || []).length;
 
 test("ticking the lyrics box leads to lyrics added to the scan's score, and nothing else changed", async ({
   page,
@@ -71,14 +75,21 @@ test("ticking the lyrics box leads to lyrics added to the scan's score, and noth
   await expect(page.locator("article").first()).toBeVisible({ timeout: 180000 });
   // Every card shows a text box under each recognised note (the proposal filled in, blanks elsewhere) and a lyric line.
   await expect(page.getByLabel(/^Text for note 1 of /).first()).toBeVisible();
+  // The score as it stands before this save (a re-run starts from a score a previous save already carries).
+  const before = await (
+    await page.request.get(`/api/proxy/scanner/jobs/${jobId}/artifacts/musicxml?page=1`)
+  ).text();
   await page.getByRole("button", { name: "Accept all suggested rows" }).click();
   const open = page.getByRole("button", { name: "Add accepted lyrics and staff text to the score" });
   await expect(open).toBeEnabled({ timeout: 90000 }); // waits for the recognised note choices
   await open.click();
   const save = page.getByRole("button", { name: "Add to the score" });
   await expect(save).toBeEnabled(); // the list of what will be written is the review; no extra checkbox
-  const listed = await page.locator("ol.list-decimal li").count();
+  // Two lists in the confirmation: the lyric syllables, and (aria-labelled) the directions and dynamics.
+  const listed = await page.locator("ol.list-decimal:not([aria-label]) li").count();
+  const acceptedStaffText = await page.locator('ol[aria-label="Directions to add"] li').count();
   expect(listed).toBeGreaterThan(0);
+  expect(acceptedStaffText).toBeGreaterThan(0);
   await save.click();
   await expect(page.getByText(new RegExp(`Added ${listed} lyric syllables`))).toBeVisible({
     timeout: 60000,
@@ -86,16 +97,21 @@ test("ticking the lyrics box leads to lyrics added to the scan's score, and noth
   await page.getByRole("link", { name: "View the score" }).click();
   await page.waitForURL(new RegExp(`/scanner/${jobId}$`));
 
-  // The scan's score (job level) now carries the lyrics; the engine's own recognition output does not.
+  // The scan's score (job level) now carries the lyrics and staff text; so does the engine's download, which serves
+  // the reviewed copy (a save must show up in every download of the page).
   const recognised = await (
     await page.request.get(`/api/proxy/scanner/jobs/${jobId}/artifacts/musicxml?page=1&engine=ots-homr`)
   ).text();
   const scanScore = await (
     await page.request.get(`/api/proxy/scanner/jobs/${jobId}/artifacts/musicxml?page=1`)
   ).text();
-  expect(lyricCount(recognised)).toBe(0);
   expect(lyricCount(scanScore)).toBe(listed);
+  expect(lyricCount(recognised)).toBe(listed);
+  // Accept all also took the directions and dynamics that had a proposed note, and the save wrote them.
+  expect(reviewDirectionCount(scanScore)).toBe(acceptedStaffText);
+  expect(reviewDirectionCount(recognised)).toBe(acceptedStaffText);
+  // The only difference from the score before the save is what a review adds (saving again replaces, not stacks).
   expect(JSON.stringify(strip(parser().parse(scanScore)))).toBe(
-    JSON.stringify(strip(parser().parse(recognised))),
+    JSON.stringify(strip(parser().parse(before))),
   );
 });
