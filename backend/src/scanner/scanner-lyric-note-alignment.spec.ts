@@ -19,6 +19,40 @@ const xml: XmlNote[] = [
 ];
 
 describe('alignTokensToNotes', () => {
+  it('mirrors the writer when the rhythm and pitch heads disagree', () => {
+    const decoded = [{ ...staves[0], tokens: [
+      ['rest_4', 'C4'], ['note_4', '_'], ['note_4', '.']
+    ] }];
+    const written: XmlNote[] = [
+      { partId: 'P1', measure: 1, ordinal: 1, rest: false, pitch: 'C4' },
+      { partId: 'P1', measure: 1, ordinal: 2, rest: true, pitch: null },
+      { partId: 'P1', measure: 1, ordinal: 3, rest: true, pitch: null }
+    ];
+    const map = alignTokensToNotes(decoded, written, 0);
+    expect(map.get('0:0')).toBe('["P1",1,1]');
+    expect(map.get('0:1')).toBe('["P1",1,2]');
+    expect(map.get('0:2')).toBe('["P1",1,3]');
+    expect(() => alignTokensToNotes(decoded, [
+      { ...written[0], rest: true, pitch: null }, ...written.slice(1)
+    ], 0)).toThrow(/kinds differ/);
+  });
+
+  it('does not swap simultaneous pitched and pitchless tokens', () => {
+    const decoded = [{ ...staves[0], tokens: [
+      ...Array.from({ length: 60 }, () => ['note_4', 'D4']),
+      ['rest_8', 'C5'], ['chord'], ['note_8', '_']
+    ] }];
+    const written: XmlNote[] = [
+      ...Array.from({ length: 60 }, (_, index) => ({
+        partId: 'P1', measure: 1, ordinal: index + 1, rest: false, pitch: 'D4'
+      })),
+      { partId: 'P1', measure: 1, ordinal: 61, rest: true, pitch: null },
+      { partId: 'P1', measure: 1, ordinal: 62, rest: false, pitch: 'C5' }
+    ];
+    const map = alignTokensToNotes(decoded, written, 0);
+    expect(map.get('0:60')).toBe('["P1",1,62]');
+    expect(map.get('0:62')).toBe('["P1",1,61]');
+  });
   it('maps each note-like token to the exact XML note across systems', () => {
     const map = alignTokensToNotes(staves, xml, 0);
     expect(map.get('0:1')).toBe('["P1",1,1]');

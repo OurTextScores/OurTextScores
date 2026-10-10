@@ -46,12 +46,15 @@ export function alignTokensToNotes(
         return;
       }
       if (!NOTE_LIKE.test(name)) return;
-      const rest = name.startsWith('rest');
+      // The XML writer uses the pitch head to choose <pitch> versus <rest>,
+      // including inconsistent rhythm/pitch predictions. Mirror that choice.
+      const pitch = String(token[1] ?? '');
+      const rest = pitch === '_' || pitch === '.' || (!pitch && name.startsWith('rest'));
       const entry = {
         staff: staff.index,
         index,
         rest,
-        pitch: rest ? null : String(token[1] ?? '')
+        pitch: rest ? null : pitch
       };
       if (joined && runs.length > 0) runs[runs.length - 1].push(entry);
       else runs.push([entry]);

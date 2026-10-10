@@ -289,6 +289,36 @@ class ProviderTest(unittest.TestCase):
             self.assertNotIn("textDetector", body["engine"])
             self.assertEqual(len(engine.calls), 1)
 
+    def test_fusion_preserves_classified_recognition_errors_without_private_detail(self):
+        for stage, code, status, expected in [
+            ("recognition", "no_staff_detected", 422, "no_staff_detected"),
+            ("recognition", "generation_failed", 422, "generation_failed"),
+            ("recognition", "inference_timeout", 504, "inference_timeout"),
+            ("lyrics-detector", "no_staff_detected", 500, "fusion_failed"),
+            ("recognition", "unknown_private_error", 500, "fusion_failed"),
+        ]:
+            class FailingFusionEngine(FusionEngine):
+                def transcribe_fusion(self, *args, **kwargs):
+                    cause = RuntimeError("private recognition detail")
+                    cause.code = code
+                    wrapper = RuntimeError("private wrapper detail")
+                    wrapper.code = "fusion_failed"
+                    wrapper.stage = stage
+                    raise wrapper from cause
+
+            with self.subTest(stage=stage, code=code), TestClient(
+                create_provider_app(engine=FailingFusionEngine(), service_revision="service")
+            ) as client:
+                response = client.post(
+                    "/v1/scan-page",
+                    headers={"Idempotency-Key": "e" * 64},
+                    files={"page": ("page.png", b"\x89PNG\r\n\x1a\npage", "image/png")},
+                    data={"textPolicy": '{"mode":"fusion-v1"}'},
+                )
+                self.assertEqual(response.status_code, status, response.text)
+                self.assertEqual(response.json()["error"]["code"], expected)
+                self.assertNotIn("private", response.text)
+
     def test_rejects_image_bytes_that_do_not_match_content_type(self):
         with TestClient(
             create_provider_app(engine=FakeEngine(), service_revision="service")

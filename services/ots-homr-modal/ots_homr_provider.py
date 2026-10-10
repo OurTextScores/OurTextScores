@@ -315,6 +315,19 @@ def create_provider_app(
             core_result = result["core"]
             heads_result = result["additional-heads"]
         except Exception as error:
+            # Fusion wraps recognition exceptions to identify their stage. Keep
+            # classified core failures (e.g. a cover with no staves) deterministic
+            # rather than turning them into a retryable generic fusion failure.
+            recognition_messages = {
+                "invalid_image": "The page image could not be decoded",
+                "no_staff_detected": "No staff lines were detected on this page",
+                "generation_failed": "The scanner could not generate a score for this page",
+                "inference_timeout": "HOMR exceeded the page time limit",
+            }
+            if fusion and getattr(error, "stage", None) == "recognition":
+                cause_code = getattr(error.__cause__, "code", None)
+                if cause_code in recognition_messages:
+                    return _error(request_id, cause_code, recognition_messages[cause_code])
             code = str(getattr(error, "code", "inference_failed"))
             if code not in ERROR_STATUS:
                 code = "inference_failed"
