@@ -295,8 +295,10 @@ export default function OtsHomrPage() {
           226 unavailable historical replay rows; it is not an exact
           reconstruction of the old training run. These are previously inspected
           validation sets, not a fresh test set, and the results measure staff
-          recognition rather than complete page or MusicXML correctness. OSSQ
-          contains only nine scores.
+          recognition rather than complete page or MusicXML correctness. The
+          OSSQ validation set is nine scores (792 staves); the scanned corpus it
+          comes from has 84 scores with corrected staves, so the quartet figures
+          rest on a small slice of it.
         </p>
         <p>
           <a
