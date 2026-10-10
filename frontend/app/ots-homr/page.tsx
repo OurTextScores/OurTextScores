@@ -263,8 +263,8 @@ export default function OtsHomrPage() {
           directions and dynamics add to a scanned page.
         </p>
         <p className="max-w-5xl text-slate-600 dark:text-slate-400">
-          The comparisons open in the score editor, the same one the scanner
-          review tools use, so you can page through a system at a time.
+          Each system is drawn once per reading, with a box on every note that
+          differs; click a count to hide that kind of difference.
         </p>
         {GALLERIES.map((gallery) => (
           /* Full-bleed: `50% - 50vw` is measured from this element's own centred
