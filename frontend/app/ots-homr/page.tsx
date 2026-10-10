@@ -256,11 +256,10 @@ export default function OtsHomrPage() {
 
       <Section id="examples" title="Worked examples" wide>
         <p className="max-w-5xl">
-          Two galleries, both on whole pages that no development step used. The
-          first puts HOMR and OTS-HOMR on the same pages and shows every page
-          where they differ, including how little separates them on clean
-          engravings. The second shows what the review-assisted lyrics,
-          directions and dynamics add to a scanned page.
+          Two galleries on whole pages. The first puts HOMR and OTS-HOMR on the
+          same pages and shows every page where they differ, including how
+          little separates them on clean engravings. The second shows what the
+          review-assisted lyrics, directions and dynamics add to a scanned page.
         </p>
         <p className="max-w-5xl text-slate-600 dark:text-slate-400">
           Each system is drawn once per reading, with a box on every note that
