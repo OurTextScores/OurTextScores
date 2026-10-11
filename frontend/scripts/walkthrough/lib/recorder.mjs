@@ -36,12 +36,14 @@ export async function launchBrowser() {
  * ripple, and every action lands on the timeline captions are attached to.
  */
 export class Take {
-  constructor({ page, context, dir, mode, speed }) {
+  constructor({ page, context, dir, mode, speed, narration = null }) {
     this.page = page;
     this.context = context;
     this.dir = dir;
     this.mode = mode; // 'record' | 'dry'
     this.speed = speed; // dry runs can go faster than a viewer could follow
+    this.narration = narration; // knows how long each caption takes to say
+    this.cutSeconds = 0;
     this.mouse = { x: STAGE.width * 0.62, y: STAGE.height * 0.55 };
     this.frames = [];
     this.pendingWrites = [];
@@ -62,15 +64,31 @@ export class Take {
     if (process.env.WALKTHROUGH_VERBOSE) console.log(`    ${this.at().toFixed(2)}s  ${name}`);
   }
 
-  /** Shows `text` from now until the next caption, `endCaption()`, or the end of the scene. */
-  caption(text, { position = 'bottom' } = {}) {
-    this.endCaption();
-    if (text) this.events.captions.push({ text, position, start: epoch(), end: null });
+  /**
+   * Shows `text` from now until the next caption, `endCaption()`, or the end of the scene.
+   * `say` is what the narrator says, where that should differ from what is written ("Ctrl+S"
+   * is read as "Control S").
+   *
+   * A caption is never replaced before its line could have been spoken: starting the next one
+   * first waits out whatever is left of this one. Scenes are thereby paced by their narration,
+   * and the same takes serve the version with a voice and the one without.
+   */
+  async caption(text, { position = 'bottom', say = null } = {}) {
+    await this.endCaption();
+    if (text) {
+      this.events.captions.push({ text, say: say ?? text, position, start: epoch(), end: null, cutAtStart: this.cutSeconds });
+    }
   }
 
-  endCaption() {
+  async endCaption() {
     const open = this.events.captions.at(-1);
-    if (open && open.end === null) open.end = epoch();
+    if (!open || open.end !== null) return;
+    if (this.narration && this.mode === 'record') {
+      const shown = epoch() - open.start - (this.cutSeconds - open.cutAtStart);
+      const needed = this.narration.secondsFor(open.say);
+      if (shown < needed) await sleep((needed - shown) * 1000);
+    }
+    open.end = epoch();
   }
 
   /**
@@ -82,8 +100,9 @@ export class Take {
     try {
       return await fn();
     } finally {
-      // Keep a beat of the settled result before the cut ends.
-      this.events.cuts.push({ start, end: epoch(), label });
+      const end = epoch();
+      this.cutSeconds += end - start;
+      this.events.cuts.push({ start, end, label });
     }
   }
 
@@ -227,9 +246,31 @@ export class Take {
     await this.page.screenshot({ path: file });
   }
 
+  // ------------------------------------------------------------------ navigation
+  /**
+   * Goes to `url` as if a link had been followed, and waits for the page to settle. The
+   * pointer is drawn again where it was.
+   */
+  async goto(url, { waitUntil = 'networkidle', settle = 250 } = {}) {
+    await this.page.goto(url, { waitUntil, timeout: 60000 });
+    await this.arrived({ settle });
+  }
+
+  /**
+   * Call after anything that loads a new document (a form post, a plain link): a new document
+   * starts without the overlay, so the pointer would vanish until the next scripted move.
+   * In-app navigation keeps the document and needs nothing.
+   */
+  async arrived({ settle = 250 } = {}) {
+    await this.page.waitForLoadState('load', { timeout: 60000 }).catch(() => {});
+    await this.page.waitForTimeout(settle);
+    if (this.overlayOn) await this.installOverlay();
+  }
+
   // ------------------------------------------------------------------ internals
   async installOverlay() {
-    await this.page.evaluate(() => window.__wt.install());
+    this.overlayOn = true;
+    await this.page.evaluate(() => window.__wt?.install());
     // Make the pointer appear where the scene will start from.
     await this.page.mouse.move(this.mouse.x - 2, this.mouse.y - 2);
     await this.page.mouse.move(this.mouse.x, this.mouse.y);
@@ -338,7 +379,7 @@ export class Take {
   }
 
   async stopRecording() {
-    this.endCaption();
+    await this.endCaption();
     const endedAt = epoch();
     if (this.mode === 'record') {
       await this.cdp.send('Page.stopScreencast').catch(() => {});
@@ -364,7 +405,7 @@ export class Take {
  * A scene is `{ id, chapter, setup?(t), run(t) }`. `setup` prepares the state the scene
  * starts from and is not recorded.
  */
-export async function performScene(browser, scene, { dir, mode = 'record', speed = 0.25, assetsDir, hooks = {} }) {
+export async function performScene(browser, scene, { dir, mode = 'record', speed = 0.25, assetsDir, hooks = {}, narration = null }) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const context = await browser.newContext({ viewport: null, acceptDownloads: true });
@@ -382,7 +423,7 @@ export async function performScene(browser, scene, { dir, mode = 'record', speed
     });
   }
   const page = await context.newPage();
-  const take = new Take({ page, context, dir, mode, speed });
+  const take = new Take({ page, context, dir, mode, speed, narration });
   page.on('pageerror', (error) => take.problems.push(`pageerror: ${String(error).slice(0, 300)}`));
   page.on('console', (message) => {
     if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
@@ -391,6 +432,13 @@ export async function performScene(browser, scene, { dir, mode = 'record', speed
   });
   page.on('response', (response) => {
     if (response.status() >= 400) take.problems.push(`http ${response.status()}: ${response.url().slice(0, 200)}`);
+  });
+  // A document loaded mid-scene (a link that is not in-app navigation) starts without the
+  // overlay. Put it back once the page has had its first render, so that a scene does not have
+  // to know which of its clicks loads a new document.
+  page.on('load', () => {
+    if (!take.overlayOn) return;
+    setTimeout(() => take.installOverlay().catch(() => {}), 200);
   });
   try {
     await hooks.beforeScene?.(take, scene);

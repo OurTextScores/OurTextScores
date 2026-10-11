@@ -7,7 +7,7 @@ export default {
     await stage(t, { score: SCORES.faure, dock: true });
   },
   async run(t) {
-    t.caption('Every command has a place in the menus.');
+    await t.caption('Every command has a place in the menus.');
     await t.click(id(t, 'menu-add'));
     await t.hold(500);
     await t.hover(id(t, 'menu-sub-text'), { after: 1300 });
@@ -19,7 +19,7 @@ export default {
     await t.page.keyboard.press('Escape');
     await t.hold(400);
 
-    t.caption('The toolbar keeps the common ones a click away, and folds up when you want room.');
+    await t.caption('The toolbar keeps the common ones a click away, and folds up when you want room.');
     await t.callout(id(t, 'tool-strip'), '', { pad: 2 });
     await t.hover(id(t, 'btn-duration-4'), { after: 500 });
     await t.hover(id(t, 'btn-slur'), { after: 500 });
@@ -32,13 +32,13 @@ export default {
     await t.click(id(t, 'btn-tool-strip-toggle'), { after: 1300 });
     await t.snap('tools-hidden');
 
-    t.caption('Palettes, instruments and properties share the side panel.');
+    await t.caption('Palettes, instruments and properties share the side panel.');
     await t.click(id(t, 'dock-tab-instruments'), { after: 1300 });
     await t.snap('instruments');
     await t.click(id(t, 'dock-tab-properties'), { after: 1100 });
     await t.click(id(t, 'dock-tab-palettes'), { after: 900 });
 
-    t.caption('The command palette finds any command by name.');
+    await t.caption('The command palette finds any command by name.');
     await t.click(id(t, 'shell-palette-button'));
     await t.text('transpose', { delay: 85 });
     await t.hold(1700);
@@ -46,7 +46,7 @@ export default {
     await t.page.keyboard.press('Escape');
     await t.hold(500);
 
-    t.caption('And the shortcuts are the ones MuseScore users already know.');
+    await t.caption('And the shortcuts are the ones MuseScore users already know.');
     await t.click(id(t, 'menu-help'));
     await t.hold(350);
     await t.click(id(t, 'menu-item-help.shortcuts'));

@@ -11,7 +11,7 @@ export default {
     await t.page.waitForTimeout(500);
   },
   async run(t) {
-    t.caption('Start a new score: title, instruments, key and time signature.', { position: 'low' });
+    await t.caption('Start a new score: title, instruments, key and time signature.', { position: 'low' });
     await t.hold(500);
     await menu(t, 'file', 'file.new');
     const modal = id(t, 'new-score-modal');
@@ -43,7 +43,7 @@ export default {
     await t.hold(1100);
     await t.snap('created');
 
-    t.caption('Press N for note input, choose a duration, then type the note names.');
+    await t.caption('Press N for note input, choose a duration, then type the note names.');
     await t.key('n', { after: 800 });
     await t.key('5', { after: 600 });
     const type = (keys) => t.keys(keys, { gap: 330, after: 330 });
@@ -60,7 +60,7 @@ export default {
     await t.key('Escape', { after: 700 });
     await t.snap('phrase');
 
-    t.caption('Press Play, or Space, to hear it.');
+    await t.caption('Press Play, or Space, to hear it.');
     await t.click(id(t, 'btn-play'), { after: 0 });
     await t.hold(9000);
     await t.snap('played');

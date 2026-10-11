@@ -7,7 +7,7 @@ export default {
     await stage(t, { score: SCORES.ode });
   },
   async run(t) {
-    t.caption('Export a PDF, an image, a MuseScore or MusicXML file, ABC, MIDI or audio.');
+    await t.caption('Export a PDF, an image, a MuseScore or MusicXML file, ABC, MIDI or audio.');
     await t.hold(500);
     await t.click(id(t, 'menu-file'));
     await t.hover(id(t, 'menu-sub-export'), { after: 900 });
@@ -22,7 +22,7 @@ export default {
     await t.snap('exported');
     if (process.env.WALKTHROUGH_VERBOSE) console.log(`    exported ${file.suggestedFilename()}`);
 
-    t.caption('Or make a link that opens a score from Google Drive.');
+    await t.caption('Or make a link that opens a score from Google Drive.');
     await t.click(id(t, 'btn-create-share-link'), { after: 3200 });
     await t.snap('share');
     await t.click(t.page.getByRole('button', { name: 'Close', exact: true }), { after: 800 });

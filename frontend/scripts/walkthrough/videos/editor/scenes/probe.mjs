@@ -7,7 +7,7 @@ import { SCORES, stage } from '../editor.mjs';
  *   WALKTHROUGH_PROBE=1 node scripts/walkthrough/run.mjs editor --dry --scene probe
  *
  * Try things here, look at the screenshots in dry/probe/snaps/, then move what works into a
- * real scene.
+ * real scene. Do not log or save network requests from here: an AI request carries the API key.
  */
 export default {
   id: 'probe',

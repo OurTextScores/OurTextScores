@@ -9,7 +9,7 @@ export default {
   async run(t) {
     let notes = await inReadingOrder(t);
 
-    t.caption('Palettes hold the marks. Select a note, then click one to apply it.');
+    await t.caption('Palettes hold the marks. Select a note, then click one to apply it.');
     await t.click(notes[0]);
     await t.click(id(t, 'palette-search'));
     await t.text('dyn', { delay: 110 });
@@ -19,7 +19,9 @@ export default {
     await t.click(id(t, 'btn-dock-close'), { after: 500 });
     await t.click(id(t, 'btn-fit-width'), { after: 1000 });
 
-    t.caption('Slurs, hairpins and articulations have MuseScore’s keys: S, <, Shift+S.');
+    await t.caption('Slurs, hairpins and articulations have MuseScore’s keys: S, <, Shift+S.', {
+      say: 'Slurs, hairpins and articulations have MuseScore’s keys: S, the less-than sign, and Shift S.',
+    });
     notes = await inReadingOrder(t);
     await selectRange(t, notes[0], notes[3]);
     await t.key('s', { after: 1100 });
@@ -33,7 +35,7 @@ export default {
     await t.key('Shift+S', { after: 1200 });
     await t.snap('staccato');
 
-    t.caption('Chord symbols and other text come from the Add menu.');
+    await t.caption('Chord symbols and other text come from the Add menu.');
     notes = await inReadingOrder(t);
     await t.click(notes[0]);
     await t.click(id(t, 'menu-add'));
@@ -44,7 +46,7 @@ export default {
     await t.click(t.page.getByRole('button', { name: 'OK', exact: true }), { after: 1100 });
     await t.snap('chord');
 
-    t.caption('Set the tempo, and change key, time signature or clef from the toolbar.');
+    await t.caption('Set the tempo, and change key, time signature or clef from the toolbar.');
     await t.click(id(t, 'btn-tempo-open'));
     await t.replaceText(id(t, 'input-tempo-bpm'), '108');
     await t.snap('tempo-dialog');

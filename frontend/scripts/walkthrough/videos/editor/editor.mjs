@@ -18,7 +18,9 @@ export const id = (t, testId) => t.page.getByTestId(testId);
 
 /** Opens the editor (optionally on a score) and waits until it can be used. Not for camera. */
 export async function openEditor(t, { score = null, query = '' } = {}) {
-  const url = `${BASE}/index.html${score ? `?score=${encodeURIComponent(score)}` : ''}${query}`;
+  // The static embed is a file under /score-editor; a standalone editor server serves it at /.
+  const entry = BASE.endsWith('/score-editor') ? `${BASE}/index.html` : `${BASE}/`;
+  const url = `${entry}${score ? `?score=${encodeURIComponent(score)}` : ''}${query}`;
   await t.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await id(t, 'shell-header').waitFor({ state: 'visible', timeout: 120000 });
   if (score) await scoreReady(t);

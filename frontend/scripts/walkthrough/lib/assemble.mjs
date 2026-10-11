@@ -3,16 +3,26 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import path from 'node:path';
 import { CardRenderer } from './cards.mjs';
 import { OUTPUT } from './recorder.mjs';
+import { LEAD_IN, Narration, canSynthesize, voiceSettings } from './voice.mjs';
 
 /**
  * Turns recorded takes into the finished video.
  *
  *   takes/<scene>/        frames + take.json (+ audio)     from the recorder
  *   build/<scene>/        video.mp4, audio.wav             one clip per scene, cuts applied
- *   build/master.mp4      title + scenes + end card        no captions: the clean master
- *   final/                captioned .mp4 and .webm, .srt, .vtt, chapters.txt, poster.png, script.md
+ *   voice/                one spoken clip per caption      cached; see voice.mjs
+ *   final/                the videos, .srt, .vtt, chapters.txt, poster.png, script.md
  *
- * Scene audio is kept as PCM until the master is encoded, so joining scenes cannot click.
+ * Four videos come out of one set of takes. The picture is encoded twice (with and without
+ * captions) and the sound twice (with and without the narrator); the files pair them up:
+ *
+ *   <id>.mp4               captions, no narrator
+ *   <id>.clean.mp4         neither
+ *   <id>.voice.mp4         captions and narrator
+ *   <id>.voice.clean.mp4   narrator, no captions
+ *
+ * plus <id>.webm and <id>.voice.webm. Scene audio is kept as PCM until the end, so joining
+ * scenes cannot click.
  */
 const FPS = OUTPUT.fps;
 /** Measured with `run.mjs <video> --calibrate`: how late the audio tap's recording starts relative to its timestamp. */
@@ -163,12 +173,22 @@ export async function assemble(video, { workDir }) {
   mkdirSync(buildDir, { recursive: true });
   mkdirSync(finalDir, { recursive: true });
   const cards = await CardRenderer.open();
+  const narration = new Narration(path.join(workDir, 'voice'));
   const segments = [];
   const captions = [];
   const overlays = [];
   const chapters = [];
   const warnings = [];
+  /** What the narrator says and when: every caption's line, and a line over each card. */
+  const lines = [];
   let cursor = 0;
+
+  /** A card stays up at least as long as its line takes to say. */
+  const cardLength = async (card, fallback) => {
+    if (!card.say) return card.seconds ?? fallback;
+    const clip = await narration.ensure(card.say);
+    return Math.max(card.seconds ?? fallback, 0.5 + (clip ? clip.seconds : narration.secondsFor(card.say)) + 0.9);
+  };
 
   try {
     // ---- title card
@@ -176,10 +196,11 @@ export async function assemble(video, { workDir }) {
       const dir = path.join(buildDir, '_title');
       mkdirSync(dir, { recursive: true });
       const card = await cards.card(video.titleCard, path.join(dir, 'card.png'));
-      const length = buildCardClip(card.file, video.titleCard.seconds ?? 4, dir);
+      const length = buildCardClip(card.file, await cardLength(video.titleCard, 4), dir);
       segments.push({ id: '_title', dir, start: cursor, length });
       chapters.push({ at: 0, title: video.titleCard.chapter ?? 'Intro' });
       copyFileSync(card.file, path.join(finalDir, 'poster.png'));
+      if (video.titleCard.say) lines.push({ say: video.titleCard.say, at: cursor + 0.5, until: cursor + length, where: 'title card' });
       cursor += length;
     }
 
@@ -210,6 +231,12 @@ export async function assemble(video, { workDir }) {
           warnings.push(`${scene.id}: caption shown ${(end - start).toFixed(1)}s, needs about ${needed.toFixed(1)}s to read: "${caption.text.slice(0, 60)}"`);
         }
         captions.push({ scene: scene.id, text: caption.text, position: caption.position, start: cursor + start, end: cursor + end });
+        lines.push({
+          say: caption.say ?? caption.text,
+          at: cursor + start + LEAD_IN,
+          until: cursor + (next ? clock.map(next.start) : clock.duration),
+          where: scene.id,
+        });
       });
       for (const cut of clock.cuts) {
         if (!cut.label) continue;
@@ -224,8 +251,9 @@ export async function assemble(video, { workDir }) {
       const dir = path.join(buildDir, '_end');
       mkdirSync(dir, { recursive: true });
       const card = await cards.card(video.endCard, path.join(dir, 'card.png'));
-      const length = buildCardClip(card.file, video.endCard.seconds ?? 6, dir);
+      const length = buildCardClip(card.file, await cardLength(video.endCard, 6), dir);
       segments.push({ id: '_end', dir, start: cursor, length });
+      if (video.endCard.say) lines.push({ say: video.endCard.say, at: cursor + 0.5, until: cursor + length, where: 'end card' });
       cursor += length;
     }
 
@@ -244,26 +272,21 @@ export async function assemble(video, { workDir }) {
     await cards.close();
   }
 
-  // ---- clean master: scene clips joined, audio encoded once
   const total = cursor;
-  const videoList = path.join(buildDir, 'videos.ffconcat');
-  const audioList = path.join(buildDir, 'audios.ffconcat');
+  const base = video.outputName ?? video.id;
+  const part = (name) => path.join(buildDir, name);
+
+  // ---- picture, without captions: the scene clips joined
+  const videoList = part('videos.ffconcat');
+  const audioList = part('audios.ffconcat');
   writeFileSync(videoList, ['ffconcat version 1.0', ...segments.map((s) => `file '${path.join(s.dir, 'video.mp4')}'`)].join('\n') + '\n');
   writeFileSync(audioList, ['ffconcat version 1.0', ...segments.map((s) => `file '${path.join(s.dir, 'audio.wav')}'`)].join('\n') + '\n');
-  const master = path.join(buildDir, 'master.mp4');
-  const audioFilters = video.audioFilter ? ['-af', video.audioFilter] : [];
-  process.stdout.write(`master (${total.toFixed(1)}s) … `);
-  ffmpeg([
-    '-f', 'concat', '-safe', '0', '-i', videoList, '-f', 'concat', '-safe', '0', '-i', audioList,
-    '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...audioFilters, '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
-    '-movflags', '+faststart', master,
-  ]);
+  process.stdout.write(`picture (${total.toFixed(1)}s) … `);
+  ffmpeg(['-f', 'concat', '-safe', '0', '-i', videoList, '-map', '0:v', '-c:v', 'copy', '-an', part('clean.mp4')]);
   console.log('ok');
 
-  // ---- captioned video
-  const base = video.outputName ?? video.id;
-  const mp4 = path.join(finalDir, `${base}.mp4`);
-  const inputs = ['-i', master];
+  // ---- picture, with captions
+  const inputs = ['-i', part('clean.mp4')];
   const filters = [];
   let previous = '0:v';
   overlays.sort((a, b) => a.start - b.start);
@@ -277,24 +300,72 @@ export async function assemble(video, { workDir }) {
     );
     previous = `v${index}`;
   });
-  process.stdout.write(`captioned mp4 (${overlays.length} overlays) … `);
+  process.stdout.write(`captions (${overlays.length} overlays) … `);
   if (overlays.length === 0) {
-    copyFileSync(master, mp4);
+    copyFileSync(part('clean.mp4'), part('captioned.mp4'));
   } else {
-    ffmpeg([
-      ...inputs, '-filter_complex', filters.join(';'), '-map', `[${previous}]`, '-map', '0:a',
-      ...VIDEO_ARGS, '-preset', 'slow', '-crf', '18', '-c:a', 'copy', '-movflags', '+faststart', mp4,
-    ]);
+    ffmpeg([...inputs, '-filter_complex', filters.join(';'), '-map', `[${previous}]`, '-an', ...VIDEO_ARGS, '-preset', 'slow', '-crf', '18', part('captioned.mp4')]);
   }
   console.log('ok');
-  copyFileSync(master, path.join(finalDir, `${base}.clean.mp4`));
 
+  // ---- sound: the app by itself
+  ffmpeg(['-f', 'concat', '-safe', '0', '-i', audioList, ...(video.audioFilter ? ['-af', video.audioFilter] : []), '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', part('app.wav')]);
+
+  // ---- sound: the narrator
+  const spoken = [];
+  for (const line of lines) {
+    const clip = await narration.ensure(line.say);
+    if (!clip) continue;
+    spoken.push({ ...line, clip });
+    const room = line.until - line.at;
+    if (clip.seconds > room + 0.05) {
+      warnings.push(`${line.where}: the line takes ${clip.seconds.toFixed(1)}s to say and has ${room.toFixed(1)}s; record that scene again so it is paced for it: "${line.say.slice(0, 60)}"`);
+    }
+  }
+  const voiced = spoken.length > 0 && spoken.length === lines.length;
+  if (lines.length > 0 && !voiced) {
+    warnings.push(
+      `no narration: ${lines.length - spoken.length} of ${lines.length} lines have no clip${canSynthesize() ? '' : ' and no OPENAI_API_KEY is set to make them'}`,
+    );
+  }
+  if (voiced) {
+    process.stdout.write(`narration (${spoken.length} lines, ${voiceSettings().voice}) … `);
+    const voiceInputs = spoken.flatMap((line) => ['-i', line.clip.file]);
+    const placed = spoken.map((line, i) => `[${i}:a]adelay=${Math.round(line.at * 1000)}:all=1[n${i}]`);
+    const joined = `${spoken.map((_, i) => `[n${i}]`).join('')}amix=inputs=${spoken.length}:normalize=0:dropout_transition=0,apad=whole_dur=${total.toFixed(3)},atrim=0:${total.toFixed(3)}`;
+    ffmpeg([...voiceInputs, '-filter_complex', `${placed.join(';')};${joined}[out]`, '-map', '[out]', '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', part('voice-raw.wav')]);
+    // One gain for the whole track, so the narrator sits at a normal speech level without the
+    // pumping a per-moment normaliser adds.
+    const measured = spawnSync('ffmpeg', ['-hide_banner', '-i', part('voice-raw.wav'), '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json', '-f', 'null', '-'], { encoding: 'utf8' });
+    const loudness = Number(measured.stderr.match(/"input_i"\s*:\s*"(-?[\d.]+)"/)?.[1]);
+    const gain = Number.isFinite(loudness) ? Math.max(-12, Math.min(12, -16 - loudness)) : 0;
+    ffmpeg(['-i', part('voice-raw.wav'), '-af', `volume=${gain.toFixed(2)}dB,alimiter=limit=0.89:level=disabled`, '-c:a', 'pcm_s16le', part('voice.wav')]);
+    // The app's own sound drops under the narrator and comes back when the line ends.
+    ffmpeg([
+      '-i', part('app.wav'), '-i', part('voice.wav'),
+      '-filter_complex',
+      '[1:a]asplit=2[key][say];[0:a][key]sidechaincompress=threshold=0.015:ratio=10:attack=40:release=600:makeup=1[under];[under][say]amix=inputs=2:normalize=0:dropout_transition=0,alimiter=limit=0.94:level=disabled[out]',
+      '-map', '[out]', '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', part('mix.wav'),
+    ]);
+    console.log(`ok (${gain >= 0 ? '+' : ''}${gain.toFixed(1)} dB)`);
+  }
+
+  // ---- the files
+  const AAC = ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2'];
+  const mux = (picture, sound, name) =>
+    ffmpeg(['-i', part(picture), '-i', part(sound), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...AAC, '-shortest', '-movflags', '+faststart', path.join(finalDir, name)]);
+  mux('captioned.mp4', 'app.wav', `${base}.mp4`);
+  mux('clean.mp4', 'app.wav', `${base}.clean.mp4`);
+  if (voiced) {
+    mux('captioned.mp4', 'mix.wav', `${base}.voice.mp4`);
+    mux('clean.mp4', 'mix.wav', `${base}.voice.clean.mp4`);
+  }
   if (!process.env.WALKTHROUGH_SKIP_WEBM) {
     process.stdout.write('webm … ');
-    ffmpeg([
-      '-i', mp4, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '33', '-row-mt', '1', '-cpu-used', '3', '-g', String(FPS * 4),
-      '-c:a', 'libopus', '-b:a', '128k', path.join(finalDir, `${base}.webm`),
-    ]);
+    ffmpeg(['-i', part('captioned.mp4'), '-an', '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '33', '-row-mt', '1', '-cpu-used', '4', '-g', String(FPS * 4), part('captioned.webm')]);
+    const OPUS = ['-c:a', 'libopus', '-b:a', '128k'];
+    ffmpeg(['-i', part('captioned.webm'), '-i', part('app.wav'), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...OPUS, '-shortest', path.join(finalDir, `${base}.webm`)]);
+    if (voiced) ffmpeg(['-i', part('captioned.webm'), '-i', part('mix.wav'), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...OPUS, '-shortest', path.join(finalDir, `${base}.voice.webm`)]);
     console.log('ok');
   }
 
@@ -313,11 +384,17 @@ export async function assemble(video, { workDir }) {
   for (const [index, chapter] of chapters.entries()) {
     const until = chapters[index + 1]?.at ?? total;
     script.push(`## ${chapterStamp(chapter.at)} ${chapter.title}`, '');
-    for (const cue of cues.filter((c) => c.start >= chapter.at - 0.001 && c.start < until)) script.push(`- ${cue.text}`);
+    for (const cue of cues.filter((c) => c.start >= chapter.at - 0.001 && c.start < until)) {
+      const line = lines.find((l) => Math.abs(l.at - LEAD_IN - cue.start) < 0.01);
+      script.push(`- ${cue.text}${line && line.say !== cue.text ? `\n  - Spoken: ${line.say}` : ''}`);
+    }
     script.push('');
   }
   writeFileSync(path.join(finalDir, 'script.md'), script.join('\n'));
-  writeFileSync(path.join(buildDir, 'timeline.json'), JSON.stringify({ total, segments, chapters, captions: cues, overlays, warnings }, null, 2));
+  writeFileSync(
+    path.join(buildDir, 'timeline.json'),
+    JSON.stringify({ total, segments, chapters, captions: cues, overlays, lines: spoken.map((l) => ({ say: l.say, at: l.at, seconds: l.clip.seconds, where: l.where })), voice: voiced ? voiceSettings() : null, warnings }, null, 2),
+  );
 
   console.log(`\n${video.title}: ${chapterStamp(total)} → ${finalDir}`);
   for (const warning of warnings) console.log(`  ! ${warning}`);

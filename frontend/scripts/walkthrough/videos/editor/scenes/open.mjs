@@ -10,7 +10,9 @@ export default {
     await stage(t);
   },
   async run(t) {
-    t.caption('Open a MuseScore or MusicXML file. It stays on your computer.');
+    await t.caption('Open a MuseScore or MusicXML file. It stays on your computer.', {
+      say: 'Open a MuseScore file or a MusicXML file. It stays on your computer.',
+    });
     await t.hold(900);
     const chooser = t.page.waitForEvent('filechooser');
     await t.click(id(t, 'menu-file'));
@@ -29,7 +31,7 @@ export default {
     await t.snap('opened');
     await t.hold(2200);
 
-    t.caption('MuseScore’s engraving engine draws the score, running in your browser.');
+    await t.caption('MuseScore’s engraving engine draws the score, running in your browser.');
     await t.click(t.page.getByRole('button', { name: 'Next page' }));
     await t.hold(2400);
     await t.snap('page-2');

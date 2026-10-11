@@ -2,6 +2,7 @@ import path from 'node:path';
 
 const here = import.meta.dirname;
 const scene = async (name) => (await import(`./scenes/${name}.mjs`)).default;
+const { aiKey } = await import('./scenes/ai.mjs');
 
 export default {
   id: 'editor',
@@ -16,6 +17,7 @@ export default {
     logo: path.join(here, '..', '..', '..', '..', 'public', 'images', 'OTS-icon.svg'),
     seconds: 4,
     chapter: 'OTS Web Editor',
+    say: 'The O T S Web Editor: MuseScore’s engraving engine, in your browser.',
   },
   endCard: {
     title: 'Try it',
@@ -24,6 +26,7 @@ export default {
     footer:
       'Music shown: Gabriel Fauré, String Quartet Op. 121, from OpenScore String Quartets (CC0), and the Ode to Joy theme by Ludwig van Beethoven.',
     seconds: 6,
+    say: 'It is free and open source. Try it at Our Text Scores dot com.',
   },
   scenes: [
     await scene('open'),
@@ -35,6 +38,8 @@ export default {
     await scene('playback'),
     await scene('history'),
     await scene('source'),
+    // A real request to the assistant when a key is available for it; a look at the panel when not.
+    await scene(aiKey() ? 'ai' : 'ai-tour'),
     await scene('export'),
     ...(process.env.WALKTHROUGH_PROBE ? [await scene('probe')] : []),
   ],
