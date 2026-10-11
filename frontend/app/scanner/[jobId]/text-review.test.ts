@@ -1,5 +1,3 @@
-import { describe, expect, it } from "vitest";
-
 import { pageHasTextReview } from "./text-review";
 
 describe("pageHasTextReview", () => {
