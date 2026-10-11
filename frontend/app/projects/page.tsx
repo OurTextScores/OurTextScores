@@ -1,12 +1,8 @@
 import Link from "next/link";
 import { fetchProjects } from "../lib/api";
 import { fetchBackendSession } from "../lib/server-session";
+import LocalDateTime from "../components/local-date-time";
 import CreateProjectForm from "./create-project-form";
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
-}
 
 export default async function ProjectsPage() {
   const [data, session] = await Promise.all([
@@ -63,7 +59,9 @@ export default async function ProjectsPage() {
                   <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{project.members.length}</td>
                   <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{project.rowCount}</td>
                   <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{project.linkedSourceCount}</td>
-                  <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{formatDate(project.updatedAt)}</td>
+                  <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
+                    <LocalDateTime value={project.updatedAt} fallback="-" />
+                  </td>
                 </tr>
               ))}
             </tbody>

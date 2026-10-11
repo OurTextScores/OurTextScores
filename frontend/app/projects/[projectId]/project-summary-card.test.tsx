@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { hydrationProblems } from "../../test-utils";
 import ProjectSummaryCard from "./project-summary-card";
 import { joinProjectAction, updateProjectAction } from "../actions";
 
@@ -30,6 +31,11 @@ const project = {
 describe("ProjectSummaryCard", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("hydrates cleanly for a reader whose locale is not the server's", async () => {
+    // "Updated: <time>" used to be written in the reader's locale while rendering.
+    expect(await hydrationProblems(<ProjectSummaryCard project={project} canEdit={false} canJoin={false} />)).toEqual([]);
   });
 
   it("renders project metadata", () => {

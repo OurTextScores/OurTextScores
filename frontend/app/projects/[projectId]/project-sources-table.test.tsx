@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { hydrationProblems } from "../../test-utils";
 import ProjectSourcesTable from "./project-sources-table";
 import { removeProjectSourceAction } from "../actions";
 
@@ -10,6 +11,36 @@ jest.mock("../actions", () => ({
 describe("ProjectSourcesTable", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("hydrates cleanly for a reader whose locale is not the server's", async () => {
+    // The "Updated" column used to be written in the reader's locale while rendering.
+    expect(
+      await hydrationProblems(
+        <ProjectSourcesTable
+          projectId="prj_1"
+          sources={[
+            {
+              workId: "100",
+              sourceId: "src_1",
+              label: "Main score",
+              sourceType: "score",
+              format: "application/xml",
+              originalFilename: "score.xml",
+              hasReferencePdf: false,
+              adminVerified: false,
+              projectIds: ["prj_1"],
+              title: "Sonata",
+              latestRevisionAt: "2026-03-07T16:05:00.000Z",
+            },
+          ]}
+          total={1}
+          limit={20}
+          offset={0}
+          canRemoveSources={false}
+        />,
+      ),
+    ).toEqual([]);
   });
 
   it("renders project sources and work links", () => {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import LocalDateTime from "../components/local-date-time";
 
 interface Notification {
   notificationId: string;
@@ -159,10 +160,6 @@ export default function NotificationsClient({ initialNotifications }: Props) {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString();
-  };
-
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'comment_reply':
@@ -242,7 +239,7 @@ export default function NotificationsClient({ initialNotifications }: Props) {
                         </div>
                       )}
                       <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                        {formatDate(notification.createdAt)}
+                        <LocalDateTime value={notification.createdAt} />
                       </p>
                     </div>
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getApiBase } from "../lib/api";
 import { getApiAuthHeaders } from "../lib/authToken";
+import LocalDateTime from "../components/local-date-time";
 
 interface ChangeReviewListItem {
   reviewId: string;
@@ -98,7 +99,7 @@ function ReviewSection({
                   <div className="mt-2 text-xs text-slate-500 dark:text-slate-500">
                     {item.unresolvedThreadCount} unresolved thread{item.unresolvedThreadCount === 1 ? "" : "s"}
                     {" · "}
-                    Last activity {new Date(item.lastActivityAt).toLocaleString()}
+                    Last activity <LocalDateTime value={item.lastActivityAt} />
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">

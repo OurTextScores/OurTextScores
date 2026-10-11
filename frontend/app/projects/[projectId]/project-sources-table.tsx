@@ -2,13 +2,9 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
+import LocalDateTime from "../../components/local-date-time";
 import type { ProjectSourceSummary } from "../../lib/api";
 import { removeProjectSourceAction } from "../actions";
-
-function fmt(value?: string) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
-}
 
 export default function ProjectSourcesTable({
   projectId,
@@ -95,7 +91,9 @@ export default function ProjectSourcesTable({
                 <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{source.format}</td>
                 <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{source.hasReferencePdf ? "Yes" : "No"}</td>
                 <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{source.adminVerified ? "Yes" : "No"}</td>
-                <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{fmt(source.latestRevisionAt)}</td>
+                <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
+                  <LocalDateTime value={source.latestRevisionAt} fallback="-" />
+                </td>
                 <td className="px-3 py-3">
                   {canRemoveSources ? (
                     <button

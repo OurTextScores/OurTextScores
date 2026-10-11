@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 
+import { hydrationProblems } from "../test-utils";
 import ChangeReviewDetailClient from "./change-review-detail-client";
 
 global.fetch = jest.fn();
@@ -88,6 +89,31 @@ const initialDiff = {
 };
 
 describe("ChangeReviewDetailClient", () => {
+  it("hydrates cleanly for a reader whose locale is not the server's", async () => {
+    // The page arrives as server HTML with the last activity and each comment's time in it.
+    // Formatted in the reader's locale while rendering, those did not match what the server
+    // had written, and a direct load of a review threw React errors 418, 423 and 425.
+    const diffWithAComment = {
+      ...initialDiff,
+      threads: [{
+        threadId: "thread-1",
+        status: "open" as const,
+        diffAnchor: { anchorId: "anchor-1", lineText: "Piano - m. 2" },
+        comments: [{
+          commentId: "comment-1",
+          userId: "owner-1",
+          username: "owner",
+          content: "Is this right?",
+          createdAt: "2026-03-07T16:05:00.000Z",
+        }],
+      }],
+    };
+
+    expect(
+      await hydrationProblems(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={diffWithAComment} />),
+    ).toEqual([]);
+  });
+
   it("embeds distinct base and head revisions in two-score review mode", () => {
     const { container } = render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={initialDiff} />);
 

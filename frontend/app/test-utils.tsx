@@ -76,6 +76,44 @@ export function renderServerHtml(ui: ReactElement): string {
   return renderToString(ui);
 }
 
+/**
+ * Renders `ui` as the server would, then hydrates that HTML as a reader's browser would, with
+ * the two disagreeing about how a date reads: a server in UTC and a reader somewhere else.
+ *
+ * Returns what React complained about. An empty list means the page hydrates cleanly; anything
+ * else is what a reader gets as errors #418, #423 and #425, with the page rendered twice.
+ */
+export async function hydrationProblems(ui: ReactElement): Promise<string[]> {
+  const formats = ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString'] as const;
+  const spies = formats.map((name) => jest.spyOn(Date.prototype, name).mockImplementation(() => `as the server writes it (${name})`));
+  const html = renderServerHtml(ui);
+  spies.forEach((spy, index) => spy.mockImplementation(() => `as the reader writes it (${formats[index]})`));
+
+  const problems: string[] = [];
+  const consoleError = jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    problems.push(args.map(String).join(' ').slice(0, 300));
+  });
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  document.body.appendChild(container);
+  try {
+    const { hydrateRoot } = require('react-dom/client') as typeof import('react-dom/client');
+    const { act } = require('@testing-library/react') as typeof import('@testing-library/react');
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, ui, {
+        onRecoverableError: (error) => problems.push(String((error as Error)?.message ?? error)),
+      });
+    });
+    await act(async () => root?.unmount());
+  } finally {
+    container.remove();
+    consoleError.mockRestore();
+    spies.forEach((spy) => spy.mockRestore());
+  }
+  return problems;
+}
+
 // Mock fetch helper
 export function mockFetch(response: any, options: { ok?: boolean; status?: number } = {}) {
   const { ok = true, status = 200 } = options;

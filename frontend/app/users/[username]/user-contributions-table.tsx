@@ -2,13 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import LocalDateTime from "../../components/local-date-time";
 import Pagination from "../../components/Pagination";
 import type { UserContribution } from "../../lib/api";
-
-function formatDate(value?: string) {
-  if (!value) return "—";
-  return new Date(value).toLocaleString();
-}
 
 export default function UserContributionsTable({
   contributions,
@@ -86,7 +82,7 @@ export default function UserContributionsTable({
                 </div>
               </td>
               <td className="px-4 py-4 text-xs text-slate-600 dark:text-slate-300">
-                {formatDate(item.lastContributionAt)}
+                <LocalDateTime value={item.lastContributionAt} />
               </td>
             </tr>
           ))}

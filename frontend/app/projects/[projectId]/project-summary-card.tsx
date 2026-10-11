@@ -1,13 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import LocalDateTime from "../../components/local-date-time";
 import type { ProjectSummary } from "../../lib/api";
 import { joinProjectAction, updateProjectAction } from "../actions";
-
-function fmt(value?: string) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
-}
 
 export default function ProjectSummaryCard({
   project,
@@ -112,7 +108,7 @@ export default function ProjectSummaryCard({
           Status: {project.status}
         </span>
         <span className="rounded bg-slate-100 px-2 py-1 text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
-          Updated: {fmt(project.updatedAt)}
+          Updated: <LocalDateTime value={project.updatedAt} fallback="-" />
         </span>
       </div>
 
