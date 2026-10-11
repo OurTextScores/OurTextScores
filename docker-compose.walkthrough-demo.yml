@@ -1,0 +1,177 @@
+# A second, self-contained copy of the stack for filming the website walkthrough.
+#
+# Do not run this file directly; it needs a project name and a demo secret:
+#
+#   node frontend/scripts/walkthrough/videos/website/demo/stack.mjs up     # build and start
+#   node frontend/scripts/walkthrough/videos/website/demo/stack.mjs seed   # fill it with demo content
+#   node frontend/scripts/walkthrough/videos/website/demo/stack.mjs down   # stop, keep the data
+#   node frontend/scripts/walkthrough/videos/website/demo/stack.mjs reset  # stop and delete the data
+#
+# Why a separate stack rather than the dev one:
+#   - the dev database holds test content and real e-mail addresses, which do not belong on film;
+#   - `git push` in this repo runs `npm run docker:clean`, which removes the default project's
+#     containers. This project has its own name (otsdemo), so a push leaves it alone;
+#   - the frontend runs as a production build: no dev overlay, no hot reload mid-take.
+#
+# Everything is named or numbered apart from the dev stack: project `otsdemo`, no fixed
+# container names, its own ports and its own Docker volumes. Mail goes to this stack's Mailpit
+# and nowhere else.
+#
+#   site      http://localhost:3200
+#   API       http://localhost:4200/api
+#   Mailpit   http://localhost:8225
+#
+# `.env` is still read, for the storage credentials and the scanner provider settings that the
+# dev stack uses. Whatever identifies this as the demo is overridden below.
+
+x-demo-env: &demo-env
+  NEXTAUTH_SECRET: ${WALKTHROUGH_DEMO_SECRET:?start this stack with stack.mjs, which sets the demo secret}
+  NEXTAUTH_URL: http://localhost:3200
+  PUBLIC_WEB_BASE_URL: http://localhost:3200
+  NEXT_PUBLIC_WEB_BASE_URL: http://localhost:3200
+  EMAIL_SERVER: smtp://mailpit:1025
+  EMAIL_FROM: noreply@demo.ourtextscores.example
+  LEGAL_EMAIL_FROM: legal@demo.ourtextscores.example
+  LEGAL_CONTACT_EMAIL: legal@demo.ourtextscores.example
+  # The one demo account that may verify sources.
+  AUTH_BOOTSTRAP_EMAILS: ${WALKTHROUGH_DEMO_ADMIN:-maintainer@demo.ourtextscores.example}
+  AUTH_BOOTSTRAP_ADMIN_EMAILS: ${WALKTHROUGH_DEMO_ADMIN:-maintainer@demo.ourtextscores.example}
+  AUTH_BOOTSTRAP_ALLOW_IN_PROD: "true"
+  AUTH_ALLOW_EMAIL_ACCOUNT_LINKING: "true"
+  BETA_PREVIEW_ADMIN_EMAIL: ${WALKTHROUGH_DEMO_ADMIN:-maintainer@demo.ourtextscores.example}
+  OTEL_ENABLED: "false"
+  SCANNER_ENABLED: "true"
+  NEXT_PUBLIC_SCANNER_ENABLED: "true"
+  # Every demo account may scan; there are only the seeded ones.
+  SCANNER_BETA_USER_IDS: "*"
+  # The engines on film are the ones the live site offers. Set WALKTHROUGH_DEMO_OTS_HOMR=true
+  # to add OTS-HOMR once it is live there too.
+  SCANNER_OTS_HOMR_ENABLED: ${WALKTHROUGH_DEMO_OTS_HOMR:-false}
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # An absolute address, as on production. With a relative one the score preview
+        # assumes the API is on port 4000 of the same host, which here is the dev stack.
+        NEXT_PUBLIC_API_URL: http://localhost:4200/api
+        NEXT_PUBLIC_SCORE_EDITOR_URL: http://localhost:3200/score-editor
+        # No editor API here: the walkthrough opens scores in the editor, which runs in the
+        # browser, and does not use its server-side tools.
+        SCORE_EDITOR_API_ORIGIN: ""
+        NEXT_PUBLIC_SCANNER_ENABLED: "true"
+        NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED: ${NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED:-false}
+        NEXT_PUBLIC_HOMR_TEXT_REVIEW_ENABLED: ${NEXT_PUBLIC_HOMR_TEXT_REVIEW_ENABLED:-false}
+    env_file:
+      - .env
+    environment:
+      <<: *demo-env
+      NEXT_PUBLIC_API_URL: http://localhost:4200/api
+      NEXT_PUBLIC_SCORE_EDITOR_URL: http://localhost:3200/score-editor
+      INTERNAL_API_URL: http://backend:4000/api
+      SCORE_EDITOR_API_ORIGIN: ""
+    ports:
+      - "127.0.0.1:3200:3000"
+    depends_on:
+      - backend
+    networks:
+      - demonet
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # One image for the API and the scanner worker, as in the dev stack, but under this
+    # project's own name so that building it does not replace the dev image.
+    image: otsdemo-backend
+    env_file:
+      - .env
+    environment:
+      <<: *demo-env
+      MUSESCORE_EXPORT_TIMEOUT_MS: "0"
+      MUSESCORE_WRAPPER_TIMEOUT_SECONDS: "0"
+      MUSESCORE_PDF_MODE: async
+      # Seeding uploads a dozen files in a row.
+      RATE_LIMIT_DISABLED_RULES: upload,auth,expensive,imslp-refresh
+      SCANNER_WORKER_ENABLED: "false"
+    ports:
+      - "127.0.0.1:4200:4000"
+    depends_on:
+      - mongo
+      - meili
+      - minio
+      - mailpit
+    volumes:
+      - fossil:/data/fossil_data
+    networks:
+      - demonet
+
+  # Only started for the scan scene: `stack.mjs up --scanner`. A scan sends the page to the
+  # recognition providers configured in `.env`, which bills GPU time.
+  scanner_worker:
+    profiles: ["scanner"]
+    image: otsdemo-backend
+    command: ["node", "dist/scanner-worker.main.js"]
+    env_file:
+      - .env
+    environment:
+      <<: *demo-env
+      SCANNER_WORKER_ENABLED: "true"
+      MUSESCORE_EXPORT_TIMEOUT_MS: "300000"
+      MUSESCORE_WRAPPER_TIMEOUT_SECONDS: "300"
+      NOTIFICATIONS_PROCESSOR_ENABLED: "false"
+    depends_on:
+      - backend
+      - mongo
+      - minio
+    networks:
+      - demonet
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-ots}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-change_me}
+    networks:
+      - demonet
+
+  meili:
+    image: getmeili/meilisearch:v1.7.2
+    volumes:
+      - meili:/meili_data
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-meili_master_key}
+    networks:
+      - demonet
+
+  minio:
+    image: minio/minio:RELEASE.2024-04-18T19-09-19Z
+    volumes:
+      - minio:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    networks:
+      - demonet
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:8225:8025"
+    networks:
+      - demonet
+
+volumes:
+  mongo:
+  meili:
+  minio:
+  fossil:
+
+networks:
+  demonet:
+    driver: bridge

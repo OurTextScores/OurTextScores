@@ -252,6 +252,7 @@ export class Take {
    * pointer is drawn again where it was.
    */
   async goto(url, { waitUntil = 'networkidle', settle = 250 } = {}) {
+    await this.drainAudio(); // the sound this document made leaves with it
     await this.page.goto(url, { waitUntil, timeout: 60000 });
     await this.arrived({ settle });
   }
@@ -265,6 +266,28 @@ export class Take {
     await this.page.waitForLoadState('load', { timeout: 60000 }).catch(() => {});
     await this.page.waitForTimeout(settle);
     if (this.overlayOn) await this.installOverlay();
+  }
+
+  /**
+   * Films another tab from here on: the one a link opened, or the first one again. The viewer
+   * sees what they would see when the browser brings that tab to the front.
+   */
+  async switchTo(page) {
+    if (page === this.page) return;
+    await this.drainAudio();
+    await this.cdp?.send('Page.stopScreencast').catch(() => {});
+    this.page = page;
+    await page.bringToFront().catch(() => {});
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    if (this.mode === 'record' && this.startedAt !== null) await this.startScreencast();
+    if (this.overlayOn) await this.installOverlay();
+  }
+
+  /** Runs `action` (a click that opens a new tab) and films the new tab once it is there. */
+  async followNewTab(action) {
+    const [opened] = await Promise.all([this.context.waitForEvent('page', { timeout: 30000 }), action()]);
+    await this.switchTo(opened);
+    return opened;
   }
 
   // ------------------------------------------------------------------ internals
@@ -281,18 +304,28 @@ export class Take {
     for (const frame of this.page.frames()) {
       await frame.evaluate(() => window.__wt?.drainAudio && void (window.__wt.audioChunks.length = 0)).catch(() => {});
     }
+    this.audioChunks = [];
     this.startedAt = epoch();
+    // Sound is collected as the scene goes, not at its end: a page that is navigated away from
+    // takes what it captured with it.
+    this.audioTimer = setInterval(() => this.drainAudio().catch(() => {}), 300);
     if (this.mode !== 'record') return;
+    await this.startScreencast();
+  }
+
+  /** Films `this.page`. Frames from every page filmed in a take go to the one list, in order. */
+  async startScreencast() {
     const framesDir = path.join(this.dir, 'frames');
     mkdirSync(framesDir, { recursive: true });
-    this.cdp = await this.context.newCDPSession(this.page);
-    this.cdp.on('Page.screencastFrame', (event) => {
+    const cdp = (this.cdp = await this.context.newCDPSession(this.page));
+    cdp.on('Page.screencastFrame', (event) => {
+      cdp.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
+      if (cdp !== this.cdp) return; // a page that is no longer the one being filmed
       const file = path.join(framesDir, `${String(this.frames.length).padStart(6, '0')}.jpg`);
       this.frames.push({ file, at: event.metadata.timestamp });
       this.pendingWrites.push(writeFile(file, Buffer.from(event.data, 'base64')));
-      this.cdp.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
     });
-    await this.cdp.send('Page.startScreencast', {
+    await cdp.send('Page.startScreencast', {
       format: 'jpeg',
       quality: 95,
       everyNthFrame: 1,
@@ -300,7 +333,7 @@ export class Take {
       maxHeight: OUTPUT.height,
     });
     // The screencast only sends a frame when the picture changes; nudge one out so the
-    // take starts with a frame at its start time.
+    // picture starts with a frame at its start time.
     await this.page.mouse.move(this.mouse.x + 1, this.mouse.y);
     await this.page.mouse.move(this.mouse.x, this.mouse.y);
   }
@@ -312,17 +345,27 @@ export class Take {
    * two differ by a constant, which is estimated once per period and then used to place every
    * run. Silence, including the time the context spent suspended, is simply left empty.
    */
-  async collectAudio(endedAt) {
-    const chunks = [];
-    for (const [index, frame] of this.page.frames().entries()) {
-      for (;;) {
-        const batch = await frame
-          .evaluate(() => (window.__wt?.drainAudio ? window.__wt.drainAudio(40) : []))
-          .catch(() => []);
-        if (batch.length === 0) break;
-        for (const chunk of batch) chunks.push({ ...chunk, key: `${index}:${chunk.period}` });
+  /** Moves what the page's audio tap has captured so far over to the recorder. */
+  drainAudio() {
+    this.draining = (this.draining ?? Promise.resolve()).then(async () => {
+      if (!this.audioChunks) return;
+      for (const frame of this.context.pages().flatMap((page) => page.frames())) {
+        for (;;) {
+          const batch = await frame
+            .evaluate(() => (window.__wt?.drainAudio ? window.__wt.drainAudio(40) : []))
+            .catch(() => []);
+          if (batch.length === 0) break;
+          for (const chunk of batch) this.audioChunks.push({ ...chunk, key: chunk.run });
+        }
       }
-    }
+    });
+    return this.draining;
+  }
+
+  async collectAudio(endedAt) {
+    clearInterval(this.audioTimer);
+    await this.drainAudio();
+    const chunks = this.audioChunks ?? [];
     if (chunks.length === 0) return [];
 
     const offsets = new Map();
@@ -422,24 +465,28 @@ export async function performScene(browser, scene, { dir, mode = 'record', speed
       }
     });
   }
+  let take = null;
+  const watch = (page) => {
+    page.on('pageerror', (error) => take?.problems.push(`pageerror: ${String(error).slice(0, 300)}`));
+    page.on('console', (message) => {
+      if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
+        take?.problems.push(`console: ${message.text().slice(0, 300)}`);
+      }
+    });
+    page.on('response', (response) => {
+      if (response.status() >= 400) take?.problems.push(`http ${response.status()}: ${response.url().slice(0, 200)}`);
+    });
+    // A document loaded mid-scene (a link that is not in-app navigation) starts without the
+    // overlay. Put it back once the page has had its first render, so that a scene does not
+    // have to know which of its clicks loads a new document.
+    page.on('load', () => {
+      if (!take?.overlayOn || take.page !== page) return;
+      setTimeout(() => take.installOverlay().catch(() => {}), 200);
+    });
+  };
+  context.on('page', watch);
   const page = await context.newPage();
-  const take = new Take({ page, context, dir, mode, speed, narration });
-  page.on('pageerror', (error) => take.problems.push(`pageerror: ${String(error).slice(0, 300)}`));
-  page.on('console', (message) => {
-    if (message.type() === 'error' && !/Failed to load resource/.test(message.text())) {
-      take.problems.push(`console: ${message.text().slice(0, 300)}`);
-    }
-  });
-  page.on('response', (response) => {
-    if (response.status() >= 400) take.problems.push(`http ${response.status()}: ${response.url().slice(0, 200)}`);
-  });
-  // A document loaded mid-scene (a link that is not in-app navigation) starts without the
-  // overlay. Put it back once the page has had its first render, so that a scene does not have
-  // to know which of its clicks loads a new document.
-  page.on('load', () => {
-    if (!take.overlayOn) return;
-    setTimeout(() => take.installOverlay().catch(() => {}), 200);
-  });
+  take = new Take({ page, context, dir, mode, speed, narration });
   try {
     await hooks.beforeScene?.(take, scene);
     await scene.setup?.(take);
@@ -453,6 +500,7 @@ export async function performScene(browser, scene, { dir, mode = 'record', speed
     await page.screenshot({ path: path.join(dir, 'failure.png') }).catch(() => {});
     throw error;
   } finally {
+    clearInterval(take.audioTimer);
     await context.close();
   }
 }

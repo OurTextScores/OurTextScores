@@ -74,6 +74,8 @@ export function overlayInit(options) {
       registerProcessor('walkthrough-tap', WalkthroughTap);`;
     const taps = new Map();
     wt.audioChunks = [];
+    // Tells this document's sound apart from the next one's once the recorder has collected both.
+    wt.documentId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
     const prepare = (context) => {
       if (taps.has(context)) return taps.get(context);
@@ -91,7 +93,7 @@ export function overlayInit(options) {
             channelCountMode: 'explicit',
           });
           tap.node.port.onmessage = (event) => {
-            wt.audioChunks.push({ ...event.data, sampleRate: context.sampleRate });
+            wt.audioChunks.push({ ...event.data, sampleRate: context.sampleRate, tap: wt.taps.indexOf(tap) });
           };
           for (const source of tap.pending) originalConnect.call(source, tap.node);
           tap.pending = [];
@@ -143,7 +145,8 @@ export function overlayInit(options) {
         let binary = '';
         for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
         return {
-          period: chunk.period,
+          // Periods are counted per audio context, and contexts per document.
+          run: `${wt.documentId}:${chunk.tap}:${chunk.period}`,
           contextTime: chunk.contextTime,
           wallMs: chunk.wallMs,
           sampleRate: chunk.sampleRate,
