@@ -328,7 +328,7 @@ RUNLOG 2026-10-10, `beam_fair.py`, `native_beam_default.py`). The beam head stay
 (`emittedHeadFamilies` still lists `beam.level`); only emission and selection are off. Older jobs that stored a beam
 selection still read.
 
-### 4d. v11: no doubled ties (code ready, not deployed)
+### 4d. v11: no doubled ties (deployed for local testing 2026-10-10)
 
 `ots-ots-homr-provider-v11` also removes a slur that exactly repeats a tie. OTS-HOMR has a separate tie head, and the older
 slur branch still emits a slur over the same two notes, so the pair was arced twice (HOMR has no tie head and writes one
@@ -336,7 +336,8 @@ arc). A slur is dropped only when its start and stop are the two ends of a tie a
 tied to the second; chords with only some notes tied are left alone. Measured on 24 pool pages: 62 of 98 tie pairs
 doubled before; 86 duplicate arcs removed and 8 partial-chord cases remain. Against the encoded quartet scores slur
 precision rises from 92.7% to 96.0% (recall 99.4% to 98.7%); the encoded scores themselves have a slur over a tie on only
-24 of 2,443 tie pairs. Detector: `doubled_marks.py`.
+24 of 2,443 tie pairs. Detector: `doubled_marks.py`. Deployed at source commit `f96807e856d63860434281e74f0f2f665d028356`; first live scan
+(sq10307350-p010): slur-over-tie 8 -> 0, all 8 ties kept, 0 beams.
 
 ## 5. Create a dedicated proxy token
 
