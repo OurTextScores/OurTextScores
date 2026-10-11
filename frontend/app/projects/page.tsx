@@ -29,7 +29,6 @@ export default async function ProjectsPage() {
                 <th className="px-3 py-2">Project</th>
                 <th className="px-3 py-2">Lead</th>
                 <th className="px-3 py-2">Members</th>
-                <th className="px-3 py-2">Rows</th>
                 <th className="px-3 py-2">Linked Sources</th>
                 <th className="px-3 py-2">Updated</th>
               </tr>
@@ -37,7 +36,7 @@ export default async function ProjectsPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {data.projects.length === 0 && (
                 <tr>
-                  <td className="px-3 py-6 text-center text-slate-500 dark:text-slate-400" colSpan={6}>
+                  <td className="px-3 py-6 text-center text-slate-500 dark:text-slate-400" colSpan={5}>
                     No projects found.
                   </td>
                 </tr>
@@ -57,7 +56,6 @@ export default async function ProjectsPage() {
                     {project.lead.username || project.lead.displayName || project.lead.userId}
                   </td>
                   <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{project.members.length}</td>
-                  <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{project.rowCount}</td>
                   <td className="px-3 py-3 text-slate-700 dark:text-slate-300">{project.linkedSourceCount}</td>
                   <td className="px-3 py-3 text-slate-700 dark:text-slate-300">
                     <LocalDateTime value={project.updatedAt} fallback="-" />
