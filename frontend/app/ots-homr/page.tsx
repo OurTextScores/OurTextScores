@@ -19,10 +19,10 @@ export const metadata: Metadata = {
    chance of error and no gain. */
 const GALLERIES = [
   {
-    title: "HOMR and OTS-HOMR on the same pages",
+    title: "HOMR and OTS-HOMR, line by line",
     caption:
-      "whole pages of clean songs read by both, compared with the encoded score; every page where they differ",
-    src: "/upstream-vs-ots-gallery.html",
+      "picked lines from songs and quartets OTS-HOMR was not trained on, beside the figures for the whole set",
+    src: "/examples-gallery.html",
   },
   {
     title: "Lyrics and staff text, before and after review",
@@ -256,10 +256,12 @@ export default function OtsHomrPage() {
 
       <Section id="examples" title="Worked examples" wide>
         <p className="max-w-5xl">
-          Two galleries on whole pages. The first puts HOMR and OTS-HOMR on the
-          same pages and shows every page where they differ, including how
-          little separates them on clean engravings. The second shows what the
-          review-assisted lyrics, directions and dynamics add to a scanned page.
+          Two galleries. The first puts HOMR and OTS-HOMR side by side on single
+          printed lines from songs and quartets that OTS-HOMR was not trained
+          on. The lines are the clearest differences from a larger set, so the
+          figures for the whole set are printed beside them. The second shows
+          what the review-assisted lyrics, directions and dynamics add to a
+          scanned page.
         </p>
         <p className="max-w-5xl text-slate-600 dark:text-slate-400">
           Each system is drawn once per reading, with a box on every note that

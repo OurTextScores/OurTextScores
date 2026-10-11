@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><title>HOMR and OTS-HOMR, line by line</title>
+<style>
+body{margin:0;font:15px system-ui;color:#1c2321;background:#fff}
+main{max-width:1500px;margin:0 auto;padding:12px 16px}
+h2{margin:26px 0 6px;font-size:17px;border-bottom:1px solid #d8dfda;padding-bottom:4px}
+p{margin:8px 0;max-width:62rem}
+.case{border:1px solid #d8dfda;margin:12px 0;padding:10px}
+.head{display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap;margin-bottom:6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start}
+.cell{position:relative}
+.cell img,.cell svg{display:block;width:100%;height:auto;background:#fff;border:1px solid #e3e8e5}
+.tag{position:absolute;top:3px;left:4px;z-index:1;background:#183c28;color:#fff;border-radius:3px;padding:0 6px;font-size:11px}
+.hl{stroke-width:3;fill-opacity:.18}.hl.notes{fill:#d93025;stroke:#d93025}.hl.marks{fill:#9334e6;stroke:#9334e6}.hl.weak,.hl.fb{fill:none!important;stroke:#59615e;stroke-dasharray:10 8}
+.stats{background:#f4f6f5;border:1px solid #d8dfda;border-radius:4px;padding:8px 12px;margin:10px 0;font-size:14px}
+small,.muted{color:#59615e}
+@media(max-width:800px){.grid{grid-template-columns:minmax(0,1fr)}}
+</style>
+<main><div id=app></div></main>
+<script>
+const NS="http://www.w3.org/2000/svg",BASE="devs-assets/ots-homr-examples/";
+const el=(t,a={},x)=>{const n=document.createElement(t);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);if(x!==undefined)n.textContent=x;return n};
+const sv=(t,a={})=>{const n=document.createElementNS(NS,t);for(const[k,v]of Object.entries(a))n.setAttribute(k,v);return n};
+const pct=x=>(x*100).toFixed(0)+"%";
+const TITLES={quartet:"String quartets — scanned pages",song:"Songs with piano — scanned pages",pdmx:"Mixed repertoire — rendered crops, not scans"};
+function reading(side,label){const c=side.content,cell=el("div",{class:"cell"});cell.append(el("span",{class:"tag"},label));
+ const s=sv("svg",{viewBox:`${c.x} ${c.y} ${c.w} ${c.h}`,role:"img","aria-label":label});s.append(sv("image",{href:BASE+side.svg,x:0,y:0,width:side.width,height:side.height}));
+ for(const m of side.fallbackMeasures)s.append(sv("rect",{x:m.x,y:m.y-20,width:m.w,height:m.h+40,class:"hl fb"}));
+ for(const b of side.boxes)s.append(sv("rect",{x:b.x,y:b.y,width:b.w,height:b.h,rx:10,class:"hl "+b.kind+(b.weak?" weak":"")}));
+ cell.append(s);return cell}
+fetch(BASE+"manifest.json",{cache:"no-store"}).then(r=>r.json()).then(m=>{
+ const app=document.getElementById("app"),s=m.summary;
+ const stat=(label,x)=>x&&x.lines?`<li><b>${label}:</b> ${x.lines.toLocaleString()} ${label==="Mixed repertoire"?"staff windows":"lines"} compared; OTS-HOMR is closer to the encoded score on <b>${x.otsBetter.toLocaleString()}</b>, HOMR on <b>${x.homrBetter.toLocaleString()}</b>, and the two are level on ${x.equal.toLocaleString()}. Average match: OTS-HOMR ${pct(x.meanOts)}, HOMR ${pct(x.meanHomr)}.</li>`:"";
+ app.append(el("p",{},"Each row shows the input, HOMR's reading and OTS-HOMR's reading of the same printed line. Boxes mark the notes where the two disagree. These lines come from songs and quartets that OTS-HOMR was not trained on."));
+ const st=el("div",{class:"stats"});st.innerHTML=`<b>These are picked examples, so here is the whole set they were picked from</b> (match = how closely a reading's notes and rhythm agree with the encoded score):<ul style="margin:6px 0 0 18px;padding:0">${stat("String quartets",s.quartet)}${stat("Songs with piano",s.song)}${stat("Mixed repertoire",s.pdmx)}</ul><div class=muted style="margin-top:6px">Scanned pages so far: ${s.pagesScanned}. On songs the two engines are level on most lines; the gap is on ensemble music.</div>`;app.append(st);
+ for(const kind of ["quartet","song","pdmx"]){const items=m.items.filter(i=>i.kind===kind);if(!items.length)continue;
+  app.append(el("h2",{},TITLES[kind]));
+  for(const c of items){const box=el("section",{class:"case"});const h=el("div",{class:"head"});
+   h.append(el("b",{},kind==="pdmx"?"Staff window":c.page+", line "+c.line),el("span",{class:"muted"},`matches the encoded score: OTS-HOMR ${pct(c.ots)}, HOMR ${pct(c.homr)}`));box.append(h);
+   const g=el("div",{class:"grid"});const sc=el("div",{class:"cell"});sc.append(el("span",{class:"tag"},kind==="pdmx"?"Rendered crop":"Scan"));sc.append(el("img",{src:BASE+c.row.scan.src,alt:"input",loading:"lazy"}));
+   g.append(sc,reading(c.row.left,"HOMR"),reading(c.row.right,"OTS-HOMR"));box.append(g);app.append(box)}}
+});
+</script>
