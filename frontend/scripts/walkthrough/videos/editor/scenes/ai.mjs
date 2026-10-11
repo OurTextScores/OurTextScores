@@ -10,9 +10,9 @@ import { id, SCORES, stage } from '../editor.mjs';
  *
  * Nothing here may log, save or echo a request: the request body carries the key.
  *
- * The scene stops at the proposal and does not apply it. Applying currently fails on the first
- * try with "The score changed after this proposal was generated": opening the comparison
- * re-lays-out the live score, and the check that guards Apply reads that as an edit.
+ * The scene stops at the proposal and does not apply it. When it was written, Apply was refused
+ * on any score longer than one system; that is fixed (OTS_Web e3e511ea), and the scene could
+ * be extended to apply the change.
  */
 export const aiKey = () => (process.env.WALKTHROUGH_AI_KEY || process.env.OPENAI_API_KEY || '').trim();
 

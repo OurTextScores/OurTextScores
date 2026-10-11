@@ -118,10 +118,9 @@ The `ai` scene makes a real request to the assistant, which needs two things:
 
 Without a key the video uses `ai-tour` instead, which opens the panel and makes no request.
 
-The scene stops at the proposal. Applying it fails on the first try with "The score changed
-after this proposal was generated": opening the comparison lays the score out again, and the
-check that guards Apply reads the changed layout numbers as an edit. That is an editor bug,
-not something a scene should work around.
+The scene stops at the proposal, because when it was filmed Apply was refused on any score
+longer than one system ("The score changed after this proposal was generated"). That was an
+editor bug, fixed since (OTS_Web `e3e511ea`), so the scene could now go on to apply the change.
 
 Two things about this editor that scenes have to respect:
 
