@@ -4,6 +4,9 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { useSession } from "next-auth/react";
 
+import { fetchWorksPaginated, searchWorks } from "../lib/api";
+import { renderServerHtml } from "../test-utils";
+
 import WorksPage from "./page";
 
 jest.mock("next-auth/react", () => ({
@@ -67,5 +70,34 @@ describe("Catalogue admin-only filters", () => {
     expect(screen.getByText("Has reference PDF")).toBeInTheDocument();
     expect(screen.getByText("Admin verified")).toBeInTheDocument();
     expect(screen.getByText("Has flagged sources")).toBeInTheDocument();
+  });
+});
+
+describe("Catalogue ?q= deep link", () => {
+  beforeEach(() => {
+    (useSession as jest.Mock).mockReturnValue({ data: null });
+    window.history.pushState({}, "", "/catalogue?q=Faur%C3%A9");
+  });
+
+  afterEach(() => {
+    window.history.pushState({}, "", "/");
+    jest.clearAllMocks();
+  });
+
+  it("does not read the URL while rendering, so the first render matches the server HTML", () => {
+    // The page is prerendered without a query string. If the first render used the URL, the
+    // browser's first render would differ from that HTML and React would discard the tree.
+    const html = renderServerHtml(<WorksPage />);
+    expect(html).not.toContain("Fauré");
+  });
+
+  it("searches for the linked query without first loading the unfiltered list", async () => {
+    render(<WorksPage />);
+
+    await waitFor(() => {
+      expect(searchWorks).toHaveBeenCalledWith("Fauré", expect.objectContaining({ offset: 0 }));
+    });
+    expect(screen.getByPlaceholderText(/search by title/i)).toHaveValue("Fauré");
+    expect(fetchWorksPaginated).not.toHaveBeenCalled();
   });
 });

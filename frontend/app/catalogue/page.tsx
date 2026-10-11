@@ -41,10 +41,11 @@ export default function WorksPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [totalSourceCount, setTotalSourceCount] = useState<number | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(1);
-  // Deep link from /welcome: /catalogue?q=beethoven
-  const [searchQuery, setSearchQuery] = useState(() =>
-    typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("q") ?? "",
-  );
+  const [searchQuery, setSearchQuery] = useState("");
+  // `?q=` deep link (e.g. from /welcome). `null` until the URL has been read, which happens
+  // after mount rather than during render: this page is prerendered without a query string, so
+  // a value read while rendering would not match the server HTML and React would discard it.
+  const [linkedQuery, setLinkedQuery] = useState<string | null>(null);
   const [filterReferencePdf, setFilterReferencePdf] = useState<"any" | "yes" | "no">("any");
   const [filterVerified, setFilterVerified] = useState<"any" | "yes" | "no">("any");
   const [filterFlagged, setFilterFlagged] = useState<"any" | "yes" | "no">("any");
@@ -54,6 +55,17 @@ export default function WorksPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const query = new URLSearchParams(window.location.search).get("q")?.trim() ?? "";
+    if (query) setSearchQuery(query);
+    setLinkedQuery(query);
+  }, []);
+
+  useEffect(() => {
+    // Wait for the deep link, so a `?q=` visit does not first fetch the unfiltered list.
+    if (linkedQuery === null) return;
+    // A slower, older request must not overwrite the results of a newer one.
+    let superseded = false;
+
     async function loadWorks() {
       setIsLoading(true);
       try {
@@ -86,6 +98,7 @@ export default function WorksPage() {
             offset,
             filter,
           });
+          if (superseded) return;
           setWorks(result.works);
           setTotalItems(result.total);
           setTotalSourceCount(undefined);
@@ -97,22 +110,27 @@ export default function WorksPage() {
             filter: shouldUseFilter ? filter : undefined,
             onlyWithSources: !(!!searchQuery.trim() || effectiveHasTriStateFilters),
           });
+          if (superseded) return;
           setWorks(result.works);
           setTotalItems(result.total);
           setTotalSourceCount(result.totalSourceCount);
         }
       } catch (error) {
+        if (superseded) return;
         console.error("Failed to load works:", error);
         setWorks([]);
         setTotalItems(0);
         setTotalSourceCount(undefined);
       } finally {
-        setIsLoading(false);
+        if (!superseded) setIsLoading(false);
       }
     }
 
     loadWorks();
-  }, [currentPage, filterFlagged, filterReferencePdf, filterVerified, isAdmin, searchQuery]);
+    return () => {
+      superseded = true;
+    };
+  }, [currentPage, filterFlagged, filterReferencePdf, filterVerified, isAdmin, linkedQuery, searchQuery]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -207,8 +225,10 @@ export default function WorksPage() {
             </label>
             <SearchBox
               onSearch={handleSearch}
+              // Remounts once, when a deep link arrives, so the box shows the linked query.
+              key={linkedQuery ?? ""}
               placeholder="Search by title, composer, or catalogue..."
-              initialValue={searchQuery}
+              initialValue={linkedQuery ?? ""}
               debounceMs={300}
             />
           </div>

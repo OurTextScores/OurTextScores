@@ -19,7 +19,7 @@
 // process.env.NEXT_PUBLIC_MINIO_PUBLIC_URL = 'http://localhost:9000';
 
 import { screen, fireEvent, waitFor } from '@testing-library/react';
-import { renderWithProviders } from '../../test-utils';
+import { renderServerHtml, renderWithProviders } from '../../test-utils';
 import SourceCard from './source-card';
 import { SourceView } from '../../lib/api';
 
@@ -280,6 +280,26 @@ describe('SourceCard', () => {
         expect(menu).not.toHaveAttribute('open');
         expect(menu).toContainElement(screen.getByRole('link', { name: 'Download MSCZ' }));
         expect(screen.queryByRole('link', { name: 'Download KRN' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the body out of the server HTML, even for a card that starts open', () => {
+        // The body formats dates in the reader's locale and builds URLs from window.location.
+        // Rendered on the server it would not match the browser's first render, and React
+        // would throw the page's HTML away. Cards therefore open after mount.
+        const html = renderServerHtml(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={mockUser}
+                recommended
+                autoOpen
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(html).toContain('Recommended');
+        expect(html).not.toContain('source-card-body');
+        expect(html).not.toContain('Preview score');
     });
 
     it('opens and badges the recommended source', () => {

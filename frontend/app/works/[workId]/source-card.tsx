@@ -486,18 +486,18 @@ export default function SourceCard({
     recommended?: boolean;
     autoOpenPanel?: "source-pdf";
 }) {
-    const [isOpen, setIsOpen] = useState(recommended);
+    const [isOpen, setIsOpen] = useState(false);
     const [isSourcePdfOpen, setIsSourcePdfOpen] = useState(false);
 
-    // Auto-open card and source PDF when a source deep link is provided.
+    // The card body is client-only: it formats dates in the reader's locale and builds absolute
+    // URLs from window.location, neither of which the server can reproduce. So a card that
+    // starts open (the recommended source, or a source deep link) opens after mount rather than
+    // in the server HTML, where its text would not match what the browser renders.
     useEffect(() => {
-        if (autoOpen) {
-            setIsOpen(true);
-            if (source.derivatives?.pdf) {
-                setIsSourcePdfOpen(true);
-            }
-        }
-    }, [autoOpen, source.derivatives?.pdf]);
+        if (recommended || autoOpen) setIsOpen(true);
+        // A deep link also opens the source PDF.
+        if (autoOpen && source.derivatives?.pdf) setIsSourcePdfOpen(true);
+    }, [autoOpen, recommended, source.derivatives?.pdf]);
     const latest = source.revisions[0];
     const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
     const isOwner =

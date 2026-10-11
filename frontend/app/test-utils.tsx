@@ -59,6 +59,23 @@ export function renderWithProviders(
   });
 }
 
+/**
+ * The HTML the server would send for `ui`: one render pass, no effects.
+ *
+ * Use it to pin what must (or must not) be in the server HTML. Anything rendered here that the
+ * browser renders differently on its first pass (a value read from `window`, a date formatted in
+ * the reader's locale) is a hydration mismatch, and React responds by discarding the page's HTML.
+ */
+export function renderServerHtml(ui: ReactElement): string {
+  // react-dom/server needs TextEncoder when it loads, and jsdom does not provide one. Loaded
+  // here rather than imported at the top so the polyfill is in place first.
+  if (typeof globalThis.TextEncoder === 'undefined') {
+    (globalThis as { TextEncoder?: unknown }).TextEncoder = require('util').TextEncoder;
+  }
+  const { renderToString } = require('react-dom/server') as typeof import('react-dom/server');
+  return renderToString(ui);
+}
+
 // Mock fetch helper
 export function mockFetch(response: any, options: { ok?: boolean; status?: number } = {}) {
   const { ok = true, status = 200 } = options;
