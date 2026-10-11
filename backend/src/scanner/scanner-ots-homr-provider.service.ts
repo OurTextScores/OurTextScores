@@ -199,33 +199,11 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
     );
   }
 
-  async scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult> {
-    const options = this.options(input.engineOptions);
-    if (options.textPolicy && this.text('SCANNER_OTS_HOMR_FUSION_ENABLED') !== '1') {
-      throw this.invalid('OTS-HOMR text fusion is not enabled');
-    }
-    const kind = this.text('SCANNER_OTS_HOMR_PROVIDER_KIND', 'modal');
-    if (kind === 'fake') return this.fake(input, options);
-    this.assertPins(options);
-
-    const form = new FormData();
-    form.set(
-      'page',
-      new Blob([new Uint8Array(input.image)], { type: input.contentType }),
-      input.filename
-    );
-    form.set('detectTitle', String(input.detectTitle));
-    if (options.textPolicy) form.set('textPolicy', JSON.stringify(options.textPolicy));
-    else form.set('textDetector', options.textDetector);
-    if (options.scoreProfile) {
-      form.set('scoreProfile', canonicalScoreProfileJson(options.scoreProfile));
-    }
-    const envelope: any = await this.http.postJson({
-      connection: this.connection(),
-      path: '/v1/scan-page',
-      headers: { 'Idempotency-Key': input.idempotencyKey, Accept: 'application/json' },
-      body: form
-    });
+  /** Contract and pin checks every OTS-HOMR provider response must pass, whichever endpoint produced it. */
+  private verifyEnvelope(
+    envelope: any,
+    input: ScannerProviderScanInput
+  ): { engine: any; core: any } {
     if (
       envelope?.schemaVersion !== 'ots-ots-homr-provider.v2' ||
       envelope?.engine?.name !== this.engine
@@ -268,8 +246,13 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
         false
       );
     }
-    this.verifySelectedComponents(engine, options);
+    return { engine, core };
+  }
+
+  /** The stored text-fusion review for one page: fusion summary and regions, plus the lyric and direction rows. */
+  private buildFusionArtifact(envelope: any, engine: any): Buffer {
     let fusionArtifact: Buffer | undefined;
+    const options = { textPolicy: true };
     if (options.textPolicy) {
       const summary = envelope?.result?.fusionSummary;
       const regions = envelope?.result?.fusedRegions;
@@ -304,6 +287,41 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       if (fusionArtifact.length > 1_048_576)
         throw this.invalid('Scanner OTS-HOMR text fusion review is too large');
     }
+    return fusionArtifact as Buffer;
+  }
+
+  async scanPage(input: ScannerProviderScanInput): Promise<ScannerProviderResult> {
+    const options = this.options(input.engineOptions);
+    if (options.textPolicy && this.text('SCANNER_OTS_HOMR_FUSION_ENABLED') !== '1') {
+      throw this.invalid('OTS-HOMR text fusion is not enabled');
+    }
+    const kind = this.text('SCANNER_OTS_HOMR_PROVIDER_KIND', 'modal');
+    if (kind === 'fake') return this.fake(input, options);
+    this.assertPins(options);
+
+    const form = new FormData();
+    form.set(
+      'page',
+      new Blob([new Uint8Array(input.image)], { type: input.contentType }),
+      input.filename
+    );
+    form.set('detectTitle', String(input.detectTitle));
+    if (options.textPolicy) form.set('textPolicy', JSON.stringify(options.textPolicy));
+    else form.set('textDetector', options.textDetector);
+    if (options.scoreProfile) {
+      form.set('scoreProfile', canonicalScoreProfileJson(options.scoreProfile));
+    }
+    const envelope: any = await this.http.postJson({
+      connection: this.connection(),
+      path: '/v1/scan-page',
+      headers: { 'Idempotency-Key': input.idempotencyKey, Accept: 'application/json' },
+      body: form
+    });
+    const { engine, core } = this.verifyEnvelope(envelope, input);
+    this.verifySelectedComponents(engine, options);
+    const fusionArtifact = options.textPolicy
+      ? this.buildFusionArtifact(envelope, engine)
+      : undefined;
     const candidates = envelope?.result?.candidates;
     const coreCandidate = this.candidate(candidates?.core, 'core');
     const headsCandidate = this.candidate(candidates?.['additional-heads'], 'additional-heads');
@@ -392,6 +410,43 @@ export class ScannerOtsHomrProviderService implements ScannerPageProvider {
       ];
     });
     return findings.length > 0 ? findings : undefined;
+  }
+
+  /**
+   * The text-review artifact for a page that ANOTHER engine (HOMR) recognised: the OTS-HOMR provider's detectors,
+   * calibrated fusion, OCR rows and dynamics classifier on the same page bytes, with no OTS-HOMR recognition. Pins and
+   * identity are checked exactly as for a full OTS-HOMR scan, because the same review pipeline produced it.
+   */
+  async reviewText(
+    input: Pick<ScannerProviderScanInput, 'image' | 'filename' | 'contentType' | 'idempotencyKey'>
+  ): Promise<{ artifact: Buffer; providerRevision: string; requestId?: string }> {
+    if (this.text('SCANNER_OTS_HOMR_FUSION_ENABLED') !== '1') {
+      throw this.invalid('OTS-HOMR text fusion is not enabled');
+    }
+    const options = this.options({ textPolicy: { mode: 'fusion-v1' } });
+    if (this.text('SCANNER_OTS_HOMR_PROVIDER_KIND', 'modal') === 'fake') {
+      throw this.invalid('The fake OTS-HOMR provider has no text review');
+    }
+    this.assertPins(options);
+    const form = new FormData();
+    form.set(
+      'page',
+      new Blob([new Uint8Array(input.image)], { type: input.contentType }),
+      input.filename
+    );
+    const envelope: any = await this.http.postJson({
+      connection: this.connection(),
+      path: '/v1/review-text',
+      headers: { 'Idempotency-Key': input.idempotencyKey, Accept: 'application/json' },
+      body: form
+    });
+    const { engine } = this.verifyEnvelope(envelope, input as ScannerProviderScanInput);
+    this.verifySelectedComponents(engine, options);
+    return {
+      artifact: this.buildFusionArtifact(envelope, engine),
+      providerRevision: String(engine.serviceRevision),
+      requestId: typeof envelope.requestId === 'string' ? envelope.requestId : undefined
+    };
   }
 
   private options(value: unknown): ScannerOtsHomrEngineOptions {

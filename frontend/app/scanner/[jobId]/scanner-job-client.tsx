@@ -1,5 +1,6 @@
 "use client";
 
+import { pageHasTextReview } from "./text-review";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageComparison from "./page-comparison";
@@ -1500,9 +1501,7 @@ export default function ScannerJobClient({
           })()}
 
           {process.env.NEXT_PUBLIC_OTS_HOMR_LYRIC_REVIEW_ENABLED === "1" &&
-            selected?.engines?.["ots-homr"]?.artifactKinds?.includes(
-              "text-fusion-review",
-            ) && (
+            pageHasTextReview(selected) && (
               <p className="mt-5 text-sm">
                 <a
                   href={`/scanner/${encodeURIComponent(jobId)}/pages/${selected.pageNumber}/lyric-review`}
@@ -1511,8 +1510,9 @@ export default function ScannerJobClient({
                   Review lyrics and staff text for this page
                 </a>{" "}
                 <span className="text-slate-500">
-                  Check the lyrics and staff text (directions and dynamics) read from the scan,
-                  confirm where each goes, and add them to the score.
+                  Check the lyrics and staff text (directions and dynamics) read
+                  from the scan, confirm where each goes, and add them to the
+                  score.
                 </span>
               </p>
             )}
@@ -1604,7 +1604,6 @@ export default function ScannerJobClient({
               })}
             </div>
           </div>
-
         </section>
       )}
 

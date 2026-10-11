@@ -578,3 +578,16 @@ revoke its dedicated proxy token or stop only the OTS-HOMR Modal App.
 Every new Scanner job must select one enabled provider and may select one distinct
 comparison provider. The comparison card appears only for two-provider jobs.
 OTS-HOMR incurs a provider call only when it is selected.
+
+## 4e. Text review for HOMR pages
+
+HOMR recognises the notes; the OTS-HOMR provider reads the text on the same page image through `POST /v1/review-text`
+(detectors, calibrated fusion, OCR, semantic gate, dynamics classifier; **no** OTS-HOMR recognition). The backend stores
+the result as the HOMR run's `text-fusion-review` artifact, so the lyric/direction/dynamic review opens on a HOMR page
+exactly as on an OTS-HOMR one and anchors to HOMR's notes. The review saves its reviewed score into the run it anchored to.
+
+- Switch: `SCANNER_HOMR_TEXT_REVIEW_ENABLED=1`. Needs `SCANNER_OTS_HOMR_FUSION_ENABLED=1` and the same fusion/review-text
+  pins as an OTS-HOMR fusion scan (`SCANNER_EXPECTED_OTS_HOMR_*`); the response is verified identically.
+- Failure of the text side is logged and the HOMR scan still succeeds, without the artifact.
+- Needs the Modal provider redeployed with `/v1/review-text` (service revision bump; not yet deployed).
+- When a page has a review on both engines, the review follows the engine whose reading the page currently shows.

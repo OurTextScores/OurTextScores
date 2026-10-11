@@ -119,6 +119,24 @@ class FusionEngine(FakeEngine):
         )
         return result
 
+    def review_text(self, page):
+        self.calls.append(("review_text", len(page)))
+        return {
+            "fusion": FusionResult(
+                regions=[],
+                summary={
+                    "accepted": 0,
+                    "review": 0,
+                    "reviewOmitted": 0,
+                    "rejected": 0,
+                    "rejectedByReason": {},
+                    "rejectedByClass": {},
+                    "byClass": {},
+                },
+            ),
+            "lyricText": {"status": "ok", "rows": [{"text": "kind,"}], "rowsOmitted": 0},
+        }
+
     def identity(self, detector):
         value = super().identity("none" if detector == "fusion-v1" else detector)
         if detector == "fusion-v1":
@@ -288,6 +306,35 @@ class ProviderTest(unittest.TestCase):
             self.assertEqual(body["engine"]["textPolicy"]["mode"], "fusion-v1")
             self.assertNotIn("textDetector", body["engine"])
             self.assertEqual(len(engine.calls), 1)
+
+    def test_text_review_returns_the_fusion_without_any_recognition(self):
+        engine = FusionEngine()
+        with TestClient(create_provider_app(engine=engine, service_revision="service")) as client:
+            page = b"\x89PNG\r\n\x1a\npage"
+            headers = {"Idempotency-Key": "f" * 64}
+            response = client.post("/v1/review-text", headers=headers, files={"page": ("page.png", page, "image/png")})
+            self.assertEqual(response.status_code, 200, response.text)
+            body = response.json()
+            self.assertEqual(body["inputSha256"], hashlib.sha256(page).hexdigest())
+            self.assertEqual(body["engine"]["textPolicy"]["mode"], "fusion-v1")
+            self.assertEqual(body["result"]["fusionSummary"]["accepted"], 0)
+            self.assertEqual(body["result"]["lyricText"]["rows"], [{"text": "kind,"}])
+            self.assertNotIn("candidates", body["result"])
+            self.assertEqual([c[0] for c in engine.calls], ["review_text"])
+            replay = client.post("/v1/review-text", headers=headers, files={"page": ("page.png", page, "image/png")})
+            self.assertEqual(replay.json()["requestId"], body["requestId"])
+            self.assertEqual(len(engine.calls), 1)
+            other = client.post("/v1/review-text", headers=headers, files={"page": ("page.png", page + b"x", "image/png")})
+            self.assertEqual(other.status_code, 400)
+
+    def test_text_review_is_refused_without_calibration_or_with_a_bad_key(self):
+        with TestClient(create_provider_app(engine=FakeEngine(), service_revision="service")) as client:
+            page = b"\x89PNG\r\n\x1a\npage"
+            unavailable = client.post("/v1/review-text", headers={"Idempotency-Key": "f" * 64}, files={"page": ("page.png", page, "image/png")})
+            self.assertEqual(unavailable.status_code, 503)
+        with TestClient(create_provider_app(engine=FusionEngine(), service_revision="service")) as client:
+            bad = client.post("/v1/review-text", headers={"Idempotency-Key": "short"}, files={"page": ("page.png", page, "image/png")})
+            self.assertEqual(bad.status_code, 400)
 
     def test_fusion_preserves_classified_recognition_errors_without_private_detail(self):
         for stage, code, status, expected in [

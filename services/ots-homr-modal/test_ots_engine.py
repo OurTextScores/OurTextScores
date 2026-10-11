@@ -213,6 +213,27 @@ class OtsHomrEngineTest(unittest.TestCase):
         self.assertEqual((failed["status"], failed["rows"], failed["error"]), ("failed", [], "RuntimeError"))
         self.assertEqual(engine.transcribe_fusion(page, "image/png", False)["fusion"].summary["accepted"], 0)
 
+    def test_text_review_runs_the_text_side_and_never_the_recognition_core(self):
+        class Pipeline:
+            def lyric_rows(self, page, boxes, classifier_rows=None):
+                return {"status": "ok", "rows": [{"text": "kind,"}], "rowsOmitted": 0}
+
+        engine, page = self._fusion_engine()
+        core = engine.core
+        before = list(getattr(core, "calls", []))
+        engine.lyric_text = Pipeline()
+        result = engine.review_text(page)
+        self.assertEqual(result["lyricText"]["rows"], [{"text": "kind,"}])
+        self.assertEqual(result["fusion"].summary["accepted"], 0)
+        self.assertEqual(list(getattr(core, "calls", [])), before)
+        self.assertNotIn("core", result)
+
+    def test_text_review_without_calibration_fails_at_calibration(self):
+        engine, _detectors, _core = self.make_engine()
+        engine.warm_up()
+        with self.assertRaisesRegex(RuntimeError, "failed at calibration"):
+            engine.review_text(b"page")
+
     def test_fusion_without_calibration_fails_before_inference(self):
         engine, detectors, core = self.make_engine()
         engine.warm_up()

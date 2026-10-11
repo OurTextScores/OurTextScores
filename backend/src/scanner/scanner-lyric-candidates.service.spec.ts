@@ -6,7 +6,11 @@ import { ScannerService } from './scanner.service';
 const values: Record<string, string> = { SCANNER_ENABLED: 'true', SCANNER_BETA_USER_IDS: 'user-1' };
 const config = { get: jest.fn((key: string, fallback?: string) => values[key] ?? fallback) } as any;
 
-async function setup(artifact: object | Buffer, mutateRaster?: (raster: any) => void) {
+async function setup(
+  artifact: object | Buffer,
+  mutateRaster?: (raster: any) => void,
+  layout: { engines?: string[]; enginePlan?: unknown } = {}
+) {
   const png = await sharp({
     create: { width: 400, height: 300, channels: 3, background: '#ffffff' }
   })
@@ -38,19 +42,20 @@ async function setup(artifact: object | Buffer, mutateRaster?: (raster: any) => 
     {} as any,
     config
   );
+  const run = () => ({
+    status: 'succeeded',
+    artifacts: {
+      'text-fusion-review': { bucket: 'b', objectKey: 'fusion' },
+      musicXml: { bucket: 'b', objectKey: 'musicxml' }
+    }
+  });
   jest.spyOn(service as any, 'ownedJob').mockResolvedValue({
+    enginePlan: layout.enginePlan,
     pages: [
       {
         pageNumber: 1,
         recognitionRaster: raster,
-        engines: {
-          'ots-homr': {
-            artifacts: {
-              'text-fusion-review': { bucket: 'b', objectKey: 'fusion' },
-              musicXml: { bucket: 'b', objectKey: 'musicxml' }
-            }
-          }
-        }
+        engines: Object.fromEntries((layout.engines ?? ['ots-homr']).map((id) => [id, run()]))
       }
     ]
   });
@@ -79,6 +84,88 @@ const artifact = {
 describe('ScannerService lyric candidates', () => {
   afterEach(() => {
     delete process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED;
+  });
+
+  it('reviews a HOMR page: the text review artifact and notes are read from the HOMR run', async () => {
+    process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED = '1';
+    const service = await setup(artifact, undefined, { engines: ['homr'] });
+    const inventory = await service.pageLyricCandidates('user-1', 'job', 1);
+    expect(inventory.candidates.map((c) => c.id)).toEqual(['c1']);
+    const notes = await service.pageLyricNoteInventory('user-1', 'job', 1);
+    expect(notes.notes.length).toBeGreaterThan(0);
+    const copy = await service.pageReviewedLyricCopy('user-1', 'job', 1, {
+      automaticAttachment: false,
+      musicXmlSha256: notes.musicXmlSha256,
+      rasterSha256: inventory.raster.checksumSha256,
+      placements: [
+        {
+          id: 's1',
+          candidateId: 'c1',
+          noteId: notes.notes[0].id,
+          text: 'fi',
+          printedLine: 1,
+          textConfirmed: true,
+          lineConfirmed: true,
+          noteConfirmed: true
+        }
+      ]
+    });
+    expect(copy.toString()).toContain('<text>fi</text>');
+  });
+
+  it('follows the engine whose reading the page shows when two engines both carry a text review', async () => {
+    process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED = '1';
+    const service = await setup(artifact, undefined, {
+      engines: ['ots-homr', 'homr'],
+      enginePlan: { primaryEngineId: 'homr', fallbackEngineIds: ['ots-homr'] }
+    });
+    const read = jest.spyOn((service as any).storage, 'getObjectBuffer');
+    await service.pageLyricCandidates('user-1', 'job', 1);
+    expect(read).toHaveBeenCalled();
+    // The engine chosen is observable through where a reviewed copy would be written.
+    expect(
+      (service as any).lyricReviewEngineId(
+        { enginePlan: { primaryEngineId: 'homr', fallbackEngineIds: ['ots-homr'] } },
+        {
+          engines: {
+            homr: { status: 'succeeded', artifacts: { musicXml: {}, 'text-fusion-review': {} } },
+            'ots-homr': {
+              status: 'succeeded',
+              artifacts: { musicXml: {}, 'text-fusion-review': {} }
+            }
+          }
+        }
+      )
+    ).toBe('homr');
+    expect(
+      (service as any).lyricReviewEngineId(
+        { enginePlan: { primaryEngineId: 'ots-homr', fallbackEngineIds: ['homr'] } },
+        {
+          engines: {
+            homr: { status: 'succeeded', artifacts: { musicXml: {}, 'text-fusion-review': {} } },
+            'ots-homr': {
+              status: 'succeeded',
+              artifacts: { musicXml: {}, 'text-fusion-review': {} }
+            }
+          }
+        }
+      )
+    ).toBe('ots-homr');
+    // A page whose shown engine has no text review falls back to the one that does.
+    expect(
+      (service as any).lyricReviewEngineId(
+        { enginePlan: { primaryEngineId: 'homr', fallbackEngineIds: ['ots-homr'] } },
+        {
+          engines: {
+            homr: { status: 'succeeded', artifacts: { musicXml: {} } },
+            'ots-homr': {
+              status: 'succeeded',
+              artifacts: { musicXml: {}, 'text-fusion-review': {} }
+            }
+          }
+        }
+      )
+    ).toBe('ots-homr');
   });
 
   it('is not available unless explicitly enabled', async () => {

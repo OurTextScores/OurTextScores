@@ -46,7 +46,9 @@ export default function LyricCandidatesClient({
   const [decisions, setDecisions] = useState<Record<string, CandidateDecision>>(
     {},
   );
-  const [directionDecisions, setDirectionDecisions] = useState<Record<string, DirectionDecision>>({});
+  const [directionDecisions, setDirectionDecisions] = useState<
+    Record<string, DirectionDecision>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState("");
 
@@ -64,7 +66,10 @@ export default function LyricCandidatesClient({
         setKey(k);
         setDecisions(load(k));
         setDirectionDecisions(
-          load(`${k}-directions`) as unknown as Record<string, DirectionDecision>,
+          load(`${k}-directions`) as unknown as Record<
+            string,
+            DirectionDecision
+          >,
         );
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -101,7 +106,10 @@ export default function LyricCandidatesClient({
     setDirectionDecisions((prev) => {
       const merged = { ...prev, [id]: next };
       try {
-        window.localStorage.setItem(`${key}-directions`, JSON.stringify(merged));
+        window.localStorage.setItem(
+          `${key}-directions`,
+          JSON.stringify(merged),
+        );
       } catch {
         /* storage is a convenience only */
       }
@@ -119,7 +127,9 @@ export default function LyricCandidatesClient({
   });
 
   const directionCount = (state: "accept" | "exclude" | "pending") =>
-    directionList.filter((item) => (directionDecisions[item.id]?.state ?? "pending") === state).length;
+    directionList.filter(
+      (item) => (directionDecisions[item.id]?.state ?? "pending") === state,
+    ).length;
 
   const accepted = items.filter(
     (c) => decisions[c.id]?.state === "accept",
@@ -153,8 +163,8 @@ export default function LyricCandidatesClient({
         Each row below was read from the scan: lyrics, then written directions
         and dynamic marks (staff text). Check its text, the note it goes to
         (numbered lines on the picture) and, for lyrics, its lyric line, then
-        Accept it, or Exclude a row that is not one. Nothing changes your
-        score until you press &quot;Add accepted lyrics and staff text to the
+        Accept it, or Exclude a row that is not one. Nothing changes your score
+        until you press &quot;Add accepted lyrics and staff text to the
         score&quot;.
       </p>
       <QuickCopy
@@ -164,8 +174,15 @@ export default function LyricCandidatesClient({
         placements={plan.placements}
         conflicts={plan.conflicts}
         acceptedCount={accepted + directionCount("accept")}
-        excludedCount={items.filter((c) => decisions[c.id]?.state === "exclude").length + directionCount("exclude")}
-        undecidedCount={items.filter((c) => (decisions[c.id]?.state ?? "pending") === "pending").length + directionCount("pending")}
+        excludedCount={
+          items.filter((c) => decisions[c.id]?.state === "exclude").length +
+          directionCount("exclude")
+        }
+        undecidedCount={
+          items.filter(
+            (c) => (decisions[c.id]?.state ?? "pending") === "pending",
+          ).length + directionCount("pending")
+        }
         leftOut={[...plan.leftOut, ...directionOutcome.leftOut]}
         directions={directionOutcome.directions}
         directionConflicts={directionOutcome.conflicts}
@@ -177,7 +194,8 @@ export default function LyricCandidatesClient({
           c.proposedLyric === true &&
           (decisions[c.id]?.state ?? "pending") === "pending" &&
           (decisions[c.id]?.text ?? c.initialText).trim() !== "",
-      ) || suggestedDirections.length > 0) && (
+      ) ||
+        suggestedDirections.length > 0) && (
         <p className="my-2">
           <button
             type="button"
@@ -214,7 +232,7 @@ export default function LyricCandidatesClient({
       <p className="my-2 text-sm">
         <a
           className="underline"
-          href={`/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}/artifacts/musicxml?page=${pageNumber}&engine=ots-homr`}
+          href={`/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}/artifacts/musicxml?page=${pageNumber}&engine=${encodeURIComponent(inventory?.engineId ?? "ots-homr")}`}
         >
           Download recognised score to check note choices
         </a>
@@ -233,13 +251,13 @@ export default function LyricCandidatesClient({
           Place syllables by hand (advanced)
         </summary>
         <CorrectedCopy
-        base={base}
-        rasterSha256={inventory.raster.checksumSha256}
-        proposals={proposedSyllables(inventory, decisions)}
-        candidates={items
-          .filter((c) => decisions[c.id]?.state === "accept")
-          .map((c) => ({ id: c.id, text: decisions[c.id].text }))}
-      />
+          base={base}
+          rasterSha256={inventory.raster.checksumSha256}
+          proposals={proposedSyllables(inventory, decisions)}
+          candidates={items
+            .filter((c) => decisions[c.id]?.state === "accept")
+            .map((c) => ({ id: c.id, text: decisions[c.id].text }))}
+        />
       </details>
       <p className="my-2 text-xs text-slate-500">
         <button type="button" onClick={download} className="underline">
@@ -253,11 +271,16 @@ export default function LyricCandidatesClient({
           regions without text.
         </p>
       )}
-      {items.length > 0 && <h2 className="mt-8 text-lg font-semibold">Lyrics</h2>}
+      {items.length > 0 && (
+        <h2 className="mt-8 text-lg font-semibold">Lyrics</h2>
+      )}
       {items.map((c) => {
         const d = withDefaults(decisions[c.id], c);
-        const placeable = c.defaultSyllables.length > 0 && c.noteChoices.length > 0;
-        const elsewhere = placeable ? slotsElsewhere(items, decisions, c.id, d.printedLine ?? 1) : {};
+        const placeable =
+          c.defaultSyllables.length > 0 && c.noteChoices.length > 0;
+        const elsewhere = placeable
+          ? slotsElsewhere(items, decisions, c.id, d.printedLine ?? 1)
+          : {};
         const withdraw = (fn: (x: typeof d) => typeof d) => update(c.id, fn);
         return (
           <article
@@ -267,7 +290,9 @@ export default function LyricCandidatesClient({
             <p className="text-sm">{c.note}</p>
             {c.initialText && (
               <p className="mt-1 text-base">
-                <span className="text-xs text-slate-500">Read from the scan: </span>
+                <span className="text-xs text-slate-500">
+                  Read from the scan:{" "}
+                </span>
                 <strong>{c.initialText}</strong>
               </p>
             )}
@@ -304,13 +329,16 @@ export default function LyricCandidatesClient({
                   </span>
                 </div>
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                  Type the syllable that belongs under each notehead (the numbers match the picture). Blank
-                  means no syllable on that note. To split a word, put its parts on neighbouring notes.
+                  Type the syllable that belongs under each notehead (the
+                  numbers match the picture). Blank means no syllable on that
+                  note. To split a word, put its parts on neighbouring notes.
                 </p>
                 <ol className="mt-1 flex flex-wrap gap-2">
                   {c.noteChoices.map((n) => {
                     const value = d.slots?.[n.noteId] ?? "";
-                    const other = !value.trim() ? elsewhere[n.noteId] : undefined;
+                    const other = !value.trim()
+                      ? elsewhere[n.noteId]
+                      : undefined;
                     if (other)
                       return (
                         <li key={n.noteId} className="w-24">
@@ -329,7 +357,9 @@ export default function LyricCandidatesClient({
                               value={other.text}
                               className="mt-0.5 block w-full rounded border border-slate-200 bg-slate-100 px-1 text-sm italic text-slate-500 dark:bg-slate-800"
                             />
-                            <span className="text-[10px]">in another review pane</span>
+                            <span className="text-[10px]">
+                              in another review pane
+                            </span>
                           </label>
                         </li>
                       );
@@ -351,7 +381,9 @@ export default function LyricCandidatesClient({
                             aria-label={`Text for note ${n.number} of ${d.text}`}
                             value={value}
                             onChange={(e) =>
-                              withdraw((x) => setSlot(x, n.noteId, e.target.value))
+                              withdraw((x) =>
+                                setSlot(x, n.noteId, e.target.value),
+                              )
                             }
                             className={`mt-0.5 block w-full rounded border px-1 text-sm ${
                               value.trim() ? "border-blue-500" : "border-dashed"
@@ -364,8 +396,9 @@ export default function LyricCandidatesClient({
                 </ol>
                 {(d.unplaced ?? []).length > 0 && (
                   <p className="mt-1 text-xs text-amber-800">
-                    Not placed (no note of its own): {(d.unplaced ?? []).join(", ")}. Type it under a note
-                    to place it.
+                    Not placed (no note of its own):{" "}
+                    {(d.unplaced ?? []).join(", ")}. Type it under a note to
+                    place it.
                   </p>
                 )}
               </div>

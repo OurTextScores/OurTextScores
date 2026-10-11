@@ -15,6 +15,7 @@ import type { ScannerPageProvider } from './scanner-provider.contract';
 import { ScannerProviderService } from './scanner-provider.service';
 import { ScannerTranscodaProviderService } from './scanner-transcoda-provider.service';
 import { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
+import { withHomrTextReview } from './scanner-homr-text-review';
 import type { ScannerPageResult, ScannerRasterIdentity } from './schemas/scanner-job.schema';
 import type { ScannerDescribedPart } from './scanner-measure-analysis';
 import type { ScannerPartMatchResult } from './scanner-part-matching';
@@ -81,7 +82,8 @@ export class ScannerEngineRegistry {
     this.register({
       id: 'homr',
       displayName: 'HOMR',
-      adapter: homr,
+      // With the OTS-HOMR provider present, a HOMR page can also carry the lyric/direction text review.
+      adapter: otsHomr ? withHomrTextReview(homr, otsHomr, this.config) : homr,
       readable: true,
       enabledForNewJobs: () => true,
       budgetExhaustedConfigKey: 'SCANNER_PROVIDER_BUDGET_EXHAUSTED',
@@ -89,7 +91,9 @@ export class ScannerEngineRegistry {
       timeoutConfigKey: 'SCANNER_PROVIDER_TIMEOUT_MS',
       capabilities: {
         displayName: 'HOMR',
-        outputArtifactKinds: ['musicxml', 'pdf'],
+        outputArtifactKinds: otsHomr
+          ? ['musicxml', 'text-fusion-review', 'pdf']
+          : ['musicxml', 'pdf'],
         supportsSpotReview: true,
         supportsMeasureGeometry: true,
         unsupportedSemanticClasses: []
@@ -112,6 +116,17 @@ export class ScannerEngineRegistry {
           maxBytesConfigKey: 'SCANNER_MAX_MUSICXML_BYTES',
           requiredProviderOutput: true
         },
+        // Present only when SCANNER_HOMR_TEXT_REVIEW_ENABLED=1 and the OTS-HOMR provider's fusion is configured.
+        ...(otsHomr
+          ? {
+              'text-fusion-review': {
+                contentType: 'application/json',
+                extension: 'text-fusion.json',
+                maxBytes: 1_048_576,
+                requiredProviderOutput: false
+              }
+            }
+          : {}),
         pdf: {
           contentType: 'application/pdf',
           extension: 'pdf',

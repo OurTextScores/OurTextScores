@@ -100,19 +100,10 @@ class OtsHomrEngine:
             page, content_type, detect_title, score_profile
         )
 
-    def transcribe_fusion(
-        self,
-        page: bytes,
-        content_type: str,
-        detect_title: bool,
-        score_profile: Any = None,
-    ) -> dict[str, Any]:
-        """Run both detectors on identical bytes and return bounded review decisions.
+    def _run_fusion(self, page: bytes) -> tuple[Any, dict[str, Any], Any]:
+        """Both detectors on one page, then the calibrated fusion: (decoded image, detections, fusion).
 
-        Missing calibration or either detector fails before a core result can be
-        returned. MusicXML stays the core result until recognition and attachment
-        have their own held-out release gate.
-        """
+        Missing calibration or either detector fails here, before any recognition result exists."""
         if not self._ready:
             raise RuntimeError("OTS-HOMR engine is not ready")
         if self.fusion_manifest is None:
@@ -169,6 +160,22 @@ class OtsHomrEngine:
             )
         except Exception as error:
             raise TextFusionError("fusion") from error
+        return decoded, detections, fusion
+
+    def transcribe_fusion(
+        self,
+        page: bytes,
+        content_type: str,
+        detect_title: bool,
+        score_profile: Any = None,
+    ) -> dict[str, Any]:
+        """Run both detectors on identical bytes and return bounded review decisions.
+
+        Missing calibration or either detector fails before a core result can be
+        returned. MusicXML stays the core result until recognition and attachment
+        have their own held-out release gate.
+        """
+        decoded, detections, fusion = self._run_fusion(page)
         try:
             result = self.core.transcribe_both(
                 page, content_type, detect_title, score_profile
@@ -176,6 +183,17 @@ class OtsHomrEngine:
         except Exception as error:
             raise TextFusionError("recognition") from error
         result["fusion"] = fusion
+        if self.lyric_text is not None:
+            result["lyricText"] = self._lyric_text(decoded, detections)
+        return result
+
+    def review_text(self, page: bytes) -> dict[str, Any]:
+        """The text review (fusion decisions, OCR rows, dynamics rows) for a page another engine recognised.
+
+        Same detectors, calibration, OCR, gate and classifier as `transcribe_fusion`, with no OTS recognition: the
+        page's notes come from the engine that read them, so only the text side is produced here."""
+        decoded, detections, fusion = self._run_fusion(page)
+        result: dict[str, Any] = {"fusion": fusion}
         if self.lyric_text is not None:
             result["lyricText"] = self._lyric_text(decoded, detections)
         return result

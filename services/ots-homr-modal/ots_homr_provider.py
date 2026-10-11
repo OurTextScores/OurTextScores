@@ -65,6 +65,7 @@ class Engine(Protocol):
         detect_title: bool,
         score_profile: Any = None,
     ) -> dict[str, Any]: ...
+    def review_text(self, page: bytes) -> dict[str, Any]: ...
     def regenerate(self, staffs: list[list[list[str]]], title: str = "") -> bytes: ...
     def identity(self, text_detector: str) -> dict[str, Any]: ...
     def materialize_structured(
@@ -417,6 +418,78 @@ def create_provider_app(
             "requestFingerprint": request_fingerprint,
             "response": response,
         }
+        app.state.result_cache.move_to_end(idempotency_key)
+        while len(app.state.result_cache) > 16:
+            app.state.result_cache.popitem(last=False)
+        return response
+
+
+    @app.post("/v1/review-text")
+    async def review_text(
+        page: UploadFile = File(...),
+        idempotency_key: str = Header(..., alias="Idempotency-Key"),
+        authorization: str | None = Header(None, alias="Authorization"),
+    ) -> Any:
+        """The text review for a page another engine (HOMR) recognised: detectors, calibrated fusion, OCR rows and the
+        dynamics classifier, with no OTS-HOMR recognition. Same pins, identity block and limits as /v1/scan-page."""
+        auth(authorization)
+        request_id = uuid.uuid4().hex
+        if len(idempotency_key) != 64 or any(c not in "0123456789abcdef" for c in idempotency_key):
+            return _error(request_id, "invalid_option", "Invalid Idempotency-Key")
+        if page.content_type not in SUPPORTED_CONTENT_TYPES:
+            return _error(request_id, "invalid_media_type", "Only PNG and JPEG pages are supported", 415)
+        if getattr(engine, "fusion_manifest", None) is None:
+            return _error(request_id, "model_not_ready", "Text fusion is unavailable", 503)
+        content = await page.read(max_page_bytes + 1)
+        if len(content) > max_page_bytes:
+            return _error(request_id, "image_too_large", "Page exceeds the size limit", 413)
+        if not _matches_content_type(content, page.content_type):
+            return _error(request_id, "invalid_media_type", "Page bytes do not match the declared image type", 415)
+        input_sha256 = hashlib.sha256(content).hexdigest()
+        request_fingerprint = hashlib.sha256(b"\0".join((content, b"review-text"))).hexdigest()
+        cached = app.state.result_cache.get(idempotency_key)
+        if cached is not None:
+            if cached["requestFingerprint"] != request_fingerprint:
+                return _error(request_id, "invalid_option", "Idempotency-Key was already used for a different request")
+            app.state.result_cache.move_to_end(idempotency_key)
+            return cached["response"]
+        if not engine.is_ready():
+            try:
+                await asyncio.to_thread(engine.warm_up)
+            except Exception:
+                logger.exception("OTS-HOMR request warm-up failed")
+        if not engine.is_ready():
+            return _error(request_id, "model_not_ready", "The inference worker is not ready", 503)
+        started = time.monotonic()
+        try:
+            result = await asyncio.to_thread(engine.review_text, content)
+        except Exception as error:
+            stage = getattr(error, "stage", "fusion")
+            if stage not in {"lyrics-detector", "non-lyric-text-detector", "calibration", "fusion"}:
+                stage = "fusion"
+            return _error(request_id, "fusion_failed", f"OTS-HOMR text fusion failed at {stage}")
+        identity = engine.identity("fusion-v1")
+        fused = result["fusion"]
+        if len(fused.regions) > MAX_FUSED_REGIONS:
+            return _error(request_id, "inference_failed", "Text fusion exceeded review limit")
+        response = {
+            "schemaVersion": SCHEMA_VERSION,
+            "requestId": request_id,
+            "inputSha256": input_sha256,
+            "engine": {
+                "name": "ots-homr",
+                "serviceRevision": service_revision,
+                **({"providerSourceCommit": provider_source_commit} if provider_source_commit else {}),
+                **identity,
+            },
+            "result": {
+                "fusionSummary": fused.summary,
+                "fusedRegions": fused.regions,
+                **({"lyricText": result["lyricText"]} if "lyricText" in result else {}),
+            },
+            "timing": {"inferenceMs": int((time.monotonic() - started) * 1000)},
+        }
+        app.state.result_cache[idempotency_key] = {"requestFingerprint": request_fingerprint, "response": response}
         app.state.result_cache.move_to_end(idempotency_key)
         while len(app.state.result_cache) > 16:
             app.state.result_cache.popitem(last=False)

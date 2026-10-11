@@ -951,17 +951,20 @@ export class ScannerService implements OnModuleInit {
               provenance: job.engineProvenance
             })
           : page?.engines?.[engine];
-      locator = kind === 'musicxml'
-        ? run?.reviewedMusicXml || run?.artifacts.musicXml
-        : run?.artifacts[kind];
+      locator =
+        kind === 'musicxml'
+          ? run?.reviewedMusicXml || run?.artifacts.musicXml
+          : run?.artifacts[kind];
       if (kind === 'pdf' && locator) {
         const musicXml = run?.reviewedMusicXml || run?.artifacts.musicXml;
         const inputs = [
           { ordinal: page?.ordinal || pageNumber, checksumSha256: musicXml?.checksumSha256 }
         ];
-        if (locator.inputSignature
-          ? !scannerArtifactInputMatches(locator, SCANNER_ARTIFACT_BUILDERS.pagePdf, inputs)
-          : Boolean(run?.reviewedMusicXml)) {
+        if (
+          locator.inputSignature
+            ? !scannerArtifactInputMatches(locator, SCANNER_ARTIFACT_BUILDERS.pagePdf, inputs)
+            : Boolean(run?.reviewedMusicXml)
+        ) {
           locator = undefined;
         }
       }
@@ -3226,8 +3229,13 @@ export class ScannerService implements OnModuleInit {
     jobId: string,
     pageNumber: number
   ): Promise<LyricCandidateInventory> {
-    const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
-    await this.attachProposedNoteIds(inventory, page);
+    const { inventory, page, engineId } = await this.lyricCandidateContext(
+      userId,
+      jobId,
+      pageNumber
+    );
+    await this.attachProposedNoteIds(inventory, page, engineId);
+    inventory.engineId = engineId;
     return inventory;
   }
 
@@ -3235,18 +3243,26 @@ export class ScannerService implements OnModuleInit {
    * Give each anchored syllable the XML note it points at, when the page's token sequence aligns exactly
    * with its MusicXML. Failure to align (or to read the score) just leaves the proposals without ids.
    */
-  private async attachProposedNoteIds(inventory: LyricCandidateInventory, page: any) {
+  private async attachProposedNoteIds(
+    inventory: LyricCandidateInventory,
+    page: any,
+    engineId: ScannerEngineId
+  ) {
     try {
-      await this.alignInventoryNotes(inventory, page);
+      await this.alignInventoryNotes(inventory, page, engineId);
     } finally {
       // Whatever happened above (no score, no alignment), a row left unplaced with no note to choose is withheld.
       for (const row of inventory.ocrRows) settleUnplaced(row);
     }
   }
 
-  private async alignInventoryNotes(inventory: LyricCandidateInventory, page: any) {
+  private async alignInventoryNotes(
+    inventory: LyricCandidateInventory,
+    page: any,
+    engineId: ScannerEngineId
+  ) {
     if (!inventory.ocrRows.some((row) => row.anchor)) return;
-    const run = page.engines?.['ots-homr' as ScannerEngineId];
+    const run = page.engines?.[engineId];
     // The page as it currently stands: the reviewed score when one exists (it carries note corrections).
     const locator = run?.reviewedMusicXml || run?.artifacts?.musicXml;
     const staves = run?.review?.staves;
@@ -3285,7 +3301,7 @@ export class ScannerService implements OnModuleInit {
 
   private async lyricCopySource(userId: string, jobId: string, pageNumber: number) {
     const context = await this.lyricCandidateContext(userId, jobId, pageNumber);
-    const run = context.page.engines?.['ots-homr' as ScannerEngineId];
+    const run = context.page.engines?.[context.engineId];
     const locator = run?.reviewedMusicXml || run?.artifacts?.musicXml;
     if (!locator) throw new NotFoundException('Recognised MusicXML is not available');
     const stored = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
@@ -3331,11 +3347,12 @@ export class ScannerService implements OnModuleInit {
     const output = await this.pageReviewedLyricCopy(userId, jobId, pageNumber, request);
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
-    const run = page?.engines?.['ots-homr' as ScannerEngineId];
+    const engineId = page ? this.lyricReviewEngineId(job, page) : ('ots-homr' as ScannerEngineId);
+    const run = page?.engines?.[engineId];
     if (!page || !run) throw new NotFoundException('Scanner page not found');
     const contentType = 'application/vnd.recordare.musicxml+xml';
     const stored = await this.storage.putDerivativeObject(
-      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-ots-homr-reviewed-${randomUUID()}.musicxml`,
+      `scanner/${this.userHash(userId)}/${jobId}/page-${String(pageNumber).padStart(3, '0')}-${engineId}-reviewed-${randomUUID()}.musicxml`,
       output,
       output.length,
       contentType
@@ -3412,8 +3429,12 @@ export class ScannerService implements OnModuleInit {
     candidateId: string,
     view?: string
   ): Promise<{ body: Buffer; contentType: 'image/png' }> {
-    const { inventory, page } = await this.lyricCandidateContext(userId, jobId, pageNumber);
-    if (view === 'placement') await this.attachProposedNoteIds(inventory, page);
+    const { inventory, page, engineId } = await this.lyricCandidateContext(
+      userId,
+      jobId,
+      pageNumber
+    );
+    if (view === 'placement') await this.attachProposedNoteIds(inventory, page, engineId);
     const candidate =
       inventory.candidates.find((entry) => entry.id === candidateId) ??
       inventory.ocrRows.find((entry) => entry.id === candidateId);
@@ -3432,9 +3453,7 @@ export class ScannerService implements OnModuleInit {
     }
     if (view === 'placement') {
       const row = inventory.ocrRows.find((entry) => entry.id === candidateId);
-      const staves = page.engines?.['ots-homr' as ScannerEngineId]?.review?.staves as
-        | any[]
-        | undefined;
+      const staves = page.engines?.[engineId]?.review?.staves as any[] | undefined;
       const staff = staves?.find((entry) => entry.index === row?.anchor?.staffIndex);
       if (row && staff && row.noteChoices?.length) {
         const crop = placementCropRect(row.box, staff.region, row.noteChoices, inventory.raster);
@@ -3455,6 +3474,21 @@ export class ScannerService implements OnModuleInit {
     return { body: await sharp(source).extract(rect).png().toBuffer(), contentType: 'image/png' };
   }
 
+  /**
+   * The engine whose run carries this page's text review: the engine whose reading the page currently shows when it
+   * has one, else OTS-HOMR, else HOMR. The review anchors to that run's notes and saves its reviewed score there, so
+   * what the reviewer edits is what the page then shows.
+   */
+  private lyricReviewEngineId(job: { enginePlan?: unknown }, page: any): ScannerEngineId {
+    const shown = effectivePageMusicXmlSelection(page, job.enginePlan as never)?.engineId;
+    for (const id of [shown, 'ots-homr', 'homr']) {
+      if (id && page.engines?.[id as ScannerEngineId]?.artifacts?.['text-fusion-review']) {
+        return id as ScannerEngineId;
+      }
+    }
+    return 'ots-homr' as ScannerEngineId;
+  }
+
   private async lyricCandidateContext(userId: string, jobId: string, pageNumber: number) {
     this.assertAvailable(userId);
     if (process.env.SCANNER_OTS_HOMR_LYRIC_REVIEW_ENABLED !== '1') {
@@ -3467,8 +3501,8 @@ export class ScannerService implements OnModuleInit {
     if (!raster?.storage) {
       throw new NotFoundException('Scanner recognition raster is not available');
     }
-    const locator =
-      page.engines?.['ots-homr' as ScannerEngineId]?.artifacts?.['text-fusion-review'];
+    const engineId = this.lyricReviewEngineId(job, page);
+    const locator = page.engines?.[engineId]?.artifacts?.['text-fusion-review'];
     if (!locator) throw new NotFoundException('This page has no text fusion review');
     const body = await this.storage.getObjectBuffer(locator.bucket, locator.objectKey);
     let artifact: unknown;
@@ -3480,6 +3514,7 @@ export class ScannerService implements OnModuleInit {
     try {
       return {
         page,
+        engineId,
         inventory: buildLyricCandidateInventory(
           artifact,
           pageNumber,
@@ -3488,7 +3523,7 @@ export class ScannerService implements OnModuleInit {
             width: raster.width,
             height: raster.height
           },
-          (page.engines?.['ots-homr' as ScannerEngineId]?.review?.staves ?? []) as never
+          (page.engines?.[engineId]?.review?.staves ?? []) as never
         )
       };
     } catch (error) {

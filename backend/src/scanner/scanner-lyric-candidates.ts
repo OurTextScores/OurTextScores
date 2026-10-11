@@ -121,6 +121,8 @@ function readDirectionRows(artifact: unknown, raster: LyricRasterIdentity): Lyri
 export interface LyricCandidateInventory {
   schemaVersion: typeof LYRIC_CANDIDATE_SCHEMA;
   automaticAttachment: false;
+  /** The engine whose reading this review anchors to and saves into (set by the scanner service, not the provider). */
+  engineId?: string;
   pageNumber: number;
   raster: LyricRasterIdentity;
   textPolicy: unknown;

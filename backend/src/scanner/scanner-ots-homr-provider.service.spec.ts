@@ -299,6 +299,113 @@ describe('ScannerOtsHomrProviderService', () => {
     }
   });
 
+  it('fetches a text review for a page another engine recognised, under the same pins and identity', async () => {
+    const fusionValues = {
+      SCANNER_OTS_HOMR_FUSION_ENABLED: '1',
+      SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_REVISION: 'non-lyric-revision',
+      SCANNER_EXPECTED_OTS_HOMR_NON_LYRIC_TEXT_SHA256: 'e'.repeat(64),
+      SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_REVISION: 'non-lyric-revision',
+      SCANNER_EXPECTED_OTS_HOMR_DYNAMICS_SHA256: 'e'.repeat(64),
+      SCANNER_EXPECTED_OTS_HOMR_FUSION_CALIBRATION_REVISION: 'fusion-calibration',
+      SCANNER_EXPECTED_OTS_HOMR_REVIEW_TEXT_SHA256: reviewIdentity.sha256
+    };
+    const request = {
+      image,
+      filename: 'page.png',
+      contentType: 'image/png',
+      idempotencyKey: 'd'.repeat(64)
+    };
+    // Off by default: no call is made.
+    const never = jest.spyOn(global, 'fetch');
+    await expect(
+      new ScannerOtsHomrProviderService(config).reviewText(request)
+    ).rejects.toMatchObject({
+      code: 'provider_invalid_response'
+    });
+    expect(never).not.toHaveBeenCalled();
+    Object.assign(values, fusionValues);
+    try {
+      const base = envelope();
+      const textReview = (policyOverrides: Record<string, unknown> = {}) => ({
+        schemaVersion: base.schemaVersion,
+        requestId: 'text-review-request',
+        inputSha256: sha256(image),
+        engine: {
+          ...base.engine,
+          textDetector: undefined,
+          textPolicy: {
+            mode: 'fusion-v1',
+            fusionRevision: 'fusion-v1',
+            calibrationRevision: 'fusion-calibration',
+            reviewText: reviewIdentity,
+            detectors: [
+              { id: 'lyrics', revision: 'lyrics-revision', sha256: 'b'.repeat(64) },
+              { id: 'non-lyric-text', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) },
+              { id: 'dynamics', revision: 'non-lyric-revision', sha256: 'e'.repeat(64) }
+            ],
+            ...policyOverrides
+          }
+        },
+        result: {
+          fusionSummary: {
+            accepted: 0,
+            review: 0,
+            reviewOmitted: 0,
+            rejected: 0,
+            rejectedByReason: {},
+            rejectedByClass: {},
+            byClass: {}
+          },
+          fusedRegions: [],
+          lyricText: {
+            status: 'ok',
+            rows: [
+              {
+                box: [1, 2, 30, 40],
+                text: 'kind,',
+                ocrConfidence: 0.99,
+                regionCoverage: 0.8,
+                semantic: 'Lyrics',
+                semanticScore: 0.84,
+                proposedLyric: true
+              }
+            ],
+            rowsOmitted: 0
+          }
+        },
+        timing: { inferenceMs: 9 }
+      });
+      jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+        expect(String(url)).toBe('https://ots-homr.example/v1/review-text');
+        expect((init?.body as FormData).get('page')).toBeInstanceOf(Blob);
+        expect((init?.body as FormData).get('textPolicy')).toBeNull();
+        return new Response(JSON.stringify(textReview()), { status: 200 });
+      });
+      const result = await new ScannerOtsHomrProviderService(config).reviewText(request);
+      expect(result.requestId).toBe('text-review-request');
+      expect(JSON.parse(result.artifact.toString('utf8'))).toMatchObject({
+        fusionSummary: { accepted: 0 },
+        lyricText: { rows: [{ text: 'kind,' }] }
+      });
+      // A provider whose review pipeline is not the pinned one is refused, exactly as for a full scan.
+      jest.restoreAllMocks();
+      jest.spyOn(global, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify(textReview({ calibrationRevision: 'someone-elses' })), {
+            status: 200
+          })
+      );
+      await expect(
+        new ScannerOtsHomrProviderService(config).reviewText({
+          ...request,
+          idempotencyKey: 'c'.repeat(64)
+        })
+      ).rejects.toMatchObject({ code: 'provider_model_revision_mismatch' });
+    } finally {
+      for (const key of Object.keys(fusionValues)) delete (values as Record<string, string>)[key];
+    }
+  });
+
   it('verifies all three logical fusion pins and retains bounded review evidence', async () => {
     Object.assign(values, {
       SCANNER_OTS_HOMR_FUSION_ENABLED: '1',

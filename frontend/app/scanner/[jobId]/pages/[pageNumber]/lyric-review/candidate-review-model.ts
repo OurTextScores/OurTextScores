@@ -59,7 +59,8 @@ export type OcrRow = {
   unplaced?: boolean;
   anchor?: RowAnchor | null;
   noteChoices?: NoteChoice[];
-  withheldReason?: "no-staff" | "far-from-notes" | "credit-like" | "footer" | null;
+  withheldReason?:
+    "no-staff" | "far-from-notes" | "credit-like" | "footer" | null;
 };
 
 /** One thing to review: a detector box with no text, or an OCR row with its unreviewed text. */
@@ -83,6 +84,8 @@ export type ReviewItem = {
 export type Inventory = {
   schemaVersion: string;
   automaticAttachment: false;
+  /** The engine whose reading the review is anchored to (OTS-HOMR or HOMR). */
+  engineId?: string;
   pageNumber: number;
   raster: { checksumSha256: string; width: number; height: number };
   candidates: Candidate[];
@@ -104,7 +107,9 @@ export type CandidateDecision = {
 };
 
 /** OCR rows when the provider read the page; otherwise the bare detector boxes. */
-export function describePlacement(anchor: RowAnchor | null | undefined): string | null {
+export function describePlacement(
+  anchor: RowAnchor | null | undefined,
+): string | null {
   if (!anchor) return null;
   const notes = anchor.syllables
     .map((s) =>
@@ -113,7 +118,9 @@ export function describePlacement(anchor: RowAnchor | null | undefined): string 
         : `${s.text}→${s.notePitch ?? "?"} (note ${s.noteOrdinalInMeasure}${s.position === "interpolated" ? ", estimated" : ""})`,
     )
     .join(", ");
-  const measures = [...new Set(anchor.syllables.map((s) => s.measureInStaff + 1))].join("–");
+  const measures = [
+    ...new Set(anchor.syllables.map((s) => s.measureInStaff + 1)),
+  ].join("–");
   return `Staff ${anchor.staffIndex + 1}, printed line ${anchor.printedLine}, measure ${measures} of the staff: ${notes}`;
 }
 
@@ -133,7 +140,8 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
         if (!s.noteId) continue;
         const key = `${s.noteId}|${r.anchor!.printedLine}`;
         const distance = s.distancePx ?? Number.POSITIVE_INFINITY;
-        if (!best.has(key) || distance < best.get(key)!) best.set(key, distance);
+        if (!best.has(key) || distance < best.get(key)!)
+          best.set(key, distance);
       }
     const claimed = new Set<string>();
     return rows.map((r) => ({
@@ -151,8 +159,8 @@ export function reviewItems(inventory: Inventory): ReviewItem[] {
             : r.withheldReason === "footer"
               ? "Withheld: in the page's bottom margin (an imprint, plate number or folio?). You can still accept it."
               : r.withheldReason === "credit-like"
-              ? "Withheld: looks like a publisher, edition or plate-number line. You can still accept it."
-            : "Withheld: reads like a direction or unclear. You can still accept it.",
+                ? "Withheld: looks like a publisher, edition or plate-number line. You can still accept it."
+                : "Withheld: reads like a direction or unclear. You can still accept it.",
       placement: describePlacement(r.anchor),
       anchor: r.anchor ?? null,
       noteChoices: r.noteChoices ?? [],
@@ -191,7 +199,9 @@ const slotsFrom = (syllables: SyllableDecision[]) => ({
   slots: Object.fromEntries(
     syllables.filter((x) => x.noteId).map((x) => [x.noteId as string, x.text]),
   ) as Record<string, string>,
-  unplaced: syllables.filter((x) => !x.noteId && x.text.trim()).map((x) => x.text),
+  unplaced: syllables
+    .filter((x) => !x.noteId && x.text.trim())
+    .map((x) => x.text),
 });
 
 export const blankCandidate = (c: {
@@ -250,7 +260,11 @@ export function setSlot(
 }
 
 export function setLine(d: CandidateDecision, line: number): CandidateDecision {
-  return { ...d, printedLine: line, state: d.state === "accept" ? "pending" : d.state };
+  return {
+    ...d,
+    printedLine: line,
+    state: d.state === "accept" ? "pending" : d.state,
+  };
 }
 
 /** Editing text withdraws an acceptance; empty text can never be accepted. */
@@ -388,7 +402,8 @@ export function placementsFrom(
         printedLine: line,
       });
     }
-    for (const text of d.unplaced ?? []) if (!typed.has(text.trim())) leftOut.push(text);
+    for (const text of d.unplaced ?? [])
+      if (!typed.has(text.trim())) leftOut.push(text);
   }
   return { placements, conflicts, leftOut };
 }
