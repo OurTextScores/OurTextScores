@@ -72,6 +72,13 @@ plus `editor.srt` and `editor.vtt` (captions as files), `chapters.txt`, `poster.
 
   The order that keeps a recording from being paced by guesses: `--dry` (so the scenes say what
   their lines are), `--voice-check`, `--record`, `--assemble`.
+- **Checks that cannot be made by eye.** Looking at frames says nothing about the sound, so
+  two things are measured. A take whose sound comes in bursts with holes between them is
+  reported when it is recorded and again at assembly ("sound breaks up"): that is what
+  playback sounds like when it has gone wrong, and the cure is another score. And `--calibrate`
+  plays clicks with flashes, once straight and once through an edit with waits cut out, and
+  reports how far each click is from its flash; run it after changing the recorder or the
+  assembler.
 - **Waiting** (a file loading, a comparison opening) is wrapped in `t.cut(…)` and removed in the
   edit, with a short "skipped" label so the cut is visible. Nothing is sped up.
 - **Scenes are separate takes**, each from a fresh browser, with a `setup` that is not recorded.
@@ -154,6 +161,9 @@ node scripts/walkthrough/videos/website/demo/stack.mjs down           # stop; `r
   running and the scene waits until it times out.
 - **Sound.** The player's soundfont is served by a CDN that only answers the live site and
   `localhost:3000`. `index.mjs` fetches the same file once and hands it to the demo's pages.
+  The player scene plays Haydn's Op. 76 No. 2. Mozart's K. 465 from the same corpus does not
+  play cleanly in the player: its sound breaks up some twenty times a second, on the live site
+  as well as here.
 - **Not shown, and why.** The scanner previews each engine's reading as a PDF, which a headless
   browser cannot display, so the scene goes from the result straight to the editor. The two
   engines' readings of the page used cannot be merged ("no compatible part"), so the merge

@@ -18,7 +18,9 @@ export default {
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), t.click(page.getByText('Load file', { exact: true }))]);
     await t.cut(
       async () => {
-        await chooser.setFiles(path.join(ASSETS, 'mozart-k465.mxl'));
+        // Haydn's "Fifths" quartet. Not every score will do here: the player's sound breaks up
+        // on some (Mozart's K. 465 from the same corpus is one), on the live site as well.
+        await chooser.setFiles(path.join(ASSETS, 'haydn-op76-2.mxl'));
         await player.locator('svg .Note').first().waitFor({ state: 'visible', timeout: 180000 });
         await warmUp(t, player);
         await page.waitForTimeout(700);

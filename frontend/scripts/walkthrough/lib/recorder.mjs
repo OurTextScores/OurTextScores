@@ -418,7 +418,15 @@ export class Take {
       header.writeUInt32LE(data.length, 40);
       const file = path.join(this.dir, `audio-${recordings.length}.wav`);
       writeFileSync(file, Buffer.concat([header, data]));
-      recordings.push({ file, startedAt: this.startedAt, soundSeconds: +(placed / rate).toFixed(2), periods: offsets.size });
+      const dropouts = countDropouts(mix, rate);
+      const soundSeconds = +(placed / rate).toFixed(2);
+      // Playback that has gone wrong comes out in bursts with holes between them: dozens of
+      // very short silences a second. Music has rests, but not at that rate. It cannot be
+      // seen in the picture, so it is checked here.
+      if (dropouts > 20 && dropouts / Math.max(soundSeconds, 1) > 3) {
+        this.problems.push(`sound breaks up: ${dropouts} dropouts in ${soundSeconds}s of sound. This score does not play cleanly; use another`);
+      }
+      recordings.push({ file, startedAt: this.startedAt, soundSeconds, periods: offsets.size, dropouts });
     }
     return recordings;
   }
@@ -442,6 +450,34 @@ export class Take {
     writeFileSync(path.join(this.dir, 'take.json'), JSON.stringify(take));
     return take;
   }
+}
+
+/**
+ * How many holes a recording has: stretches of digital silence 4 to 80 ms long with sound on
+ * both sides. `mix` is interleaved stereo.
+ */
+function countDropouts(mix, rate) {
+  const hop = Math.max(1, Math.round(rate / 500)); // 2 ms
+  let count = 0;
+  let silent = 0;
+  let heard = false;
+  for (let start = 0; start + hop <= mix.length / 2; start += hop) {
+    let quiet = true;
+    for (let i = start; i < start + hop; i++) {
+      if (mix[i * 2] !== 0 || mix[i * 2 + 1] !== 0) {
+        quiet = false;
+        break;
+      }
+    }
+    if (quiet) {
+      silent++;
+    } else {
+      if (heard && silent >= 2 && silent <= 40) count++;
+      silent = 0;
+      heard = true;
+    }
+  }
+  return count;
 }
 
 /**

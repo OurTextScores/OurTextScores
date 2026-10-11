@@ -136,11 +136,28 @@ function buildSceneAudio(take, clock, dir) {
       ? '[a0]anull'
       : `${take.audio.map((_, i) => `[a${i}]`).join('')}amix=inputs=${take.audio.length}:normalize=0`;
   const raw = clock.rawDuration.toFixed(4);
-  // Cuts are given in the scene's raw time, which is what `t` is here: silence-padded from the scene's start.
-  const keep = clock.cuts.length
-    ? `,aselect='not(${clock.cuts.map((cut) => `between(t,${(cut.start - take.startedAt).toFixed(4)},${(cut.end - take.startedAt).toFixed(4)})`).join('+')})',asetpts=N/SR/TB`
-    : '';
-  chains.push(`${head},apad=whole_dur=${raw},atrim=0:${raw}${keep},apad=whole_dur=${length},atrim=0:${length}[out]`);
+  // The sound loses the same stretches of time the picture does. What is kept is cut out
+  // piece by piece and joined, to the sample. (An `aselect` on time does not do it: it passed
+  // everything through, and the sound after a cut then played late by the length of the cut.)
+  const kept = [];
+  let from = 0;
+  for (const cut of clock.cuts) {
+    const start = cut.start - take.startedAt;
+    if (start > from) kept.push([from, start]);
+    from = Math.max(from, cut.end - take.startedAt);
+  }
+  if (from < clock.rawDuration) kept.push([from, clock.rawDuration]);
+  const whole = `${head},apad=whole_dur=${raw},atrim=0:${raw}`;
+  const finish = `apad=whole_dur=${length},atrim=0:${length}[out]`;
+  if (clock.cuts.length === 0) {
+    chains.push(`${whole},${finish}`);
+  } else {
+    chains.push(`${whole},asplit=${kept.length}${kept.map((_, i) => `[s${i}]`).join('')}`);
+    kept.forEach(([start, end], i) => {
+      chains.push(`[s${i}]atrim=start=${start.toFixed(5)}:end=${end.toFixed(5)},asetpts=PTS-STARTPTS[k${i}]`);
+    });
+    chains.push(`${kept.map((_, i) => `[k${i}]`).join('')}concat=n=${kept.length}:v=0:a=1,${finish}`);
+  }
   ffmpeg([...inputs, '-filter_complex', chains.join(';'), '-map', '[out]', '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', out]);
 }
 
@@ -166,6 +183,18 @@ const stamp = (seconds, separator) => {
 const chapterStamp = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, '0')}`;
 
 // ------------------------------------------------------------------------ assemble
+/**
+ * Builds one scene's clip (picture and sound, cuts applied) from its take, as assembly does.
+ * Exported so the calibration can measure the result and not only the recording.
+ */
+export function buildSceneClip(take, dir) {
+  mkdirSync(dir, { recursive: true });
+  const clock = sceneClock(take);
+  buildSceneVideo(take, clock, dir);
+  buildSceneAudio(take, clock, dir);
+  return { video: path.join(dir, 'video.mp4'), audio: path.join(dir, 'audio.wav'), duration: clock.duration };
+}
+
 export async function assemble(video, { workDir }) {
   const takesDir = path.join(workDir, 'takes');
   const buildDir = path.join(workDir, 'build');
@@ -220,6 +249,11 @@ export async function assemble(video, { workDir }) {
       segments.push({ id: scene.id, dir, start: cursor, length: clock.duration });
       if (scene.chapter && chapters.at(-1)?.title !== scene.chapter) chapters.push({ at: cursor, title: scene.chapter });
 
+      for (const audio of take.audio ?? []) {
+        if ((audio.dropouts ?? 0) > 20 && audio.dropouts / Math.max(audio.soundSeconds, 1) > 3) {
+          warnings.push(`${scene.id}: the sound breaks up (${audio.dropouts} dropouts in ${audio.soundSeconds}s). That score does not play cleanly; record the scene with another`);
+        }
+      }
       take.captions.forEach((caption, index) => {
         const next = take.captions[index + 1];
         const start = clock.map(caption.start);
