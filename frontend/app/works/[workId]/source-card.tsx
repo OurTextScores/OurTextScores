@@ -739,6 +739,7 @@ export default function SourceCard({
                         */
                         <LazyDetails
                             unmountOnClose
+                            open
                             className="border-b border-slate-200 px-5 py-3 dark:border-slate-800"
                             summary={
                                 <summary className="cursor-pointer text-xs font-semibold text-cyan-700 dark:text-cyan-300">

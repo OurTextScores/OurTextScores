@@ -484,9 +484,9 @@ describe('SourceCard', () => {
         openSpy.mockRestore();
     });
 
-    it('does not load a score until the reader asks for a preview', async () => {
-        // A work can carry a dozen sources. Mounting a score engine for each
-        // one on expand is what made an inline preview unaffordable before.
+    it('shows the score preview expanded once a card is opened, and unmounts it when collapsed', async () => {
+        // Cards start collapsed, so a work with a dozen sources still mounts
+        // only the score engines for the cards the reader opens.
         renderWithProviders(
             <SourceCard
                 source={mockSource}
@@ -501,15 +501,9 @@ describe('SourceCard', () => {
         if (!header) throw new Error('Header not found');
         fireEvent.click(header);
 
-        expect(screen.getByText('Preview score')).toBeInTheDocument();
-        expect(screen.queryByTestId('score-preview-frame')).not.toBeInTheDocument();
-
         const details = screen.getByText('Preview score').closest('details');
         if (!details) throw new Error('Preview details not found');
-        // jsdom does not implement <details> toggling, so open it and dispatch
-        // the event the component listens for.
-        (details as HTMLDetailsElement).open = true;
-        fireEvent(details, new Event('toggle', { bubbles: false }));
+        expect(details).toHaveAttribute('open');
 
         const frame = await screen.findByTestId('score-preview-frame');
         const src = new URL(frame.getAttribute('src') || '', 'http://localhost');
@@ -523,6 +517,8 @@ describe('SourceCard', () => {
             '/works/work-123/sources/source-1/canonical.xml',
         );
 
+        // jsdom does not implement <details> toggling, so close it and dispatch
+        // the event the component listens for.
         (details as HTMLDetailsElement).open = false;
         fireEvent(details, new Event('toggle', { bubbles: false }));
         expect(screen.queryByTestId('score-preview-frame')).not.toBeInTheDocument();

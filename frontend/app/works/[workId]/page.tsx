@@ -135,6 +135,24 @@ export default async function WorkDetailPage({
           </div>
         </header>
 
+        {currentUser && (
+        <details className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <summary className="cursor-pointer p-5 text-lg font-semibold text-slate-800 dark:text-slate-100">
+            Edit work details
+          </summary>
+          <div className="px-5 pb-5">
+            <EditMetadataForm
+              workId={workId}
+              initial={{
+                title: work.title ?? imslp?.title,
+                composer: work.composer ?? imslp?.composer,
+                catalogNumber: (work as any).catalogNumber
+              }}
+            />
+          </div>
+        </details>
+        )}
+
         <section aria-labelledby="sources-heading" className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 id="sources-heading" className="font-heading text-2xl font-semibold">
@@ -194,21 +212,6 @@ export default async function WorkDetailPage({
               </summary>
               <div className="mt-4">
                 <UploadNewSourceForm workId={workId} imslpPermalink={imslpPermalink} />
-              </div>
-            </details>
-            <details className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-              <summary className="cursor-pointer p-5 text-lg font-semibold text-slate-800 dark:text-slate-100">
-                Edit work details
-              </summary>
-              <div className="px-5 pb-5">
-                <EditMetadataForm
-                  workId={workId}
-                  initial={{
-                    title: work.title ?? imslp?.title,
-                    composer: work.composer ?? imslp?.composer,
-                    catalogNumber: (work as any).catalogNumber
-                  }}
-                />
               </div>
             </details>
           </>
