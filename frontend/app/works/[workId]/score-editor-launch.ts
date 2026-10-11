@@ -99,7 +99,10 @@ export function canonicalScoreUrl(args: {
   workId: string;
   sourceId: string;
 }) {
-  const absoluteApiBase = args.apiBase.startsWith('http')
+  // A relative base is made absolute in the browser, where the editor iframe
+  // needs it. During server rendering there is no window, and the URL is built
+  // only to be handed to a preview that mounts after the reader opens it.
+  const absoluteApiBase = args.apiBase.startsWith('http') || typeof window === 'undefined'
     ? args.apiBase
     : `${window.location.protocol}//${window.location.hostname}:4000${args.apiBase}`;
   return `${absoluteApiBase}/works/${encodeURIComponent(args.workId)}/sources/${encodeURIComponent(
