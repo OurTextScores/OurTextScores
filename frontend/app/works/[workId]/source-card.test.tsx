@@ -249,10 +249,79 @@ describe('SourceCard', () => {
             />
         );
 
-        const referenceButton = screen.getByRole('link', { name: 'Download Reference PDF' });
-        expect(referenceButton).toHaveClass('border-slate-300');
-        expect(referenceButton).toHaveClass('bg-white');
+        const referenceItem = screen.getByRole('link', { name: 'Download Reference PDF' });
+        expect(referenceItem).toHaveClass('text-slate-700');
+        expect(referenceItem.className).not.toMatch(/cyan/);
         expect(screen.getByRole('link', { name: 'Download Source PDF' })).toBeInTheDocument();
+    });
+
+    it('groups downloads into one menu and omits formats the source lacks', () => {
+        const withMscz: SourceView = {
+            ...mockSource,
+            derivatives: {
+                mscz: {
+                    bucket: 'derivs', objectKey: 'score.mscz', sizeBytes: 10,
+                    contentType: 'application/octet-stream',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z'
+                }
+            }
+        };
+        renderWithProviders(
+            <SourceCard
+                source={withMscz}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        const menu = screen.getByText(/Download/, { selector: 'summary' }).closest('details');
+        expect(menu).not.toHaveAttribute('open');
+        expect(menu).toContainElement(screen.getByRole('link', { name: 'Download MSCZ' }));
+        expect(screen.queryByRole('link', { name: 'Download KRN' })).not.toBeInTheDocument();
+    });
+
+    it('opens and badges the recommended source', () => {
+        renderWithProviders(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={mockUser}
+                recommended
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(screen.getByText('Recommended')).toBeInTheDocument();
+        expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
+    });
+
+    it('keeps contribution forms collapsed for signed-in users and hides them when signed out', () => {
+        const { unmount } = renderWithProviders(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={mockUser}
+                recommended
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(screen.getByText('Contribute to this source').closest('details')).not.toHaveAttribute('open');
+        unmount();
+        renderWithProviders(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={null}
+                recommended
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(screen.queryByText('Contribute to this source')).not.toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/signin');
     });
 
     it('auto-opens source PDF panel for deep-linked source cards when PDF exists', async () => {

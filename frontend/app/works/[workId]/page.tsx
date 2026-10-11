@@ -89,73 +89,69 @@ export default async function WorkDetailPage({
     fetchBackendSession()
   ]);
   const currentUser = session.user;
+  // Recommended source first: not flagged, verified, then most recently updated.
+  const sources = [...work.sources].sort((x, y) => {
+    const flag = Number(!!x.adminFlagged) - Number(!!y.adminFlagged);
+    if (flag) return flag;
+    const ver = Number(!!y.adminVerified) - Number(!!x.adminVerified);
+    if (ver) return ver;
+    return (Date.parse(y.latestRevisionAt ?? "") || 0) - (Date.parse(x.latestRevisionAt ?? "") || 0);
+  });
   const imslpPermalink = imslp?.permalink || (imslp?.workId ? `https://imslp.org/wiki/${imslp.workId}` : undefined);
 
   return (
     <main className="min-h-screen bg-slate-50 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-8 px-6">
-        <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-slate-100 p-8 shadow-sm ring-1 ring-slate-900/5 dark:from-midnight-900 dark:to-midnight-950 dark:ring-white/10">
-          <div className="relative z-10 flex flex-col gap-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
-                  <Link href="/catalogue" className="transition hover:text-slate-800 dark:hover:text-slate-200">
-                    ← Back to catalogue
-                  </Link>
-                  <span className="opacity-50">•</span>
-                  <span className="font-mono opacity-75">ID: {work.workId}</span>
-                </div>
-                <h1 className="font-heading text-4xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-5xl">
-                  {work.title ?? "Untitled Work"}
-                </h1>
-                <p className="text-xl text-slate-600 dark:text-slate-300">
-                  {work.composer ?? "Unknown Composer"}
-                  {(work as any).catalogNumber && (
-                    <span className="ml-2 text-slate-400 dark:text-slate-500">• {(work as any).catalogNumber}</span>
-                  )}
-                </p>
-              </div>
-              <div className="text-right text-sm text-slate-500 dark:text-slate-400">
-                <p>Sources: <span className="font-medium text-slate-900 dark:text-slate-200">{work.sourceCount}</span></p>
-                <p>Latest revision: <span className="font-medium text-slate-900 dark:text-slate-200">{formatDate(work.latestRevisionAt)}</span></p>
-              </div>
+        <header className="rounded-2xl bg-gradient-to-br from-white to-slate-100 p-6 shadow-sm ring-1 ring-slate-900/5 md:p-8 dark:from-midnight-900 dark:to-midnight-950 dark:ring-white/10">
+          <Link href="/catalogue" className="text-sm text-slate-500 transition hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
+            ← Back to catalogue
+          </Link>
+          <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1">
+              <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+                {work.title ?? "Untitled Work"}
+              </h1>
+              <p className="text-lg text-slate-600 dark:text-slate-300">
+                {work.composer ?? "Unknown Composer"}
+                {(work as any).catalogNumber && (
+                  <span className="ml-2 text-slate-400 dark:text-slate-500">• {(work as any).catalogNumber}</span>
+                )}
+              </p>
+              <p className="pt-1 text-sm text-slate-500 dark:text-slate-400">
+                {work.sourceCount} {work.sourceCount === 1 ? "source" : "sources"}
+                {work.latestRevisionAt && <> · updated {formatDate(work.latestRevisionAt)}</>}
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2 text-sm">
-              {/* Badges removed as per request */}
-            </div>
+            {imslpPermalink && (
+              <Link
+                href={imslpPermalink}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                View on IMSLP ↗
+              </Link>
+            )}
           </div>
         </header>
 
-        <EditMetadataForm
-          workId={workId}
-          initial={{
-            title: work.title ?? imslp?.title,
-            composer: work.composer ?? imslp?.composer,
-            catalogNumber: (work as any).catalogNumber
-          }}
-        />
-
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
-          <h2 className="mb-3 text-lg font-semibold text-slate-800 dark:text-slate-100">Upload a new source</h2>
-          <UploadNewSourceForm workId={workId} imslpPermalink={imslpPermalink} />
-        </section>
-
-        {imslp && (
-          <ImslpMetadataCard
-            imslp={imslp}
-            raw={raw}
-            workId={workId}
-            overrides={{ title: work.title, composer: work.composer }}
-          />
-        )}
-
-        <section className="flex flex-col gap-6">
-          {work.sources.length === 0 ? (
-            <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-6 text-slate-300">
-              No sources have been uploaded for this work.
+        <section aria-labelledby="sources-heading" className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="sources-heading" className="font-heading text-2xl font-semibold">
+              Sources
+            </h2>
+            {sources.length > 1 && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Start with the recommended source: verified first, then most recently updated.
+              </p>
+            )}
+          </div>
+          {sources.length === 0 ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
+              No sources have been uploaded for this work yet. Be the first: use “Add a source” below.
             </div>
           ) : (
-            work.sources.map((source) => (
+            sources.map((source, index) => (
               <SourceCard
                 key={source.sourceId}
                 source={source}
@@ -164,6 +160,7 @@ export default async function WorkDetailPage({
                 composer={work.composer ?? imslp?.composer}
                 imslpPermalink={imslpPermalink}
                 currentUser={currentUser}
+                recommended={index === 0 && sources.length > 1}
                 autoOpen={source.sourceId === targetSourceId}
                 watchControlsSlot={
                   <Suspense fallback={<span className="rounded px-3 py-1 text-xs text-slate-400 ring-1 ring-slate-200 dark:ring-slate-700">Loading…</span>}>
@@ -185,6 +182,61 @@ export default async function WorkDetailPage({
             ))
           )}
         </section>
+
+        {currentUser ? (
+          <>
+            <details
+              open={sources.length === 0}
+              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/60"
+            >
+              <summary className="cursor-pointer text-lg font-semibold text-slate-800 dark:text-slate-100">
+                Add a source
+              </summary>
+              <div className="mt-4">
+                <UploadNewSourceForm workId={workId} imslpPermalink={imslpPermalink} />
+              </div>
+            </details>
+            <details className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+              <summary className="cursor-pointer p-5 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                Edit work details
+              </summary>
+              <div className="px-5 pb-5">
+                <EditMetadataForm
+                  workId={workId}
+                  initial={{
+                    title: work.title ?? imslp?.title,
+                    composer: work.composer ?? imslp?.composer,
+                    catalogNumber: (work as any).catalogNumber
+                  }}
+                />
+              </div>
+            </details>
+          </>
+        ) : (
+          <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">
+            <Link href="/signin" className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">
+              Sign in
+            </Link>{" "}
+            to add a source, upload revisions, or edit this work.
+          </p>
+        )}
+
+        {imslp && (
+          <details className="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+            <summary className="cursor-pointer p-5 text-lg font-semibold text-slate-800 dark:text-slate-100">
+              IMSLP details
+              <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">work ID {work.workId}</span>
+            </summary>
+            <div className="px-5 pb-5">
+              <ImslpMetadataCard
+                imslp={imslp}
+                raw={raw}
+                workId={workId}
+                overrides={{ title: work.title, composer: work.composer }}
+              />
+            </div>
+          </details>
+        )}
 
         {/* Deep link handler for notification links */}
         <NotificationDeepLink />
@@ -233,9 +285,9 @@ function ImslpMetadataCard({
   const displayComposer = (overrides?.composer && overrides.composer.trim()) || imslp.composer;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-lg dark:border-slate-800 dark:bg-slate-900/60">
+    <section>
       <header className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">IMSLP Metadata</h2>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Metadata from IMSLP</h3>
         <div className="flex items-center gap-3">
           {permalink && (
             <Link
@@ -250,12 +302,6 @@ function ImslpMetadataCard({
           <RefreshImslpButton workId={workId} />
         </div>
       </header>
-
-      {refreshedAt && (
-        <p className="-mt-2 mb-3 text-xs text-slate-600 dark:text-slate-400">
-          Refreshed at: {new Date(refreshedAt).toLocaleString()}
-        </p>
-      )}
 
       {refreshedAt && (
         <p className="-mt-2 mb-3 text-xs text-slate-600 dark:text-slate-400">

@@ -449,6 +449,19 @@ function StorageBadge({
     );
 }
 
+function MenuLink({ href, children }: { href: string; children: React.ReactNode }) {
+    return (
+        <Link
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+            {children}
+        </Link>
+    );
+}
+
 export default function SourceCard({
     source,
     workId,
@@ -459,6 +472,7 @@ export default function SourceCard({
     watchControlsSlot,
     branchesPanelSlot,
     autoOpen = false,
+    recommended = false,
 }: {
     source: SourceView;
     workId: string;
@@ -469,9 +483,10 @@ export default function SourceCard({
     watchControlsSlot: React.ReactNode;
     branchesPanelSlot: React.ReactNode;
     autoOpen?: boolean;
+    recommended?: boolean;
     autoOpenPanel?: "source-pdf";
 }) {
-    const [isOpen, setIsOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(recommended);
     const [isSourcePdfOpen, setIsSourcePdfOpen] = useState(false);
 
     // Auto-open card and source PDF when a source deep link is provided.
@@ -508,6 +523,17 @@ export default function SourceCard({
     // 2. Owner/sole creator AND no revisions from other users
     const canDeleteSource = isAdmin || (isOwner && !hasMultipleCreators);
 
+    const fileHref = (file: string) =>
+        `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/${file}`;
+    const hasDownloads = Boolean(
+        source.derivatives?.normalizedMxl ||
+        source.derivatives?.mscz ||
+        source.derivatives?.pdf ||
+        source.derivatives?.krn ||
+        source.derivatives?.abc ||
+        source.hasReferencePdf
+    );
+
     return (
         <article
             id={`source-${source.sourceId}`}
@@ -542,6 +568,11 @@ export default function SourceCard({
                         <h2 className="text-xl font-semibold flex items-center gap-2">
                             <span className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>▶</span>
                             {source.label}
+                            {recommended && (
+                                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                    Recommended
+                                </span>
+                            )}
                         </h2>
                         {source.provenance?.uploadedByUsername && (
                             <StopPropagation className="pl-6">
@@ -628,103 +659,65 @@ export default function SourceCard({
                             +{(source.projectBadges?.length ?? 0) - 2}
                         </span>
                     )}
-                    {source.derivatives?.mscz && (
-                        <Link
-                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.mscz`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            <span aria-hidden="true">↓ </span>
-                            Download MSCZ
-                        </Link>
-                    )}
-                    {source.derivatives?.krn && (
-                        <Link
-                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.krn`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            <span aria-hidden="true">↓ </span>
-                            Download KRN
-                        </Link>
-                    )}
-                    {source.derivatives?.abc && (
-                        <Link
-                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.abc`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            <span aria-hidden="true">↓ </span>
-                            Download ABC
-                        </Link>
-                    )}
-                    {source.hasReferencePdf && (
-                        <Link
-                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/reference.pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            <span aria-hidden="true">↓ </span>
-                            Download Reference PDF
-                        </Link>
-                    )}
-                    {source.derivatives?.pdf && (
-                        <Link
-                            href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/score.pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                            <span aria-hidden="true">↓ </span>
-                            Download Source PDF
-                        </Link>
-                    )}
                     {source.derivatives?.normalizedMxl && (
-                        <>
-                            <Link
-                                href={`${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(source.sourceId)}/normalized.mxl`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                            >
-                                <span aria-hidden="true">↓ </span>
-                                Download MXL
-                            </Link>
-                            <button
-                                onClick={() => {
-                                    const canonicalUrl = canonicalScoreUrl({
-                                        apiBase: PUBLIC_API_BASE,
+                    <button
+                            onClick={() => {
+                                const canonicalUrl = canonicalScoreUrl({
+                                    apiBase: PUBLIC_API_BASE,
+                                    workId,
+                                    sourceId: source.sourceId,
+                                });
+                                const editorUrl = buildScoreEditorLaunchUrl({
+                                    scoreUrl: canonicalUrl,
+                                    launchContext: {
+                                        source: 'ourtextscores',
                                         workId,
                                         sourceId: source.sourceId,
-                                    });
-                                    const editorUrl = buildScoreEditorLaunchUrl({
-                                        scoreUrl: canonicalUrl,
-                                        launchContext: {
-                                            source: 'ourtextscores',
-                                            workId,
-                                            sourceId: source.sourceId,
-                                            branchName: latest?.fossilBranch || 'trunk',
-                                            revisionId: latest?.revisionId,
-                                            sourceType: source.sourceType,
-                                            sourceLabel: source.label,
-                                            workTitle,
-                                            composer,
-                                            imslpUrl: imslpPermalink,
-                                            canonicalXmlUrl: canonicalUrl,
-                                        },
-                                    });
-                                    window.open(editorUrl, '_blank');
-                                }}
-                                className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
-                            >
-                                <span aria-hidden="true">✎ </span>
-                                Open Score in Editor
-                            </button>
-                        </>
+                                        branchName: latest?.fossilBranch || 'trunk',
+                                        revisionId: latest?.revisionId,
+                                        sourceType: source.sourceType,
+                                        sourceLabel: source.label,
+                                        workTitle,
+                                        composer,
+                                        imslpUrl: imslpPermalink,
+                                        canonicalXmlUrl: canonicalUrl,
+                                    },
+                                });
+                                window.open(editorUrl, '_blank');
+                            }}
+                            className="rounded border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200 dark:hover:bg-cyan-900"
+                        >
+                            <span aria-hidden="true">✎ </span>
+                            Open Score in Editor
+                        </button>
+                    )}
+                    {hasDownloads && (
+                        <details className="relative">
+                            <summary className="cursor-pointer list-none rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                                <span aria-hidden="true">↓ </span>
+                                Download <span aria-hidden="true">▾</span>
+                            </summary>
+                            <div className="absolute right-0 z-20 mt-1 flex w-52 flex-col rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                {source.derivatives?.normalizedMxl && (
+                                    <MenuLink href={fileHref('normalized.mxl')}>Download MXL</MenuLink>
+                                )}
+                                {source.derivatives?.mscz && (
+                                    <MenuLink href={fileHref('score.mscz')}>Download MSCZ</MenuLink>
+                                )}
+                                {source.derivatives?.pdf && (
+                                    <MenuLink href={fileHref('score.pdf')}>Download Source PDF</MenuLink>
+                                )}
+                                {source.derivatives?.krn && (
+                                    <MenuLink href={fileHref('score.krn')}>Download KRN</MenuLink>
+                                )}
+                                {source.derivatives?.abc && (
+                                    <MenuLink href={fileHref('score.abc')}>Download ABC</MenuLink>
+                                )}
+                                {source.hasReferencePdf && (
+                                    <MenuLink href={fileHref('reference.pdf')}>Download Reference PDF</MenuLink>
+                                )}
+                            </div>
+                        </details>
                     )}
                     {/* Watch toggle */}
                     {watchControlsSlot}
@@ -770,7 +763,14 @@ export default function SourceCard({
                         </LazyDetails>
                     )}
                     {latest && (
-                        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
+                        <details className="group border-b border-slate-200 dark:border-slate-800">
+                            <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50">
+                                Revision &amp; file details
+                                <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+                                    latest #{latest.sequenceNumber}
+                                </span>
+                            </summary>
+                        <div className="flex flex-col gap-4 px-5 py-4 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:flex-row md:items-start md:justify-between">
                             <div>
                                 <p>
                                     Latest revision: <span className="font-mono text-cyan-700 dark:text-cyan-300">#{latest.sequenceNumber}</span>
@@ -858,6 +858,7 @@ export default function SourceCard({
                                 />
                             </div>
                         </div>
+                        </details>
                     )}
 
                     <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
@@ -938,6 +939,14 @@ export default function SourceCard({
                         </LazyDetails>
                     )}
 
+                    {currentUser ? (
+                        <details className="group border-t border-slate-200 dark:border-slate-800">
+                            <summary className="cursor-pointer px-5 py-3 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50">
+                                Contribute to this source
+                                <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+                                    upload a revision{canUploadReferencePdf ? ", add reference PDF" : ""}, report an issue{isAdmin ? ", admin" : ""}
+                                </span>
+                            </summary>
                     <div className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
                         <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-200">Upload a new revision</h3>
                         <UploadRevisionForm
@@ -968,6 +977,15 @@ export default function SourceCard({
                             source={source}
                             isAdmin={isAdmin}
                         />
+                    )}
+                        </details>
+                    ) : (
+                        <p className="border-t border-slate-200 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
+                            <Link href="/signin" className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">
+                                Sign in
+                            </Link>{' '}
+                            to upload a revision, rate, or comment.
+                        </p>
                     )}
                 </div>
             )}
