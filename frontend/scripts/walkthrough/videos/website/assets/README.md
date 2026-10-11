@@ -21,7 +21,13 @@ itself is in the public domain. They fill the demo site's catalogue (`../demo/ca
 - OpenScore Lieder Corpus: <https://github.com/OpenScore/Lieder>, <https://musescore.com/openscore-lieder-corpus>
 - OpenScore String Quartets: <https://github.com/OpenScore/StringQuartets>, <https://musescore.com/openscore-string-quartets>
 
-Files made for the walkthrough from these (a revision with a few deliberate changes, a page
-image for the scan scene) are listed in the sections below as they are added.
+One more file is not a score but a picture of one, for the scan scene:
+
+| File | What it is | Rights |
+| --- | --- | --- |
+| `liederkreis-op24-no1-peters.png` | Schumann, *Liederkreis* Op. 24 No. 1, "Morgens steh' ich auf und frage": the first page of the Edition Peters print (plate 9559) as scanned on IMSLP (#648551), rendered at 200 dpi | Public domain |
+
+The revision in the change review is not a file here: the seed makes it from the uploaded
+score by adding two dynamics (`withDynamic` in `../demo/seed.mjs`).
 
 Only CC0 and public-domain music is used, so the finished video can be published anywhere.

@@ -282,15 +282,9 @@ async function review() {
 export const PROJECT = {
   title: 'Dichterliebe, complete',
   description: 'All sixteen songs of Schumann’s Dichterliebe as editable scores, each checked against the first edition.',
-  // Songs of the cycle that the demo catalogue does not have yet.
-  candidates: [
-    { score: 4976769, notes: 'No. 2, Aus meinen Tränen sprießen' },
-    { score: 4978368, notes: 'No. 4, Wenn ich in deine Augen seh’' },
-    { score: 4978373, notes: 'No. 5, Ich will meine Seele tauchen' },
-  ],
 };
 
-/** A project that gathers the Dichterliebe sources, with a few songs still to do. */
+/** A project that gathers the Dichterliebe sources. */
 async function project() {
   log('project');
   const { clara, felix } = DEMO.people;
@@ -318,19 +312,12 @@ async function project() {
     log(`  linked ${source.label}`);
   }
 
+  // Rows (candidate scores) are not shown on the project page, so the demo has none; remove
+  // any left by an earlier version of this seed.
   const rows = await api('GET', `/projects/${projectId}/rows?limit=50`, { as: DEMO.admin });
-  const have = new Set((rows.rows ?? rows.items ?? []).map((row) => row.notes));
-  for (const candidate of PROJECT.candidates) {
-    if (have.has(candidate.notes)) continue;
-    await api('POST', `/projects/${projectId}/rows`, {
-      as: DEMO.admin,
-      json: {
-        externalScoreUrl: `https://musescore.com/openscore-lieder-corpus/scores/${candidate.score}`,
-        imslpUrl: entry('dichterliebe').imslp,
-        notes: candidate.notes,
-      },
-    });
-    log(`  to do: ${candidate.notes}`);
+  for (const row of rows.rows ?? rows.items ?? []) {
+    await api('DELETE', `/projects/${projectId}/rows/${row.rowId}`, { as: DEMO.admin });
+    log(`  removed row ${row.notes ?? row.rowId}`);
   }
   return { projectId };
 }

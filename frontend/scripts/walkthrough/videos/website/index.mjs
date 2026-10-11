@@ -42,7 +42,7 @@ export default {
     subtitle: 'ourtextscores.com',
     lines: ['Free and open source', 'github.com/OurTextScores'],
     footer:
-      'Recorded on a demonstration copy of the site. Scores shown are CC0 transcriptions from the OpenScore Lieder Corpus and OpenScore String Quartets.',
+      'Recorded on a demonstration copy of the site. Scores shown are CC0 transcriptions from the OpenScore Lieder Corpus and OpenScore String Quartets; the scanned page is from a public-domain Peters edition of Schumann’s Liederkreis, Op. 24.',
     seconds: 6,
     say: 'It is free and open source. Join in at Our Text Scores dot com.',
   },
@@ -58,6 +58,12 @@ export default {
     await scene('welcome'),
     await scene('find'),
     await scene('work'),
+    await scene('player'),
+    await scene('editor'),
+    await scene('upload'),
+    await scene('scan'),
+    await scene('review'),
+    await scene('follow'),
     ...(process.env.WALKTHROUGH_PROBE ? [await scene('probe')] : []),
   ],
 };

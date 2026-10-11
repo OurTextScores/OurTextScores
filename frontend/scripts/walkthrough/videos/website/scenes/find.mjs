@@ -1,9 +1,12 @@
-import { scroll, visit } from '../site.mjs';
+import { sourceOf, stopWatching } from '../demo/film.mjs';
+import { PEOPLE, scroll, visit } from '../site.mjs';
 
 export default {
   id: 'find',
   chapter: 'Find a work',
   async setup(t) {
+    // Nobody watches the source yet; that happens in a later scene.
+    await stopWatching(PEOPLE.clara, await sourceOf('dichterliebe', 'grolle'));
     await visit(t, '/welcome');
   },
   async run(t) {

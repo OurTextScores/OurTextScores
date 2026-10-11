@@ -1,14 +1,19 @@
-import { id, scroll, scrollTo, visit } from '../site.mjs';
+import { sourceOf, stopWatching } from '../demo/film.mjs';
+import { PEOPLE, scroll, scrollTo, visit, warmUp } from '../site.mjs';
 import { WORK } from '../story.mjs';
 
 export default {
   id: 'work',
   chapter: 'Play and download',
   async setup(t) {
+    // Nobody watches the source yet; that happens in a later scene.
+    await stopWatching(PEOPLE.clara, await sourceOf('dichterliebe', 'grolle'));
     await visit(t, `/works/${WORK.dichterliebe}`);
     // The preview loads its sounds the first time it plays. Let that happen before filming.
     const preview = t.page.frameLocator('[data-testid="score-preview-frame"]').first();
-    await preview.getByRole('button', { name: /^play/i }).first().waitFor({ state: 'visible', timeout: 60000 });
+    await preview.locator('svg .Note').first().waitFor({ state: 'visible', timeout: 120000 });
+    await warmUp(t, preview);
+    await t.page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   },
   async run(t) {
     const page = t.page;
@@ -24,7 +29,7 @@ export default {
     await t.caption('Start with the recommended one, and play it right here.');
     await scrollTo(t, page.getByText('Preview score').first(), { offset: 84 });
     await t.hold(500);
-    await t.click(preview.getByRole('button', { name: /^play/i }).first(), { after: 300 });
+    await t.click(preview.getByTestId('player-play'), { after: 300 });
     await t.hold(9500);
     await t.snap('playing');
     await t.click(preview.getByRole('button', { name: /^pause/i }).first(), { after: 500 });

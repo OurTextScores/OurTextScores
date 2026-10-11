@@ -52,8 +52,9 @@ export class CardRenderer {
   /** A caption: one or two lines in a dark pill, low in the frame (or high, to stay off what it describes). */
   caption(text, file, { position = 'bottom' } = {}) {
     // 'bottom' clears the app's status bar; 'low' sits on it, for when a dialog reaches down
-    // to where the caption would be; 'top' is just under the toolbar.
-    const edge = { top: 'top: 280px', low: 'bottom: 10px' }[position] ?? 'bottom: 96px';
+    // to where the caption would be; 'top' is just under the editor's toolbar; 'high' is just
+    // under a site's header, for when the controls being shown are at the foot of the page.
+    const edge = { top: 'top: 280px', high: 'top: 128px', low: 'bottom: 10px' }[position] ?? 'bottom: 96px';
     return this.render(
       page(
         `<div class="wrap"><div class="shot"><div class="caption">${escapeHtml(text)}</div></div></div>`,

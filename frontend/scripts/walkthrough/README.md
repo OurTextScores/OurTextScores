@@ -15,9 +15,11 @@ node scripts/walkthrough/run.mjs editor --voice-check          # ...and have eac
 node scripts/walkthrough/run.mjs editor --calibrate            # check audio and picture timing
 ```
 
-It needs the site on `http://localhost:3000` (the editor is recorded from
-`/score-editor/index.html`; set `WALKTHROUGH_EDITOR_BASE` to record another build), Playwright's
-Chromium, and `ffmpeg`.
+There are two videos: `editor` (the score editor) and `website` (the site as a whole). Both
+need Playwright's Chromium and `ffmpeg`. The editor video is recorded from the site on
+`http://localhost:3000` (`/score-editor/index.html`; set `WALKTHROUGH_EDITOR_BASE` to record
+another build). The website video is recorded from its own demo copy of the site; see
+"The website video" below.
 
 Takes and finished videos are large and go to `$WALKTHROUGH_OUT` (default
 `~/workspace/artifacts/walkthroughs/<video>/`), not into git:
@@ -85,6 +87,12 @@ see: `t.click`, `t.hover`, `t.drag`, `t.key`, `t.text`, `t.caption`, `t.callout`
 Work with `--dry`, look at the screenshots, then record. Keep to what the product really does:
 if something does not work on camera, change the scene or leave it out.
 
+A page change is fine mid-scene: sound is collected as the scene runs, the pointer is drawn
+again after a load, and `t.followNewTab(() => t.click(link))` films the tab a link opens.
+Scroll with a helper that scrolls the page (`scroll`, `scrollTo` in `videos/website/site.mjs`),
+not with the wheel: a wheel turns whatever is under the pointer, and over an embedded score
+that is the score.
+
 Never log, print or save a network request from a scene. A request to the AI assistant carries
 the user's API key in its body.
 
@@ -114,3 +122,42 @@ Two things about this editor that scenes have to respect:
   `videos/editor/editor.mjs` returns them left to right, system by system.
 - It ignores the first click on the score after a note has been dragged. Put a drag last among
   a scene's clicks on the score.
+
+## The website video
+
+`videos/website/`. Nine scenes: welcome, find, work, player, editor, upload, scan, review,
+follow.
+
+It is filmed on a demo copy of the site, not on the dev stack and not on production: the dev
+database holds test content and real addresses, and signed-in flows (upload, scan, review)
+would leave junk on production. The demo is a second stack with its own name, ports and data:
+
+```bash
+cd frontend
+node scripts/walkthrough/videos/website/demo/stack.mjs up --scanner   # build and start (site :3200, API :4200, mail :8225)
+node scripts/walkthrough/videos/website/demo/stack.mjs seed           # demo accounts, works, a change review, a project
+node scripts/walkthrough/run.mjs website --dry                        # then --voice-check, --record, --assemble
+node scripts/walkthrough/videos/website/demo/stack.mjs down           # stop; `reset` also deletes its data
+```
+
+- **What is in it.** `demo/catalogue.mjs` lists the works: CC0 transcriptions from the
+  OpenScore corpora (`assets/README.md`), each attached to its real IMSLP page. `demo/seed.mjs`
+  creates everything through the site's own API, so thumbnails and converted formats come from
+  the real pipeline. It can be run again at any time.
+- **People.** Three accounts under `demo.ourtextscores.example`, which cannot receive mail;
+  mail stops at the demo's own Mailpit. A scene signs in with `signIn(t, PEOPLE.clara)`.
+- **Scenes change the demo** (a source is uploaded, a reply is posted, a source is watched).
+  Each such scene's `setup` puts back what it is about to do, using `demo/film.mjs`, so a scene
+  can be recorded again without re-seeding.
+- **The scan scene is a real scan.** It sends one page to the recognition providers configured
+  in `.env`, takes about a minute, and bills GPU time. Without `--scanner` the worker is not
+  running and the scene waits until it times out.
+- **Sound.** The player's soundfont is served by a CDN that only answers the live site and
+  `localhost:3000`. `index.mjs` fetches the same file once and hands it to the demo's pages.
+- **Not shown, and why.** The scanner previews each engine's reading as a PDF, which a headless
+  browser cannot display, so the scene goes from the result straight to the editor. The two
+  engines' readings of the page used cannot be merged ("no compatible part"), so the merge
+  view is not shown either.
+
+The demo site is built from the working tree. After changing the site, or re-vendoring the
+editor into `public/score-editor`, run `stack.mjs up` again to rebuild it.

@@ -251,9 +251,11 @@ export class Take {
    * Goes to `url` as if a link had been followed, and waits for the page to settle. The
    * pointer is drawn again where it was.
    */
-  async goto(url, { waitUntil = 'networkidle', settle = 250 } = {}) {
+  async goto(url, { settle = 250, quiet = 8000 } = {}) {
     await this.drainAudio(); // the sound this document made leaves with it
-    await this.page.goto(url, { waitUntil, timeout: 60000 });
+    await this.page.goto(url, { waitUntil: 'load', timeout: 90000 });
+    // A page with an embedded player keeps fetching for a while; wait for quiet, but not forever.
+    await this.page.waitForLoadState('networkidle', { timeout: quiet }).catch(() => {});
     await this.arrived({ settle });
   }
 
