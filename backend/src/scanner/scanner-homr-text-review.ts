@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
+import { isScannerHomrEngineOptions } from './scanner-dual-engine';
 import type { ScannerPageProvider } from './scanner-provider.contract';
 import type { ScannerOtsHomrProviderService } from './scanner-ots-homr-provider.service';
 
@@ -14,7 +15,7 @@ const logger = new Logger('ScannerHomrTextReview');
  * produces. The lyric review then works on a HOMR page exactly as on an OTS-HOMR one, anchoring syllables to the notes
  * HOMR found.
  *
- * Off unless SCANNER_HOMR_TEXT_REVIEW_ENABLED=1 (and the OTS-HOMR provider's fusion is configured and pinned). A failure
+ * Per job: only for a job uploaded with the HOMR text-review option. Also off unless SCANNER_HOMR_TEXT_REVIEW_ENABLED=1 (and the OTS-HOMR provider's fusion is configured and pinned). A failure
  * of the text side is logged and the HOMR result is returned without the artifact: the scan itself never fails for it.
  * Every other property and method of the HOMR adapter is inherited unchanged.
  */
@@ -26,6 +27,8 @@ export function withHomrTextReview<T extends ScannerPageProvider>(
   const wrapped = Object.create(homr) as T;
   wrapped.scanPage = async (input) => {
     const result = await homr.scanPage(input);
+    // Per job: the option is frozen into the plan at upload, so a flag change cannot alter a running job.
+    if (!isScannerHomrEngineOptions(input.engineOptions)) return result;
     if (String(config.get<string>('SCANNER_HOMR_TEXT_REVIEW_ENABLED', '')) !== '1') return result;
     try {
       const text = await review.reviewText({

@@ -148,6 +148,12 @@ export default function ScannerClient() {
       ? "Select two different providers."
       : null;
   const usesOtsHomr = [firstProvider, secondProvider].includes("ots-homr");
+  const usesHomr = [firstProvider, secondProvider].includes("homr");
+  // HOMR gets the same text review as OTS-HOMR only where the deployment turned it on.
+  const homrTextReviewEnabled =
+    process.env.NEXT_PUBLIC_HOMR_TEXT_REVIEW_ENABLED === "1";
+  const showLyricsOption =
+    fusionEnabled && (usesOtsHomr || (usesHomr && homrTextReviewEnabled));
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const percent =
     totalBytes > 0
@@ -240,6 +246,9 @@ export default function ScannerClient() {
           secondProvider ? [firstProvider, secondProvider] : [firstProvider],
         ),
       );
+      if (usesHomr && homrTextReviewEnabled && includeLyrics) {
+        body.set("homrTextReview", "true");
+      }
       if (usesOtsHomr) {
         const preset = presetById(scoreProfileId);
         body.set(
@@ -259,6 +268,24 @@ export default function ScannerClient() {
       const response = await uploadJob(body, (sent) => setSentBytes(sent));
       if (!response.ok) {
         if (response.status === 413) {
+          // A quota refusal is a 413 too, and "too large" would send the reader to shrink a file
+          // that was never the problem; the server's own message says which limit it was.
+          try {
+            const serverMessage = JSON.parse(response.body)?.message;
+            if (
+              typeof serverMessage === "string" &&
+              /quota/i.test(serverMessage)
+            ) {
+              throw new Error(serverMessage);
+            }
+          } catch (parseError) {
+            if (
+              parseError instanceof Error &&
+              /quota/i.test(parseError.message)
+            ) {
+              throw parseError;
+            }
+          }
           // The pre-flight above should prevent this, but the encoded body is
           // slightly larger than the sum of the file sizes, and a proxy may
           // impose a limit we do not know about.
@@ -484,51 +511,61 @@ export default function ScannerClient() {
             detection.
           </p>
         </div>
+        {showLyricsOption && (
+          <fieldset className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
+            <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
+              Text review options
+            </legend>
+            <div>
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={includeLyrics}
+                  onChange={(event) => setIncludeLyrics(event.target.checked)}
+                />
+                This score has lyrics
+              </label>
+              <p className="ml-6 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {usesOtsHomr
+                  ? "Includes lyric detection in the calibrated text review. The core score and its dynamics stay unchanged."
+                  : "Reads the lyrics, directions and dynamics on each page so you can review them against the recognised notes."}
+                {usesOtsHomr && usesHomr && homrTextReviewEnabled
+                  ? " HOMR pages get the same text review."
+                  : ""}
+              </p>
+            </div>
+          </fieldset>
+        )}
         {usesOtsHomr && (
           <fieldset className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
             <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
-              OTS-HOMR options
+              OTS-HOMR scan options
             </legend>
-            {fusionEnabled ? (
+            {!fusionEnabled && (
               <div>
-                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={includeLyrics}
-                    onChange={(event) => setIncludeLyrics(event.target.checked)}
-                  />
-                  This score has lyrics
+                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                  Text detector
+                  <select
+                    aria-label="Text detector"
+                    value={otsTextDetector}
+                    onChange={(event) =>
+                      setOtsTextDetector(
+                        event.target.value as
+                          "lyrics" | "non-lyric-text" | "none",
+                      )
+                    }
+                    className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+                  >
+                    <option value="lyrics">Lyrics</option>
+                    <option value="non-lyric-text">Non-lyric text</option>
+                    <option value="none">No text detector</option>
+                  </select>
+                  <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+                    Runs one experimental detector for diagnostics and
+                    provenance; it does not yet change the returned MusicXML.
+                  </span>
                 </label>
-                <p className="ml-6 mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Includes lyric detection in the calibrated text review. The
-                  core score and its dynamics stay unchanged.
-                </p>
               </div>
-            ) : (
-            <div>
-              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                Text detector
-                <select
-                  aria-label="Text detector"
-                  value={otsTextDetector}
-                  onChange={(event) =>
-                    setOtsTextDetector(
-                      event.target.value as
-                        "lyrics" | "non-lyric-text" | "none",
-                    )
-                  }
-                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-                >
-                  <option value="lyrics">Lyrics</option>
-                  <option value="non-lyric-text">Non-lyric text</option>
-                  <option value="none">No text detector</option>
-                </select>
-                <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
-                  Runs one experimental detector for diagnostics and provenance;
-                  it does not yet change the returned MusicXML.
-                </span>
-              </label>
-            </div>
             )}
             <div className="mt-3">
               <label className="text-xs font-medium text-slate-700 dark:text-slate-300">

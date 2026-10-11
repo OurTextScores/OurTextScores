@@ -197,7 +197,7 @@ import type {
   ScannerEngineId,
   ScannerEngineRun,
   ScannerMeasureCropRegion,
-  ScannerOtsHomrEngineOptions
+  ScannerEngineOptionsByEngine
 } from './scanner-dual-engine';
 import type { ScannerRasterIdentity } from './schemas/scanner-job.schema';
 import { compareScannerPage, SCANNER_PAGE_COMPARISON_VERSION } from './scanner-page-comparison';
@@ -381,7 +381,7 @@ export class ScannerService implements OnModuleInit {
     files: Express.Multer.File[];
     detectTitle?: boolean;
     requestedEngineIds?: ScannerEngineId[];
-    engineOptions?: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>;
+    engineOptions?: ScannerEngineOptionsByEngine;
   }): Promise<any> {
     this.assertAvailable(input.userId);
     if (this.providerCapacityExhausted()) {
@@ -5079,7 +5079,7 @@ export class ScannerService implements OnModuleInit {
 
   private newJobEnginePlan(
     requestedEngineIds: ScannerEngineId[] = [],
-    engineOptions: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>> = {}
+    engineOptions: ScannerEngineOptionsByEngine = {}
   ) {
     if (this.registeredEngines) {
       try {

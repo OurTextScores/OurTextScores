@@ -1,4 +1,5 @@
 import {
+  cleanup,
   act,
   fireEvent,
   render,
@@ -281,13 +282,58 @@ describe("ScannerClient", () => {
     });
   });
 
+  it("offers the lyrics checkbox for HOMR only where its text review is enabled, and sends it", async () => {
+    process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED = "1";
+    try {
+      render(<ScannerClient />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText("Score files"), {
+        target: {
+          files: [new File(["score"], "page-1.png", { type: "image/png" })],
+        },
+      });
+      selectProviders("homr");
+      expect(
+        screen.queryByLabelText("This score has lyrics"),
+      ).not.toBeInTheDocument();
+    } finally {
+      delete process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED;
+    }
+    cleanup();
+    process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED = "1";
+    process.env.NEXT_PUBLIC_HOMR_TEXT_REVIEW_ENABLED = "1";
+    try {
+      render(<ScannerClient />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+      fireEvent.change(screen.getByLabelText("Score files"), {
+        target: {
+          files: [new File(["score"], "page-1.png", { type: "image/png" })],
+        },
+      });
+      selectProviders("homr");
+      expect(screen.queryByLabelText("Score profile")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText("This score has lyrics"));
+      fireEvent.submit(
+        screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+      );
+      await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+      expect(FakeXhr.last!.body!.get("homrTextReview")).toBe("true");
+      expect(FakeXhr.last!.body!.has("otsHomr")).toBe(false);
+    } finally {
+      delete process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED;
+      delete process.env.NEXT_PUBLIC_HOMR_TEXT_REVIEW_ENABLED;
+    }
+  });
+
   it("sends an explicit fusion policy from the gated lyrics checkbox", async () => {
     process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED = "1";
     try {
       render(<ScannerClient />);
       await waitFor(() => expect(global.fetch).toHaveBeenCalled());
       fireEvent.change(screen.getByLabelText("Score files"), {
-        target: { files: [new File(["score"], "page-1.png", { type: "image/png" })] },
+        target: {
+          files: [new File(["score"], "page-1.png", { type: "image/png" })],
+        },
       });
       selectProviders("ots-homr");
       fireEvent.click(screen.getByLabelText("This score has lyrics"));
@@ -398,6 +444,32 @@ describe("ScannerClient", () => {
     expect(
       await screen.findByText(/refused this upload as too large/i),
     ).toBeInTheDocument();
+  });
+
+  it("shows the server's own reason when a 413 is a quota, not a size", async () => {
+    render(<ScannerClient />);
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: { files: [new File(["a"], "page-1.png", { type: "image/png" })] },
+    });
+    selectProviders();
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
+    );
+    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
+    FakeXhr.last!.status = 413;
+    FakeXhr.last!.responseText = JSON.stringify({
+      message: "This upload would exceed the 50-page rolling 24-hour quota",
+    });
+    await act(async () => {
+      FakeXhr.last!.finish();
+    });
+    expect(
+      await screen.findByText(/50-page rolling 24-hour quota/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/refused this upload as too large/i),
+    ).not.toBeInTheDocument();
   });
 
   it("reports real upload progress and then opens the new scan", async () => {

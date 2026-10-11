@@ -185,6 +185,27 @@ describe('dual-engine content identity', () => {
     );
   });
 
+  it('freezes the HOMR text-review option into the plan and rejects anything else for HOMR', () => {
+    const plan = scannerEnginePlan(['homr'], 'homr', {}, { homr: { textReview: true } });
+    expect(plan.engineOptions).toEqual({ homr: { textReview: true } });
+    expect(scannerEnginePlanForJob({ enginePlan: plan }).engineOptions).toEqual({
+      homr: { textReview: true }
+    });
+    for (const bad of [
+      { textReview: false },
+      { textReview: true, extra: 1 },
+      { textDetector: 'lyrics' }
+    ]) {
+      expect(() => scannerEnginePlan(['homr'], 'homr', {}, { homr: bad } as any)).toThrow(
+        'Invalid scanner engine plan'
+      );
+    }
+    // An option for an engine the job did not select is refused, as for OTS-HOMR.
+    expect(() =>
+      scannerEnginePlan(['transcoda'], 'transcoda', {}, { homr: { textReview: true } })
+    ).toThrow('Invalid scanner engine plan');
+  });
+
   it('normalizes retired head-mode fields when reading a persisted job plan', () => {
     const current = scannerEnginePlan(
       ['ots-homr'],

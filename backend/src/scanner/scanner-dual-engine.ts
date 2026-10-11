@@ -271,8 +271,26 @@ export interface ScannerEnginePlan {
   fallbackEngineIds: ScannerEngineId[];
   capabilitySnapshots: Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>;
   /** Engine-specific options are frozen with the plan, never read from current UI state. */
-  engineOptions?: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>;
+  engineOptions?: ScannerEngineOptionsByEngine;
 }
+
+/** HOMR's one option: also fetch the OTS-HOMR text review (lyrics, directions, dynamics) for each page. */
+export interface ScannerHomrEngineOptions {
+  textReview: true;
+}
+
+export function isScannerHomrEngineOptions(value: unknown): value is ScannerHomrEngineOptions {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    Object.keys(value as object).length === 1 &&
+    (value as ScannerHomrEngineOptions).textReview === true
+  );
+}
+
+export type ScannerEngineOptionsByEngine = Partial<
+  Record<ScannerEngineId, ScannerOtsHomrEngineOptions | ScannerHomrEngineOptions>
+>;
 
 export function isScannerOtsHomrEngineOptions(
   value: unknown
@@ -336,7 +354,7 @@ export function scannerEnginePlan(
   engineIds: ScannerEngineId[],
   primaryEngineId: ScannerEngineId = engineIds[0],
   capabilitySnapshots: Partial<Record<ScannerEngineId, ScannerEngineCapabilitySnapshot>> = {},
-  engineOptions: Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>> = {}
+  engineOptions: ScannerEngineOptionsByEngine = {}
 ): ScannerEnginePlan {
   const uniqueEngineIds = [...new Set(engineIds)];
   const suppliedCapabilities = Object.values(capabilitySnapshots);
@@ -352,8 +370,9 @@ export function scannerEnginePlan(
     Object.keys(engineOptions).some(
       (engineId) =>
         !uniqueEngineIds.includes(engineId) ||
-        engineId !== 'ots-homr' ||
-        !isScannerOtsHomrEngineOptions(engineOptions[engineId])
+        !(engineId === 'homr'
+          ? isScannerHomrEngineOptions(engineOptions[engineId])
+          : engineId === 'ots-homr' && isScannerOtsHomrEngineOptions(engineOptions[engineId]))
     )
   ) {
     throw new Error('Invalid scanner engine plan');
@@ -427,7 +446,7 @@ export function scannerEnginePlanForJob(
       plan.engineIds,
       plan.primaryEngineId,
       plan.capabilitySnapshots,
-      normalizedEngineOptions as Partial<Record<ScannerEngineId, ScannerOtsHomrEngineOptions>>
+      normalizedEngineOptions as ScannerEngineOptionsByEngine
     );
     if (
       plan.version !== SCANNER_ENGINE_PLAN_VERSION ||

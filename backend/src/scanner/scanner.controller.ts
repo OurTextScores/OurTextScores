@@ -157,7 +157,8 @@ export class ScannerController {
     @Res({ passthrough: true }) response: Response,
     @Body('detectTitle') detectTitle?: string,
     @Body('engineIds') engineIds?: string,
-    @Body('otsHomr') otsHomr?: string
+    @Body('otsHomr') otsHomr?: string,
+    @Body('homrTextReview') homrTextReview?: string
   ) {
     try {
       const requestedEngineIds = parseEngineIds(engineIds);
@@ -170,12 +171,28 @@ export class ScannerController {
           'OTS-HOMR options must be supplied exactly when OTS-HOMR is selected'
         );
       }
+      const wantsHomrTextReview = homrTextReview === 'true' || homrTextReview === '1';
+      if (wantsHomrTextReview) {
+        if (!requestedEngineIds.includes('homr')) {
+          throw new BadRequestException('HOMR text review needs HOMR to be selected');
+        }
+        if (process.env.SCANNER_HOMR_TEXT_REVIEW_ENABLED !== '1') {
+          throw new BadRequestException('HOMR text review is not enabled');
+        }
+      }
       const job = await this.scanner.createJob({
         userId: user.userId,
         files,
         detectTitle: detectTitle === 'true' || detectTitle === '1',
         requestedEngineIds,
-        ...(otsHomrOptions ? { engineOptions: { 'ots-homr': otsHomrOptions } } : {})
+        ...(otsHomrOptions || wantsHomrTextReview
+          ? {
+              engineOptions: {
+                ...(otsHomrOptions ? { 'ots-homr': otsHomrOptions } : {}),
+                ...(wantsHomrTextReview ? { homr: { textReview: true as const } } : {})
+              }
+            }
+          : {})
       });
       response.setHeader('Location', `/api/scanner/jobs/${job.jobId}`);
       return job;

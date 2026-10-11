@@ -591,3 +591,7 @@ exactly as on an OTS-HOMR one and anchors to HOMR's notes. The review saves its 
 - Failure of the text side is logged and the HOMR scan still succeeds, without the artifact.
 - Needs the Modal provider redeployed with `/v1/review-text` (service revision bump; not yet deployed).
 - When a page has a review on both engines, the review follows the engine whose reading the page currently shows.
+
+Per job: the upload form's "This score has lyrics" checkbox (shown for HOMR when `NEXT_PUBLIC_HOMR_TEXT_REVIEW_ENABLED=1`)
+sends `homrTextReview=true`; the backend freezes `engineOptions.homr = {textReview: true}` into the plan, and only such
+jobs fetch the text review. The backend refuses the field unless `SCANNER_HOMR_TEXT_REVIEW_ENABLED=1`.

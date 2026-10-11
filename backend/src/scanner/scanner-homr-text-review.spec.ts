@@ -8,7 +8,8 @@ describe('withHomrTextReview', () => {
     filename: 'page.png',
     contentType: 'image/png',
     detectTitle: false,
-    idempotencyKey: 'a'.repeat(64)
+    idempotencyKey: 'a'.repeat(64),
+    engineOptions: { textReview: true }
   };
   const homrResult = {
     engine: 'homr',
@@ -32,6 +33,17 @@ describe('withHomrTextReview', () => {
     const homr = makeHomr();
     const review = { reviewText: jest.fn() };
     const result = await withHomrTextReview(homr, review, config).scanPage(input);
+    expect(result).toBe(homrResult);
+    expect(review.reviewText).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for a job that did not ask for it', async () => {
+    values.SCANNER_HOMR_TEXT_REVIEW_ENABLED = '1';
+    const review = { reviewText: jest.fn() };
+    const result = await withHomrTextReview(makeHomr(), review, config).scanPage({
+      ...input,
+      engineOptions: undefined
+    });
     expect(result).toBe(homrResult);
     expect(review.reviewText).not.toHaveBeenCalled();
   });
