@@ -302,6 +302,23 @@ describe('SourceCard', () => {
         expect(html).not.toContain('Preview score');
     });
 
+    it('opens the only source of a work without calling it recommended', () => {
+        // With one source there is nothing to recommend it over, but it is still the one
+        // to start with: a reader should not have to open it to see the score.
+        renderWithProviders(
+            <SourceCard
+                source={mockSource}
+                workId="work-123"
+                currentUser={mockUser}
+                startOpen
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(screen.queryByText('Recommended')).not.toBeInTheDocument();
+        expect(screen.getByTestId('source-card-body')).toBeInTheDocument();
+    });
+
     it('opens and badges the recommended source', () => {
         renderWithProviders(
             <SourceCard

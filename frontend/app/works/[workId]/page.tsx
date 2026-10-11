@@ -178,6 +178,9 @@ export default async function WorkDetailPage({
                 composer={work.composer ?? imslp?.composer}
                 imslpPermalink={imslpPermalink}
                 currentUser={currentUser}
+                // The first source is the one to start with, so its card opens. It is only
+                // called "recommended" when there is another to choose from.
+                startOpen={index === 0}
                 recommended={index === 0 && sources.length > 1}
                 autoOpen={source.sourceId === targetSourceId}
                 watchControlsSlot={

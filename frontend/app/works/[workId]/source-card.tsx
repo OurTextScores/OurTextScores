@@ -473,6 +473,7 @@ export default function SourceCard({
     branchesPanelSlot,
     autoOpen = false,
     recommended = false,
+    startOpen = false,
 }: {
     source: SourceView;
     workId: string;
@@ -484,6 +485,8 @@ export default function SourceCard({
     branchesPanelSlot: React.ReactNode;
     autoOpen?: boolean;
     recommended?: boolean;
+    /** Open the card without badging it: the only source of a work. */
+    startOpen?: boolean;
     autoOpenPanel?: "source-pdf";
 }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -491,13 +494,13 @@ export default function SourceCard({
 
     // The card body is client-only: it formats dates in the reader's locale and builds absolute
     // URLs from window.location, neither of which the server can reproduce. So a card that
-    // starts open (the recommended source, or a source deep link) opens after mount rather than
-    // in the server HTML, where its text would not match what the browser renders.
+    // starts open (the first source of a work, or a source deep link) opens after mount rather
+    // than in the server HTML, where its text would not match what the browser renders.
     useEffect(() => {
-        if (recommended || autoOpen) setIsOpen(true);
+        if (startOpen || recommended || autoOpen) setIsOpen(true);
         // A deep link also opens the source PDF.
         if (autoOpen && source.derivatives?.pdf) setIsSourcePdfOpen(true);
-    }, [autoOpen, recommended, source.derivatives?.pdf]);
+    }, [autoOpen, recommended, startOpen, source.derivatives?.pdf]);
     const latest = source.revisions[0];
     const initialBranches = Array.from(new Set(["trunk", ...source.revisions.map((r: any) => r.fossilBranch).filter(Boolean)]));
     const isOwner =
