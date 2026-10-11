@@ -41,7 +41,10 @@ export default function WorksPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [totalSourceCount, setTotalSourceCount] = useState<number | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState("");
+  // Deep link from /welcome: /catalogue?q=beethoven
+  const [searchQuery, setSearchQuery] = useState(() =>
+    typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("q") ?? "",
+  );
   const [filterReferencePdf, setFilterReferencePdf] = useState<"any" | "yes" | "no">("any");
   const [filterVerified, setFilterVerified] = useState<"any" | "yes" | "no">("any");
   const [filterFlagged, setFilterFlagged] = useState<"any" | "yes" | "no">("any");
@@ -205,6 +208,7 @@ export default function WorksPage() {
             <SearchBox
               onSearch={handleSearch}
               placeholder="Search by title, composer, or catalogue..."
+              initialValue={searchQuery}
               debounceMs={300}
             />
           </div>
