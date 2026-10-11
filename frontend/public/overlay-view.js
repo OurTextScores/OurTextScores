@@ -43,9 +43,10 @@
 
   function rowNode(row, index, mode, labels) {
     const wrap = el("div", { class: "row" });
-    const grid = el("div", { class: "grid" });
+    const grid = el("div", { class: "grid", style: `--cols:${mode === "review" ? 2 : 3}` });
     grid.append(scanCell(row.scan, "Scan"));
-    grid.append(readingCell(row.left, labels[0], mode === "engines"));
+    // The review gallery shows the scan and the accepted result only: the unreviewed scan result in between adds nothing.
+    if (mode !== "review") grid.append(readingCell(row.left, labels[0], mode === "engines"));
     grid.append(readingCell(row.right, labels[1], true));
     wrap.append(grid);
     const bar = el("div", { class: "bar" });
@@ -89,7 +90,7 @@
     const data = manifest[mode];
     const rules = KINDS[mode].map(([kind, , color]) => `.hl.${kind}{fill:${color};fill-opacity:.2;stroke:${color};stroke-width:3}.hide-${kind} .hl.${kind}{display:none}.chip[style*="${color}"].on{background:${color};color:#fff}`).join("");
     const style = el("style");
-    style.textContent = `body{margin:0;font:15px system-ui;color:#1c2321}.case{border:1px solid #d8dfda;margin:18px 0;padding:14px}.chips{display:flex;flex-wrap:wrap;gap:.5rem;margin:8px 0 12px}.chip{border:1px solid var(--c);color:var(--c);background:#fff;border-radius:999px;padding:.2rem .7rem;font:inherit;cursor:pointer}.none{color:#59615e}.row{margin:0 0 6px;padding:8px 0;border-top:1px solid #eef1ef}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start}.stack .grid{grid-template-columns:minmax(0,1fr)}.cell{position:relative}.cell img,.cell svg{display:block;width:100%;height:auto;background:#fff;border:1px solid #e3e8e5}.tag{display:inline-block;margin:0 0 3px;background:#183c28;color:#fff;border-radius:3px;padding:1px 8px;font-size:12px}.noscan{border:1px dashed #cdd5d0;color:#59615e;padding:2rem 1rem;font-size:13px}.bar{display:flex;gap:.8rem;align-items:center;margin-top:4px;font-size:13px}.linelabel{color:#59615e}.small{font:inherit;font-size:13px;border:1px solid #b9c4be;background:#fff;border-radius:4px;padding:.1rem .55rem;cursor:pointer;color:#183c28;text-decoration:none}small{color:#59615e}.hl.fb{fill:none;stroke:#59615e;stroke-width:3;stroke-dasharray:14 10}${rules}.hl.weak{fill:none!important;stroke-dasharray:8 8;stroke-width:3}@media(max-width:800px){.grid{grid-template-columns:minmax(0,1fr)}}`;
+    style.textContent = `body{margin:0;font:15px system-ui;color:#1c2321}.case{border:1px solid #d8dfda;margin:18px 0;padding:14px}.chips{display:flex;flex-wrap:wrap;gap:.5rem;margin:8px 0 12px}.chip{border:1px solid var(--c);color:var(--c);background:#fff;border-radius:999px;padding:.2rem .7rem;font:inherit;cursor:pointer}.none{color:#59615e}.row{margin:0 0 6px;padding:8px 0;border-top:1px solid #eef1ef}.grid{display:grid;grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));gap:8px;align-items:start}.stack .grid{grid-template-columns:minmax(0,1fr)}.cell{position:relative}.cell img,.cell svg{display:block;width:100%;height:auto;background:#fff;border:1px solid #e3e8e5}.tag{display:inline-block;margin:0 0 3px;background:#183c28;color:#fff;border-radius:3px;padding:1px 8px;font-size:12px}.noscan{border:1px dashed #cdd5d0;color:#59615e;padding:2rem 1rem;font-size:13px}.bar{display:flex;gap:.8rem;align-items:center;margin-top:4px;font-size:13px}.linelabel{color:#59615e}.small{font:inherit;font-size:13px;border:1px solid #b9c4be;background:#fff;border-radius:4px;padding:.1rem .55rem;cursor:pointer;color:#183c28;text-decoration:none}small{color:#59615e}.hl.fb{fill:none;stroke:#59615e;stroke-width:3;stroke-dasharray:14 10}${rules}.hl.weak{fill:none!important;stroke-dasharray:8 8;stroke-width:3}@media(max-width:800px){.grid{grid-template-columns:minmax(0,1fr)}}`;
     document.head.append(style);
     root.append(intro(data));
     for (const c of data.cases) root.append(caseNode(c, mode, labels));
