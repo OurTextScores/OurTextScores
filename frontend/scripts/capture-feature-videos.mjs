@@ -6,14 +6,17 @@ import { execSync } from 'child_process';
 import { encode } from 'next-auth/jwt';
 
 const BASE = 'http://localhost:3000';
-const PROD = 'https://ourtextscores.com';
+const PROD = 'https://www.ourtextscores.com'; // apex 307s to www; public example content lives here
 const OUT = resolve(import.meta.dirname, '../public/images/features');
 const TMP = resolve(import.meta.dirname, '../.video-tmp');
 const FFMPEG_BIN = process.env.FFMPEG_BIN || 'ffmpeg';
 mkdirSync(OUT, { recursive: true });
 mkdirSync(TMP, { recursive: true });
 
-const WORK_ID = '1148359'; // Coleridge-Taylor Piano Trio — 4 visually distinct sources
+// Local work with several sources (the public example, 1148359, exists only on prod).
+// Recorded locally so the video shows the current work-page design.
+const WORK_ID = process.env.FEATURE_WORK_ID || '659298';
+const SCANNER_JOB_ID = 'ef98b123-329e-4ae7-a01f-cf15059b354b';
 const REVIEW_ID = 'f8fce149-4c91-488a-8516-e051d9868f30';
 const FAURE_SCORE_URL = 'https://raw.githubusercontent.com/OpenScore/StringQuartets/refs/heads/main/scores/Faur%C3%A9,_Gabriel/String_Quartet,_Op.121/sq7358708.mxl';
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || 'dev-secret';
@@ -42,7 +45,7 @@ function processVideo(srcPath, destPath, { trimStart = 0, width = 1280 } = {}) {
   execSync(cmd, { stdio: 'pipe' });
 }
 
-async function recordScenario(browser, sessionCookie, { name, darkMode, interact, trimStart = 0 }) {
+async function recordScenario(browser, sessionCookie, { name, darkMode, interact, trimStart = 0, anonymous = false }) {
   const suffix = darkMode ? 'dark' : 'light';
   const videoDir = resolve(TMP, `${name}-${suffix}`);
   mkdirSync(videoDir, { recursive: true });
@@ -52,7 +55,8 @@ async function recordScenario(browser, sessionCookie, { name, darkMode, interact
     colorScheme: darkMode ? 'dark' : 'light',
     recordVideo: { dir: videoDir, size: { width: 1280, height: 800 } },
   });
-  await context.addCookies([sessionCookie]);
+  // `anonymous` records what a first-time visitor sees (no admin buttons).
+  if (!anonymous) await context.addCookies([sessionCookie]);
   if (darkMode) {
     await context.addInitScript(() => { localStorage.setItem('theme', 'dark'); });
   } else {
@@ -80,36 +84,42 @@ async function recordScenario(browser, sessionCookie, { name, darkMode, interact
   try { unlinkSync(rawVideoPath); } catch {}
 }
 
-// ── Scenario: Versioned Sources — expand sources, show content ──
+// ── Scenario: Versioned Sources — recommended source, preview, downloads, other sources ──
 async function versionedSources(page) {
   await page.goto(`${BASE}/works/${WORK_ID}`, { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(1500);
 
-  // Scroll past the IMSLP metadata section to the sources
-  await page.evaluate(() => {
-    const articles = document.querySelectorAll('article[id^="source-"]');
-    if (articles.length > 0) articles[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-  await page.waitForTimeout(1000);
-
   const cards = page.locator('article[id^="source-"]');
   const count = await cards.count();
 
-  for (let i = 0; i < Math.min(count, 3); i++) {
-    // Expand source card by clicking the h2 (contains the arrow + label)
-    const heading = cards.nth(i).locator('h2').first();
+  // The recommended source is open by default, with its score preview expanded.
+  await cards.first().evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  await page.waitForTimeout(4000);
+
+  // Show the grouped Download menu.
+  const download = cards.first().locator('summary:has-text("Download")').first();
+  if (await download.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await download.click();
+    await page.waitForTimeout(1800);
+    await download.click();
+    await page.waitForTimeout(500);
+  }
+
+  // Scroll down through revisions and branches.
+  for (let i = 0; i < 3; i++) {
+    await page.evaluate(() => window.scrollBy({ top: 350, behavior: 'smooth' }));
+    await page.waitForTimeout(1200);
+  }
+
+  // Open one other source and wait for its score preview (a fresh score engine
+  // takes a few seconds to start) so the clip never rests on "Loading score".
+  if (count > 1) {
+    const heading = cards.nth(1).locator('h2').first();
     await heading.click();
-    await page.waitForTimeout(1000);
-
-    // Scroll to show expanded content
-    await cards.nth(i).evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-    await page.waitForTimeout(2000);
-
-    // Collapse before expanding the next
-    if (i < Math.min(count, 3) - 1) {
-      await heading.click();
-      await page.waitForTimeout(500);
-    }
+    await page.waitForTimeout(800);
+    await cards.nth(1).evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    await cards.nth(1).locator('[data-testid="score-preview-frame"]').first().waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(7000);
   }
   await page.waitForTimeout(1000);
 }
@@ -117,7 +127,7 @@ async function versionedSources(page) {
 // ── Scenario: Visual Musical Diff — show ONLY the embedded diff viewer for Round 1 ──
 async function visualDiff(page) {
   // Load the change review page to select Round 1 and grab the iframe URL
-  await page.goto(`${BASE}/change-reviews/${REVIEW_ID}`, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(`${PROD}/change-reviews/${REVIEW_ID}`, { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2000);
 
   // Click Round 1
@@ -135,7 +145,7 @@ async function visualDiff(page) {
   }
 
   // Navigate directly to the diff viewer URL (full-page view of just the diff)
-  const diffUrl = iframeSrc.startsWith('http') ? iframeSrc : `${BASE}${iframeSrc}`;
+  const diffUrl = iframeSrc.startsWith('http') ? iframeSrc : `${PROD}${iframeSrc}`;
   await page.goto(diffUrl, { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForTimeout(8000); // WASM load time
 
@@ -271,10 +281,23 @@ async function catalogue(page) {
   await page.waitForTimeout(1500);
 }
 
+// ── Scenario: Scanner — public example scan (prod): pages, providers, comparison, result ──
+async function scanner(page) {
+  await page.goto(`${PROD}/scanner/${SCANNER_JOB_ID}`, { waitUntil: 'networkidle', timeout: 60000 });
+  await page.waitForTimeout(3000);
+
+  for (let i = 0; i < 5; i++) {
+    await page.evaluate(() => window.scrollBy({ top: 320, behavior: 'smooth' }));
+    await page.waitForTimeout(1800);
+  }
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  await page.waitForTimeout(1500);
+}
+
 // ── Scenario: Change Review — detail → scroll to diff → round 1 → diff → round 2 → diff ──
 async function changeReview(page) {
   // Navigate directly to the review detail
-  await page.goto(`${BASE}/change-reviews/${REVIEW_ID}`, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(`${PROD}/change-reviews/${REVIEW_ID}`, { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2000);
 
   // Helper: scroll to visual diff section and into the score content
@@ -362,14 +385,16 @@ async function changeReview(page) {
   const sessionCookie = await generateSessionCookie();
 
   const scenarios = [
-    { name: 'versioned-sources', darkMode: false, interact: versionedSources, trimStart: 3 },
-    { name: 'versioned-sources', darkMode: true, interact: versionedSources, trimStart: 3 },
+    { name: 'versioned-sources', darkMode: false, interact: versionedSources, trimStart: 3, anonymous: true },
+    { name: 'versioned-sources', darkMode: true, interact: versionedSources, trimStart: 3, anonymous: true },
     { name: 'visual-diff', darkMode: false, interact: visualDiff, trimStart: 15 },
     { name: 'score-editor', darkMode: false, interact: scoreEditor, trimStart: 10 },
     { name: 'player', darkMode: false, interact: scorePlayer, trimStart: 15 },
     { name: 'player', darkMode: true, interact: scorePlayer, trimStart: 15 },
     { name: 'catalogue', darkMode: false, interact: catalogue, trimStart: 3 },
     { name: 'catalogue', darkMode: true, interact: catalogue, trimStart: 3 },
+    { name: 'scanner', darkMode: false, interact: scanner, trimStart: 3 },
+    { name: 'scanner', darkMode: true, interact: scanner, trimStart: 3 },
     { name: 'change-review', darkMode: false, interact: changeReview, trimStart: 3 },
     { name: 'change-review', darkMode: true, interact: changeReview, trimStart: 3 },
   ];
