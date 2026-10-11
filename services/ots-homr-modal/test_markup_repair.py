@@ -136,3 +136,26 @@ def test_by_default_beam_groups_are_left_alone_but_impossible_beams_go():
 def test_drop_beams_removes_every_beam_so_the_editor_beams_by_default():
     out, stats = repair_musicxml(score(note("eighth", [(1, "begin")]), note("eighth", [(1, "end")])), drop_beams=True)
     assert beams_of(out) == [[], []] and stats["beams removed (policy)"] == 2
+
+
+def tied_note(tie, slur=None, pitch="C"):
+    marks = f'<tie type="{tie}"/>'
+    notations = f'<tied type="{tie}"/>' + (f'<slur type="{slur}" number="1"/>' if slur else "")
+    return (f"<note><pitch><step>{pitch}</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type>"
+            f"<staff>1</staff>{marks}<notations>{notations}</notations></note>")
+
+
+def test_a_slur_that_only_repeats_a_tie_is_removed():
+    out, stats = repair_musicxml(score(tied_note("start", "start"), tied_note("stop", "stop")))
+    assert slurs(out) == [] and stats["slurs removed (duplicate of a tie)"] == 1
+    assert [t.get("type") for t in ET.fromstring(out).iter("tie")] == ["start", "stop"]
+
+
+def test_a_slur_longer_than_the_tie_is_kept():
+    out, _ = repair_musicxml(score(tied_note("start", "start"), tied_note("stop"), note("quarter", beams=()) if False else slur_note("stop")))
+    assert slurs(out) == [("start", "1"), ("stop", "1")]
+
+
+def test_a_slur_between_different_pitches_is_kept():
+    out, _ = repair_musicxml(score(tied_note("start", "start", "C"), tied_note("stop", "stop", "D")))
+    assert slurs(out) == [("start", "1"), ("stop", "1")]

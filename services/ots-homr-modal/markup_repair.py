@@ -218,6 +218,27 @@ def _remove_slurs(event, kind=None):
                 note.remove(notations)
 
 
+def _pitch_key(note):
+    pitch = note.find("pitch")
+    return None if pitch is None else (pitch.findtext("step"), pitch.findtext("alter") or "0", pitch.findtext("octave"))
+
+
+def _tie_pairs(events):
+    """(start event, stop event) index pairs where EVERY pitched note of the start event is tied to the stop event."""
+    pairs = set()
+    open_by_staff = {}
+    for index, (_, _, staff, notes) in enumerate(events):
+        starts = {_pitch_key(n) for n in notes for t in n.findall("tie") if t.get("type") == "start" and _pitch_key(n)}
+        stops = {_pitch_key(n) for n in notes for t in n.findall("tie") if t.get("type") == "stop" and _pitch_key(n)}
+        previous = open_by_staff.get(staff)
+        if previous is not None and stops:
+            start_index, tied = previous
+            if tied and tied <= stops:
+                pairs.add((start_index, index))
+        open_by_staff[staff] = (index, starts) if starts else None
+    return pairs
+
+
 def repair_slurs(part, stats):
     """Pair slurs per staff in time order; drop orphans and overlong spans; renumber the survivors."""
     events = _timed_events(part)
@@ -241,8 +262,14 @@ def repair_slurs(part, stats):
         _remove_slurs(events[index][3], "start")
         stats["slur starts removed (never closed)"] += 1
     kept = []
+    tied = _tie_pairs(events)
     for a, b in pairs:
-        if events[b][0] - events[a][0] > MAX_SLUR_MEASURES:
+        if (a, b) in tied:
+            # The tie head already draws this arc; the slur branch draws it a second time.
+            _remove_slurs(events[a][3], "start")
+            _remove_slurs(events[b][3], "stop")
+            stats["slurs removed (duplicate of a tie)"] += 1
+        elif events[b][0] - events[a][0] > MAX_SLUR_MEASURES:
             _remove_slurs(events[a][3], "start")
             _remove_slurs(events[b][3], "stop")
             stats["slurs removed (span too long)"] += 1
