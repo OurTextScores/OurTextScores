@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Walkthrough calibration</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #111827; color: #9ca3af; font: 20px system-ui, sans-serif; }
+      #flash { position: fixed; inset: 0; background: #fff; display: none; }
+      p { padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <p>Calibration: five clicks, each with a white flash. The audio context is suspended between the third and fourth.</p>
+    <div id="flash"></div>
+    <script>
+      const wall = () => performance.timeOrigin + performance.now();
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      // Called by the recorder. Returns when each click was due and when each flash was shown, in epoch ms.
+      window.runCalibration = async () => {
+        const context = new AudioContext({ sampleRate: 44100 });
+        const gain = context.createGain();
+        gain.gain.value = 0.8;
+        gain.connect(context.destination);
+        await context.resume();
+        await sleep(800);
+        const marks = [];
+        const flash = document.getElementById('flash');
+        for (let i = 0; i < 5; i++) {
+          if (i === 3) {
+            // What the editor does between sounds: the context clock stops, the wall clock does not.
+            await context.suspend();
+            await sleep(1700);
+            await context.resume();
+            await sleep(400);
+          }
+          const oscillator = context.createOscillator();
+          oscillator.frequency.value = 1000;
+          oscillator.connect(gain);
+          const lead = 0.35;
+          const at = context.currentTime + lead;
+          const dueWall = wall() + lead * 1000;
+          oscillator.start(at);
+          oscillator.stop(at + 0.06);
+          await sleep(dueWall - wall());
+          flash.style.display = 'block';
+          const flashWall = wall();
+          await sleep(120);
+          flash.style.display = 'none';
+          marks.push({ clickDueMs: dueWall, flashMs: flashWall });
+          await sleep(700);
+        }
+        return marks;
+      };
+    </script>
+  </body>
+</html>
