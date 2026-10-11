@@ -108,6 +108,7 @@ def main():
     parser.add_argument("--homr-xml", type=Path, required=True, help="HOMR page MusicXML files, one per case id")
     parser.add_argument("--jobs", type=Path, required=True, help="scanned.jsonl: {image, jobId} per line")
     parser.add_argument("--mongo-uri", required=True)
+    parser.add_argument("--only-review", action="store_true", help="skip the engine-comparison cases (the public page now uses publish_selection.py for those)")
     args = parser.parse_args()
     token = os.environ["OTS_TOKEN"]
     jobs = {}
@@ -120,7 +121,7 @@ def main():
 
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    engines = json.loads((args.public / "devs-assets/ots-homr-pages/manifest.json").read_text())
+    engines = json.loads((args.public / "devs-assets/ots-homr-pages/manifest.json").read_text()) if not args.only_review else {"cases": [], "summary": {}}
     cases = []
     for case in engines["cases"]:
         if not case["left"]:
