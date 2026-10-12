@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import WelcomePage from "./page";
 
 describe("WelcomePage", () => {
@@ -50,5 +50,28 @@ describe("WelcomePage", () => {
     render(<WelcomePage />);
     expect(screen.getByText("Why digitize?").closest("details")).not.toHaveAttribute("open");
     expect(screen.getByText("IMSLP and copyright").closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("restores the contribution cards and community links", () => {
+    render(<WelcomePage />);
+    const section = screen.getByRole("region", { name: "Get Involved" });
+    expect(section.querySelectorAll("article")).toHaveLength(8);
+    for (const title of ["Scan a Printed Score", "Submit a New Revision", "Rate and Comment on a Source", "Flag Mismatched Sources"]) {
+      expect(within(section).getByRole("heading", { name: title })).toBeVisible();
+    }
+    expect(within(section).getByRole("link", { name: "Join Discord Server" })).toHaveAttribute("href", "https://discord.gg/T3BuWeWGqt");
+    expect(within(section).getByRole("link", { name: "OurTextScores Website Repo" })).toHaveAttribute("href", "https://github.com/OurTextScores/OurTextScores/");
+    expect(within(section).getByRole("link", { name: "OTS_WebEditor Repo" })).toHaveAttribute("href", "https://github.com/OurTextScores/OTS_WebEditor/");
+  });
+
+  it("embeds both walkthroughs with matching YouTube links", () => {
+    render(<WelcomePage />);
+    for (const [title, id] of [["Website walkthrough", "Ni-rVhAV884"], ["Score Editor walkthrough", "AJj0lmKWtRA"]]) {
+      const frame = screen.getByTitle(title);
+      expect(frame).toHaveAttribute("src", `https://www.youtube-nocookie.com/embed/${id}`);
+      expect(frame).toHaveAttribute("loading", "lazy");
+      expect(frame).toHaveAttribute("allowfullscreen");
+      expect(screen.getByRole("link", { name: `Watch the ${title} on YouTube` })).toHaveAttribute("href", `https://www.youtube.com/watch?v=${id}`);
+    }
   });
 });
