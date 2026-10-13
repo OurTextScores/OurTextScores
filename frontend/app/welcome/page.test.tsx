@@ -66,7 +66,7 @@ describe("WelcomePage", () => {
 
   it("embeds both walkthroughs with matching YouTube links", () => {
     render(<WelcomePage />);
-    for (const [title, id] of [["Website walkthrough", "Ni-rVhAV884"], ["Score Editor walkthrough", "AJj0lmKWtRA"]]) {
+    for (const [title, id] of [["Website walkthrough", "-Z09sxFUjys"], ["Score Editor walkthrough", "65ISfJhIO4s"]]) {
       const frame = screen.getByTitle(title);
       expect(frame).toHaveAttribute("src", `https://www.youtube-nocookie.com/embed/${id}`);
       expect(frame).toHaveAttribute("loading", "lazy");

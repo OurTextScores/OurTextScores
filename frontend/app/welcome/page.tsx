@@ -144,12 +144,12 @@ const waysToContribute = [
 
 const walkthroughs = [
   {
-    id: "Ni-rVhAV884",
+    id: "-Z09sxFUjys",
     title: "Website walkthrough",
     body: "Explore the catalogue, upload a score, and collaborate through revisions and change reviews.",
   },
   {
-    id: "AJj0lmKWtRA",
+    id: "65ISfJhIO4s",
     title: "Score Editor walkthrough",
     body: "Write, edit and play music in your browser, then export or share your score.",
   },
