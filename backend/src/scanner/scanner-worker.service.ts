@@ -1,3 +1,4 @@
+import { workflowRetains, workflowWriteGuard } from './scanner-review-workflow';
 import { effectiveEngineOptions, effectiveScoreProfile } from './scanner-score-profile-amendment';
 import {
   Inject,
@@ -336,7 +337,9 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       let current = page;
       for (const [engineId, run] of Object.entries(page.engines || {})) {
         const families = run?.requestedStructuredHeadFamilies;
-        if (!run || families === undefined) continue;
+        // Optional fields in persisted page objects can round-trip as null.
+        // Only an array represents a queued request; [] explicitly selects core.
+        if (!run || !Array.isArray(families)) continue;
         changed = true;
         try {
           const core = run.outputCandidates?.core;
@@ -518,7 +521,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     if (!changed) return pages;
     const result = await this.jobs
       .updateOne(
-        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' } },
+        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' }, ...workflowWriteGuard(job.pages || pages) },
         { $set: { pages: updated }, $inc: { statusVersion: 1 } }
       )
       .exec();
@@ -526,7 +529,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Scanner job changed while applying structured output');
     }
     await Promise.all(
-      uniqueScannerStorageLocators(obsolete).map((locator) =>
+      uniqueScannerStorageLocators(obsolete).filter(locator => !pages.some(page => workflowRetains(page, locator))).map((locator) =>
         this.storage.deleteObject(locator.bucket, locator.objectKey)
       )
     );
@@ -2337,7 +2340,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
       : {};
     const updated = await this.jobs
       .findOneAndUpdate(
-        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' }, ...reviewSnapshot },
+        { jobId: job.jobId, leaseOwner: this.workerId, status: { $ne: 'cancelled' }, ...reviewSnapshot, ...workflowWriteGuard(job.pages),
+          ...(job.reassembleRequestedAt ? { reassembleRequestedAt: job.reassembleRequestedAt } : {}) },
         {
           $set: {
             status,

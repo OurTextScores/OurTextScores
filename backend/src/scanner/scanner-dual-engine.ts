@@ -1,3 +1,4 @@
+import { workflowArtifactLocators } from './scanner-review-workflow';
 import { createHash } from 'node:crypto';
 import type {
   ScannerEngineProvenance,
@@ -681,7 +682,7 @@ export function scannerMergedScoreStale(page: {
  * leave it undeletable.
  */
 export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerStorageLocator[] {
-  return Object.values(page.engines || {}).flatMap((run) =>
+  return [...workflowArtifactLocators(page), ...Object.values(page.engines || {}).flatMap((run) =>
     run
       ? ([
           ...Object.values(run.artifacts || {}),
@@ -689,7 +690,7 @@ export function scannerEngineArtifactLocators(page: ScannerPageResult): ScannerS
           run.reviewedMusicXml
         ].filter(Boolean) as ScannerStorageLocator[])
       : []
-  );
+  )];
 }
 
 /** Reproducible per-engine result metadata without exposing storage object keys. */

@@ -1,3 +1,4 @@
+import { startReviewWorkflow } from './scanner-review-workflow';
 import { disablesProvider } from './scanner-worker.service';
 import { ScannerProviderError } from './scanner.errors';
 import { ScannerWorkerService } from './scanner-worker.service';
@@ -120,7 +121,26 @@ describe('ScannerWorkerService', () => {
     expect(initialized.engines['ots-homr'].status).toBe('pending');
   });
 
-  it('materializes queued structured heads in the credential-bearing worker', async () => {
+  it('ignores null queued structured selections when reassembling a merged page', async () => {
+    const scannerWorker = service() as any;
+    const page = {
+      pageNumber: 1,
+      engines: {
+        'ots-homr': {
+          requestedStructuredHeadFamilies: null,
+          outputCandidates: { core: {}, 'all-structured': {} },
+          artifacts: {}
+        }
+      }
+    };
+    const pages = [page];
+    await expect(scannerWorker.materializeRequestedStructuredOutputs(
+      { jobId: 'job-1', userId: 'user-1' }, pages
+    )).resolves.toBe(pages);
+    expect(page.engines['ots-homr']).not.toHaveProperty('structuredOutputError');
+  });
+
+  it.each([false, true])('materializes queued structured heads and preserves checkpoint artifacts: %s', async (retained) => {
     const scannerWorker = service() as any;
     const musicXml = Buffer.from(
       '<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list><part id="P1"><measure number="1"/></part></score-partwise>'
@@ -177,6 +197,8 @@ describe('ScannerWorkerService', () => {
       }
     };
 
+    if (retained) page.reviewWorkflow = startReviewWorkflow(page).reviewWorkflow;
+
     const [updated] = await scannerWorker.materializeRequestedStructuredOutputs(
       { jobId: 'job-1', userId: 'user-1' },
       [page]
@@ -196,10 +218,11 @@ describe('ScannerWorkerService', () => {
     expect(
       updated.engines['ots-homr'].artifacts['structured-comparison-base-musicxml'].objectKey
     ).toBe('core.musicxml');
-    expect(scannerWorker.storage.deleteObject).toHaveBeenCalledWith(
-      oldPdf.bucket,
-      oldPdf.objectKey
-    );
+    if (retained) {
+      expect(scannerWorker.storage.deleteObject).not.toHaveBeenCalledWith(oldPdf.bucket, oldPdf.objectKey);
+    } else {
+      expect(scannerWorker.storage.deleteObject).toHaveBeenCalledWith(oldPdf.bucket, oldPdf.objectKey);
+    }
   });
 
   it('rescans a voiced proposal when its review capture predates the pinned provider', async () => {
@@ -571,12 +594,14 @@ describe('ScannerWorkerService', () => {
     };
     scannerWorker.releaseReassemblyLease = jest.fn(async () => undefined);
     const job = {
-      jobId: 'job-1', reassembleRequestedAt: new Date(), pages: [{ engines: {
+      jobId: 'job-1', reassembleRequestedAt: new Date(), pages: [{ reviewWorkflow: { stateVersion: 7 }, engines: {
         'ots-homr': { reviewedMusicXml: { checksumSha256: 'old-review' } }
       } }]
     };
     await scannerWorker.finish(job, 'succeeded', job.pages, {});
     expect(filter['pages.0.engines.ots-homr.reviewedMusicXml.checksumSha256']).toBe('old-review');
+    expect(filter['pages.0.reviewWorkflow.stateVersion']).toBe(7);
+    expect(filter.reassembleRequestedAt).toBe(job.reassembleRequestedAt);
     expect(scannerWorker.releaseReassemblyLease).toHaveBeenCalledWith(job);
   });
 

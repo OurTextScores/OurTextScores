@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageComparison from "./page-comparison";
 import PageReview from "./page-review";
+import ReviewWorkflow from "./review-workflow";
 import { PUBLIC_SCANNER_SOURCE_PREVIEW_URL } from "../../lib/public-examples";
 import {
   activeScannerStatuses,
@@ -12,8 +13,6 @@ import {
   scannerStatusLabel,
 } from "../scanner-types";
 import { ElapsedTime } from "../elapsed-time";
-import { type StandingFindingDisposition } from "../cross-staff-findings";
-import { FindingReview } from "../finding-review";
 
 async function responseError(
   response: Response,
@@ -134,15 +133,6 @@ export default function ScannerJobClient({
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [draftPages, setDraftPages] = useState<ScannerJob["pages"]>([]);
-  /**
-   * Standing decisions about findings, from the server rather than this browser.
-   *
-   * The point of recording them at all: a disposition has to be visible to every
-   * reviewer of the scan, not to whoever happened to click it.
-   */
-  const [findingDispositions, setFindingDispositions] = useState<
-    StandingFindingDisposition[]
-  >([]);
   const [pageSetupDirty, setPageSetupDirty] = useState(false);
   // Which reading sits in each pane. Defaulting to scan-versus-first-engine
   // keeps the old view as the starting point; the reader can put the two
@@ -164,62 +154,6 @@ export default function ScannerJobClient({
   const structuredCompareWindowRef = useRef<Window | null>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
 
-  const loadFindingDispositions = useCallback(async () => {
-    try {
-      const response = await fetch(`${base}/findings/dispositions`);
-      if (!response.ok) return;
-      const body = await response.json();
-      setFindingDispositions(
-        Array.isArray(body?.dispositions) ? body.dispositions : [],
-      );
-    } catch {
-      // A panel that cannot read decisions still shows the findings; it must not take
-      // the page down with it.
-    }
-  }, [base]);
-
-  const decideFinding = useCallback(
-    async (input: {
-      kind: string;
-      part: string | null;
-      disposition: string;
-      amendment?: { stableId: string; addClefs: string[] };
-    }) => {
-      setError(null);
-      const response = await fetch(`${base}/findings/dispositions`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        setError(
-          typeof body?.message === "string"
-            ? body.message
-            : "That decision could not be recorded.",
-        );
-        return;
-      }
-      // Re-read rather than assume: amending a profile mints a revision, and the server
-      // is the only thing that knows which.
-      await loadFindingDispositions();
-      await refresh();
-    },
-    [base, loadFindingDispositions],
-  );
-
-  const withdrawFinding = useCallback(
-    async (input: { kind: string; part: string | null }) => {
-      const query = new URLSearchParams({ kind: input.kind });
-      if (input.part) query.set("part", input.part);
-      await fetch(`${base}/findings/dispositions?${query.toString()}`, {
-        method: "DELETE",
-      });
-      await loadFindingDispositions();
-    },
-    [base, loadFindingDispositions],
-  );
-
   const refresh = useCallback(async () => {
     const response = await fetch(base, { cache: "no-store" });
     if (!response.ok)
@@ -234,12 +168,6 @@ export default function ScannerJobClient({
       setError(value instanceof Error ? value.message : String(value)),
     );
   }, [refresh]);
-
-  // Standing decisions are server-side so every reviewer sees the same ones; without
-  // this the panel would show none until somebody made one in this browser.
-  useEffect(() => {
-    loadFindingDispositions();
-  }, [loadFindingDispositions]);
 
   useEffect(() => {
     if (
@@ -632,10 +560,12 @@ export default function ScannerJobClient({
         run.completeness === "possibly-incomplete" ||
         run.completeness === "incomplete"),
   );
-  const effectiveLimitations = effectiveEngineId
-    ? job.enginePlan?.capabilitySnapshots[effectiveEngineId]
-        ?.unsupportedSemanticClasses || []
-    : [];
+  const effectiveLimitations = (
+    effectiveEngineId
+      ? job.enginePlan?.capabilitySnapshots[effectiveEngineId]
+          ?.unsupportedSemanticClasses || []
+      : []
+  ).filter((semanticClass) => semanticClass !== "dynamics-from-additional-heads");
   const failedEngineIds = engineIds.filter(
     (engineId) => selected?.engines?.[engineId]?.status === "failed",
   );
@@ -646,6 +576,9 @@ export default function ScannerJobClient({
   // Every planned engine remains visible in either pane. A failed provider is
   // an outcome the user needs to see, not a reason to silently remove the
   // provider they selected.
+  const guidedReview = !readOnly && selected?.status === 'succeeded' && Boolean(
+    selected.reviewWorkflow || selected.engines?.['ots-homr']?.availableStructuredHeadFamilies?.length,
+  );
   const previewEngineIds = engineIds.filter((engineId) =>
     Boolean(selected?.engines?.[engineId]),
   );
@@ -1286,7 +1219,7 @@ export default function ScannerJobClient({
                         </a>
                       )}
                     </div>
-                    {availableFamilies.length > 0 && (
+                    {!guidedReview && availableFamilies.length > 0 && (
                       <fieldset className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/20">
                         <legend className="px-1 text-xs font-medium text-slate-700 dark:text-slate-300">
                           OTS-HOMR structured output
@@ -1444,7 +1377,8 @@ export default function ScannerJobClient({
               the source image.
             </p>
           )}
-          {selected.status === "succeeded" &&
+          {guidedReview && <ReviewWorkflow key={selected.pageNumber} job={job} page={selected} onChange={setJob} />}
+          {!guidedReview && selected.status === "succeeded" &&
             reviewableEngineIds.length > 0 &&
             !readOnly && (
               <div className="mt-4 space-y-4">
@@ -1467,39 +1401,6 @@ export default function ScannerJobClient({
             one comparison it could not show the interesting one: what the two
             engines did differently.
           */}
-          {/*
-            Above the comparison, not after it. These are the questions worth holding
-            in mind while reading the two engines against each other -- a staff count
-            that disagrees with the profile changes how you read everything below it.
-            It still gates nothing: the page is complete either way.
-          */}
-          {(() => {
-            // One engine's findings, reviewed in its own reading. Findings are an
-            // engine's own consistency check, so the review has to happen against the
-            // reading that raised them -- not against a merge of several.
-            const raising = Object.entries(selected.engines || {}).find(
-              ([, run]) => (run?.crossStaffFindings || []).length > 0,
-            );
-            if (!raising) return null;
-            const [raisingEngineId, raisingRun] = raising;
-            return (
-              <FindingReview
-                jobId={jobId}
-                pageNumber={selected.pageNumber}
-                engineId={raisingEngineId}
-                readingUrl={artifactUrl(
-                  "musicxml",
-                  selected.pageNumber,
-                  raisingEngineId,
-                )}
-                findings={raisingRun?.crossStaffFindings || []}
-                dispositions={findingDispositions}
-                onDecide={decideFinding}
-                onWithdraw={withdrawFinding}
-              />
-            );
-          })()}
-
           {process.env.NEXT_PUBLIC_OTS_HOMR_LYRIC_REVIEW_ENABLED === "1" &&
             pageHasTextReview(selected) && (
               <p className="mt-5 text-sm">
@@ -1607,7 +1508,7 @@ export default function ScannerJobClient({
         </section>
       )}
 
-      {selected && !reviewing && selected.status === "succeeded" && (
+      {selected && !reviewing && !guidedReview && selected.status === "succeeded" && (
         <PageComparison jobId={jobId} job={job} page={selected} />
       )}
 

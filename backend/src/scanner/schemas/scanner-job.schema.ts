@@ -1,3 +1,4 @@
+import type { ScannerReviewWorkflow } from '../scanner-review-workflow';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { ScoreProfileRevision } from '../scanner-score-profile-amendment';
 import { HydratedDocument } from 'mongoose';
@@ -172,6 +173,7 @@ export interface ScannerMergedScore {
 }
 
 export interface ScannerPageResult {
+  reviewWorkflow?: ScannerReviewWorkflow;
   pageNumber: number;
   ordinal: number;
   rotationDegrees: 0 | 90 | 180 | 270;

@@ -1,3 +1,6 @@
+import { recoverReviewProposalMapping } from './scanner-review-proposal-mapping';
+import { loadReviewSnapshot, loadWorkflowCheckpoints, storeWorkflowCheckpoints } from './scanner-review-checkpoint-storage';
+import { REVIEW_STEPS, ReviewStep, reviewSnapshot, reviewSignature, workflowState, workflowRetains, workflowArtifactLocators, reviewMergeRevision, startReviewWorkflow, nextReviewInput } from './scanner-review-workflow';
 import {
   applyReviewedLyricCopy,
   lyricNoteInventory,
@@ -247,6 +250,12 @@ export class ScannerService implements OnModuleInit {
     unsupportedSemanticClasses: string[];
     review?: ScannerPageResult['review'];
   } {
+    if (page.reviewWorkflow) {
+      const active = page.reviewWorkflow.active;
+      if (active === 'base' || (active === 'heads') !== isOtsHomrStructuredReadingId(readingId)) {
+        throw new ConflictException('Open the matching review step before using this merge editor');
+      }
+    }
     const plan = this.enginePlanForJob(job);
     const structured = isOtsHomrStructuredReadingId(readingId);
     const engineId = structured ? 'ots-homr' : readingId;
@@ -761,11 +770,14 @@ export class ScannerService implements OnModuleInit {
     if (isPublicScannerJob(jobId)) throw new ForbiddenException('Public examples are read only');
     if (!isScannerEngineId(engineId)) throw new BadRequestException('Invalid scanner engine id');
     const job = await this.ownedJob(userId, jobId);
-    if (!['succeeded', 'partial'].includes(job.status)) {
+    if (!['succeeded', 'partial'].includes(job.status) && !(job.status === 'rendering' && job.reassembleRequestedAt)) {
       throw new ConflictException('Structured output can be selected only after scanning finishes');
     }
     const page = job.pages.find((candidate) => candidate.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.reviewWorkflow && page.reviewWorkflow.active !== 'heads') {
+      throw new ConflictException('Open the additional heads step before selecting features');
+    }
     const run = page.engines?.[engineId];
     if (run?.status !== 'succeeded') {
       throw new ConflictException('This engine has no completed output to select');
@@ -817,25 +829,24 @@ export class ScannerService implements OnModuleInit {
     if (!core || !allStructured) {
       throw new ConflictException('This retained result has no selectable structured outputs');
     }
-    const updatedRun: ScannerEngineRun = {
-      ...run,
-      requestedStructuredHeadFamilies: families,
-      structuredOutputError: undefined
-    };
-    const updatedPage = withScannerEngineRun(page, updatedRun);
-    const pages = job.pages.map((candidate) =>
-      candidate.pageNumber === pageNumber ? updatedPage : candidate
-    );
-    const updated = await this.jobs
-      .findOneAndUpdate(
-        { _id: job._id, userId, jobId, statusVersion: job.statusVersion || 1 },
-        {
-          $set: { pages, reassembleRequestedAt: new Date() },
-          $inc: { statusVersion: 1 }
-        },
-        { new: true }
-      )
-      .exec();
+    let current = job;
+    let updated: ScannerJobDocument | null = null;
+    const signature = reviewSignature(page);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const currentPage = current.pages.find(entry => entry.pageNumber === pageNumber);
+      if (!currentPage || current.status === 'cancelled' ||
+          currentPage.reviewWorkflow?.stateVersion !== page.reviewWorkflow?.stateVersion || reviewSignature(currentPage) !== signature) break;
+      const updatedRun: ScannerEngineRun = { ...currentPage.engines![engineId]!, requestedStructuredHeadFamilies: families, structuredOutputError: undefined };
+      const updatedPage = withScannerEngineRun(currentPage, updatedRun);
+      if (updatedPage.reviewWorkflow) updatedPage.reviewWorkflow = { ...updatedPage.reviewWorkflow, stateVersion: updatedPage.reviewWorkflow.stateVersion + 1 };
+      const pages = current.pages.map(entry => entry.pageNumber === pageNumber ? updatedPage : entry);
+      updated = await this.jobs.findOneAndUpdate(
+        { _id: current._id, userId, jobId, statusVersion: current.statusVersion || 1 },
+        { $set: { pages, reassembleRequestedAt: new Date() }, $inc: { statusVersion: 1 } }, { new: true }
+      ).exec();
+      if (updated) break;
+      current = await this.ownedJob(userId, jobId);
+    }
     if (!updated) {
       throw new ConflictException('Scanner job changed; refresh and try again');
     }
@@ -1182,6 +1193,291 @@ export class ScannerService implements OnModuleInit {
    * Selection runs here rather than being stored, so the thresholds can be
    * retuned against real reviewer behaviour without re-scanning the page.
    */
+  async previousWorkflowResult(userId: string, jobId: string, pageNumber: number, step: string) {
+    this.assertAvailable(userId);
+    const job = await this.ownedJob(userId, jobId);
+    if (!REVIEW_STEPS.includes(step as ReviewStep))
+      throw new BadRequestException('Invalid review step');
+    const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    const checkpoint = page?.reviewWorkflow?.steps[step as ReviewStep];
+    const saved =
+      page && workflowState(page)?.steps[step].stale ? checkpoint?.snapshot : checkpoint?.previous;
+    const snapshot = saved
+      ? await loadReviewSnapshot(saved, (locator) =>
+          this.storage.getObjectBuffer(locator.bucket, locator.objectKey)
+        )
+      : undefined;
+    const run = snapshot?.engines?.['ots-homr'];
+    const artifact =
+      snapshot?.mergedMusicXml ||
+      run?.reviewedMusicXml ||
+      run?.artifacts.musicXml ||
+      snapshot?.reviewedMusicXml ||
+      snapshot?.musicXml;
+    if (!artifact) throw new NotFoundException('There is no previous saved result for this step');
+    return {
+      body: await this.storage.getObjectBuffer(artifact.bucket, artifact.objectKey),
+      contentType: artifact.contentType
+    };
+  }
+
+  async transitionReviewWorkflow(
+    userId: string,
+    jobId: string,
+    pageNumber: number,
+    input: {
+      action?: string;
+      step?: string;
+      statusVersion?: number;
+      workflowStateVersion?: number | null;
+      engineId?: string;
+      position?: number;
+      contentSignature?: string;
+    }
+  ): Promise<any> {
+    this.assertAvailable(userId);
+    if (isPublicScannerJob(jobId)) throw new ForbiddenException('Public examples are read only');
+    const job = await this.ownedJob(userId, jobId);
+    const storedPage = job.pages.find((entry) => entry.pageNumber === pageNumber);
+    if (!storedPage) throw new NotFoundException('Scanner page not found');
+    const page =
+      input.action === 'progress'
+        ? storedPage
+        : await loadWorkflowCheckpoints(storedPage, (locator) =>
+            this.storage.getObjectBuffer(locator.bucket, locator.objectKey)
+          );
+    if (
+      (!['succeeded', 'partial'].includes(job.status) &&
+        !(job.status === 'rendering' && job.reassembleRequestedAt)) ||
+      page.status !== 'succeeded'
+    ) {
+      throw new ConflictException('Finish recognition before reviewing this page');
+    }
+    if (
+      input.statusVersion !== (job.statusVersion || 1) &&
+      (input.workflowStateVersion === undefined ||
+        input.workflowStateVersion !== (page.reviewWorkflow?.stateVersion ?? null))
+    ) {
+      throw new ConflictException('This scan changed. Refresh before changing steps.');
+    }
+    if (
+      Object.values(page.engines || {}).some(
+        (run) => Array.isArray(run?.requestedStructuredHeadFamilies) || run?.structuredProposalDirty
+      )
+    ) {
+      throw new ConflictException(
+        'Wait for recognition changes to finish rebuilding before changing steps'
+      );
+    }
+    if (!['start', 'open', 'redo', 'complete', 'skip', 'progress'].includes(input.action || '')) {
+      throw new BadRequestException('Invalid review workflow action');
+    }
+    let updatedPage: ScannerPageResult;
+    if (input.action === 'progress') {
+      if (page.reviewWorkflow?.active !== 'base')
+        throw new ConflictException('Open base recognition before reviewing questions');
+      const engine = this.reviewEngineForPage(job, page, input.engineId);
+      const signature = scannerEngineReviewContentSignature(engine.run);
+      if (signature !== input.contentSignature)
+        throw new ConflictException('The recognition questions changed; refresh this step');
+      const count = this.spotsForReviewGroup(
+        engine.run,
+        engine.run.review?.staves || [],
+        this.reviewThresholds(),
+        'base'
+      ).length;
+      if (!Number.isInteger(input.position) || input.position! < 0 || input.position! > count)
+        throw new BadRequestException('Invalid review position');
+      updatedPage = structuredClone(page);
+      const checkpoint = updatedPage.reviewWorkflow!.steps.base!;
+      checkpoint.positions = {
+        ...checkpoint.positions,
+        [engine.engineId]: { position: input.position!, contentSignature: signature }
+      };
+      checkpoint.savedAt = new Date().toISOString();
+      updatedPage.reviewWorkflow!.stateVersion += 1;
+    } else if (!page.reviewWorkflow) {
+      if (input.action !== 'start') throw new ConflictException('Start the guided review first');
+      updatedPage = startReviewWorkflow(page);
+    } else {
+      if (input.action === 'start') throw new ConflictException('Review has already started');
+      updatedPage = structuredClone(page);
+      const workflow = updatedPage.reviewWorkflow!;
+      const active = workflow.active;
+      const current = workflow.steps[active]!;
+      current.snapshot = reviewSnapshot(page);
+      current.savedAt = new Date().toISOString();
+      const state = workflowState(updatedPage)!;
+      if (input.action === 'complete' || input.action === 'skip') {
+        if (state.steps[active].stale)
+          throw new ConflictException('Redo this step using the updated previous result');
+        if (
+          input.action !== 'skip' &&
+          active === 'heads' &&
+          (page.engines?.['ots-homr']?.selectedStructuredHeadFamilies?.length || 0) > 0 &&
+          !page.mergedMusicXml
+        ) {
+          throw new ConflictException(
+            'Save a result in the additional heads merge editor before continuing'
+          );
+        }
+        if (input.action === 'skip' && active !== 'base') {
+          const previous = workflow.steps[REVIEW_STEPS[REVIEW_STEPS.indexOf(active) - 1]]!;
+          current.previous = reviewSnapshot(current.snapshot);
+          current.snapshot = nextReviewInput(active, previous.snapshot);
+          updatedPage = { ...updatedPage, ...reviewSnapshot(current.snapshot), pdf: undefined };
+        }
+        current.skipped = input.action === 'skip';
+        current.completedSignature = reviewSignature(current.snapshot);
+      }
+      const next =
+        input.action === 'complete' || input.action === 'skip'
+          ? REVIEW_STEPS[REVIEW_STEPS.indexOf(active) + 1]
+          : (input.step as ReviewStep);
+      if (next) {
+        if (!REVIEW_STEPS.includes(next)) throw new BadRequestException('Invalid review step');
+        const index = REVIEW_STEPS.indexOf(next);
+        const previous = workflow.steps[REVIEW_STEPS[index - 1]];
+        const freshState = workflowState(updatedPage)!;
+        if (index > 0 && !freshState.steps[next].available) {
+          throw new ConflictException('Complete the previous review step first');
+        }
+        const inputSignature = previous ? reviewSignature(previous.snapshot) : 'original';
+        const saved = workflow.steps[next];
+        const stale = Boolean(saved && saved.inputSignature !== inputSignature);
+        if (
+          stale &&
+          input.action !== 'redo' &&
+          input.action !== 'complete' &&
+          input.action !== 'skip'
+        ) {
+          throw new ConflictException(
+            'This saved step used an older input. Choose Redo with updated input.'
+          );
+        }
+        if (!saved || stale || input.action === 'redo') {
+          if (!previous && saved) {
+            saved.previous = reviewSnapshot(saved.snapshot);
+            saved.snapshot = reviewSnapshot(saved.original || saved.snapshot);
+            saved.positions = {};
+            saved.completedSignature = undefined;
+            saved.skipped = false;
+          } else if (previous) {
+            workflow.steps[next] = {
+              snapshot: nextReviewInput(next, previous.snapshot),
+              inputSignature,
+              previous: saved?.snapshot || saved?.previous,
+              savedAt: new Date().toISOString()
+            };
+          }
+        }
+        const snapshot = reviewSnapshot(workflow.steps[next]!.snapshot);
+        // Never reuse revision numbers when revisiting a stage: an editor left
+        // open in another tab must not be able to overwrite its replacement.
+        updatedPage = { ...updatedPage, ...snapshot, pdf: undefined };
+        workflow.active = next;
+      }
+      workflow.revision += 1;
+      workflow.stateVersion += 1;
+      workflow.mergeRevision =
+        Math.max(
+          reviewMergeRevision(page),
+          workflow.mergeRevision || 0,
+          ...Object.values(workflow.steps).map((step) => step?.snapshot.mergedScore?.revision || 0)
+        ) + 1;
+      if (updatedPage.mergedScore) updatedPage.mergedScore.revision = workflow.mergeRevision;
+    }
+    const created: ScannerStorageLocator[] = [];
+    let pages: ScannerPageResult[];
+    try {
+      pages = await storeWorkflowCheckpoints(
+        job.pages.map((entry) => (entry.pageNumber === pageNumber ? updatedPage : entry)),
+        async (body) => {
+          const locator = await this.storeAuxiliaryArtifact(
+            `scanner/${this.userHash(userId)}/${jobId}/review-checkpoints/${randomUUID()}.json`,
+            body,
+            'application/json'
+          );
+          created.push(locator);
+          return locator;
+        },
+        job.pages
+      );
+      const compactPage = pages.find((entry) => entry.pageNumber === pageNumber)!;
+      let current = job;
+      let matched = false;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const latestPage = current.pages.find((entry) => entry.pageNumber === pageNumber);
+        if (
+          !latestPage ||
+          latestPage.reviewWorkflow?.stateVersion !== storedPage.reviewWorkflow?.stateVersion ||
+          reviewSignature(latestPage) !== reviewSignature(storedPage) ||
+          current.status === 'cancelled'
+        )
+          break;
+        pages = current.pages.map((entry) =>
+          entry.pageNumber === pageNumber ? compactPage : entry
+        );
+        const write = await this.jobs
+          .updateOne(
+            { _id: current._id, userId, statusVersion: current.statusVersion || 1 },
+            {
+              $set: {
+                pages,
+                ...(input.action === 'progress'
+                  ? current.reassembleRequestedAt
+                    ? { reassembleRequestedAt: new Date() }
+                    : {}
+                  : { reassembleRequestedAt: new Date(), combinedStale: true })
+              },
+              $inc: { statusVersion: 1 }
+            }
+          )
+          .exec();
+        if (write?.matchedCount !== 0) {
+          matched = true;
+          break;
+        }
+        current = await this.ownedJob(userId, jobId);
+      }
+      if (!matched)
+        throw new ConflictException('This scan changed. Refresh before changing steps.');
+    } catch (error) {
+      await Promise.all(
+        created.map((locator) =>
+          this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined)
+        )
+      );
+      throw error;
+    }
+    const retained = pages
+      .flatMap((entry) => [
+        ...scannerEngineArtifactLocators(entry),
+        entry.musicXml,
+        entry.reviewedMusicXml,
+        entry.mergedMusicXml
+      ])
+      .filter(Boolean) as ScannerStorageLocator[];
+    await Promise.all(
+      uniqueScannerStorageLocators(job.pages.flatMap((entry) => workflowArtifactLocators(entry)))
+        .filter(
+          (locator) =>
+            !retained.some(
+              (item) => item.bucket === locator.bucket && item.objectKey === locator.objectKey
+            )
+        )
+        .map((locator) =>
+          this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined)
+        )
+    );
+    return this.present({
+      ...(typeof job.toObject === 'function' ? job.toObject() : job),
+      pages,
+      ...(input.action === 'progress' ? {} : { combinedStale: true }),
+      statusVersion: (job.statusVersion || 1) + 1
+    } as ScannerJobDocument);
+  }
+
   async pageReview(
     userId: string,
     jobId: string,
@@ -1193,9 +1489,6 @@ export class ScannerService implements OnModuleInit {
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
-    if (page.mergedMusicXml) {
-      throw new ConflictException('Spot review is unavailable after engine reconciliation');
-    }
 
     const reviewEngine = this.reviewEngineForPage(job, page, engineId);
     const staves = reviewEngine.run.review?.staves || [];
@@ -1203,10 +1496,18 @@ export class ScannerService implements OnModuleInit {
     const spots = this.spotsForReviewGroup(reviewEngine.run, staves, thresholds, reviewGroup);
     const suitability = pageSuitability(staves, spots);
 
+    const progress = page.reviewWorkflow?.steps.base?.positions?.[reviewEngine.engineId];
     return {
+      position:
+        progress?.contentSignature === scannerEngineReviewContentSignature(reviewEngine.run)
+          ? progress.position
+          : 0,
       pageNumber,
       status: page.status,
       engineId: reviewEngine.engineId,
+      readOnly: Boolean(
+        page.mergedMusicXml || (page.reviewWorkflow && page.reviewWorkflow.active !== 'base')
+      ),
       reviewGroup: reviewGroup || 'all',
       contentSignature: scannerEngineReviewContentSignature(reviewEngine.run),
       structuredOutputPending: Boolean(reviewEngine.run.requestedStructuredHeadFamilies),
@@ -1681,7 +1982,8 @@ export class ScannerService implements OnModuleInit {
      * folded, or the pane the reviewer sees would number its bars differently
      * from the blocks drawn over it.
      */
-    baseEngineId?: string
+    baseEngineId?: string,
+    baseArtifactChecksumSha256?: string
   ): Promise<{ body: Buffer; contentType: string }> {
     this.assertAvailable(userId);
     if (!isScannerEngineId(engineId)) {
@@ -1695,11 +1997,18 @@ export class ScannerService implements OnModuleInit {
     }
 
     const job = await this.ownedJob(userId, jobId);
-    if ((job.statusVersion || 1) !== statusVersion) {
+    if (!baseArtifactChecksumSha256 && (job.statusVersion || 1) !== statusVersion) {
       throw new ConflictException('Scanner comparison changed; refresh and try again');
     }
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
+    if (baseArtifactChecksumSha256) {
+      if (!baseEngineId || !/^[a-f0-9]{64}$/i.test(baseArtifactChecksumSha256)) throw new BadRequestException('Scanner comparison base checksum is invalid');
+      const baseReading = this.comparisonReading(job, page, baseEngineId);
+      if (baseReading.artifact.checksumSha256?.toLowerCase() !== baseArtifactChecksumSha256.toLowerCase()) {
+        throw new ConflictException('Scanner comparison base reading changed; refresh and try again');
+      }
+    }
     // Readings stay served once a merge exists; they are the evidence the merge
     // is judged against, and withholding them would leave the merged pane with
     // nothing to compare to.
@@ -1762,7 +2071,7 @@ export class ScannerService implements OnModuleInit {
   private mergedScoreLinks(page: ScannerPageResult): { url: string; musicXmlUrl: string } {
     return {
       url: '../merged',
-      musicXmlUrl: `../merged/musicxml?revision=${page.mergedScore?.revision ?? 0}`
+      musicXmlUrl: `../merged/musicxml?revision=${reviewMergeRevision(page)}`
     };
   }
 
@@ -1773,7 +2082,7 @@ export class ScannerService implements OnModuleInit {
       statusVersion: job.statusVersion || 1,
       present: Boolean(page.mergedMusicXml),
       sourceEngineId: page.mergedScore?.sourceEngineId,
-      revision: page.mergedScore?.revision ?? 0,
+      revision: reviewMergeRevision(page),
       edited: Boolean(page.mergedScore?.edited),
       updatedAt: page.mergedScore?.updatedAt,
       checksumSha256: page.mergedMusicXml?.checksumSha256,
@@ -1881,7 +2190,7 @@ export class ScannerService implements OnModuleInit {
     }
     this.comparisonReading(job, page, input.sourceEngineId);
 
-    const currentRevision = page.mergedScore?.revision ?? 0;
+    const currentRevision = reviewMergeRevision(page);
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
@@ -2080,7 +2389,7 @@ export class ScannerService implements OnModuleInit {
     }
     this.comparisonReading(job, page, input.baseEngineId);
     this.comparisonReading(job, page, input.candidateEngineId);
-    const currentRevision = page.mergedScore?.revision ?? 0;
+    const currentRevision = reviewMergeRevision(page);
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
@@ -2146,30 +2455,40 @@ export class ScannerService implements OnModuleInit {
       contentType,
       checksumSha256: createHash('sha256').update(buffer).digest('hex')
     };
-    const updatedPage: ScannerPageResult = { ...page, mergedMusicXml: locator, mergedScore };
-    const updatedPages = job.pages.map((entry) =>
-      entry.pageNumber === pageNumber ? updatedPage : entry
-    );
+    const updatedPage: ScannerPageResult = {
+      ...page,
+      mergedMusicXml: locator,
+      mergedScore,
+      ...(page.reviewWorkflow
+        ? {
+            reviewWorkflow: {
+              ...page.reviewWorkflow,
+              stateVersion: page.reviewWorkflow.stateVersion + 1
+            }
+          }
+        : {})
+    };
     const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
-    const write = await this.jobs
-      .updateOne(
-        { _id: job._id, statusVersion: job.statusVersion || 1 },
-        {
-          $set: {
-            pages: updatedPages,
-            ...(hadCombined ? { combinedStale: true } : {}),
-            // The merged score is now this page's effective MusicXML, so every
-            // derivative built from the old one describes a page that no longer
-            // exists. Same reasoning as a spot correction.
-            ...(['succeeded', 'partial'].includes(job.status)
-              ? { reassembleRequestedAt: new Date() }
-              : {})
-          },
-          $inc: { statusVersion: 1 }
-        }
-      )
-      .exec();
-    if (write?.matchedCount === 0) {
+    const signature = reviewSignature(page);
+    let current = job;
+    let matched = false;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const latestPage = current.pages.find(entry => entry.pageNumber === pageNumber);
+      if (!latestPage || current.status === 'cancelled' || latestPage.reviewWorkflow?.stateVersion !== page.reviewWorkflow?.stateVersion || reviewSignature(latestPage) !== signature) break;
+      const replacement: ScannerPageResult = { ...latestPage, mergedMusicXml: locator, mergedScore,
+        ...(latestPage.reviewWorkflow ? { reviewWorkflow: { ...latestPage.reviewWorkflow, stateVersion: latestPage.reviewWorkflow.stateVersion + 1 } } : {}) };
+      const write = await this.jobs.updateOne(
+        { _id: current._id, statusVersion: current.statusVersion || 1 },
+        { $set: {
+          pages: current.pages.map(entry => entry.pageNumber === pageNumber ? replacement : entry),
+          ...(hadCombined ? { combinedStale: true } : {}),
+          ...(['succeeded', 'partial', 'rendering'].includes(current.status) || current.reassembleRequestedAt ? { reassembleRequestedAt: new Date() } : {})
+        }, $inc: { statusVersion: 1 } }
+      ).exec();
+      if (write?.matchedCount !== 0) { matched = true; break; }
+      current = await this.ownedJob(userId, jobId);
+    }
+    if (!matched) {
       await this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined);
       throw new ConflictException('The merged score changed; refresh and try again');
     }
@@ -2177,6 +2496,7 @@ export class ScannerService implements OnModuleInit {
     const superseded = page.mergedMusicXml;
     if (
       superseded &&
+      !workflowRetains(page, superseded) &&
       (superseded.bucket !== locator.bucket || superseded.objectKey !== locator.objectKey)
     ) {
       await this.storage
@@ -2482,7 +2802,7 @@ export class ScannerService implements OnModuleInit {
       throw new BadRequestException('That engine is not one of the two being compared');
     }
 
-    const currentRevision = page.mergedScore?.revision ?? 0;
+    const currentRevision = reviewMergeRevision(page);
     if (!Number.isInteger(input.revision) || input.revision !== currentRevision) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
@@ -3015,13 +3335,14 @@ export class ScannerService implements OnModuleInit {
     if (write?.matchedCount === 0) {
       throw new ConflictException('The merged score changed; refresh and try again');
     }
-    await this.storage
-      .deleteObject(discarded.bucket, discarded.objectKey)
-      .catch((error) =>
-        this.logger.warn(
-          `Unable to delete discarded scanner merged score: ${this.messageOf(error)}`
-        )
-      );
+    if (!workflowRetains(page, discarded))
+      await this.storage
+        .deleteObject(discarded.bucket, discarded.objectKey)
+        .catch((error) =>
+          this.logger.warn(
+            `Unable to delete discarded scanner merged score: ${this.messageOf(error)}`
+          )
+        );
     this.telemetry.emit('merged_score_discarded', {
       jobId,
       pageNumber,
@@ -3390,6 +3711,7 @@ export class ScannerService implements OnModuleInit {
     const previous = run.reviewedMusicXml;
     if (
       previous &&
+      !workflowRetains(page, previous) &&
       (previous.bucket !== locator.bucket || previous.objectKey !== locator.objectKey)
     ) {
       await this.storage
@@ -3642,6 +3964,56 @@ export class ScannerService implements OnModuleInit {
           .toBuffer();
   }
 
+  /** Retry a worker lifecycle race only while all musical/review state is unchanged. */
+  private async writeCorrectionAgainstCurrentPage(
+    userId: string,
+    originalJob: ScannerJobDocument,
+    originalPage: ScannerPageResult,
+    updatedRun: ScannerEngineRun
+  ): Promise<{ matchedCount: number }> {
+    let current = originalJob;
+    const signature = reviewSignature(originalPage);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const page = current.pages.find((entry) => entry.pageNumber === originalPage.pageNumber);
+      if (
+        !page ||
+        page.reviewWorkflow?.stateVersion !== originalPage.reviewWorkflow?.stateVersion ||
+        reviewSignature(page) !== signature ||
+        current.status === 'cancelled'
+      )
+        return { matchedCount: 0 };
+      const updated = withScannerEngineRun(page, updatedRun);
+      if (updated.reviewWorkflow)
+        updated.reviewWorkflow = {
+          ...updated.reviewWorkflow,
+          stateVersion: updated.reviewWorkflow.stateVersion + 1
+        };
+      const result = await this.jobs
+        .updateOne(
+          { _id: current._id, statusVersion: current.statusVersion || 1 },
+          {
+            $set: {
+              pages: current.pages.map((entry) =>
+                entry.pageNumber === page.pageNumber ? updated : entry
+              ),
+              ...((current as any).combinedMusicXml || (current as any).combinedPdf
+                ? { combinedStale: true }
+                : {}),
+              ...(['succeeded', 'partial', 'rendering'].includes(current.status) ||
+              current.reassembleRequestedAt
+                ? { reassembleRequestedAt: new Date() }
+                : {})
+            },
+            $inc: { statusVersion: 1 }
+          }
+        )
+        .exec();
+      if (result?.matchedCount !== 0) return result;
+      current = await this.ownedJob(userId, originalJob.jobId);
+    }
+    return { matchedCount: 0 };
+  }
+
   /**
    * Apply a reviewer's choice to one spot and rebuild the page's MusicXML.
    *
@@ -3665,11 +4037,19 @@ export class ScannerService implements OnModuleInit {
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
+    if (page.reviewWorkflow && page.reviewWorkflow.active !== 'base') {
+      throw new ConflictException('Reopen the base recognition step before changing its answers');
+    }
     if (page.mergedMusicXml) {
       throw new ConflictException('Spot review is unavailable after engine reconciliation');
     }
     if (!engineId) throw new BadRequestException('Scanner engine is required');
     const reviewEngine = this.reviewEngineForPage(job, page, engineId);
+    if (Array.isArray(reviewEngine.run.requestedStructuredHeadFamilies)) {
+      throw new ConflictException(
+        'Your previous choice is still being processed. Wait for the next question.'
+      );
+    }
     const expectedSignature = scannerEngineReviewContentSignature(reviewEngine.run);
     if (!contentSignature || contentSignature !== expectedSignature) {
       throw new ConflictException('Scanner review content changed; refresh and try again');
@@ -3712,24 +4092,34 @@ export class ScannerService implements OnModuleInit {
     // the exact same final reranked stream.
     if (reviewEngine.engineId === 'ots-homr') {
       const proposalLocator = reviewEngine.run.artifacts['structured-heads'];
-      const voiceIndex = spot.proposalVoiceIndex;
-      const symbolIndex = spot.proposalSymbolIndex;
-      if (
-        !proposalLocator ||
-        !Number.isInteger(voiceIndex) ||
-        !Number.isInteger(symbolIndex) ||
-        voiceIndex! < 0 ||
-        symbolIndex! < 0
-      ) {
-        throw new ConflictException(
-          'This retained result cannot map the review choice to its final symbol; rescan and try again'
-        );
-      }
+      if (!proposalLocator)
+        throw new ConflictException('This retained result has no structured proposal to correct');
       const proposal = JSON.parse(
         (
           await this.storage.getObjectBuffer(proposalLocator.bucket, proposalLocator.objectKey)
         ).toString('utf8')
       );
+      let mappedStaves = staves;
+      let voiceIndex = spot.proposalVoiceIndex;
+      let symbolIndex = spot.proposalSymbolIndex;
+      if (
+        !Number.isInteger(voiceIndex) ||
+        !Number.isInteger(symbolIndex) ||
+        voiceIndex! < 0 ||
+        symbolIndex! < 0
+      ) {
+        const recovered = recoverReviewProposalMapping(staves, proposal?.staves);
+        const symbol = recovered
+          ?.find((staff) => staff.index === spot.staffIndex)
+          ?.symbols.find((symbol) => symbol.index === spot.symbolIndex);
+        if (!recovered || !symbol)
+          throw new ConflictException(
+            'This retained result cannot map the review choice to its final symbol; rescan and try again'
+          );
+        mappedStaves = recovered;
+        voiceIndex = symbol.proposalVoiceIndex;
+        symbolIndex = symbol.proposalSymbolIndex;
+      }
       const proposalToken = proposal?.staves?.[voiceIndex!]?.[symbolIndex!];
       const proposalStructured = proposal?.structured?.[voiceIndex!]?.[symbolIndex!];
       const field = TOKEN_FIELDS.indexOf(spot.head);
@@ -3743,7 +4133,7 @@ export class ScannerService implements OnModuleInit {
         );
       }
 
-      const editedStaves = staves.map((entry: any) => {
+      const editedStaves = mappedStaves.map((entry: any) => {
         if (entry.index !== spot.staffIndex) return entry;
         const tokens = (entry.tokens || []).map((row: string[]) => [...row]);
         const structured = (entry.structured || []).map((value: any) =>
@@ -3781,37 +4171,22 @@ export class ScannerService implements OnModuleInit {
         structuredOutputError: undefined,
         artifacts: { ...reviewEngine.run.artifacts, 'structured-heads': nextProposal }
       };
-      const updatedPage = withScannerEngineRun(page, updatedRun);
-      const updatedPages = job.pages.map((entry) =>
-        entry.pageNumber === pageNumber ? updatedPage : entry
-      );
       const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
-      const write = await this.jobs
-        .updateOne(
-          { _id: job._id, statusVersion: job.statusVersion || 1 },
-          {
-            $set: {
-              pages: updatedPages,
-              reassembleRequestedAt: new Date(),
-              ...(hadCombined ? { combinedStale: true } : {})
-            },
-            $inc: { statusVersion: 1 }
-          }
-        )
-        .exec();
+      const write = await this.writeCorrectionAgainstCurrentPage(userId, job, page, updatedRun);
       if (write?.matchedCount === 0) {
         await this.storage
           .deleteObject(nextProposal.bucket, nextProposal.objectKey)
           .catch(() => undefined);
         throw new ConflictException('Scanner review content changed; refresh and try again');
       }
-      await this.storage
-        .deleteObject(proposalLocator.bucket, proposalLocator.objectKey)
-        .catch((error) =>
-          this.logger.warn(
-            `Unable to retire superseded structured proposal: ${this.messageOf(error)}`
-          )
-        );
+      if (!workflowRetains(page, proposalLocator))
+        await this.storage
+          .deleteObject(proposalLocator.bucket, proposalLocator.objectKey)
+          .catch((error) =>
+            this.logger.warn(
+              `Unable to retire superseded structured proposal: ${this.messageOf(error)}`
+            )
+          );
       await this.recordCorrectionForTraining(
         userId,
         page,
@@ -3886,31 +4261,8 @@ export class ScannerService implements OnModuleInit {
       reviewedMusicXml: locator,
       corrections: [...(reviewEngine.run.corrections || []), correction]
     };
-    const updatedPage = withScannerEngineRun(page, updatedRun);
-    const updatedPages = job.pages.map((entry) =>
-      entry.pageNumber === pageNumber ? updatedPage : entry
-    );
     const hadCombined = Boolean((job as any).combinedMusicXml || (job as any).combinedPdf);
-    const write = await this.jobs
-      .updateOne(
-        { _id: job._id, statusVersion: job.statusVersion || 1 },
-        {
-          $set: {
-            pages: updatedPages,
-            ...(hadCombined ? { combinedStale: true } : {}),
-            // The reviewed page invalidates this page's PDF and everything
-            // assembled from it. Reads already refuse to serve those stale, so
-            // without this the reviewer's correction simply removes their
-            // download. Ask the worker to rebuild rather than leaving them to
-            // notice and ask.
-            ...(['succeeded', 'partial'].includes(job.status) || job.reassembleRequestedAt
-              ? { reassembleRequestedAt: new Date() }
-              : {})
-          },
-          $inc: { statusVersion: 1 }
-        }
-      )
-      .exec();
+    const write = await this.writeCorrectionAgainstCurrentPage(userId, job, page, updatedRun);
     if (write?.matchedCount === 0) {
       await this.storage.deleteObject(locator.bucket, locator.objectKey).catch(() => undefined);
       throw new ConflictException('Scanner review content changed; refresh and try again');
@@ -3918,6 +4270,7 @@ export class ScannerService implements OnModuleInit {
     const previousReviewed = reviewEngine.run.reviewedMusicXml;
     if (
       previousReviewed &&
+      !workflowRetains(page, previousReviewed) &&
       (previousReviewed.bucket !== locator.bucket ||
         previousReviewed.objectKey !== locator.objectKey)
     ) {
@@ -4067,9 +4420,6 @@ export class ScannerService implements OnModuleInit {
     const job = await this.ownedJob(userId, jobId);
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page image is not available');
-    if (page.mergedMusicXml) {
-      throw new ConflictException('Spot review is unavailable after engine reconciliation');
-    }
     if (!engineId) throw new BadRequestException('Scanner engine is required');
 
     const reviewEngine = this.reviewEngineForPage(job, page, engineId);
@@ -4516,6 +4866,7 @@ export class ScannerService implements OnModuleInit {
           const effectiveMusicXml = effectivePageMusicXmlSelection(page, enginePlan);
           return {
             pageNumber: page.pageNumber,
+            reviewWorkflow: workflowState(page),
             ordinal: page.ordinal || page.pageNumber,
             rotationDegrees: page.rotationDegrees || 0,
             included: page.included !== false,

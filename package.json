@@ -12,6 +12,7 @@
     "smoke:up": "docker compose build backend frontend && docker compose up -d && node smoke/utils/wait.cjs",
     "smoke:run": "npx playwright test -c smoke/playwright.config.cjs --project=chromium",
     "smoke:scanner": "docker compose --profile scanner down -v --remove-orphans && docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml build backend frontend scanner_worker && docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml up -d && node smoke/utils/wait.cjs && SCANNER_SMOKE=1 npx playwright test -c smoke/playwright.config.cjs --project=chromium scanner.spec.cjs; code=$?; docker compose --profile scanner -f docker-compose.yml -f docker-compose.scanner-smoke.yml down -v --remove-orphans; exit $code",
+    "smoke:scanner:review-workflow": "SCANNER_REVIEW_WORKFLOW=1 npx playwright test -c smoke/playwright.config.cjs --project=chromium scanner-review-workflow.spec.cjs",
     "smoke:scanner:recovery": "node scripts/smoke-scanner-recovery.cjs",
     "smoke:scanner:load": "node scripts/smoke-scanner-load.cjs",
     "smoke:scanner:merge": "node scripts/smoke-scanner-merge.cjs",

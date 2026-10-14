@@ -1,3 +1,14 @@
+export type ScannerReviewStep = "base" | "heads" | "engines";
+export interface ScannerReviewWorkflow {
+  active: ScannerReviewStep;
+  revision: number;
+  stateVersion?: number;
+  steps: Record<ScannerReviewStep, {
+    saved: boolean; complete: boolean; stale: boolean; available: boolean; hasPreviousResult?: boolean; skipped?: boolean;
+    savedAt?: string; positions: Record<string, { position: number; contentSignature: string }>;
+  }>;
+}
+
 export type ScannerStatus =
   | "queued"
   | "preparing"
@@ -98,6 +109,7 @@ export interface ScannerJob {
     >;
   };
   pages: Array<{
+    reviewWorkflow?: ScannerReviewWorkflow;
     pageNumber: number;
     ordinal: number;
     rotationDegrees: 0 | 90 | 180 | 270;

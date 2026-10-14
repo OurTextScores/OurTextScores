@@ -217,10 +217,11 @@ function sideCaveats(side: ComparisonSide): string[] {
   if (side.completeness && side.completeness !== "complete") {
     caveats.push(`reported output completeness as ${side.completeness}`);
   }
-  if (side.unsupportedSemanticClasses.length > 0) {
-    caveats.push(
-      `does not recognize ${side.unsupportedSemanticClasses.join(", ")}`,
-    );
+  const limitations = side.unsupportedSemanticClasses.filter(
+    (semanticClass) => semanticClass !== "dynamics-from-additional-heads",
+  );
+  if (limitations.length > 0) {
+    caveats.push(`does not recognize ${limitations.join(", ")}`);
   }
   return caveats;
 }
@@ -260,6 +261,7 @@ export default function PageComparison({
   open = false,
   initialBaseEngine,
   initialCandidateEngine,
+  fixedPair = false,
 }: {
   jobId: string;
   job: ScannerJob;
@@ -268,6 +270,7 @@ export default function PageComparison({
   open?: boolean;
   initialBaseEngine?: string;
   initialCandidateEngine?: string;
+  fixedPair?: boolean;
 }) {
   const plannedEngineIds = useMemo(
     () => [
@@ -443,6 +446,7 @@ export default function PageComparison({
         statusVersion: String(comparison?.statusVersion || ""),
         artifactChecksumSha256: side.artifactChecksumSha256,
         baseEngine: comparison?.base.engineId || "",
+        baseArtifactChecksumSha256: comparison?.base.artifactChecksumSha256 || "",
       },
     ).toString()}`;
 
@@ -523,6 +527,7 @@ export default function PageComparison({
             <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
               Base reading
               <select
+                disabled={fixedPair}
                 aria-label="Base reading"
                 value={baseEngine}
                 onChange={(event) => setBaseEngine(event.target.value)}
@@ -545,6 +550,7 @@ export default function PageComparison({
             <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
               Candidate reading
               <select
+                disabled={fixedPair}
                 aria-label="Candidate reading"
                 value={candidateEngine}
                 onChange={(event) => setCandidateEngine(event.target.value)}

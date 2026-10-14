@@ -951,27 +951,9 @@ describe("ScannerJobClient", () => {
     expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
   });
 
-  it("opens base and selected OTS-HOMR features in the compare editor", async () => {
-    const updated: ScannerJob = {
+  it("starts OTS-HOMR review with the guided sequence instead of parallel merge actions", async () => {
+    const job: ScannerJob = {
       ...partialJob,
-      status: "succeeded",
-      pageCount: 1,
-      includedPageCount: 1,
-      enginePlan: {
-        version: "scanner-engine-plan-v1",
-        engineIds: ["ots-homr"],
-        primaryEngineId: "ots-homr",
-        fallbackEngineIds: [],
-        capabilitySnapshots: {
-          "ots-homr": {
-            displayName: "OTS-HOMR",
-            outputArtifactKinds: ["musicxml", "pdf"],
-            supportsSpotReview: true,
-            supportsMeasureGeometry: false,
-            unsupportedSemanticClasses: ["dynamics-from-additional-heads"],
-          },
-        },
-      },
       pages: [
         {
           ...partialJob.pages[0],
@@ -981,189 +963,35 @@ describe("ScannerJobClient", () => {
               attempts: 1,
               hasMusicXml: true,
               hasPdf: true,
-              hasReview: true,
-              availableStructuredHeadFamilies: [
-                "beam",
-                "advance",
-                "stem",
-                "tie",
-                "slur",
-              ],
+              availableStructuredHeadFamilies: ["beam", "stem"],
               selectedStructuredHeadFamilies: [],
             },
           },
         },
       ],
     };
-    const fetchMock = jest.fn(
-      async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (String(input).includes("/review")) {
-          return {
-            ok: true,
-            json: async () => ({
-              pageNumber: 1,
-              engineId: "ots-homr",
-              contentSignature: "review-signature",
-              spots: [],
-              remainingFloor: null,
-              suitability: {
-                symbols: 0,
-                spots: 0,
-                askableRatio: 0,
-                unsuitable: false,
-              },
-            }),
-          };
-        }
-        if (init?.method === "PUT") {
-          return {
-            ok: true,
-            json: async () => ({
-              ...updated,
-              pages: [
-                {
-                  ...updated.pages[0],
-                  engines: {
-                    "ots-homr": {
-                      ...updated.pages[0].engines?.["ots-homr"],
-                      selectedStructuredHeadFamilies: ["beam"],
-                      artifactKinds: ["musicxml", "selected-heads-musicxml"],
-                    },
-                  },
-                },
-              ],
-            }),
-          };
-        }
-        return { ok: true, json: async () => updated };
-      },
-    );
-    globalThis.fetch = fetchMock as jest.Mock;
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => job });
     render(<ScannerJobClient jobId="job-1" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Beams" }));
     expect(
-      fetchMock.mock.calls.some(([, init]) => init?.method === "PUT"),
-    ).toBe(false);
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Review selected features (compare)",
-      }),
-    );
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
-        expect.objectContaining({
-          method: "PUT",
-          body: JSON.stringify({ families: ["beam"] }),
-        }),
-      ),
-    );
-    await waitFor(() => expect(assignComparisonTab).toHaveBeenCalledTimes(1));
-    expect(window.open).toHaveBeenCalledWith("about:blank", "_blank");
-    expect(push).not.toHaveBeenCalled();
-    const target = new URL(
-      assignComparisonTab.mock.calls[0][0],
-      "http://localhost",
-    );
-    expect(target.pathname).toBe("/score-editor/index.html");
-    expect(target.searchParams.get("compareLeft")).toBe(
-      "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output/core",
-    );
-    expect(target.searchParams.get("compareRight")).toBe(
-      "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output/selected-heads",
-    );
-    expect(target.searchParams.get("rightLabel")).toBe("OTS-HOMR + Beams");
+      await screen.findByRole("button", { name: "Start guided review" }),
+    ).toBeInTheDocument();
     expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).includes("/review?engineId=ots-homr&group=base"),
-      ),
-    ).toBe(true);
+      screen.getByRole("button", { name: "1. Base recognition review" }),
+    ).toBeDisabled();
     expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).includes("group=beam"),
-      ),
-    ).toBe(false);
-    expect(screen.queryByText(/Beams · no uncertain questions/)).toBeNull();
-  });
-
-  it("opens base and selected OTS-HOMR features in the merge editor", async () => {
-    const stale: ScannerJob = {
-      ...partialJob,
-      status: "succeeded",
-      pageCount: 1,
-      includedPageCount: 1,
-      enginePlan: {
-        version: "scanner-engine-plan-v1",
-        engineIds: ["ots-homr"],
-        primaryEngineId: "ots-homr",
-        fallbackEngineIds: [],
-        capabilitySnapshots: {},
-      },
-      pages: [
-        {
-          ...partialJob.pages[0],
-          engines: {
-            "ots-homr": {
-              status: "succeeded",
-              attempts: 1,
-              hasMusicXml: true,
-              hasPdf: true,
-              hasReview: false,
-              availableStructuredHeadFamilies: ["beam", "stem"],
-              selectedStructuredHeadFamilies: ["beam"],
-              structuredReviewRefreshable: true,
-            },
-          },
-        },
-      ],
-    };
-    const fetchMock = jest.fn(
-      async (_input: RequestInfo | URL, init?: RequestInit) => ({
-        ok: true,
-        json: async () =>
-          init?.method === "PUT"
-            ? {
-                ...stale,
-                pages: [
-                  {
-                    ...stale.pages[0],
-                    engines: {
-                      "ots-homr": {
-                        ...stale.pages[0].engines?.["ots-homr"],
-                        structuredOutputPending: false,
-                        artifactKinds: ["musicxml", "selected-heads-musicxml"],
-                      },
-                    },
-                  },
-                ],
-              }
-            : stale,
-      }),
-    );
-    globalThis.fetch = fetchMock as jest.Mock;
-    render(<ScannerJobClient jobId="job-1" />);
-
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Review selected features (merge)",
-      }),
-    );
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
-        expect.objectContaining({
-          method: "PUT",
-          body: JSON.stringify({ families: ["beam"] }),
-        }),
-      ),
-    );
-    await waitFor(() => expect(push).toHaveBeenCalledTimes(1));
-    const target = new URL(push.mock.calls[0][0], "http://localhost");
-    expect(target.pathname).toBe("/scanner/job-1/pages/1/compare");
-    expect(target.searchParams.get("base")).toBe("ots-homr-core");
-    expect(target.searchParams.get("candidate")).toBe(
-      "ots-homr-selected-heads",
-    );
+      screen.getByRole("button", { name: "2. Merge additional heads" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "3. Merge between engines" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /Review selected features/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Resolve engine conflicts" }),
+    ).toBeNull();
+    expect(screen.queryByText("Things worth a look")).toBeNull();
   });
 });

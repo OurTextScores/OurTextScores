@@ -75,7 +75,7 @@ export default function RootLayout({
           <Header />
           {children}
         </Providers>
-        <Analytics />
+        {process.env.VERCEL === "1" && <Analytics />}
       </body>
     </html>
   );

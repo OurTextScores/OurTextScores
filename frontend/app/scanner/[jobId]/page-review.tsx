@@ -26,6 +26,8 @@ interface Spot {
 }
 
 interface Review {
+  position?: number;
+  readOnly?: boolean;
   pageNumber: number;
   engineId: string;
   reviewGroup?: string;
@@ -392,12 +394,16 @@ export default function PageReview({
   engineLabel,
   reviewGroup = "base",
   onStructuredFamilyDecision,
+  onProgress,
+  onBusyChange,
 }: {
   jobId: string;
   pageNumber: number;
   engineId?: string;
   engineLabel?: string;
   reviewGroup?: string;
+  onProgress?: (position: number, contentSignature: string) => Promise<void>;
+  onBusyChange?: (engineId: string, busy: boolean) => void;
   onStructuredFamilyDecision?: (
     family: string,
     apply: boolean,
@@ -408,6 +414,7 @@ export default function PageReview({
   const [position, setPosition] = useState(0);
   const [level, setLevel] = useState<"staff" | "context">("staff");
   const [saving, setSaving] = useState(false);
+  const processing = saving || Boolean(review?.structuredOutputPending);
   const [deciding, setDeciding] = useState(false);
   const [expanded, setExpanded] = useState(reviewGroup === "base");
   const [error, setError] = useState<string | null>(null);
@@ -415,26 +422,92 @@ export default function PageReview({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setReview(null);
+    setError(null);
     setPosition(0);
     const query = `?${new URLSearchParams({
       ...(engineId ? { engineId } : {}),
       group: reviewGroup,
     }).toString()}`;
     fetch(`/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review${query}`)
-      .then((response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        if (!response.ok)
+          throw new Error(
+            "Unable to load recognition questions. Refresh to try again.",
+          );
+        const data = await response.json();
+        if (!data || !Array.isArray(data.spots))
+          throw new Error(
+            "Unable to load recognition questions. Refresh to try again.",
+          );
+        return data;
+      })
       .then((data) => {
         if (!cancelled) {
           setReview(data);
+          setPosition(data.position || 0);
           setLoading(false);
         }
       })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
+      .catch((cause) => {
+        if (!cancelled) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to load recognition questions. Refresh to try again.",
+          );
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [engineId, jobId, pageNumber, reviewGroup]);
+
+  useEffect(() => {
+    const id = engineId || review?.engineId || "";
+    onBusyChange?.(id, processing || loading);
+    return () => onBusyChange?.(id, false);
+  }, [engineId, review?.engineId, processing, loading, onBusyChange]);
+
+  // A reload can land in the middle of materialization too. Keep polling and
+  // withhold choices until the worker publishes the final questions/signature.
+  useEffect(() => {
+    if (!review?.structuredOutputPending) return;
+    let cancelled = false;
+    const query = new URLSearchParams({
+      engineId: review.engineId || engineId || "",
+      group: reviewGroup,
+    }).toString();
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(
+          `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review?${query}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok || cancelled) return;
+        const next: Review = await response.json();
+        if (cancelled || next.structuredOutputPending) return;
+        setReview(next);
+        setPosition(next.position || 0);
+        setLevel("staff");
+      } catch {
+        // Keep the visible processing state; a transient read failure does not
+        // mean the saved correction was lost or the worker has finished.
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    review?.structuredOutputPending,
+    review?.engineId,
+    engineId,
+    jobId,
+    pageNumber,
+    reviewGroup,
+  ]);
 
   // Reset the zoom when moving on: the previous spot's context says nothing
   // about the next one.
@@ -444,13 +517,29 @@ export default function PageReview({
     setError(null);
   }, []);
 
-  // Going back matters because a choice is committed the moment it is clicked:
-  // without this, a misclick is only fixable by re-reviewing the whole page.
-  const goBack = useCallback(() => {
-    setPosition((current) => Math.max(0, current - 1));
-    setLevel("staff");
+  const navigate = async (next: number) => {
+    if (!onProgress || !review) {
+      setPosition(next);
+      setLevel("staff");
+      setError(null);
+      return;
+    }
+    setSaving(true);
     setError(null);
-  }, []);
+    try {
+      await onProgress(next, review.contentSignature);
+      setPosition(next);
+      setLevel("staff");
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to save review progress.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const finishStructuredFamily = useCallback(
     async (apply: boolean) => {
@@ -485,12 +574,33 @@ export default function PageReview({
               chosen: value,
               engineId: review?.engineId,
               contentSignature: review?.contentSignature,
-              ...(reviewGroup === "base" ? {} : { reviewGroup }),
+              reviewGroup,
             }),
           },
         );
         if (!response.ok) {
-          if (response.status === 409) {
+          const failure =
+            typeof response.json === "function"
+              ? await response.json().catch(() => null)
+              : null;
+          const message =
+            typeof failure?.message === "string" ? failure.message : null;
+          if (
+            response.status === 409 &&
+            message ===
+              "Your previous choice is still being processed. Wait for the next question."
+          ) {
+            setReview((current) =>
+              current ? { ...current, structuredOutputPending: true } : current,
+            );
+            return;
+          }
+          if (
+            response.status === 409 &&
+            (!message ||
+              message ===
+                "Scanner review content changed; refresh and try again")
+          ) {
             const refreshed = await fetch(
               `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review?${new URLSearchParams(
                 {
@@ -506,32 +616,16 @@ export default function PageReview({
             }
             throw new Error("review changed");
           }
-          throw new Error("save failed");
+          throw new Error(message || "save failed");
         }
         const result = await response.json();
         if (!result?.contentSignature)
           throw new Error("save response was incomplete");
         if (result.pending) {
-          const query = new URLSearchParams({
-            engineId: review?.engineId || engineId || "",
-            group: reviewGroup,
-          }).toString();
-          for (let attempt = 0; attempt < 60; attempt += 1) {
-            await new Promise((resolve) => window.setTimeout(resolve, 2000));
-            const refreshed = await fetch(
-              `/api/proxy/scanner/jobs/${jobId}/pages/${pageNumber}/review?${query}`,
-              { cache: "no-store" },
-            );
-            if (!refreshed.ok) continue;
-            const next: Review = await refreshed.json();
-            if (!next.structuredOutputPending) {
-              setReview(next);
-              setPosition(0);
-              setLevel("staff");
-              return;
-            }
-          }
-          throw new Error("materialization timed out");
+          setReview((current) =>
+            current ? { ...current, structuredOutputPending: true } : current,
+          );
+          return;
         }
         setReview((current) =>
           current
@@ -545,9 +639,8 @@ export default function PageReview({
         setError(
           cause instanceof Error && cause.message === "review changed"
             ? "This page changed while you were reviewing it. The latest spots are shown; choose again."
-            : cause instanceof Error &&
-                cause.message === "materialization timed out"
-              ? "Your choice was saved, but rebuilding the score is taking longer than expected. Refresh shortly to continue."
+            : cause instanceof Error && cause.message !== "save failed"
+              ? cause.message
               : "That could not be saved. Try again, or skip this one.",
         );
       } finally {
@@ -572,7 +665,29 @@ export default function PageReview({
       </p>
     );
   }
-  if (!review || review.spots.length === 0) {
+  if (!review) {
+    return (
+      <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+        {error || "Unable to load recognition questions. Refresh to try again."}
+      </p>
+    );
+  }
+  if (review.spots.length === 0 && review.structuredOutputPending) {
+    return (
+      <p
+        role="status"
+        aria-busy="true"
+        className="flex items-center gap-2 text-sm text-cyan-800 dark:text-cyan-200"
+      >
+        <span
+          aria-hidden="true"
+          className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+        />
+        Updating the score and loading the next question…
+      </p>
+    );
+  }
+  if (review.spots.length === 0) {
     return (
       <details className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -633,12 +748,35 @@ export default function PageReview({
           </span>
         )}
       </summary>
-      <section className="border-t border-slate-200 p-4 dark:border-slate-800">
+      <section
+        aria-busy={processing}
+        className="border-t border-slate-200 p-4 dark:border-slate-800"
+      >
+        {processing && (
+          <p
+            role="status"
+            className="mb-3 flex items-center gap-2 text-sm text-cyan-800 dark:text-cyan-200"
+          >
+            <span
+              aria-hidden="true"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+            />
+            {review.structuredOutputPending
+              ? "Updating the score and loading the next question…"
+              : "Saving your progress and loading the next question…"}
+          </p>
+        )}
         <h3 className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
           Check {engineLabel ? `${engineLabel}'s` : "the"}{" "}
           {groupLabel.toLowerCase()}
         </h3>
 
+        {review.readOnly && (
+          <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+            These are the original recognition questions. This page has a merged
+            score; make further changes in the merged score editor.
+          </p>
+        )}
         {review.suitability.unsuitable && (
           // Say so rather than presenting hundreds of questions as though the page
           // were nearly right. Never a gate: the queue is still below.
@@ -661,7 +799,7 @@ export default function PageReview({
             {position > 0 && (
               <button
                 type="button"
-                onClick={goBack}
+                onClick={() => void navigate(Math.max(0, position - 1))}
                 className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Back to the last one
@@ -787,7 +925,7 @@ export default function PageReview({
                 <li key={option.label}>
                   <button
                     type="button"
-                    disabled={saving}
+                    disabled={processing || review.readOnly}
                     onClick={() => void choose(spot.id, option.value)}
                     className="flex w-full items-center gap-2 rounded border border-slate-200 px-3 py-2 text-left hover:border-cyan-400 hover:bg-cyan-50 disabled:opacity-50 dark:border-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/40"
                   >
@@ -821,16 +959,16 @@ export default function PageReview({
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={goBack}
-                  disabled={saving || position === 0}
+                  onClick={() => void navigate(Math.max(0, position - 1))}
+                  disabled={processing || position === 0}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   Previous
                 </button>
                 <button
                   type="button"
-                  onClick={advance}
-                  disabled={saving}
+                  onClick={() => void navigate(position + 1)}
+                  disabled={processing}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   Skip
@@ -838,8 +976,8 @@ export default function PageReview({
                 {reviewGroup === "base" ? (
                   <button
                     type="button"
-                    onClick={() => setPosition(review.spots.length)}
-                    disabled={saving}
+                    onClick={() => void navigate(review.spots.length)}
+                    disabled={processing}
                     className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
                   >
                     Skip remaining base questions
@@ -849,7 +987,7 @@ export default function PageReview({
                     <button
                       type="button"
                       onClick={() => void finishStructuredFamily(true)}
-                      disabled={saving || deciding}
+                      disabled={processing || deciding}
                       className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-40"
                     >
                       Skip remaining and use this head
@@ -857,7 +995,7 @@ export default function PageReview({
                     <button
                       type="button"
                       onClick={() => void finishStructuredFamily(false)}
-                      disabled={saving || deciding}
+                      disabled={processing || deciding}
                       className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                     >
                       Skip remaining and leave this head out

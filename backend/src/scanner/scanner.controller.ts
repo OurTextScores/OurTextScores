@@ -349,6 +349,40 @@ export class ScannerController {
     return this.scanner.deleteJob(user.userId, jobId);
   }
 
+  @Get(':jobId/pages/:pageNumber/review-workflow/:step/previous/musicxml')
+  async previousWorkflowResult(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Param('step') step: string,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    const result = await this.scanner.previousWorkflowResult(user.userId, jobId, pageNumber, step);
+    response.setHeader('Content-Type', result.contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="previous-${step}.musicxml"`);
+    response.setHeader('Cache-Control', 'private, no-store');
+    return new StreamableFile(result.body);
+  }
+
+  @Post(':jobId/pages/:pageNumber/review-workflow')
+  reviewWorkflow(
+    @CurrentUser() user: RequestUser,
+    @Param('jobId') jobId: string,
+    @Param('pageNumber', ParseIntPipe) pageNumber: number,
+    @Body()
+    body: {
+      action?: string;
+      step?: string;
+      statusVersion?: number;
+      workflowStateVersion?: number | null;
+      engineId?: string;
+      position?: number;
+      contentSignature?: string;
+    }
+  ) {
+    return this.scanner.transitionReviewWorkflow(user.userId, jobId, pageNumber, body);
+  }
+
   @Get(':jobId/pages/:pageNumber/review')
   review(
     @CurrentUser() user: RequestUser,
@@ -403,7 +437,8 @@ export class ScannerController {
     @Query('statusVersion', ParseIntPipe) statusVersion: number,
     @Query('artifactChecksumSha256') artifactChecksumSha256: string | undefined,
     @Query('baseEngine') baseEngine: string | undefined,
-    @Res({ passthrough: true }) response: Response
+    @Res({ passthrough: true }) response: Response,
+    @Query('baseArtifactChecksumSha256') baseArtifactChecksumSha256?: string
   ) {
     const reading = await this.scanner.pageComparisonReading(
       user.userId,
@@ -412,7 +447,8 @@ export class ScannerController {
       engineId,
       statusVersion,
       String(artifactChecksumSha256 ?? ''),
-      baseEngine ? String(baseEngine) : undefined
+      baseEngine ? String(baseEngine) : undefined,
+      baseArtifactChecksumSha256
     );
     response.setHeader('Content-Type', reading.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import PageReview, { mergeOptions, readable } from "./page-review";
 
 function review(overrides: Record<string, unknown> = {}) {
@@ -44,6 +50,128 @@ function mockReview(body: unknown) {
 }
 
 describe("PageReview", () => {
+  it("shows processing immediately and keeps choices disabled until rebuilt questions arrive", async () => {
+    jest.useFakeTimers();
+    try {
+      let pending = false;
+      global.fetch = jest.fn(async (_url: any, init: any) => {
+        if (init?.method === "POST") {
+          pending = true;
+          return {
+            ok: true,
+            json: async () => ({ pending: true, contentSignature: "saved" }),
+          } as Response;
+        }
+        return {
+          ok: true,
+          json: async () =>
+            pending
+              ? review({
+                  contentSignature: "rebuilt",
+                  spots: [review().spots[1]],
+                })
+              : review(),
+        } as Response;
+      }) as any;
+      render(<PageReview jobId="job-1" pageNumber={3} />);
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("button", { name: /D4\s+39%/ }));
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /Saving your progress/,
+      );
+      await act(async () => {});
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /Updating the score/,
+      );
+      expect(screen.getByRole("button", { name: /D4\s+39%/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Skip" })).toBeDisabled();
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByText("Which duration is this?")).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("waits for a pending correction after reloading instead of offering stale questions", async () => {
+    jest.useFakeTimers();
+    try {
+      let reads = 0;
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        json: async () =>
+          review({
+            structuredOutputPending: ++reads === 1,
+            contentSignature: reads === 1 ? "pending" : "rebuilt",
+          }),
+      })) as any;
+      const onBusyChange = jest.fn();
+      render(
+        <PageReview
+          jobId="job-1"
+          pageNumber={3}
+          engineId="homr"
+          onBusyChange={onBusyChange}
+        />,
+      );
+      await act(async () => {});
+      expect(screen.getByRole("status")).toHaveTextContent(
+        /Updating the score/,
+      );
+      expect(screen.getByRole("button", { name: /D4\s+39%/ })).toBeDisabled();
+      expect(onBusyChange).toHaveBeenLastCalledWith("homr", true);
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(screen.getByRole("button", { name: /D4\s+39%/ })).toBeEnabled();
+      expect(onBusyChange).toHaveBeenLastCalledWith("homr", false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("resumes the saved question and persists skips before advancing", async () => {
+    mockReview(review({ position: 1 }));
+    const onProgress = jest.fn(async () => undefined);
+    render(<PageReview jobId="job-1" pageNumber={3} onProgress={onProgress} />);
+    expect(
+      await screen.findByText("Which duration is this?"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await waitFor(() =>
+      expect(onProgress).toHaveBeenCalledWith(
+        2,
+        "scanner-engine-review-v1:before",
+      ),
+    );
+    expect(
+      await screen.findByText(/everything flagged on this page/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a failed request as an error instead of no uncertain questions", async () => {
+    global.fetch = jest.fn(
+      async () => ({ ok: false, status: 409 }) as Response,
+    );
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Unable to load recognition questions",
+    );
+    expect(screen.queryByText(/no uncertain questions/)).toBeNull();
+  });
+
+  it("preserves original questions as read-only after merging", async () => {
+    mockReview(review({ readOnly: true }));
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    expect(await screen.findByText("Which note is this?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /D4/ })).toBeDisabled();
+    expect(
+      screen.getByText(/These are the original recognition questions/),
+    ).toBeInTheDocument();
+  });
+
   it("opens on the least certain spot and shows the alternatives", async () => {
     mockReview(review());
     render(<PageReview jobId="job-1" pageNumber={3} />);
@@ -264,6 +392,7 @@ describe("PageReview", () => {
           chosen: "D4",
           engineId: "homr",
           contentSignature: "scanner-engine-review-v1:before",
+          reviewGroup: "base",
         },
       ]),
     );
@@ -301,6 +430,7 @@ describe("PageReview", () => {
           chosen: "C4",
           engineId: "homr",
           contentSignature: "scanner-engine-review-v1:before",
+          reviewGroup: "base",
         },
       ]),
     );
@@ -347,6 +477,30 @@ describe("PageReview", () => {
     fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
     expect(await screen.findByText(/could not be saved/)).toBeInTheDocument();
     expect(screen.getByText("Which note is this?")).toBeInTheDocument();
+  });
+
+  it("shows a persistent correction conflict without claiming that the page changed", async () => {
+    let gets = 0;
+    global.fetch = jest.fn(async (_url: any, init: any) => {
+      if (init?.method === "POST")
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            message:
+              "This retained result cannot map the review choice to its final symbol; rescan and try again",
+          }),
+        } as Response;
+      gets += 1;
+      return { ok: true, json: async () => review() } as Response;
+    }) as any;
+    render(<PageReview jobId="job-1" pageNumber={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: /D4\s+39%/ }));
+    expect(
+      await screen.findByText(/cannot map the review choice/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/page changed while/)).toBeNull();
+    expect(gets).toBe(1);
   });
 
   it("refreshes the review when another change invalidates its signature", async () => {
@@ -599,6 +753,7 @@ describe("PageReview", () => {
           chosen: ".",
           engineId: "homr",
           contentSignature: "scanner-engine-review-v1:before",
+          reviewGroup: "base",
         },
       ]),
     );

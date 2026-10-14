@@ -2547,7 +2547,7 @@ describe('corrections', () => {
     );
   });
 
-  it('refuses spot review after a page has been reconciled', async () => {
+  it('keeps original spot review read-only after a page has been reconciled', async () => {
     const page: any = {
       ...pageWith([
         ['clef_G2', '.', '_', '_', '_', 'upper'],
@@ -2568,9 +2568,10 @@ describe('corrections', () => {
       config
     );
 
-    await expect(service.pageReview('user-1', 'job-1', 1)).rejects.toThrow(
-      /unavailable after engine reconciliation/
-    );
+    await expect(service.pageReview('user-1', 'job-1', 1)).resolves.toMatchObject({
+      readOnly: true,
+      spots: expect.any(Array)
+    });
   });
 });
 
@@ -2675,6 +2676,20 @@ describe('ScannerService merged score', () => {
   const currentBasis = (page: any) => scannerMergedScoreBasis(page);
 
   beforeEach(() => jest.clearAllMocks());
+
+  it('saves a merge across worker-only version changes without uploading it twice', async () => {
+    const page = pageWithReadings();
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', statusVersion: 1, pages: [page] };
+    const { service, storage } = buildService(job);
+    jest.spyOn((service as any).jobs, 'updateOne').mockImplementationOnce(() => ({ exec: async () => {
+      job.statusVersion += 1;
+      return { matchedCount: 0 };
+    } }));
+    await expect(service.saveMergedScore('user-1', 'job-1', 1, {
+      musicXml: MUSICXML, sourceEngineId: 'homr', basisSignature: currentBasis(page), revision: 0
+    })).resolves.toMatchObject({ present: true, revision: 1 });
+    expect(storage.putDerivativeObject).toHaveBeenCalledTimes(1);
+  });
 
   it('makes the merged score the page and asks for a rebuild', async () => {
     // The gate for this step: once saved, the merged score *is* the page, and
@@ -2956,6 +2971,19 @@ describe('ScannerService merged score', () => {
     expect(deleted).toContain('o-merged');
   });
 
+  it('serves checksum-pinned comparison readings across worker version changes but rejects changed input', async () => {
+    const checksum = createHash('sha256').update(MUSICXML).digest('hex');
+    const page = pageWithReadings();
+    page.engines.homr.artifacts.musicXml = locator(checksum);
+    page.engines.transcoda.artifacts.musicXml = locator(checksum);
+    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', statusVersion: 8, pages: [page] };
+    const { service } = buildService(job);
+    await expect(service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, checksum, 'homr', checksum)).resolves.toMatchObject({ body: Buffer.from(MUSICXML) });
+    await expect(service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, checksum)).rejects.toThrow(/comparison changed/);
+    page.engines.homr.artifacts.musicXml = locator('a'.repeat(64));
+    await expect(service.pageComparisonReading('user-1', 'job-1', 1, 'transcoda', 1, checksum, 'homr', checksum)).rejects.toThrow(/base reading changed/);
+  });
+
   it('keeps serving the readings a merge is judged against', async () => {
     // The comparison is where the merge is made and revised; withholding the
     // readings once one exists would leave the merged pane nothing to compare to.
@@ -2981,10 +3009,9 @@ describe('ScannerService merged score', () => {
     await expect(
       service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, 'homr-a'.padEnd(64, '0'))
     ).rejects.toThrow(/checksum is invalid|reading changed/);
-    // Spot review, by contrast, stays closed: it regenerates the engine's own
-    // XML, which the merged score would silently shadow.
+    // This fixture has no spot-review capture.
     await expect(service.pageReview('user-1', 'job-1', 1)).rejects.toThrow(
-      /unavailable after engine reconciliation/
+      /No reviewable scanner engine result/
     );
   });
 
@@ -3780,6 +3807,20 @@ describe('Scanner structured output selection', () => {
     );
     return { adapter, job, jobsModel, service, storage: testStorage };
   }
+
+  it('prepares selected heads during derivative rebuilding and retries worker bookkeeping races', async () => {
+    const { job, jobsModel, service } = setup();
+    job.status = 'rendering';
+    job.reassembleRequestedAt = new Date();
+    jobsModel.findOneAndUpdate.mockImplementationOnce(() => ({ exec: async () => {
+      job.statusVersion += 1;
+      return null;
+    } }));
+    await expect(service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['stem'])).resolves.toMatchObject({
+      pages: [{ engines: { 'ots-homr': { structuredOutputPending: true } } }]
+    });
+    expect(jobsModel.findOneAndUpdate).toHaveBeenCalledTimes(2);
+  });
 
   it('queues a subset for the credential-bearing worker without rerunning recognition', async () => {
     const { adapter, job, service, storage } = setup();

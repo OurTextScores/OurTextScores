@@ -368,6 +368,15 @@ export function normaliseReview(raw: any): { staves: ReviewStaff[] } | undefined
             : null;
           return {
             index: symbolIndex,
+            ...(Number.isInteger(symbol.proposalVoiceIndex) &&
+            symbol.proposalVoiceIndex >= 0 &&
+            Number.isInteger(symbol.proposalSymbolIndex) &&
+            symbol.proposalSymbolIndex >= 0
+              ? {
+                  proposalVoiceIndex: symbol.proposalVoiceIndex,
+                  proposalSymbolIndex: symbol.proposalSymbolIndex
+                }
+              : {}),
             rhythm: symbol?.rhythm ? String(symbol.rhythm) : undefined,
             heads,
             attention:
