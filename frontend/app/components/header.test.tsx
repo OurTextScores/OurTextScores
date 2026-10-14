@@ -37,6 +37,9 @@ describe("Header", () => {
       "href",
       "/player",
     );
+    const destinations = screen.getAllByRole("link").map((item) => item.getAttribute("href"));
+    expect(destinations.indexOf("/datasets")).toBeGreaterThan(destinations.indexOf("/player"));
+    expect(destinations.indexOf("/datasets")).toBeLessThan(destinations.indexOf("/legal"));
   });
 
   it("offers Scanner to signed-out visitors when it is enabled", () => {

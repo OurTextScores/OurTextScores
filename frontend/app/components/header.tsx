@@ -97,12 +97,6 @@ export default function Header() {
               <span aria-hidden="true">▦</span>Projects
             </Link>
             <Link
-              href="/datasets"
-              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              <span aria-hidden="true">▤</span>Datasets
-            </Link>
-            <Link
               href="/score-editor"
               className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
             >
@@ -126,6 +120,12 @@ export default function Header() {
               </Link>
             )}
             <Link
+              href="/datasets"
+              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              <span aria-hidden="true">▤</span>Datasets
+            </Link>
+            <Link
               href="/legal"
               className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
             >
@@ -138,14 +138,14 @@ export default function Header() {
                   <Link
                     href={`/users/${encodeURIComponent(effectiveUsername)}`}
                     title={userDisplay ?? undefined}
-                    className="max-w-[10rem] truncate whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+                    className="shrink-0 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
                   >
                     {userDisplay}
                   </Link>
                 ) : (
                   <span
                     title={userDisplay ?? undefined}
-                    className="max-w-[10rem] truncate whitespace-nowrap text-xs text-slate-700 dark:text-slate-300"
+                    className="shrink-0 whitespace-nowrap text-xs text-slate-700 dark:text-slate-300"
                   >
                     {userDisplay}
                   </span>
