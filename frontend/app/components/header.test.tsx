@@ -29,6 +29,9 @@ describe("Header", () => {
     const signInLink = screen.getByRole("link", { name: /Sign in/i });
     expect(signInLink).toBeInTheDocument();
     expect(signInLink).toHaveAttribute("href", "/signin");
+    expect(screen.getByRole("link", { name: /Datasets/i })).toHaveAttribute(
+      "href", "/datasets",
+    );
     expect(screen.queryByRole("link", { name: /Join beta/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Player/i })).toHaveAttribute(
       "href",

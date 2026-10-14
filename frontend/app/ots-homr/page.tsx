@@ -84,6 +84,10 @@ export default function OtsHomrPage() {
         <Link href="/ots-homr/benchmark/method" className={link}>
           How we measured
         </Link>
+        {" "}&middot;{" "}
+        <Link href="/datasets" className={link}>
+          Datasets and recipe
+        </Link>
       </p>
 
       <Section id="which-engine" title="Which engine should I choose?">

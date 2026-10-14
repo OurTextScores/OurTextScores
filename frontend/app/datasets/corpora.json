@@ -1,0 +1,1055 @@
+[
+  {
+    "id": "ossq",
+    "title": "OpenScore String Quartets",
+    "kind": "Scanned staff crops",
+    "description": "Scanned string-quartet staves paired with symbolic transcriptions. Version 2 restores stem-direction labels while retaining the original crop images and recognition tokens.",
+    "version": "ossq-scanned-v2",
+    "repository": "https://github.com/OurTextScores/ossq-omr-data",
+    "source": "https://github.com/OpenScore/StringQuartets",
+    "lock": "https://github.com/OurTextScores/ossq-omr-data/blob/3b2c0453d7aa7610c8a143d579fc2ea71d8a5b82/sources.lock.json",
+    "manifest": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/manifest.json",
+    "trainIndex": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/index_train.txt",
+    "validIndex": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/index_valid.txt",
+    "splits": {
+      "train": {
+        "windows": 35226,
+        "scores": 76,
+        "shards": 5
+      },
+      "valid": {
+        "windows": 3911,
+        "scores": 9,
+        "shards": 1
+      }
+    },
+    "shards": [
+      {
+        "name": "train-0000.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/train-0000.tar.zst",
+        "bytes": 168652463,
+        "sha256": "bc809df59e87c13f0130918b656e8f4e851c22f202a53091ee5ee50a66a431f1"
+      },
+      {
+        "name": "train-0001.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/train-0001.tar.zst",
+        "bytes": 159512238,
+        "sha256": "6f9ac54a319a1764c5c1fb7238ad380f0b9f415108b2a2a4528f1e0e23e18ce2"
+      },
+      {
+        "name": "train-0002.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/train-0002.tar.zst",
+        "bytes": 165496748,
+        "sha256": "b2f3b0d1e2dec76cae4f607b195b297c576318bd36f4c3c26d801b1f89819742"
+      },
+      {
+        "name": "train-0003.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/train-0003.tar.zst",
+        "bytes": 169982124,
+        "sha256": "5e2f9a94007a4ec4b22b316a5832cb3fc9230f930220dc54584c0d2a335c1c64"
+      },
+      {
+        "name": "train-0004.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/train-0004.tar.zst",
+        "bytes": 138705055,
+        "sha256": "26b74b535513d179fe41d6dd6112c7e6e119ab79bd3a3343b0d6c61eb3bf8be1"
+      },
+      {
+        "name": "valid-0000.tar.zst",
+        "split": "valid",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/ossq-scanned-v2/valid-0000.tar.zst",
+        "bytes": 85431911,
+        "sha256": "68519b83959c122481687386a976080518eecf3b5cf1b90f9e3535fcae68b284"
+      }
+    ]
+  },
+  {
+    "id": "lieder",
+    "title": "OpenScore Lieder",
+    "kind": "Scanned staff crops",
+    "description": "Voice-and-piano staff crops from the 212 IMSLP sources included in the public v8 release, paired with OpenScore Lieder transcriptions.",
+    "version": "lieder-pd212-v8",
+    "repository": "https://github.com/OurTextScores/lieder-omr-data",
+    "source": "https://github.com/OpenScore/Lieder",
+    "lock": "https://github.com/OurTextScores/lieder-omr-data/blob/087bad697619e3bdeef739009df5832cd7d251d4/sources.lock.json",
+    "manifest": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/lieder-pd212-v8/manifest.json",
+    "trainIndex": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/lieder-pd212-v8/index_train.txt",
+    "validIndex": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/lieder-pd212-v8/index_valid.txt",
+    "splits": {
+      "train": {
+        "windows": 3567,
+        "scores": 199,
+        "shards": 2
+      },
+      "valid": {
+        "windows": 300,
+        "scores": 13,
+        "shards": 1
+      }
+    },
+    "shards": [
+      {
+        "name": "train-0000.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/lieder-pd212-v8/train-0000.tar.zst",
+        "bytes": 377127915,
+        "sha256": "96697d92f155cf46ccdaf1d91c2521d46eb06f386dac7d3ffc6c9470d1c725c2"
+      },
+      {
+        "name": "train-0001.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/lieder-pd212-v8/train-0001.tar.zst",
+        "bytes": 71736837,
+        "sha256": "cf6b2d13fc34c0a89951025716f4b5a7f48d1cf1aa74882663595fc58e9c57ec"
+      },
+      {
+        "name": "valid-0000.tar.zst",
+        "split": "valid",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/lieder-pd212-v8/valid-0000.tar.zst",
+        "bytes": 33044153,
+        "sha256": "a8b53148b7e409e1f3112aa9dfb51db656c0b4fbc94a4c41dd15e5af89329495"
+      }
+    ]
+  },
+  {
+    "id": "pdmx",
+    "title": "PDMX \u00b7 v1",
+    "kind": "Rendered staff crops",
+    "description": "Verovio engravings of public-domain and CC0 MusicXML, cut into overlapping eight-measure windows. This is the PDMX version used in the published staff-recognition benchmark.",
+    "version": "pdmx-homr-v1",
+    "repository": "https://github.com/OurTextScores/pdmx-omr-data",
+    "source": "https://zenodo.org/records/15571083",
+    "lock": "https://github.com/OurTextScores/pdmx-omr-data/blob/11618f0d12e75560757094ff63fb34e2e844636f/sources.lock.json",
+    "manifest": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/manifest.json",
+    "trainIndex": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/index_train.txt",
+    "validIndex": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/index_valid.txt",
+    "splits": {
+      "train": {
+        "windows": 41635,
+        "scores": 6376,
+        "shards": 7
+      },
+      "valid": {
+        "windows": 3422,
+        "scores": 632,
+        "shards": 1
+      }
+    },
+    "shards": [
+      {
+        "name": "train-0000.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0000.tar.zst",
+        "bytes": 279261579,
+        "sha256": "2657e4d189b014bcd9f5f3c42151350ed2ddb12d0d15d74364d87b25934bebbd"
+      },
+      {
+        "name": "train-0001.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0001.tar.zst",
+        "bytes": 275191207,
+        "sha256": "a8accb2c87dd54d23d04df9a6196c52067be2d642338423c2f7730893260a5f4"
+      },
+      {
+        "name": "train-0002.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0002.tar.zst",
+        "bytes": 276229739,
+        "sha256": "fd9a11fe55e56b67bb848f50bcc1d8d6114ba948739a2938942eb0b0914018e2"
+      },
+      {
+        "name": "train-0003.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0003.tar.zst",
+        "bytes": 278153377,
+        "sha256": "c16be6a015649fe3e068ffdfe251e02268e3b765da62b71a17c3d66dd4c7b722"
+      },
+      {
+        "name": "train-0004.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0004.tar.zst",
+        "bytes": 275868337,
+        "sha256": "7b02040bbc974c5c3fe24ab2d4640fcb9ae7d06d2669ec0dbc6669cf5c0d1ec9"
+      },
+      {
+        "name": "train-0005.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0005.tar.zst",
+        "bytes": 274868976,
+        "sha256": "76d883b1e45d2118dd946b4af3272d251b29ae82a7b6c41c8e4ac43f3bfaab5c"
+      },
+      {
+        "name": "train-0006.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/train-0006.tar.zst",
+        "bytes": 142400441,
+        "sha256": "9a40669b0c706e55dcf2728e5ffad97ee7ddfab1136fd66513cec9c791c51ce1"
+      },
+      {
+        "name": "valid-0000.tar.zst",
+        "split": "valid",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v1/valid-0000.tar.zst",
+        "bytes": 142438518,
+        "sha256": "5922d6eb4c6cd5ed74affd3f66d862cd68e16e8618e0f0f7f051c98785533c9d"
+      }
+    ]
+  },
+  {
+    "id": "pdmx-v2",
+    "title": "PDMX \u00b7 expanded v2",
+    "kind": "Rendered staff crops",
+    "description": "An expanded release with up to six tracks and more source scores. Its validation slice has different membership from v1; choose the version named by the recipe or benchmark you are reproducing.",
+    "version": "pdmx-homr-v2",
+    "repository": "https://github.com/OurTextScores/pdmx-omr-data",
+    "source": "https://zenodo.org/records/15571083",
+    "lock": "https://github.com/OurTextScores/pdmx-omr-data/tree/11618f0d12e75560757094ff63fb34e2e844636f/recipes/pdmx-homr-v2-20260928",
+    "manifest": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/release.json",
+    "trainIndex": null,
+    "validIndex": null,
+    "splits": {
+      "train": {
+        "windows": 565522,
+        "scores": 31342,
+        "shards": 117
+      },
+      "valid": {
+        "windows": 1829,
+        "scores": 184,
+        "shards": 1
+      }
+    },
+    "shards": [
+      {
+        "name": "train-0000.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0000.tar.zst",
+        "bytes": 163980198,
+        "sha256": "438e1b85738531b8a57c219ebd8e1f6542dfe6ed3879d3466c164e2d81e36bf3"
+      },
+      {
+        "name": "train-0001.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0001.tar.zst",
+        "bytes": 166403093,
+        "sha256": "1afe9af78fb08ce4c1aef24e7ed79858d4803aae77eb3f45dcaca50047381c68"
+      },
+      {
+        "name": "train-0002.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0002.tar.zst",
+        "bytes": 162829751,
+        "sha256": "b987f6ab2b528fa015aeae6c7ebe82c201fa43372c29cfa0471407acbffcebea"
+      },
+      {
+        "name": "train-0003.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0003.tar.zst",
+        "bytes": 164460005,
+        "sha256": "f89f14606444a0bc201e970f167eb3a0929fa55dd5b2f1bff0d1479b99fe105a"
+      },
+      {
+        "name": "train-0004.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0004.tar.zst",
+        "bytes": 162956169,
+        "sha256": "9bc6e4399f99e70de0490290c1ee9bca4f846365ce96a2c0e6036dda20f3df9f"
+      },
+      {
+        "name": "train-0005.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0005.tar.zst",
+        "bytes": 164399931,
+        "sha256": "bcd69e0d8a6f07b3f6aaf249093f18a467222f6c9e5371df4f10930229c6d9dc"
+      },
+      {
+        "name": "train-0006.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0006.tar.zst",
+        "bytes": 165378119,
+        "sha256": "689f6b87f810262ebfe60e777bfd907e427535b070c305f8926e2af2f1777568"
+      },
+      {
+        "name": "train-0007.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0007.tar.zst",
+        "bytes": 163269671,
+        "sha256": "a38bc12df3f259a26379b038076e2e0653c96b3d98194a804ef1cd5e07df7c1a"
+      },
+      {
+        "name": "train-0008.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0008.tar.zst",
+        "bytes": 159422232,
+        "sha256": "9289cdc64af3e12584ae11c6c1fe7bb2401c9237ae961fae510c116d62a53409"
+      },
+      {
+        "name": "train-0009.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0009.tar.zst",
+        "bytes": 165670424,
+        "sha256": "2a44bebd06dbe198cac3950b2f676a517ed53999e6b228b8d8bb2d3c009ee195"
+      },
+      {
+        "name": "train-0010.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0010.tar.zst",
+        "bytes": 166035786,
+        "sha256": "e8316ee6e43616624f8bb393c0ef222defdbce5cd0237371cc3b01adb01337b2"
+      },
+      {
+        "name": "train-0011.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0011.tar.zst",
+        "bytes": 165900751,
+        "sha256": "b94d7bece907958924adf883d72883ea4e7e4f9c4590373e56e30f5a70edc054"
+      },
+      {
+        "name": "train-0012.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0012.tar.zst",
+        "bytes": 164709715,
+        "sha256": "2ac9f96b5b650eeea6d365c69de818ed8416dc0a972e6682d2ee12fbb0b5b914"
+      },
+      {
+        "name": "train-0013.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0013.tar.zst",
+        "bytes": 158495799,
+        "sha256": "22418bb1dd7dd91f990bb22e84ffcb944fcd3e454e9212df51be58ebd83b49c1"
+      },
+      {
+        "name": "train-0014.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0014.tar.zst",
+        "bytes": 161874419,
+        "sha256": "f54da5bfbc690e9ec60572e8f300b52ec36ce924a6c08ee7aeb2d84d1976b9fd"
+      },
+      {
+        "name": "train-0015.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0015.tar.zst",
+        "bytes": 164642453,
+        "sha256": "8f3346c023588f62c59d0b546b6402f353958dab48a689ff96380f3963c4e96a"
+      },
+      {
+        "name": "train-0016.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0016.tar.zst",
+        "bytes": 164240191,
+        "sha256": "ed2923460b1e65a979546375e53f7ebfb2d92a37b617b3157b9104aaee82642a"
+      },
+      {
+        "name": "train-0017.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0017.tar.zst",
+        "bytes": 162061245,
+        "sha256": "fa9f646b5cf5e88a458f006ca62ce52d733d18e32bd4e528c5206f92e5b42544"
+      },
+      {
+        "name": "train-0018.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0018.tar.zst",
+        "bytes": 165939908,
+        "sha256": "89866d5d6afbc3b629158d2fd3e6ccfd8f0cc0f73dd156320840c73e1a309835"
+      },
+      {
+        "name": "train-0019.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0019.tar.zst",
+        "bytes": 166842545,
+        "sha256": "ec59525b935224806b143654dd5263196c231e292e3fcc239655d66e70bbfd7e"
+      },
+      {
+        "name": "train-0020.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0020.tar.zst",
+        "bytes": 165508681,
+        "sha256": "bbf5a91af4659f8baa27254c54bb4f6d5f25a3ae7d2461988d77f7a2dcbac794"
+      },
+      {
+        "name": "train-0021.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0021.tar.zst",
+        "bytes": 165491380,
+        "sha256": "3892212668e1580645e86d0d0939a4563e3a57f45c7ebe3b03746da28a1f7682"
+      },
+      {
+        "name": "train-0022.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0022.tar.zst",
+        "bytes": 164226476,
+        "sha256": "177772c223c4498afc7c689322ccd7333d653781cfcd96a5d0eb4a98ddb9b5bd"
+      },
+      {
+        "name": "train-0023.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0023.tar.zst",
+        "bytes": 163034623,
+        "sha256": "ba430867607ae665a31b63cccaeb4d39817221d9b4348c4c01133e1182c5979e"
+      },
+      {
+        "name": "train-0024.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0024.tar.zst",
+        "bytes": 161778115,
+        "sha256": "f27f94b86bc5f5541dbca31463bab4932295fb1bad9ad108a2722fe4e50ab830"
+      },
+      {
+        "name": "train-0025.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0025.tar.zst",
+        "bytes": 160708578,
+        "sha256": "d04e4eeca22b2b3fe84c9c1e79b6c9705c94c1bec5adf227f749b89c66eef9de"
+      },
+      {
+        "name": "train-0026.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0026.tar.zst",
+        "bytes": 165975700,
+        "sha256": "6feaf63cd8667567d831c7135746570d2adfad4843b9ba5063883347f692c911"
+      },
+      {
+        "name": "train-0027.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0027.tar.zst",
+        "bytes": 163425879,
+        "sha256": "b9486956c3d18ab26956a4abcb06a8701014714e8db9a8882eb668c44bec2909"
+      },
+      {
+        "name": "train-0028.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0028.tar.zst",
+        "bytes": 162136718,
+        "sha256": "33e427a2613bdac175997d0afbb2722becee136388eac4d920ded85ace647f75"
+      },
+      {
+        "name": "train-0029.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0029.tar.zst",
+        "bytes": 163254698,
+        "sha256": "aa121d51c6c262d6c22159a1a5664fa785bdf7e6c2a9c5f4c69d125d240d9468"
+      },
+      {
+        "name": "train-0030.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0030.tar.zst",
+        "bytes": 164811154,
+        "sha256": "299ab5f9197d479e12dafdbb3230a19c99d2b92ba5411212b82fa6b5dea8c0f2"
+      },
+      {
+        "name": "train-0031.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0031.tar.zst",
+        "bytes": 164544756,
+        "sha256": "3ad6b0e33f603d71009cc4fb8fb7d2eb587ec576799d0a78e556cb5be19869a9"
+      },
+      {
+        "name": "train-0032.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0032.tar.zst",
+        "bytes": 165133513,
+        "sha256": "cbeb67609478c78b581a9b8174150a73d37fd2d505257dcee5536b08057ad7ce"
+      },
+      {
+        "name": "train-0033.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0033.tar.zst",
+        "bytes": 166053774,
+        "sha256": "6db45e6724b9ba8dacea5db6bc4c4d2a41444fdd83147fb349ed017baa6adeb4"
+      },
+      {
+        "name": "train-0034.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0034.tar.zst",
+        "bytes": 160459372,
+        "sha256": "ddd7aed38b902df81d97c4cfee312d9957d0e6e2b10d0418af9ce380628bff00"
+      },
+      {
+        "name": "train-0035.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0035.tar.zst",
+        "bytes": 161480366,
+        "sha256": "896f21a7b5514cb5f6b026660a34f1f0a39a55edda4f65d3115fb8a9d9cdb5ce"
+      },
+      {
+        "name": "train-0036.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0036.tar.zst",
+        "bytes": 157118154,
+        "sha256": "1fde44730dd4149bc0ae554110d6ee97a99bd5417863eb0c402098a401e36614"
+      },
+      {
+        "name": "train-0037.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0037.tar.zst",
+        "bytes": 164223566,
+        "sha256": "1fc5b9df2bb13cfb70cb1174718b148e16681ab41bba26222e2f11896ef6ccc0"
+      },
+      {
+        "name": "train-0038.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0038.tar.zst",
+        "bytes": 164552284,
+        "sha256": "c090acee44a444b5e9495adcdc6d3aab6d0a8a570235fe5d3b8b3f59ee3121f5"
+      },
+      {
+        "name": "train-0039.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0039.tar.zst",
+        "bytes": 161823819,
+        "sha256": "b6ee4666987eaa3c409255a9c7fed7212dbb344cf275001a55c023c7136633b8"
+      },
+      {
+        "name": "train-0040.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0040.tar.zst",
+        "bytes": 165681331,
+        "sha256": "43b0be2180da5f0ff3b7501420a6da79a937eccc77c63d912966ba77c454363b"
+      },
+      {
+        "name": "train-0041.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0041.tar.zst",
+        "bytes": 161363579,
+        "sha256": "1758a7ea27b5b0a7aaefa2bc1ecf6d17e87380c8f3ffbb54833bfdb08c4ae2ac"
+      },
+      {
+        "name": "train-0042.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0042.tar.zst",
+        "bytes": 164486819,
+        "sha256": "635f775127afdf195ad3f1e43a6193bc23ca0e364b10725cf2aa15977c5dd4e0"
+      },
+      {
+        "name": "train-0043.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0043.tar.zst",
+        "bytes": 163464163,
+        "sha256": "8af8070bab01a4614a81a9eeba0e4a3cdac4416d50350ab8cf7ade272b950331"
+      },
+      {
+        "name": "train-0044.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0044.tar.zst",
+        "bytes": 163014497,
+        "sha256": "8488287dba075c87bb5dc64dc54ac5e584ec706f050e2f132bbd4a1721b7a0d5"
+      },
+      {
+        "name": "train-0045.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0045.tar.zst",
+        "bytes": 160130456,
+        "sha256": "a00d3d9992969eb71c6c8bce376794a9bd35b151f5024cfba2c21b6e8dbaf341"
+      },
+      {
+        "name": "train-0046.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0046.tar.zst",
+        "bytes": 163127872,
+        "sha256": "851144d3c506838e840a09bff2e5e71664c3e833a7093fc9bb1a30117b7fdafe"
+      },
+      {
+        "name": "train-0047.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0047.tar.zst",
+        "bytes": 165846683,
+        "sha256": "68f55639b3cba42f03a1c7c9a0c35f12d9ba8d6981dfd3c0522819d807068ecc"
+      },
+      {
+        "name": "train-0048.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0048.tar.zst",
+        "bytes": 163877915,
+        "sha256": "d7c46ec9feb51edc084943679bd10dbba1ecc898bf82b61cefdab9863cf94323"
+      },
+      {
+        "name": "train-0049.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0049.tar.zst",
+        "bytes": 163527305,
+        "sha256": "393f43f5530f9d48087421402c7a681b45e9e66e649fc74ccf3a9aee53f5f74e"
+      },
+      {
+        "name": "train-0050.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0050.tar.zst",
+        "bytes": 162803343,
+        "sha256": "527ca44aa33041a076b055c123092be66586611569c9cb694162583b40140930"
+      },
+      {
+        "name": "train-0051.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0051.tar.zst",
+        "bytes": 163186239,
+        "sha256": "033f2ff4e4ad56e0029a87397c9562eea7fa69ea5212378e42c4bbc31c297b6f"
+      },
+      {
+        "name": "train-0052.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0052.tar.zst",
+        "bytes": 162634497,
+        "sha256": "e452a4966f43d2e35385ac3be3bb1b4ea21919cc71a2dc8bb48c5de7154d75cc"
+      },
+      {
+        "name": "train-0053.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0053.tar.zst",
+        "bytes": 165310360,
+        "sha256": "e150523f64c50e7e7bfa75f181441b89596f64a30088bde053df10fbc8f0d118"
+      },
+      {
+        "name": "train-0054.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0054.tar.zst",
+        "bytes": 163044700,
+        "sha256": "8db56d3cc492bb5ac08abb8f9351afb4caf64e2d11f02676fbfa925d8ffc6fa9"
+      },
+      {
+        "name": "train-0055.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0055.tar.zst",
+        "bytes": 165936192,
+        "sha256": "da173077aec9fa7aea841d4bd8cc6c5e990c146db9282bb9792ae769f5691de6"
+      },
+      {
+        "name": "train-0056.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0056.tar.zst",
+        "bytes": 159022254,
+        "sha256": "3ad5f9540a3d45558ece1124ca5a2dc706cb7abdaeecf346656548aac1c2d5b9"
+      },
+      {
+        "name": "train-0057.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0057.tar.zst",
+        "bytes": 163567364,
+        "sha256": "7503af530737d0d95d302db3a70fdf86344373d911b1bb79089ac2d22627aeb2"
+      },
+      {
+        "name": "train-0058.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0058.tar.zst",
+        "bytes": 160784760,
+        "sha256": "f3e8d202d8e4bd581701e108e83da82e0c01b4da092ba0a4b5915d553a447c6e"
+      },
+      {
+        "name": "train-0059.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0059.tar.zst",
+        "bytes": 162483607,
+        "sha256": "3c87a878b3038e4fb8784fbc1d6fa3418964b43034ccc761f447d797ad81b76c"
+      },
+      {
+        "name": "train-0060.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0060.tar.zst",
+        "bytes": 163382941,
+        "sha256": "b6c87a25bfd2420c4caa610a7a1f609d557d07c5dc04e4770fc6ece2a892c138"
+      },
+      {
+        "name": "train-0061.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0061.tar.zst",
+        "bytes": 162411091,
+        "sha256": "6b0245a49ee83ccf83c0b33755eadba939bbba13afaa23b477ccd316d8826f03"
+      },
+      {
+        "name": "train-0062.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0062.tar.zst",
+        "bytes": 167731773,
+        "sha256": "a3c15709b2b3f14a03fd43d863d6b7149b60b2dd2d1897aea0405fe536a80786"
+      },
+      {
+        "name": "train-0063.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0063.tar.zst",
+        "bytes": 162129527,
+        "sha256": "c2bfc0239196962c0fa00fe28198f6d9901b4895298595d60b1a33aab5104686"
+      },
+      {
+        "name": "train-0064.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0064.tar.zst",
+        "bytes": 164208521,
+        "sha256": "155537ad2a2290cd8259715a80101ed730a8215aa27a7552539c667414e1f220"
+      },
+      {
+        "name": "train-0065.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0065.tar.zst",
+        "bytes": 159463441,
+        "sha256": "a40a62ad339d1bd22cafc21e1a89223e85c749e8ab60cca0a3c5cd208fc949c7"
+      },
+      {
+        "name": "train-0066.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0066.tar.zst",
+        "bytes": 164248158,
+        "sha256": "fbc1b38042e9b3a884d8bd60a233a3e3dc51a0f72d41642e950680a3c926a5fb"
+      },
+      {
+        "name": "train-0067.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0067.tar.zst",
+        "bytes": 163356207,
+        "sha256": "61caedaba29ff431b24bcd989888f3750977bc31d2d64ed6797c0b4181216040"
+      },
+      {
+        "name": "train-0068.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0068.tar.zst",
+        "bytes": 162287034,
+        "sha256": "dd1361e55f9bfceb0848705a07dbefa145c8f55fee683cce6faa4e3a28ef153e"
+      },
+      {
+        "name": "train-0069.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0069.tar.zst",
+        "bytes": 163055518,
+        "sha256": "9cc6eaa4dfa36a21117e7e4574233c3acb9fcf4ccbe954e51952c16946c2d116"
+      },
+      {
+        "name": "train-0070.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0070.tar.zst",
+        "bytes": 166077605,
+        "sha256": "836bf64a9041ae843e4b59fb47a789b79a04411133b325107e62cbceddde2789"
+      },
+      {
+        "name": "train-0071.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0071.tar.zst",
+        "bytes": 164310430,
+        "sha256": "3fa6081c86e6031d0b04fed3efd358c9ed22169511720326de70b9c927ffbc88"
+      },
+      {
+        "name": "train-0072.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0072.tar.zst",
+        "bytes": 164104214,
+        "sha256": "8a348893622387ae7b406b7905a2fcad592a8c57e6a7527d00957810492699f1"
+      },
+      {
+        "name": "train-0073.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0073.tar.zst",
+        "bytes": 164950449,
+        "sha256": "4c5cb63a31aaa2301503344e38d9d4668a68b8283f224779cb87b2b46a79629e"
+      },
+      {
+        "name": "train-0074.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0074.tar.zst",
+        "bytes": 166265687,
+        "sha256": "8702e68f344f941c607c5bd94f695f8c2772bda8eff3b9f9e2481488c0ee012a"
+      },
+      {
+        "name": "train-0075.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0075.tar.zst",
+        "bytes": 163085671,
+        "sha256": "bebffd0d0267fd03226affa639154cec8845418bdb24555f13bf83c0b0753cf1"
+      },
+      {
+        "name": "train-0076.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0076.tar.zst",
+        "bytes": 161458338,
+        "sha256": "04c75628b4a44e79cd1196976ab3899f0e050a6cf30a09afb84b18c069cd9fe4"
+      },
+      {
+        "name": "train-0077.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0077.tar.zst",
+        "bytes": 162694487,
+        "sha256": "896c899b0d3912c6d0deb80f55d799d03c654ab52c0f7856e2484396abb8b59f"
+      },
+      {
+        "name": "train-0078.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0078.tar.zst",
+        "bytes": 166706408,
+        "sha256": "15e345dfe327c6517a810d2ca1bf86090a0d8e8151764c5403b7a83cf933f24f"
+      },
+      {
+        "name": "train-0079.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0079.tar.zst",
+        "bytes": 164096023,
+        "sha256": "e88c446ccb50636dc72d733cbc4bae6f9d428ec57230914ca7cf4d6f61cc163a"
+      },
+      {
+        "name": "train-0080.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0080.tar.zst",
+        "bytes": 164946601,
+        "sha256": "edb1a5451a46576fa1a9f784636add3453ed6e144317ffd2e9e508d77a280353"
+      },
+      {
+        "name": "train-0081.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0081.tar.zst",
+        "bytes": 163730743,
+        "sha256": "924d63fd52166db154862035d7228653beb10908828d947691cbde8d86c9cff1"
+      },
+      {
+        "name": "train-0082.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0082.tar.zst",
+        "bytes": 165599349,
+        "sha256": "c2e0b01dc73d4f179148f069e0c5e985aca70f7495dec23f9b072b623681293d"
+      },
+      {
+        "name": "train-0083.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0083.tar.zst",
+        "bytes": 163603904,
+        "sha256": "8d48ff443ab4172d0db64da50c6b416e09f5fe4eeec7d4b0fb3ab54bce9e8ffd"
+      },
+      {
+        "name": "train-0084.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0084.tar.zst",
+        "bytes": 160330941,
+        "sha256": "3d47ce334d9f4e981816585e53bd2b254144475722f61691822d86570dfec90a"
+      },
+      {
+        "name": "train-0085.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0085.tar.zst",
+        "bytes": 161814429,
+        "sha256": "1ea1c5cd5b640bf206d125e6e7349b23b5dc8780a4f9ef4165dfbbe340e5ea06"
+      },
+      {
+        "name": "train-0086.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0086.tar.zst",
+        "bytes": 165870137,
+        "sha256": "6c1876d9dd3576b58e943194f2856b9bac65c162fc2f2d4ffd1d64fd128f83e3"
+      },
+      {
+        "name": "train-0087.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0087.tar.zst",
+        "bytes": 163692464,
+        "sha256": "952a52f5380a2c96db8e59ba123bc21140011f086c2f7735211d48d3c03fc12c"
+      },
+      {
+        "name": "train-0088.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0088.tar.zst",
+        "bytes": 161915722,
+        "sha256": "44f482c0dc443e94bf29a4bbfcf9ffcf54f477101ad84b1d6d93ef457fc3835a"
+      },
+      {
+        "name": "train-0089.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0089.tar.zst",
+        "bytes": 162018868,
+        "sha256": "72c03f0e5d4dc1fb55d99dfab4eac57123c70c81da03c46db01e1601af9fe3fc"
+      },
+      {
+        "name": "train-0090.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0090.tar.zst",
+        "bytes": 161612911,
+        "sha256": "2268f4b74f7dc892fd0ad5b3c8447551c2665cc96e05bcc3d0b446d6821f1d72"
+      },
+      {
+        "name": "train-0091.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0091.tar.zst",
+        "bytes": 163981638,
+        "sha256": "203fff0f58792b194d5bb9bfdcdd2140dba4b680e9457dca4b2760c1c4aa985a"
+      },
+      {
+        "name": "train-0092.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0092.tar.zst",
+        "bytes": 164024351,
+        "sha256": "ce7c24157f54b6c645ba7c49e6e873b8d65b7c145f8ac6660eed5439014af445"
+      },
+      {
+        "name": "train-0093.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0093.tar.zst",
+        "bytes": 159813472,
+        "sha256": "7b9bee9059c93d0f4f2a9f82d69e7415a0217719f8318db4ed4e43145869bf64"
+      },
+      {
+        "name": "train-0094.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0094.tar.zst",
+        "bytes": 163968161,
+        "sha256": "326a83226cd31bba527f3fbd1395216c6cf692e7c8f0ff92e8fccb24f4382d41"
+      },
+      {
+        "name": "train-0095.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0095.tar.zst",
+        "bytes": 164877480,
+        "sha256": "efd755e743420cce3650462f92522cfcaf53e2e7483a6b66325f3fa3dcfe774b"
+      },
+      {
+        "name": "train-0096.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0096.tar.zst",
+        "bytes": 163157550,
+        "sha256": "b50e36f579645e32c76016d97929cda2537801ca6850e8f6b2ed221e06c711a1"
+      },
+      {
+        "name": "train-0097.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0097.tar.zst",
+        "bytes": 162587143,
+        "sha256": "3fbd5d9a8fd3a2953a7358bcd4a8f45dc19dc338109276754d479f45c58bc2a0"
+      },
+      {
+        "name": "train-0098.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0098.tar.zst",
+        "bytes": 162981445,
+        "sha256": "c024da0d134a814394461bd78c21da9cda24421a804bb33530a6a1f9373daecd"
+      },
+      {
+        "name": "train-0099.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0099.tar.zst",
+        "bytes": 159934752,
+        "sha256": "a6385529575a3f1e39e02bbe142e9b0657a6d5f96d0b086acfe063973e725d66"
+      },
+      {
+        "name": "train-0100.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0100.tar.zst",
+        "bytes": 160642871,
+        "sha256": "0783301ea4e36030ba58f0b0ffa836c46ac6e919ac2179f20f8a950f5ed740ec"
+      },
+      {
+        "name": "train-0101.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0101.tar.zst",
+        "bytes": 164828563,
+        "sha256": "dbfd97a8902c0ce33093ca758331835e150cb24f9e7e5d654fb87ff8d2f173be"
+      },
+      {
+        "name": "train-0102.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0102.tar.zst",
+        "bytes": 164216009,
+        "sha256": "5a432bfb487f1c51a6eaf8e0f559c77b450e4f7a578115b417f5c4b529c15343"
+      },
+      {
+        "name": "train-0103.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0103.tar.zst",
+        "bytes": 165328169,
+        "sha256": "f043d7a866e29d1053809d6f706dd7f4bd6420921cd3d7149c665a9f7937e683"
+      },
+      {
+        "name": "train-0104.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0104.tar.zst",
+        "bytes": 163550122,
+        "sha256": "c549b43df2e24fbd7dd1c69b922d47dab052bb8aa9604c610a93c58a5c2e163f"
+      },
+      {
+        "name": "train-0105.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0105.tar.zst",
+        "bytes": 164380489,
+        "sha256": "5cf845da944d698735e76dacff55466b635ca696d0753d1f4b17b779868f682c"
+      },
+      {
+        "name": "train-0106.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0106.tar.zst",
+        "bytes": 164239036,
+        "sha256": "a7e4a8d6384910efc67ba363171932c5cde13f2857b5dea074286015438d7412"
+      },
+      {
+        "name": "train-0107.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0107.tar.zst",
+        "bytes": 164419444,
+        "sha256": "2b9b6f382ad1d88222c3f6925dd1ca6874f88b50eea4a1f95119b63bdbb071f5"
+      },
+      {
+        "name": "train-0108.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0108.tar.zst",
+        "bytes": 165991239,
+        "sha256": "9115211146df01398b511cf077b691ba52302161d9683d4ecc9263fd25ceb2be"
+      },
+      {
+        "name": "train-0109.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0109.tar.zst",
+        "bytes": 164589554,
+        "sha256": "6943b9c8a26e302c60b7d16376ab9ef03e8aa882e3cb44fcebc993b8845ecb18"
+      },
+      {
+        "name": "train-0110.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0110.tar.zst",
+        "bytes": 161158055,
+        "sha256": "fcc60ba17145ffd8929e9f34cbfcd953575ae639667b69d951e33f780d132501"
+      },
+      {
+        "name": "train-0111.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0111.tar.zst",
+        "bytes": 164461636,
+        "sha256": "53466064b3a93b181ed2f6972c0fe3ccb44bd31c676c47af958f19f32f532017"
+      },
+      {
+        "name": "train-0112.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0112.tar.zst",
+        "bytes": 164411748,
+        "sha256": "864d41f71f5d586c28dc8e7d03ac3bcb0a718e7c719fa0afcbe42570c92c1480"
+      },
+      {
+        "name": "train-0113.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0113.tar.zst",
+        "bytes": 163704471,
+        "sha256": "df512244c5314418d6e12728acdb85c7571d922527a55e6b2475a04b7cd2d30d"
+      },
+      {
+        "name": "train-0114.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0114.tar.zst",
+        "bytes": 165212865,
+        "sha256": "36ed4ffa655dca206dcbc2cbf176e503bcf70765cb40fa3a2fb8fcd331c5c361"
+      },
+      {
+        "name": "train-0115.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0115.tar.zst",
+        "bytes": 164467808,
+        "sha256": "45a9ef83c4edc2f4be45672a8fc2bb90f1dbbb3c056a145d0cd525c78e33d9a5"
+      },
+      {
+        "name": "train-0116.tar.zst",
+        "split": "train",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/train-0116.tar.zst",
+        "bytes": 22388964,
+        "sha256": "f66f73e0aff306d1eccb04ba8fa2c3118a588088000fdfa9bb7ea94fe04fb07f"
+      },
+      {
+        "name": "valid-0000.tar.zst",
+        "split": "valid",
+        "url": "https://pub-d31b33903cd04fec8cc87ee0667c1981.r2.dev/pdmx-homr-v2/shards/valid-0000.tar.zst",
+        "bytes": 78073928,
+        "sha256": "a1f524b711bcaa0aadf291bc98b8d2e7eccb84fda2010e0a800cb6caafafade3"
+      }
+    ]
+  }
+]

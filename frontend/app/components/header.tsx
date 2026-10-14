@@ -97,6 +97,12 @@ export default function Header() {
               <span aria-hidden="true">▦</span>Projects
             </Link>
             <Link
+              href="/datasets"
+              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              <span aria-hidden="true">▤</span>Datasets
+            </Link>
+            <Link
               href="/score-editor"
               className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
             >
