@@ -50,35 +50,6 @@ const { scannerUserHash } = require("./dist/scanner/scanner.constants");
           )),
         };
       }
-      const expectedRevision =
-        process.env.SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION;
-      if (
-        expectedRevision &&
-        sourcePage.engines["ots-homr"].providerRevision !== expectedRevision
-      ) {
-        throw new Error(
-          "Choose a current retained scan; this source would trigger provider compatibility recovery",
-        );
-      }
-      const proposalLocator =
-        sourcePage.engines["ots-homr"].artifacts["structured-heads"];
-      const proposal = JSON.parse(
-        (
-          await sourceStorage.getObjectBuffer(
-            proposalLocator.bucket,
-            proposalLocator.objectKey,
-          )
-        ).toString("utf8"),
-      );
-      if (
-        !Array.isArray(proposal.staves) ||
-        !proposal.staves.length ||
-        !proposal.staves.every(Array.isArray)
-      ) {
-        throw new Error(
-          "The source must retain non-empty voice proposals so tests never rerun recognition",
-        );
-      }
       const owner = new ObjectId();
       await db.collection("users").insertOne({
         _id: owner,
@@ -120,14 +91,6 @@ const { scannerUserHash } = require("./dist/scanner/scanner.constants");
       delete page.reviewWorkflow;
       delete page.mergedMusicXml;
       delete page.mergedScore;
-      // Retained legacy captures are the regression case: the API used to
-      // drop these mappings even though its immutable proposal kept the tokens.
-      for (const staff of page.engines["ots-homr"].review?.staves || []) {
-        for (const symbol of staff.symbols || []) {
-          delete symbol.proposalVoiceIndex;
-          delete symbol.proposalSymbolIndex;
-        }
-      }
       await db.collection("scanner_jobs").insertOne(fixture);
       console.log(
         JSON.stringify({
@@ -140,6 +103,27 @@ const { scannerUserHash } = require("./dist/scanner/scanner.constants");
           bsonBytes: BSON.calculateObjectSize(fixture),
         }),
       );
+    } else if (operation === "legacy-heads") {
+      const job = await db
+        .collection("scanner_jobs")
+        .findOne({ jobId: options.jobId, e2eScannerReview: true });
+      if (!job || job.pages[0].reviewWorkflow?.active !== "heads")
+        throw new Error("Expected an isolated legacy heads review");
+      const run = job.pages[0].engines["ots-homr"];
+      const retained = run.outputCandidates?.["all-structured"]?.musicXml;
+      if (!retained)
+        throw new Error(
+          "This legacy migration fixture needs a retained additional-heads score",
+        );
+      run.artifacts["selected-heads-musicxml"] = retained;
+      run.selectedStructuredHeadFamilies = run.availableStructuredHeadFamilies;
+      await db
+        .collection("scanner_jobs")
+        .updateOne(
+          { _id: job._id, e2eScannerReview: true },
+          { $set: { pages: job.pages }, $inc: { statusVersion: 1 } },
+        );
+      console.log(JSON.stringify({ preparedLegacyFixture: true }));
     } else if (operation === "inspect") {
       const job = await db
         .collection("scanner_jobs")

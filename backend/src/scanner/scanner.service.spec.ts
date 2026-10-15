@@ -753,31 +753,48 @@ describe('ScannerService', () => {
     const raw = { bucket: 'scanner', objectKey: 'raw.xml', checksumSha256: 'raw' };
     const reviewed = { ...raw, objectKey: 'reviewed.xml', checksumSha256: 'reviewed' };
     const pdf = {
-      bucket: 'scanner', objectKey: 'page.pdf', contentType: 'application/pdf',
-      sizeBytes: 13, checksumSha256: 'pdf'
+      bucket: 'scanner',
+      objectKey: 'page.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 13,
+      checksumSha256: 'pdf'
     };
     const run: any = {
-      engine: 'homr', status: 'succeeded', attempts: 1, idempotencyKey: 'key',
-      artifacts: { musicXml: raw, pdf }, reviewedMusicXml: reviewed
+      engine: 'homr',
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'key',
+      artifacts: { musicXml: raw, pdf },
+      reviewedMusicXml: reviewed
     };
-    const job: any = { jobId: 'job-1', userId: 'user-1', pageCount: 1, pages: [
-      { pageNumber: 1, status: 'succeeded', engines: { homr: run } }
-    ] };
+    const job: any = {
+      jobId: 'job-1',
+      userId: 'user-1',
+      pageCount: 1,
+      pages: [{ pageNumber: 1, status: 'succeeded', engines: { homr: run } }]
+    };
     const storage: any = { getObjectStream: jest.fn(async () => Readable.from(['%PDF-reviewed'])) };
     const service = new ScannerService(
       { findOne: () => ({ exec: async () => job }) } as any,
-      corrections, storage, provider, telemetry, alerts, config
+      corrections,
+      storage,
+      provider,
+      telemetry,
+      alerts,
+      config
     );
     await expect(service.getArtifact('user-1', 'job-1', 'pdf', 1, 'homr')).rejects.toThrow(
       'Artifact is not available'
     );
-    run.artifacts.pdf = withScannerArtifactInputSignature(pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf,
-      [{ ordinal: 1, checksumSha256: 'raw' }]);
+    run.artifacts.pdf = withScannerArtifactInputSignature(pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf, [
+      { ordinal: 1, checksumSha256: 'raw' }
+    ]);
     await expect(service.getArtifact('user-1', 'job-1', 'pdf', 1, 'homr')).rejects.toThrow(
       'Artifact is not available'
     );
-    run.artifacts.pdf = withScannerArtifactInputSignature(pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf,
-      [{ ordinal: 1, checksumSha256: 'reviewed' }]);
+    run.artifacts.pdf = withScannerArtifactInputSignature(pdf, SCANNER_ARTIFACT_BUILDERS.pagePdf, [
+      { ordinal: 1, checksumSha256: 'reviewed' }
+    ]);
     const result = await service.getArtifact('user-1', 'job-1', 'pdf', 1, 'homr');
     expect((await readStream(result.stream)).toString()).toBe('%PDF-reviewed');
     expect(storage.getObjectStream).toHaveBeenCalledTimes(1);
@@ -990,6 +1007,49 @@ describe('ScannerService', () => {
       ['scanner', 'transcoda.musicxml'],
       ['scanner', 'recognition.png']
     ]);
+    // A worker/merge version bump does not change the pixels of a pinned
+    // scan crop, even if a later comparison uses different measure geometry.
+    job.statusVersion += 5;
+    const pinned = await service.pageComparisonSystemCrop(
+      'user-1',
+      'job-1',
+      1,
+      0,
+      'homr',
+      'transcoda',
+      result.statusVersion,
+      raster.checksumSha256,
+      JSON.stringify(regions.systems[0].region)
+    );
+    expect(pinned.body).toEqual(crop.body);
+    await expect(
+      service.pageComparisonSystemCrop(
+        'user-1',
+        'job-1',
+        1,
+        0,
+        'homr',
+        'transcoda',
+        result.statusVersion,
+        'f'.repeat(64),
+        JSON.stringify(regions.systems[0].region)
+      )
+    ).rejects.toThrow('source image changed');
+    await expect(
+      service.pageComparisonSystemCrop(
+        'user-1',
+        'job-1',
+        1,
+        0,
+        'homr',
+        'transcoda',
+        result.statusVersion,
+        raster.checksumSha256,
+        '[0,0,999999,999999]'
+      )
+    ).rejects.toThrow('region is invalid');
+    job.statusVersion = result.statusVersion;
+    comparisonStorage.getObjectBuffer.mockClear();
     const partialComparison = jest.spyOn(service as any, 'pageComparisonForJob').mockResolvedValue({
       ...result,
       status: 'refused',
@@ -1336,6 +1396,83 @@ describe('ScannerService', () => {
       { new: true }
     );
   });
+
+  it.each([
+    ['provider_unavailable', true],
+    ['provider_timeout', true],
+    ['invalid_musicxml', false]
+  ])(
+    'offers a retry for a failed secondary provider (%s) alongside a successful PDF',
+    async (errorCode, allowed) => {
+      const existing = {
+        _id: 'mongo-id',
+        jobId: 'job-1',
+        userId: 'user-1',
+        status: 'succeeded',
+        generation: 1,
+        originalFilename: 'score.pdf',
+        pageCount: 1,
+        enginePlan: scannerEnginePlan(['homr', 'ots-homr'], 'homr'),
+        pages: [
+          {
+            pageNumber: 1,
+            status: 'succeeded',
+            attempts: 1,
+            manualRetries: 0,
+            pdf: { bucket: 'aux', objectKey: 'page.pdf' },
+            engines: {
+              homr: {
+                engine: 'homr',
+                status: 'succeeded',
+                artifacts: { musicXml: { bucket: 'aux', objectKey: 'homr.xml' } }
+              },
+              'ots-homr': { engine: 'ots-homr', status: 'failed', errorCode, artifacts: {} }
+            }
+          }
+        ],
+        sourceExpiresAt: new Date(Date.now() + 60_000),
+        resultExpiresAt: new Date(Date.now() + 60_000),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      jobs.findOne.mockReturnValue({ exec: () => Promise.resolve(existing) });
+      jobs.countDocuments.mockReturnValue({ exec: () => Promise.resolve(0) });
+      jobs.findOneAndUpdate.mockReturnValue({
+        exec: () => Promise.resolve({ ...existing, status: 'queued', generation: 2 })
+      });
+      const service = new ScannerService(
+        jobs,
+        corrections,
+        storage,
+        provider,
+        telemetry,
+        alerts,
+        config
+      );
+      expect(
+        service['pageRetryEligibility'](existing as any, 1, existing.pages[0] as any).allowed
+      ).toBe(allowed);
+      if (allowed) {
+        await expect(service.retryPage('user-1', 'job-1', 1)).resolves.toMatchObject({
+          status: 'queued'
+        });
+        expect(jobs.findOneAndUpdate).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            $set: expect.objectContaining({
+              retryPageNumbers: [1],
+              pages: [expect.objectContaining({ engines: existing.pages[0].engines })]
+            })
+          }),
+          { new: true }
+        );
+      } else {
+        await expect(service.retryPage('user-1', 'job-1', 1)).rejects.toBeInstanceOf(
+          ConflictException
+        );
+      }
+    }
+  );
 
   it('rejects a second manual retry for the same page', async () => {
     const existing = {
@@ -2679,15 +2816,28 @@ describe('ScannerService merged score', () => {
 
   it('saves a merge across worker-only version changes without uploading it twice', async () => {
     const page = pageWithReadings();
-    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', statusVersion: 1, pages: [page] };
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      status: 'succeeded',
+      statusVersion: 1,
+      pages: [page]
+    };
     const { service, storage } = buildService(job);
-    jest.spyOn((service as any).jobs, 'updateOne').mockImplementationOnce(() => ({ exec: async () => {
-      job.statusVersion += 1;
-      return { matchedCount: 0 };
-    } }));
-    await expect(service.saveMergedScore('user-1', 'job-1', 1, {
-      musicXml: MUSICXML, sourceEngineId: 'homr', basisSignature: currentBasis(page), revision: 0
-    })).resolves.toMatchObject({ present: true, revision: 1 });
+    jest.spyOn((service as any).jobs, 'updateOne').mockImplementationOnce(() => ({
+      exec: async () => {
+        job.statusVersion += 1;
+        return { matchedCount: 0 };
+      }
+    }));
+    await expect(
+      service.saveMergedScore('user-1', 'job-1', 1, {
+        musicXml: MUSICXML,
+        sourceEngineId: 'homr',
+        basisSignature: currentBasis(page),
+        revision: 0
+      })
+    ).resolves.toMatchObject({ present: true, revision: 1 });
     expect(storage.putDerivativeObject).toHaveBeenCalledTimes(1);
   });
 
@@ -2976,12 +3126,33 @@ describe('ScannerService merged score', () => {
     const page = pageWithReadings();
     page.engines.homr.artifacts.musicXml = locator(checksum);
     page.engines.transcoda.artifacts.musicXml = locator(checksum);
-    const job: any = { _id: 'j', jobId: 'job-1', status: 'succeeded', statusVersion: 8, pages: [page] };
+    const job: any = {
+      _id: 'j',
+      jobId: 'job-1',
+      status: 'succeeded',
+      statusVersion: 8,
+      pages: [page]
+    };
     const { service } = buildService(job);
-    await expect(service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, checksum, 'homr', checksum)).resolves.toMatchObject({ body: Buffer.from(MUSICXML) });
-    await expect(service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, checksum)).rejects.toThrow(/comparison changed/);
+    await expect(
+      service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, checksum, 'homr', checksum)
+    ).resolves.toMatchObject({ body: Buffer.from(MUSICXML) });
+    await expect(
+      service.pageComparisonReading('user-1', 'job-1', 1, 'homr', 1, checksum)
+    ).rejects.toThrow(/comparison changed/);
     page.engines.homr.artifacts.musicXml = locator('a'.repeat(64));
-    await expect(service.pageComparisonReading('user-1', 'job-1', 1, 'transcoda', 1, checksum, 'homr', checksum)).rejects.toThrow(/base reading changed/);
+    await expect(
+      service.pageComparisonReading(
+        'user-1',
+        'job-1',
+        1,
+        'transcoda',
+        1,
+        checksum,
+        'homr',
+        checksum
+      )
+    ).rejects.toThrow(/base reading changed/);
   });
 
   it('keeps serving the readings a merge is judged against', async () => {
@@ -3812,11 +3983,15 @@ describe('Scanner structured output selection', () => {
     const { job, jobsModel, service } = setup();
     job.status = 'rendering';
     job.reassembleRequestedAt = new Date();
-    jobsModel.findOneAndUpdate.mockImplementationOnce(() => ({ exec: async () => {
-      job.statusVersion += 1;
-      return null;
-    } }));
-    await expect(service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['stem'])).resolves.toMatchObject({
+    jobsModel.findOneAndUpdate.mockImplementationOnce(() => ({
+      exec: async () => {
+        job.statusVersion += 1;
+        return null;
+      }
+    }));
+    await expect(
+      service.selectStructuredOutput('user-1', 'job-1', 1, 'ots-homr', ['stem'])
+    ).resolves.toMatchObject({
       pages: [{ engines: { 'ots-homr': { structuredOutputPending: true } } }]
     });
     expect(jobsModel.findOneAndUpdate).toHaveBeenCalledTimes(2);

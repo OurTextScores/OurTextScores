@@ -101,6 +101,7 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly workerId = `${process.pid}-${randomUUID()}`;
   private timer?: NodeJS.Timeout;
   private busy = false;
+  private stopping = false;
   private readonly engineDisabledReasons = new Map<string, string>();
   private lastCleanupAt = 0;
   private lastAlertCheckAt = 0;
@@ -129,12 +130,26 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     void this.tick();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
+    if (!this.bool('SCANNER_WORKER_ENABLED', false)) return;
+    // Fence any in-flight writes from this process and let another worker
+    // recover immediately instead of waiting for the full recognition lease.
+    await this.jobs.updateMany(
+      {
+        leaseOwner: this.workerId,
+        status: { $in: ['preparing', 'queued', ...PROCESSING_STATUSES] }
+      },
+      {
+        $set: { leaseExpiresAt: new Date(0) },
+        $unset: { leaseOwner: 1 }
+      }
+    ).exec();
   }
 
   async tick(): Promise<void> {
-    if (this.busy) return;
+    if (this.busy || this.stopping) return;
     this.busy = true;
     try {
       if (Date.now() - this.lastCleanupAt > 60 * 60 * 1000) {
@@ -1046,10 +1061,16 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     let page = input.page;
     let providerMs = 0;
 
-    const mergeRun = async (run: ScannerEngineRun | undefined): Promise<void> => {
-      if (!run) return;
-      page = withScannerEngineRun(page, run);
-      await input.onPageChange?.(page);
+    let progressWrites = Promise.resolve();
+    const mergeRun = (run: ScannerEngineRun | undefined): Promise<void> => {
+      if (!run) return progressWrites;
+      // Serialize complete page snapshots so a slower database write cannot
+      // replace a newer provider result with an older running state.
+      progressWrites = progressWrites.then(async () => {
+        page = withScannerEngineRun(page, run);
+        await input.onPageChange?.(page);
+      });
+      return progressWrites;
     };
 
     const cancelled = await this.isCancelled(input.job.jobId);
@@ -1099,6 +1120,8 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
             ? async (partial) => mergeRun(partial.engines?.[engineId])
             : undefined
         });
+        // Persist this result immediately, even while another provider waits.
+        await mergeRun(scanned.page.engines?.[engineId]);
         return { engineId, scanned };
       })
     );
@@ -1148,7 +1171,11 @@ export class ScannerWorkerService implements OnModuleInit, OnModuleDestroy {
     });
     if (
       prior?.status === 'succeeded' &&
-      prior.idempotencyKey === idempotencyKey &&
+      (prior.idempotencyKey === idempotencyKey ||
+        // A manual retry repairs failed readings; keep successful readings of
+        // the same immutable raster even though the job generation advanced.
+        (input.job.retryPageNumbers?.includes(input.pageNumber) &&
+          prior.recognitionRaster?.checksumSha256 === input.recognitionRaster.checksumSha256)) &&
       Object.entries(definition.artifacts)
         .filter(([, artifact]) => artifact.requiredProviderOutput)
         .every(([kind]) => Boolean(this.engineArtifact(prior, kind)))

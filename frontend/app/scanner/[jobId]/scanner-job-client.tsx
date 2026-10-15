@@ -4,8 +4,7 @@ import { pageHasTextReview } from "./text-review";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageComparison from "./page-comparison";
-import PageReview from "./page-review";
-import ReviewWorkflow from "./review-workflow";
+import EngineReview from "./review-workflow";
 import { PUBLIC_SCANNER_SOURCE_PREVIEW_URL } from "../../lib/public-examples";
 import {
   activeScannerStatuses,
@@ -576,9 +575,7 @@ export default function ScannerJobClient({
   // Every planned engine remains visible in either pane. A failed provider is
   // an outcome the user needs to see, not a reason to silently remove the
   // provider they selected.
-  const guidedReview = !readOnly && selected?.status === 'succeeded' && Boolean(
-    selected.reviewWorkflow || selected.engines?.['ots-homr']?.availableStructuredHeadFamilies?.length,
-  );
+  const engineReview = !readOnly && selected?.status === "succeeded";
   const previewEngineIds = engineIds.filter((engineId) =>
     Boolean(selected?.engines?.[engineId]),
   );
@@ -627,15 +624,6 @@ export default function ScannerJobClient({
     previewChoices.some((choice) => choice.key === key) ? key : fallback;
   const leftPreviewKey = resolvePreview(previewLeft, "scan");
   const rightPreviewKey = resolvePreview(previewRight, previewFallbackRight);
-  const reviewableEngineIds = engineIds.filter((engineId) => {
-    const run = selected?.engines?.[engineId];
-    const capability = job.enginePlan?.capabilitySnapshots[engineId];
-    return (
-      run?.status === "succeeded" &&
-      run.hasReview &&
-      capability?.supportsSpotReview
-    );
-  });
   const progressPage = activePage(job, selected);
   const progressEngineIds = progressPage
     ? plannedEngineIds(job, progressPage)
@@ -906,6 +894,24 @@ export default function ScannerJobClient({
               {draftPages.length} pages included
             </p>
           </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[true, false].map((included) => (
+              <button
+                key={String(included)}
+                type="button"
+                disabled={Boolean(busyAction) || draftPages.length === 0}
+                onClick={() => {
+                  setDraftPages((current) =>
+                    current.map((page) => ({ ...page, included })),
+                  );
+                  setPageSetupDirty(true);
+                }}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-slate-700"
+              >
+                {included ? "Include all" : "Exclude all"}
+              </button>
+            ))}
+          </div>
           <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {draftPages.map((page, index) => (
               <li
@@ -1085,7 +1091,10 @@ export default function ScannerJobClient({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {selected.canRetry && !active && !readOnly && (
+              {selected.canRetry &&
+                failedEngineIds.length !== 1 &&
+                !active &&
+                !readOnly && (
                 <button
                   type="button"
                   disabled={Boolean(busyAction)}
@@ -1141,6 +1150,27 @@ export default function ScannerJobClient({
                           {run ? engineRunLabel(run.status) : "No result"}
                         </span>
                       </div>
+                      {run?.status === "failed" &&
+                        failedEngineIds.length === 1 &&
+                        selected.canRetry &&
+                        !active &&
+                        !readOnly && (
+                        <button
+                          type="button"
+                          disabled={Boolean(busyAction)}
+                          onClick={() =>
+                            void runAction(
+                              `retry-${selected.pageNumber}`,
+                              `${base}/pages/${selected.pageNumber}/retry`,
+                            )
+                          }
+                          className="mt-2 rounded-lg border border-blue-300 px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-900 dark:text-blue-300"
+                        >
+                          {busyAction === `retry-${selected.pageNumber}`
+                            ? "Queuing…"
+                            : `Retry ${engineLabel(job, engineId)}`}
+                        </button>
+                      )}
                       {run?.errorMessage && (
                         <p className="mt-1 text-xs text-red-700 dark:text-red-300">
                           {run.errorMessage}
@@ -1219,7 +1249,7 @@ export default function ScannerJobClient({
                         </a>
                       )}
                     </div>
-                    {!guidedReview && availableFamilies.length > 0 && (
+                    {!engineReview && availableFamilies.length > 0 && (
                       <fieldset className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/20">
                         <legend className="px-1 text-xs font-medium text-slate-700 dark:text-slate-300">
                           OTS-HOMR structured output
@@ -1377,23 +1407,7 @@ export default function ScannerJobClient({
               the source image.
             </p>
           )}
-          {guidedReview && <ReviewWorkflow key={selected.pageNumber} job={job} page={selected} onChange={setJob} />}
-          {!guidedReview && selected.status === "succeeded" &&
-            reviewableEngineIds.length > 0 &&
-            !readOnly && (
-              <div className="mt-4 space-y-4">
-                {reviewableEngineIds.map((engineId) => (
-                  <PageReview
-                    key={`${engineId}-base`}
-                    jobId={jobId}
-                    pageNumber={selected.pageNumber}
-                    engineId={engineId}
-                    engineLabel={engineLabel(job, engineId)}
-                    reviewGroup="base"
-                  />
-                ))}
-              </div>
-            )}
+          {engineReview && <EngineReview key={selected.pageNumber} job={job} page={selected} onChange={setJob} />}
           {/*
             One pane of the page beside another, with each side chosen by the
             reader. It used to be a fixed stack — "Scan versus HOMR" then "Scan
@@ -1508,7 +1522,7 @@ export default function ScannerJobClient({
         </section>
       )}
 
-      {selected && !reviewing && !guidedReview && selected.status === "succeeded" && (
+      {selected && !reviewing && !engineReview && selected.status === "succeeded" && (
         <PageComparison jobId={jobId} job={job} page={selected} />
       )}
 

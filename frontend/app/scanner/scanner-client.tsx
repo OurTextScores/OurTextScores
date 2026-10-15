@@ -9,7 +9,6 @@ import {
   ScannerProviderOption,
   scannerStatusLabel,
 } from "./scanner-types";
-import { SCORE_PROFILE_PRESETS, presetById } from "./score-profiles";
 import { ElapsedTime } from "./elapsed-time";
 
 async function readError(response: Response): Promise<string> {
@@ -114,17 +113,6 @@ export default function ScannerClient() {
   const [detectTitle, setDetectTitle] = useState(false);
   const [firstProvider, setFirstProvider] = useState("");
   const [secondProvider, setSecondProvider] = useState("");
-  /**
-   * Which score shape the reader says this is, or "" for none.
-   *
-   * Held as a preset id rather than a profile so the payload is rebuilt from the
-   * presets at submit time: a profile stored in state could outlive a change to what
-   * the preset means, and be sent under a label that no longer describes it.
-   */
-  const [scoreProfileId, setScoreProfileId] = useState<string>("");
-  const [otsTextDetector, setOtsTextDetector] = useState<
-    "lyrics" | "non-lyric-text" | "none"
-  >("lyrics");
   const [includeLyrics, setIncludeLyrics] = useState(false);
   // Enabled only after the provider has pinned a two-detector calibration and
   // the backend has enabled the matching policy. It is review-only until the
@@ -132,6 +120,8 @@ export default function ScannerClient() {
   const fusionEnabled = process.env.NEXT_PUBLIC_OTS_HOMR_FUSION_ENABLED === "1";
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [openingScan, setOpeningScan] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Design section 13.5: the UI must not claim Scanner is available just
   // because the build-time public flag is on. NEXT_PUBLIC_* is inlined when the
@@ -174,35 +164,44 @@ export default function ScannerClient() {
   }, [submitting]);
 
   const refresh = useCallback(async () => {
-    const [jobsResponse, providersResponse] = await Promise.all([
-      fetch("/api/proxy/scanner/jobs?limit=20", { cache: "no-store" }),
-      fetch("/api/proxy/scanner/jobs/engines", { cache: "no-store" }),
-    ]);
-    const unavailableResponse = [jobsResponse, providersResponse].find(
-      (response) => response.status === 503 || response.status === 403,
-    );
-    if (unavailableResponse) {
+    setUnavailable(null);
+    function isUnavailable(response: Response) {
+      if (response.status !== 503 && response.status !== 403) return false;
       setUnavailable(
-        unavailableResponse.status === 403
+        response.status === 403
           ? "Your account is not on the Scanner beta allowlist."
           : "Scanner is not enabled on this deployment.",
       );
-      return;
+      return true;
     }
-    setUnavailable(null);
-    if (!providersResponse.ok)
-      throw new Error(await readError(providersResponse));
-    const providerBody = await providersResponse.json();
-    setProviders(
-      Array.isArray(providerBody) ? providerBody : (providerBody.items ?? []),
-    );
-    // Provider selection is independent of scan history. Keep it usable—and
-    // show the real history error—if an old retained job cannot be listed.
-    if (!jobsResponse.ok) throw new Error(await readError(jobsResponse));
-    const body = await jobsResponse.json();
-    // Tolerate the pre-pagination array shape so a rolling deploy where the
-    // frontend leads the backend still renders Recent scans.
-    setJobs(Array.isArray(body) ? body : (body.items ?? []));
+    // Populate providers as soon as they arrive: retained scan history can be slow.
+    const results = await Promise.allSettled([
+      (async () => {
+        try {
+          const response = await fetch("/api/proxy/scanner/jobs/engines", {
+            cache: "no-store",
+          });
+          if (isUnavailable(response)) return;
+          if (!response.ok) throw new Error(await readError(response));
+          const body = await response.json();
+          setProviders(Array.isArray(body) ? body : (body.items ?? []));
+        } finally {
+          setProvidersLoading(false);
+        }
+      })(),
+      (async () => {
+        const response = await fetch("/api/proxy/scanner/jobs?limit=20", {
+          cache: "no-store",
+        });
+        if (isUnavailable(response)) return;
+        if (!response.ok) throw new Error(await readError(response));
+        const body = await response.json();
+        setJobs(Array.isArray(body) ? body : (body.items ?? []));
+      })(),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") throw result.reason;
+    }
   }, []);
 
   useEffect(() => {
@@ -224,7 +223,7 @@ export default function ScannerClient() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (files.length === 0) return;
+    if (submitting || files.length === 0) return;
     if (selectionError) {
       setError(selectionError);
       return;
@@ -250,7 +249,6 @@ export default function ScannerClient() {
         body.set("homrTextReview", "true");
       }
       if (usesOtsHomr) {
-        const preset = presetById(scoreProfileId);
         body.set(
           "otsHomr",
           JSON.stringify({
@@ -258,10 +256,7 @@ export default function ScannerClient() {
               ? includeLyrics
                 ? { textPolicy: { mode: "fusion-v1" } }
                 : { textDetector: "non-lyric-text" }
-              : { textDetector: otsTextDetector }),
-            // Omitted entirely rather than sent as null: the option is validated by
-            // an allowlist, and "no profile" is the absence of the field.
-            ...(preset ? { scoreProfile: preset.profile } : {}),
+              : { textDetector: "lyrics" }),
           }),
         );
       }
@@ -305,11 +300,7 @@ export default function ScannerClient() {
       }
       const created: ScannerJob = JSON.parse(response.body);
       setJobs((current) => [created, ...current]);
-      setFiles([]);
-      const input = document.getElementById(
-        "scanner-file",
-      ) as HTMLInputElement | null;
-      if (input) input.value = "";
+      setOpeningScan(true);
       // Go straight to the scan. Preparation happens server-side, and the job
       // page already shows that stage and then the review step.
       router.push(`/scanner/${created.jobId}`);
@@ -336,6 +327,7 @@ export default function ScannerClient() {
     <div className="space-y-8">
       <form
         onSubmit={submit}
+        aria-busy={submitting}
         className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
       >
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -354,6 +346,7 @@ export default function ScannerClient() {
               type="file"
               accept="application/pdf,image/png,image/jpeg"
               multiple
+              disabled={submitting}
               required
               onChange={(event) => {
                 const selected = Array.from(event.target.files || [])
@@ -390,7 +383,17 @@ export default function ScannerClient() {
               until they press Start there. A button that says "Scan" promises
               the wrong thing about where the money starts being spent.
             */}
-            {submitting ? "Uploading…" : "Select pages"}
+            {submitting && (
+              <span
+                aria-hidden="true"
+                className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent align-middle motion-reduce:animate-none"
+              />
+            )}
+            {openingScan
+              ? "Opening scan…"
+              : submitting
+                ? "Uploading…"
+                : "Select pages"}
           </button>
         </div>
         {submitting && (
@@ -400,10 +403,16 @@ export default function ScannerClient() {
             aria-live="polite"
           >
             <div className="flex items-baseline justify-between text-sm">
-              <span className="font-medium text-slate-700 dark:text-slate-300">
-                {percent < 100
-                  ? "Uploading to OurTextScores…"
-                  : "Upload complete — storing your pages…"}
+              <span className="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-300">
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+                />
+                {openingScan
+                  ? "Opening your scan…"
+                  : percent < 100
+                    ? "Uploading to OurTextScores…"
+                    : "Upload complete — storing your pages…"}
               </span>
               <span className="tabular-nums text-xs text-slate-500 dark:text-slate-400">
                 {formatBytes(sentBytes)} of {formatBytes(totalBytes)} ·{" "}
@@ -466,6 +475,7 @@ export default function ScannerClient() {
                 {String(label)}
                 <select
                   aria-label={String(label)}
+                  disabled={providersLoading || submitting}
                   value={String(value)}
                   onChange={(event) =>
                     (setter as (value: string) => void)(event.target.value)
@@ -490,7 +500,19 @@ export default function ScannerClient() {
               </label>
             ))}
           </div>
-          {!loading && providers.length === 0 && (
+          {providersLoading && (
+            <p
+              role="status"
+              className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400"
+            >
+              <span
+                aria-hidden="true"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+              />
+              Loading recognition providers…
+            </p>
+          )}
+          {!providersLoading && providers.length === 0 && (
             <p className="mt-3 text-xs text-red-700 dark:text-red-300">
               This deployment does not currently have a provider available.
             </p>
@@ -512,92 +534,24 @@ export default function ScannerClient() {
           </p>
         </div>
         {showLyricsOption && (
-          <fieldset className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
-            <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
-              Text review options
-            </legend>
-            <div>
-              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={includeLyrics}
-                  onChange={(event) => setIncludeLyrics(event.target.checked)}
-                />
-                This score has lyrics
-              </label>
-              <p className="ml-6 mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {usesOtsHomr
-                  ? "Includes lyric detection in the calibrated text review. The core score and its dynamics stay unchanged."
-                  : "Reads the lyrics, directions and dynamics on each page so you can review them against the recognised notes."}
-                {usesOtsHomr && usesHomr && homrTextReviewEnabled
-                  ? " HOMR pages get the same text review."
-                  : ""}
-              </p>
-            </div>
-          </fieldset>
-        )}
-        {usesOtsHomr && (
-          <fieldset className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30">
-            <legend className="px-1 font-medium text-amber-950 dark:text-amber-100">
-              OTS-HOMR scan options
-            </legend>
-            {!fusionEnabled && (
-              <div>
-                <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Text detector
-                  <select
-                    aria-label="Text detector"
-                    value={otsTextDetector}
-                    onChange={(event) =>
-                      setOtsTextDetector(
-                        event.target.value as
-                          "lyrics" | "non-lyric-text" | "none",
-                      )
-                    }
-                    className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-                  >
-                    <option value="lyrics">Lyrics</option>
-                    <option value="non-lyric-text">Non-lyric text</option>
-                    <option value="none">No text detector</option>
-                  </select>
-                  <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
-                    Runs one experimental detector for diagnostics and
-                    provenance; it does not yet change the returned MusicXML.
-                  </span>
-                </label>
-              </div>
-            )}
-            <div className="mt-3">
-              <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                What is this score?
-                <select
-                  aria-label="Score profile"
-                  data-testid="select-score-profile"
-                  value={scoreProfileId}
-                  onChange={(event) => setScoreProfileId(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
-                >
-                  <option value="">Don&apos;t say — no expectations</option>
-                  {SCORE_PROFILE_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
-                  {presetById(scoreProfileId)?.description ??
-                    "Naming the shape lets the scan flag a staff that disagrees with it."}{" "}
-                  This is a hint for review only: it never changes what is
-                  recognized, and anything it flags can be dismissed.
-                </span>
-              </label>
-            </div>
-            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-              OTS-HOMR always runs its additional notation heads. Choose which
-              families to apply after recognition; core output remains the safe
-              default and dynamics are never applied.
+          <div className="mt-4">
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={includeLyrics}
+                onChange={(event) => setIncludeLyrics(event.target.checked)}
+              />
+              This score has lyrics
+            </label>
+            <p className="ml-6 mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {usesOtsHomr
+                ? "Includes lyric detection in the calibrated text review. The core score and its dynamics stay unchanged."
+                : "Reads the lyrics, directions and dynamics on each page so you can review them against the recognised notes."}
+              {usesOtsHomr && usesHomr && homrTextReviewEnabled
+                ? " HOMR pages get the same text review."
+                : ""}
             </p>
-          </fieldset>
+          </div>
         )}
       </form>
 

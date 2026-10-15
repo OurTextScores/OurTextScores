@@ -57,6 +57,66 @@ const splice = (
   });
 
 describe('scanner splice', () => {
+  it.each([
+    [2, 1],
+    [1, 2]
+  ])(
+    'replaces the entire bar when its voice count changes from %i to %i',
+    (baseVoices, candidateVoices) => {
+      const voices = (unit: number, count: number, step: string) =>
+        fullBar(unit, step) +
+        (count === 2
+          ? `<backup><duration>${4 * unit}</duration></backup>` +
+            fullBar(unit, 'E').replace(/<voice>1<\/voice>/g, '<voice>2</voice>')
+          : '');
+      const base = part(
+        bar(fullBar(4, 'C'), { attributes: attributes(4) }) +
+          bar(voices(4, baseVoices, 'C'), { number: '2' }) +
+          bar(fullBar(4, 'D'), { number: '3' })
+      );
+      const candidate = part(
+        bar(fullBar(8, 'G'), { attributes: attributes(8) }) +
+          bar(voices(8, candidateVoices, 'G'), { number: '2' }) +
+          bar(fullBar(8, 'G'), { number: '3' })
+      );
+      const result = splice(base, candidate, [1]);
+      expect(result.refusals).toEqual([]);
+      expect(result.violations).toEqual([]);
+      expect(result.musicXml).not.toBeNull();
+      expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
+      const bars = result.musicXml!.toString('utf8').split('<measure').slice(1);
+      expect(bars[0]).toContain('<step>C</step>');
+      expect(bars[2]).toContain('<step>D</step>');
+      expect(bars[1]).toContain('<step>G</step>');
+      expect(bars[1]).not.toContain('<step>C</step>');
+      const facts = readScannerSpliceFacts(result.musicXml!)[0].measures;
+      expect(facts[1].voices).toHaveLength(candidateVoices);
+      expect(facts.map((bar) => bar.duration)).toEqual(['16', '16', '16']);
+      if (candidateVoices === 1) {
+        expect(bars[1]).not.toContain('<backup>');
+        expect(bars[1]).not.toContain('<voice>2</voice>');
+      }
+    }
+  );
+
+  it('takes a full unified bar over an underfull bar with a false second voice', () => {
+    const shortVoice = note(4) + note(4) + note(4) + note(2);
+    const falseSplit =
+      shortVoice +
+      '<backup><duration>14</duration></backup>' +
+      shortVoice.replace(/<voice>1<\/voice>/g, '<voice>2</voice>');
+    const base = part(bar(falseSplit, { attributes: attributes(4) }));
+    const candidate = part(bar(fullBar(4, 'G'), { attributes: attributes(4) }));
+    const result = splice(base, candidate, [0]);
+    expect(result.refusals).toEqual([]);
+    expect(result.musicXml).not.toBeNull();
+    expect(validateScannerMusicXmlSemantics(result.musicXml!).valid).toBe(true);
+    expect(readScannerSpliceFacts(result.musicXml!)[0].measures[0]).toMatchObject({
+      voices: ['1'],
+      duration: '16'
+    });
+  });
+
   it('blames a splice for what it broke, not for what it found broken', () => {
     // A recognition engine's reading is often already malformed somewhere, and
     // the merged score starts as a copy of one. Validating only the result

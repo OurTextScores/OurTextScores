@@ -695,3 +695,27 @@ describe("PageComparison", () => {
     ).toBeInTheDocument();
   });
 });
+
+it("internally reloads a stale comparison response without asking for a page refresh", async () => {
+  let attempts = 0;
+  global.fetch = jest.fn(async (url, init) => {
+    if (String(url).includes("/comparison?")) {
+      if (++attempts === 1)
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            message: "Scanner comparison changed; refresh and try again",
+          }),
+        } as Response;
+      return { ok: true, json: async () => readyComparison() } as Response;
+    }
+    return { ok: true, json: async () => readyComparison() } as Response;
+  });
+  render(<PageComparison jobId="job-1" job={job} page={page} open />);
+  expect(
+    await screen.findByTitle(/Reconciling differences on page 1/),
+  ).toBeInTheDocument();
+  expect(attempts).toBe(2);
+  expect(screen.queryByText(/refresh and try again/)).toBeNull();
+});

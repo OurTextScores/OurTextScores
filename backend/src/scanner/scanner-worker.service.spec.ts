@@ -69,6 +69,27 @@ describe('ScannerWorkerService', () => {
     delete values.SCANNER_EXPECTED_OTS_HOMR_PROVIDER_REVISION;
   });
 
+  it('releases only its own active leases on shutdown and stops claiming work', async () => {
+    const worker = service() as any;
+    worker.config = { get: (key: string, fallback: unknown) => key === 'SCANNER_WORKER_ENABLED' ? 'true' : fallback };
+    worker.jobs = { updateMany: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue({ modifiedCount: 1 }) }) };
+    worker.claim = jest.fn();
+    await worker.onModuleDestroy();
+    expect(worker.jobs.updateMany).toHaveBeenCalledWith(
+      { leaseOwner: worker.workerId, status: { $in: ['preparing', 'queued', 'running', 'rendering'] } },
+      { $set: { leaseExpiresAt: new Date(0) }, $unset: { leaseOwner: 1 } }
+    );
+    await worker.tick();
+    expect(worker.claim).not.toHaveBeenCalled();
+  });
+
+  it('does not release leases from an API-only process', async () => {
+    const worker = service() as any;
+    worker.jobs = { updateMany: jest.fn() };
+    await worker.onModuleDestroy();
+    expect(worker.jobs.updateMany).not.toHaveBeenCalled();
+  });
+
   it('uses the persisted engine plan after the new-job flag changes', () => {
     const scannerWorker = service() as any;
     const page = { included: true, status: 'pending', attempts: 0, idempotencyKey: '' };
@@ -408,6 +429,34 @@ describe('ScannerWorkerService', () => {
     expect(result.page.engines.homr.status).toBe('succeeded');
     expect(result.page.engines.transcoda.status).toBe('succeeded');
     expect(result.providerMs).toBe(10);
+  });
+
+  it('persists a completed provider while its peer is still pending', async () => {
+    const worker = service() as any;
+    worker.updateLease = jest.fn().mockResolvedValue(undefined);
+    worker.isCancelled = jest.fn().mockResolvedValue(false);
+    let finishPeer!: () => void;
+    const peer = new Promise<void>((resolve) => { finishPeer = resolve; });
+    let completedSaved!: () => void;
+    const saved = new Promise<void>((resolve) => { completedSaved = resolve; });
+    worker.scanEnginePage = jest.fn(async (input: any) => {
+      const id = input.definition.id;
+      if (id === 'homr') await peer;
+      return { page: { ...input.page, engines: { [id]: { engine: id, status: 'succeeded', artifacts: {} } } }, providerMs: 1 };
+    });
+    const processing = worker.scanPlannedEngines({
+      job: { jobId: 'job-1', generation: 1, enginePlan: scannerEnginePlan(['homr', 'transcoda']) },
+      page: { pageNumber: 1, status: 'pending' }, image: Buffer.from('image'), recognitionRaster,
+      contentType: 'image/png', pageNumber: 1, detectTitle: false, userHash: 'user-hash',
+      onPageChange: async (page: any) => { if (page.engines.transcoda?.status === 'succeeded') completedSaved(); }
+    });
+    try {
+      await saved;
+      expect(worker.scanEnginePage).toHaveBeenCalledTimes(2);
+    } finally { finishPeer(); }
+    const result = await processing;
+    expect(result.page.engines.homr.status).toBe('succeeded');
+    expect(result.page.engines.transcoda.status).toBe('succeeded');
   });
 
   it('merges concurrent engine progress into one page rather than racing it', async () => {
@@ -1180,6 +1229,39 @@ describe('ScannerWorkerService', () => {
     expect([...stored.keys()]).toEqual([expect.stringMatching(/page-001-homr\.musicxml$/)]);
     expect(telemetry.emit).toHaveBeenCalledWith('page_engine_succeeded', expect.any(Object));
     expect(telemetry.emit).toHaveBeenCalledWith('page_succeeded', expect.any(Object));
+  });
+
+  it('reuses a successful provider reading when a failed peer is manually retried in a new generation', async () => {
+    const worker = service() as any;
+    const prior = {
+      engine: 'homr',
+      status: 'succeeded',
+      attempts: 1,
+      idempotencyKey: 'previous-generation-key',
+      recognitionRaster,
+      reviewedMusicXml: { bucket: 'aux', objectKey: 'reviewed.xml' },
+      artifacts: { musicXml: { bucket: 'aux', objectKey: 'homr.xml' } }
+    };
+    const page = { pageNumber: 1, status: 'pending', engines: { homr: prior } };
+    const result = await worker.scanEnginePage({
+      job: {
+        jobId: 'job-1',
+        generation: 2,
+        retryPageNumbers: [1],
+        enginePlan: scannerDefaultEnginePlan(false)
+      },
+      page,
+      image: Buffer.from('image'),
+      recognitionRaster,
+      contentType: 'image/png',
+      pageNumber: 1,
+      detectTitle: false,
+      userHash: 'user-hash',
+      definition: worker.engineRegistry().readable('homr')
+    });
+    expect(provider.scanPage).not.toHaveBeenCalled();
+    expect(result.providerMs).toBe(0);
+    expect(result.page.engines.homr).toEqual(prior);
   });
 
   it('runs a third planned adapter through the generic engine loop', async () => {

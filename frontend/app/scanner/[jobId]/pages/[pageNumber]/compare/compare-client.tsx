@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import PageComparison from "../../../page-comparison";
+import EngineReview from "../../../review-workflow";
 import { ScannerJob } from "../../../../scanner-types";
 
 /**
@@ -96,11 +96,10 @@ export default function ComparePageClient({
         </h1>
         <p className="mt-1 text-sm text-slate-500">Page {page.ordinal}</p>
       </div>
-      <PageComparison
-        jobId={jobId}
+      <EngineReview
+        onChange={setJob}
         job={job}
         page={page}
-        open
         initialBaseEngine={initialBaseEngine}
         initialCandidateEngine={initialCandidateEngine}
       />

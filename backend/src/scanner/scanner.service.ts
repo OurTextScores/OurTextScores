@@ -1269,7 +1269,7 @@ export class ScannerService implements OnModuleInit {
         'Wait for recognition changes to finish rebuilding before changing steps'
       );
     }
-    if (!['start', 'open', 'redo', 'complete', 'skip', 'progress'].includes(input.action || '')) {
+    if (!['start', 'open', 'redo', 'complete', 'skip', 'progress', 'engine-review'].includes(input.action || '')) {
       throw new BadRequestException('Invalid review workflow action');
     }
     let updatedPage: ScannerPageResult;
@@ -1296,6 +1296,35 @@ export class ScannerService implements OnModuleInit {
       };
       checkpoint.savedAt = new Date().toISOString();
       updatedPage.reviewWorkflow!.stateVersion += 1;
+    } else if (input.action === 'engine-review' && page.reviewWorkflow) {
+      // Retire the stage navigation without dropping any saved work. The old
+      // checkpoints stay retained for recovery; only engine merging is active.
+      updatedPage = structuredClone(page);
+      const workflow = updatedPage.reviewWorkflow!;
+      if (workflow.active !== 'engines') {
+        workflow.steps[workflow.active]!.snapshot = reviewSnapshot(page);
+        let incoming = workflow.active === 'heads'
+          ? nextReviewInput('engines', page)
+          : reviewSnapshot(page);
+        const saved = workflow.steps.engines;
+        if (saved) {
+          incoming.mergedMusicXml = saved.snapshot.mergedMusicXml;
+          incoming.mergedScore = saved.snapshot.mergedScore;
+        }
+        workflow.steps.engines = {
+          snapshot: incoming,
+          inputSignature: workflow.steps.heads
+            ? reviewSignature(workflow.steps.heads.snapshot) : 'original',
+          previous: saved?.snapshot,
+          savedAt: new Date().toISOString()
+        };
+        updatedPage = { ...updatedPage, ...incoming, pdf: undefined };
+        workflow.active = 'engines';
+        workflow.revision += 1;
+        workflow.stateVersion += 1;
+        workflow.mergeRevision = Math.max(reviewMergeRevision(page), workflow.mergeRevision || 0) + 1;
+        if (updatedPage.mergedScore) updatedPage.mergedScore.revision = workflow.mergeRevision;
+      }
     } else if (!page.reviewWorkflow) {
       if (input.action !== 'start') throw new ConflictException('Start the guided review first');
       updatedPage = startReviewWorkflow(page);
@@ -1674,7 +1703,11 @@ export class ScannerService implements OnModuleInit {
             new URLSearchParams({
               baseEngine: baseEngineId,
               candidateEngine: candidateEngineId,
-              statusVersion: String(comparison.statusVersion)
+              statusVersion: String(comparison.statusVersion),
+              ...(comparison.sourceImage ? {
+                rasterChecksumSha256: comparison.sourceImage.checksumSha256,
+                region: JSON.stringify(system.region)
+              } : {})
             }).toString()
         };
       }),
@@ -3437,11 +3470,11 @@ export class ScannerService implements OnModuleInit {
   /**
    * The scan of one physical system, for a row-per-system view.
    *
-   * Bound to the job's status version so a page that moves on cannot be
-   * reviewed against a stale image, and verified against the retained
-   * recognition raster exactly as the block crop is. No content signature: a
-   * system is a property of the scan, not of any comparison block, and it stays
-   * valid while the engines' readings change.
+   * New URLs pin the recognition-raster checksum and the exact displayed
+   * rectangle. Those pixels remain valid through rendering, merge saves and
+   * later geometry updates, without reloading an editor that may have edits.
+   * Older URLs retain their status-version guard. The bitmap itself is always
+   * verified against the retained raster before cropping.
    */
   async pageComparisonSystemCrop(
     userId: string,
@@ -3450,7 +3483,9 @@ export class ScannerService implements OnModuleInit {
     systemIndex: number,
     baseEngineId: string,
     candidateEngineId: string,
-    statusVersion: number
+    statusVersion: number,
+    rasterChecksumSha256?: string,
+    pinnedRegion?: string
   ): Promise<{ body: Buffer; contentType: 'image/png' }> {
     this.assertAvailable(userId);
     if (
@@ -3468,11 +3503,36 @@ export class ScannerService implements OnModuleInit {
     }
 
     const job = await this.ownedJob(userId, jobId);
-    if ((job.statusVersion || 1) !== statusVersion) {
+    if (!rasterChecksumSha256 && (job.statusVersion || 1) !== statusVersion) {
       throw new ConflictException('Scanner comparison changed; refresh and try again');
     }
     const page = job.pages.find((entry) => entry.pageNumber === pageNumber);
     if (!page) throw new NotFoundException('Scanner page not found');
+    if (rasterChecksumSha256) {
+      if (!/^[a-f0-9]{64}$/i.test(rasterChecksumSha256) ||
+          rasterChecksumSha256.toLowerCase() !== page.recognitionRaster?.checksumSha256?.toLowerCase()) {
+        throw new ConflictException('Scanner source image changed; refresh the comparison');
+      }
+      let region: unknown;
+      try { region = JSON.parse(pinnedRegion || 'null'); } catch {
+        throw new BadRequestException('Scanner crop region is invalid');
+      }
+      const raster = page.recognitionRaster!;
+      if (!Array.isArray(region) || region.length !== 4 ||
+          !region.every(Number.isFinite) || region[0] < 0 || region[1] < 0 ||
+          region[2] <= region[0] || region[3] <= region[1] ||
+          region[2] > raster.width || region[3] > raster.height) {
+        throw new BadRequestException('Scanner crop region is invalid');
+      }
+      return {
+        body: await this.renderComparisonBlockCrop(
+          await this.storage.getObjectBuffer(raster.storage.bucket, raster.storage.objectKey),
+          raster,
+          [{ systemIndex, staffIndices: [], region: region as [number, number, number, number] }]
+        ),
+        contentType: 'image/png'
+      };
+    }
     const comparison = await this.pageComparisonForJob(job, page, baseEngineId, candidateEngineId);
     const system = (comparison.systems || []).find(
       (entry: any) => entry.systemIndex === systemIndex
@@ -5341,6 +5401,15 @@ export class ScannerService implements OnModuleInit {
       return job.status === 'cancelled'
         ? { allowed: true, reason: '' }
         : { allowed: false, reason: 'The page has not failed' };
+    }
+    if (
+      page.status === 'succeeded' &&
+      this.enginePlanForJob(job).engineIds.some((engineId) => {
+        const run = page.engines?.[engineId];
+        return run?.status === 'failed' && isRetryableScannerErrorCode(run.errorCode);
+      })
+    ) {
+      return { allowed: true, reason: '' };
     }
     if (page.status === 'succeeded' && !page.pdf) {
       const enginePlan = this.enginePlanForJob(job);

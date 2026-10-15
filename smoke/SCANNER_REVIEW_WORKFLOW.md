@@ -1,42 +1,52 @@
-Run the guided scanner review browser tests against a running local stack:
+Run the scanner engine-merge browser tests against a running local stack:
 
 ```sh
 SCANNER_REVIEW_SOURCE_JOB_ID=<completed-scan-id> npm run smoke:scanner:review-workflow
 ```
 
 The source needs a completed page recognized by OTS-HOMR and another engine,
-with retained scan geometry, optional-head proposals, and uncertainty questions.
-The API and worker must run the current backend; the frontend must contain the
-current guided review UI. Chromium must be installed (`npm run smoke:install`).
+with retained scan geometry and at least one comparison conflict. The API,
+worker, and frontend must run the current code. Install Chromium with
+`npm run smoke:install` if needed.
 
-The suite creates a separate test owner and scan for every flow. If the source
-has already been reviewed, it starts from its saved original base checkpoint.
-It reuses immutable source artifacts and creates its own corrections, checkpoints, and
-merged scores. It never edits the source job or triggers new recognition.
-Preparing optional heads and applying corrections use the configured worker's
-symbolic materialization endpoint. The test fixtures deliberately remove legacy
-proposal mappings to exercise recovery from retained data.
+Each flow creates an isolated owner and scan. For an already-reviewed source,
+the fixture starts from its immutable original base checkpoint. Tests share
+immutable source artifacts and create only their own merge/checkpoint artifacts.
+They never edit the source scan or invoke recognition or head materialization.
 
 Coverage:
 
-- Save an original recognition choice without getting stuck in repeated 409s.
-- Show persistent conflict reasons; refresh and successfully retry stale conflicts.
-- Show processing feedback and resume a pending correction after reloading.
-- Save skipped-question progress and resume it after reloading.
-- Skip any stage, persist its skipped status, and redo base review afterward.
-- Select all additional heads by default while preserving a saved subset.
-- Keep the base reading explicitly when optional features need no merge edits.
-- Merge additional heads, then use that exact saved score in the engine merge.
-- Persist skipped engine conflicts; reopen both merge stages independently.
-- Redo base review, retain previous results, and mark downstream work stale.
-- Keep checkpoint bodies outside MongoDB and the scan below its BSON size limit.
+- Open directly in the engine merge without the former base/head review stages.
+- Save a conflict decision; resume it after reload and on the comparison page.
+- Open an older additional-heads review automatically and carry its saved result
+  into the engine comparison, verified by the exact score checksum.
+- Refresh a stale comparison response internally, without navigating the page.
+- Keep the exact scan crop valid after a real merge save changes the job version.
+- Switch Across → Stacked without changing the drawable width or alternating pane sizes,
+  while keeping wheel scrolling on the host page.
+- Draw visible merged music on every conflict, including later engraved pages.
+  Scan `d9223ba7-2029-467c-8b65-6554838e5b5e` exercises this multipage regression.
+- Retain compact checkpoint references and stay below MongoDB's BSON size limit.
 
-On completion, cleanup removes only test-owned jobs, users, training records,
-and artifacts created under the test job's object-storage prefix. It never
-calls the application's scan-deletion route, which would also remove shared
-source artifacts. Failed runs retain Playwright traces in `test-results/`.
+Cleanup removes only test-owned jobs, users, training records, and artifacts
+under the test job's object-storage prefix. It never calls the application's
+scan-deletion route, which would remove shared source artifacts. Failed runs
+retain Playwright traces in `test-results/`.
 
-Optional overrides: `BASE_URL`, `SCANNER_API_CONTAINER` (defaults to
-`ourtextscores_backend`). NextAuth's secret is read from the repo environment by
-the existing Playwright configuration; the suite generates test session cookies
-and sends no sign-in emails.
+Optional overrides: `BASE_URL`, `SCANNER_API_CONTAINER` (default
+`ourtextscores_backend`). The existing Playwright configuration loads the repo
+environment. Tests mint their own session cookies and send no sign-in emails.
+
+To exercise the scrollbar regression with classic scrollbars on Linux:
+
+```sh
+SCANNER_REVIEW_WORKFLOW=1 SCANNER_CLASSIC_SCROLLBARS=1 \
+SCANNER_REVIEW_SOURCE_JOB_ID=<completed-scan-id> \
+xvfb-run -a npx playwright test -c smoke/playwright.config.cjs \
+  --project=chromium --headed scanner-review-workflow.spec.cjs \
+  -g 'keeps pane widths stable'
+```
+
+This verifies a nonzero scrollbar gutter as well as stable widths. Headless
+Chromium normally uses overlay scrollbars and cannot expose the original 15 px
+width change.

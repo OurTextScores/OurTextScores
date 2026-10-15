@@ -147,7 +147,9 @@ function useEmbeddedCompareHeight(): number | null {
       const next = Math.max(480, Math.ceil(value.height));
       setHeight((current) =>
         // The first height is always taken; there is nothing to compare it against.
-        current === null || Math.abs(current - next) >= HYSTERESIS_PX ? next : current,
+        current === null || Math.abs(current - next) >= HYSTERESIS_PX
+          ? next
+          : current,
       );
     };
     window.addEventListener("message", onMessage);
@@ -248,8 +250,8 @@ function structuredReadingAvailable(
   if (engineId === "ots-homr-selected-heads")
     return Boolean(
       run?.status === "succeeded" &&
-      (run.selectedStructuredHeadFamilies?.length || 0) > 0 &&
-      run.artifactKinds?.includes("selected-heads-musicxml"),
+        (run.selectedStructuredHeadFamilies?.length || 0) > 0 &&
+        run.artifactKinds?.includes("selected-heads-musicxml"),
     );
   return false;
 }
@@ -351,19 +353,27 @@ export default function PageComparison({
     setError(null);
     setComparison(null);
     setSelectedBlockIndex(null);
-    fetch(`${base}/pages/${page.pageNumber}/comparison?${params.toString()}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
+    const load = async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await fetch(
+          `${base}/pages/${page.pageNumber}/comparison?${params.toString()}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+        if (response.status === 409 && attempt < 2) continue;
+        if (!response.ok)
           throw new Error(
             await responseError(response, "Unable to compare these readings"),
           );
-        }
         return (await response.json()) as PageComparisonResult;
-      })
+      }
+      throw new Error("Unable to refresh the comparison.");
+    };
+    load()
       .then((result) => {
+        if (controller.signal.aborted) return;
         setComparison(result);
         const firstReady = result.geometry?.blocks.find(
           (entry) => entry.status === "ready",
@@ -446,7 +456,8 @@ export default function PageComparison({
         statusVersion: String(comparison?.statusVersion || ""),
         artifactChecksumSha256: side.artifactChecksumSha256,
         baseEngine: comparison?.base.engineId || "",
-        baseArtifactChecksumSha256: comparison?.base.artifactChecksumSha256 || "",
+        baseArtifactChecksumSha256:
+          comparison?.base.artifactChecksumSha256 || "",
       },
     ).toString()}`;
 

@@ -112,156 +112,69 @@ function respond(body: unknown) {
   return { ok: true, json: async () => body } as Response;
 }
 
-it("starts at base review and saves a checkpoint before showing the heads editor", async () => {
-  const initial = job();
-  const base = job("base");
-  const heads = job("heads");
-  let current = initial;
-  const fetchMock = jest.fn(async (_url: unknown, init?: RequestInit) => {
-    if (init?.method === "POST")
-      current = JSON.parse(String(init.body)).action === "start" ? base : heads;
-    return respond(current);
-  });
-  global.fetch = fetchMock;
-  render(<Host initial={initial} />);
-  fireEvent.click(screen.getByRole("button", { name: "Start guided review" }));
-  expect(
-    await screen.findByText("Base questions for ots-homr"),
-  ).toBeInTheDocument();
-  expect(screen.queryByTestId("merge")).toBeNull();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Save base review and continue" }),
-  );
-  expect(
-    await screen.findByRole("button", {
-      name: "Prepare additional heads merge",
-    }),
-  ).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledWith(
-    "/api/proxy/scanner/jobs/job-1/pages/1/review-workflow",
-    expect.objectContaining({
-      body: JSON.stringify({
-        action: "complete",
-        statusVersion: 7,
-        workflowStateVersion: null,
-      }),
-    }),
-  );
-});
-
-it("prepares selected heads and opens the correct fixed merge pair", async () => {
-  const initial = job("heads");
-  const prepared = job("heads");
-  Object.assign(prepared.pages[0].engines!["ots-homr"]!, {
-    selectedStructuredHeadFamilies: ["beam"],
-    artifactKinds: ["selected-heads-musicxml"],
-  });
-  global.fetch = jest.fn(async () => respond(prepared));
-  render(<Host initial={initial} />);
-  expect(screen.getByRole("checkbox", { name: "Beams" })).toBeChecked();
-  expect(
-    screen.getByRole("checkbox", { name: "Stem direction" }),
-  ).toBeChecked();
-  fireEvent.click(screen.getByRole("checkbox", { name: "Stem direction" }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Prepare additional heads merge" }),
-  );
-  expect(await screen.findByTestId("merge")).toHaveTextContent(
-    "ots-homr-core versus ots-homr-selected-heads",
-  );
-  expect(screen.getByTestId("merge")).toHaveAttribute("data-fixed", "true");
-  expect(global.fetch).toHaveBeenCalledWith(
-    "/api/proxy/scanner/jobs/job-1/pages/1/engines/ots-homr/structured-output",
-    expect.objectContaining({
-      method: "PUT",
-      body: JSON.stringify({ families: ["beam"] }),
-    }),
-  );
-});
-
-it("resumes the engine merge and lets the reviewer reopen an earlier step", async () => {
-  const initial = job("engines");
-  const base = job("base");
-  global.fetch = jest.fn(async (_url, init) =>
-    respond(init?.method === "POST" ? base : initial),
-  );
-  render(<Host initial={initial} />);
+it("opens directly in the engine merge without base questions or a head selection step", () => {
+  render(<Host initial={job()} />);
   expect(screen.getByTestId("merge")).toHaveTextContent(
     "ots-homr versus transcoda",
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "1. Base recognition review" }),
-  );
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.queryByText(/Base questions/)).toBeNull();
   expect(
-    await screen.findByText("Base questions for ots-homr"),
-  ).toBeInTheDocument();
-  expect(global.fetch).toHaveBeenCalledWith(
-    "/api/proxy/scanner/jobs/job-1/pages/1/review-workflow",
-    expect.objectContaining({
-      body: JSON.stringify({
-        action: "open",
-        step: "base",
-        statusVersion: 7,
-        workflowStateVersion: null,
-      }),
-    }),
-  );
+    screen.queryByRole("button", { name: /Start guided review/ }),
+  ).toBeNull();
 });
 
-it("keeps the current step when saving fails", async () => {
-  const initial = job("base");
-  global.fetch = jest.fn(async (_url, init) =>
-    init?.method === "POST"
-      ? ({
-          ok: false,
-          json: async () => ({
-            message: "This scan changed. Refresh before changing steps.",
-          }),
-        } as Response)
-      : respond(initial),
-  );
-  render(<Host initial={initial} />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Save base review and continue" }),
-  );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "This scan changed",
-  );
-  expect(screen.getByText("Base questions for ots-homr")).toBeInTheDocument();
-});
-
-it.each([
-  ["base", "Skip base review"],
-  ["heads", "Skip additional heads"],
-  ["engines", "Skip engine merge"],
-] as const)("can explicitly skip the %s stage", async (active, label) => {
-  const initial = job(active);
-  global.fetch = jest.fn(async () => respond(initial));
-  render(<Host initial={initial} />);
-  fireEvent.click(screen.getByRole("button", { name: label }));
-  await waitFor(() =>
+it.each(["base", "heads"] as const)(
+  "preserves legacy work when opening a scan left at %s",
+  async (active) => {
+    const initial = job(active);
+    const engines = job("engines");
+    engines.pages[0].hasMergedScore = true;
+    global.fetch = jest.fn(async (_url, init) =>
+      respond(init?.method === "POST" ? engines : initial),
+    );
+    render(<Host initial={initial} />);
+    expect(await screen.findByTestId("merge")).toHaveTextContent(
+      "ots-homr versus transcoda",
+    );
     expect(global.fetch).toHaveBeenCalledWith(
       "/api/proxy/scanner/jobs/job-1/pages/1/review-workflow",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          action: "skip",
+          action: "engine-review",
           statusVersion: 7,
           workflowStateVersion: null,
         }),
       }),
-    ),
+    );
+  },
+);
+
+it("resumes an existing engine merge without changing stages", () => {
+  global.fetch = jest.fn();
+  render(<Host initial={job("engines")} />);
+  expect(screen.getByTestId("merge")).toHaveTextContent(
+    "ots-homr versus transcoda",
   );
+  expect(global.fetch).not.toHaveBeenCalled();
 });
 
-it("preserves a saved subset when reopening additional heads", () => {
-  const initial = job("heads");
-  initial.pages[0].engines!["ots-homr"]!.selectedStructuredHeadFamilies = [
-    "stem",
-  ];
+it("internally refreshes a concurrent version conflict before opening the engine merge", async () => {
+  const initial = job("base");
+  let posts = 0;
+  global.fetch = jest.fn(async (_url, init) => {
+    if (init?.method !== "POST") return respond(initial);
+    if (++posts === 1)
+      return {
+        ok: false,
+        status: 409,
+        json: async () => ({ message: "This scan changed" }),
+      } as Response;
+    return respond(job("engines"));
+  });
   render(<Host initial={initial} />);
-  expect(
-    screen.getByRole("checkbox", { name: "Stem direction" }),
-  ).toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "Beams" })).not.toBeChecked();
+  expect(await screen.findByTestId("merge")).toBeInTheDocument();
+  expect(posts).toBe(2);
+  expect(screen.queryByRole("alert")).toBeNull();
 });

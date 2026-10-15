@@ -189,10 +189,28 @@ describe("ScannerJobClient", () => {
         },
       ],
     } as ScannerJob;
-    (globalThis.fetch as jest.Mock).mockResolvedValue({
+    (globalThis.fetch as jest.Mock).mockImplementation(async (url) => ({
       ok: true,
-      json: async () => dualEngineJob,
-    });
+      json: async () =>
+        String(url).includes("/comparison?")
+          ? {
+              status: "refused",
+              base: {
+                engineId: "homr",
+                displayName: "HOMR",
+                artifactChecksumSha256: "a".repeat(64),
+                unsupportedSemanticClasses: [],
+              },
+              candidate: {
+                engineId: "transcoda",
+                displayName: "Transcoda",
+                artifactChecksumSha256: "b".repeat(64),
+                unsupportedSemanticClasses: [],
+              },
+              refusalReasons: [],
+            }
+          : dualEngineJob,
+    }));
 
     const { container } = render(<ScannerJobClient jobId="job-1" />);
     const left = (await screen.findByLabelText(
@@ -215,7 +233,7 @@ describe("ScannerJobClient", () => {
     const pageCard = screen.getByTestId("scanner-page-card");
     const compareCard = screen.getByTestId("scanner-compare-card");
     const finishedCard = screen.getByTestId("scanner-finished-card");
-    expect(pageCard).not.toContainElement(compareCard);
+    expect(pageCard).toContainElement(compareCard);
     expect(
       compareCard.compareDocumentPosition(finishedCard) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -642,6 +660,61 @@ describe("ScannerJobClient", () => {
     ).toBeInTheDocument();
   });
 
+  it("queues a failed comparison provider when the primary reading and PDF succeeded", async () => {
+    const ready = {
+      ...partialJob,
+      status: "succeeded",
+      pageCount: 1,
+      includedPageCount: 1,
+      enginePlan: {
+        version: "scanner-engine-plan-v1",
+        engineIds: ["homr", "ots-homr"],
+        primaryEngineId: "homr",
+        fallbackEngineIds: ["ots-homr"],
+        capabilitySnapshots: {},
+      },
+      pages: [
+        {
+          ...partialJob.pages[0],
+          canRetry: true,
+          engines: {
+            homr: {
+              status: "succeeded",
+              attempts: 1,
+              hasMusicXml: true,
+              hasPdf: true,
+            },
+            "ots-homr": {
+              status: "failed",
+              attempts: 2,
+              hasMusicXml: false,
+              hasPdf: false,
+              errorMessage: "Scanner provider is unavailable",
+            },
+          },
+        },
+      ],
+    };
+    (globalThis.fetch as jest.Mock).mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () =>
+        init?.method === "POST" ? { ...ready, status: "queued" } : ready,
+    }));
+    render(<ScannerJobClient jobId="job-1" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Retry OTS-HOMR/i }),
+    );
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/proxy/scanner/jobs/job-1/pages/1/retry",
+        { method: "POST" },
+      ),
+    );
+    expect(
+      screen.getAllByText("Scanner provider is unavailable").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("saves page review choices before explicitly starting inference", async () => {
     const readyJob: ScannerJob = {
       ...partialJob,
@@ -679,6 +752,23 @@ describe("ScannerJobClient", () => {
         name: "Review pages before scanning",
       }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Exclude all" }));
+    expect(screen.getByText("0 of 2 pages included")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Start scanning" }),
+    ).toBeDisabled();
+    for (const checkbox of screen.getAllByRole("checkbox", {
+      name: "Include",
+    })) {
+      expect(checkbox).not.toBeChecked();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Include all" }));
+    expect(screen.getByText("2 of 2 pages included")).toBeInTheDocument();
+    for (const checkbox of screen.getAllByRole("checkbox", {
+      name: "Include",
+    })) {
+      expect(checkbox).toBeChecked();
+    }
     fireEvent.click(
       screen.getByRole("button", { name: "Rotate source page 1 right" }),
     );
@@ -951,7 +1041,7 @@ describe("ScannerJobClient", () => {
     expect(screen.queryByText(/Download all results/)).not.toBeInTheDocument();
   });
 
-  it("starts OTS-HOMR review with the guided sequence instead of parallel merge actions", async () => {
+  it("shows the engine review without base or additional-head stages", async () => {
     const job: ScannerJob = {
       ...partialJob,
       pages: [
@@ -975,17 +1065,17 @@ describe("ScannerJobClient", () => {
       .mockResolvedValue({ ok: true, json: async () => job });
     render(<ScannerJobClient jobId="job-1" />);
     expect(
-      await screen.findByRole("button", { name: "Start guided review" }),
+      await screen.findByText(/Only one engine returned a reading/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "1. Base recognition review" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Start guided review" }),
+    ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "2. Merge additional heads" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: /Base recognition review/ }),
+    ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "3. Merge between engines" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: /Merge additional heads/ }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: /Review selected features/ }),
     ).toBeNull();

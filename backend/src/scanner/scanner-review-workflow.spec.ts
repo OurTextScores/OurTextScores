@@ -152,6 +152,45 @@ function fixture() {
 }
 
 describe('guided scanner review', () => {
+  it('opens a former base review directly in the engine merge while retaining its checkpoint', async () => {
+    const { job, transition, snapshot } = fixture();
+    await transition('start');
+    job.pages[0].engines['ots-homr'].artifacts.musicXml = locator('corrected-core');
+    await transition('engine-review');
+    expect(job.pages[0].reviewWorkflow.active).toBe('engines');
+    expect((await snapshot('base')).engines['ots-homr'].artifacts.musicXml.objectKey).toBe('corrected-core');
+    expect(job.pages[0].engines['ots-homr'].artifacts.musicXml.objectKey).toBe('corrected-core');
+  });
+
+  it('uses a saved additional-heads merge as the engine reading when retiring the old stages', async () => {
+    const { job, transition, snapshot } = fixture();
+    await transition('start');
+    await transition('complete');
+    job.pages[0].mergedMusicXml = locator('accepted-heads');
+    await transition('engine-review');
+    expect(job.pages[0].reviewWorkflow.active).toBe('engines');
+    expect(job.pages[0].engines['ots-homr'].reviewedMusicXml.objectKey).toBe('accepted-heads');
+    expect(job.pages[0].mergedMusicXml).toBeUndefined();
+    expect((await snapshot('heads')).mergedMusicXml.objectKey).toBe('accepted-heads');
+  });
+
+  it('preserves a saved engine merge when a legacy review was left at an earlier step', async () => {
+    const { job, transition, snapshot } = fixture();
+    await transition('start');
+    await transition('complete');
+    await transition('complete');
+    job.pages[0].mergedMusicXml = locator('engine-work');
+    job.pages[0].mergedScore = { revision: 5, sourceEngineId: 'ots-homr', decisions: [{ blockIndex: 2 }] };
+    await transition('complete');
+    await transition('open', 'base');
+    job.pages[0].engines['ots-homr'].artifacts.musicXml = locator('new-core');
+    await transition('engine-review');
+    expect(job.pages[0].mergedMusicXml.objectKey).toBe('engine-work');
+    expect(job.pages[0].mergedScore.decisions).toEqual([{blockIndex:2}]);
+    expect(job.pages[0].engines['ots-homr'].artifacts.musicXml.objectKey).toBe('new-core');
+    expect((await snapshot('engines','previous')).mergedMusicXml.objectKey).toBe('engine-work');
+  });
+
   it('skips each stage, retaining base answers and archiving merge work without accepting it', async () => {
     const { job, transition, snapshot } = fixture();
     await transition('start');

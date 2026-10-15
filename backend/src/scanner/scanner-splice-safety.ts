@@ -520,16 +520,10 @@ export function assessScannerSplice(input: {
     }
   }
 
-  const baseVoices = new Set(baseSpan.flatMap((measure) => measure.voices));
-  const candidateVoices = new Set(candidateSpan.flatMap((measure) => measure.voices));
-  if (baseVoices.size !== candidateVoices.size) {
-    refusals.push({
-      code: 'voices-differ',
-      detail:
-        `This passage has ${baseVoices.size} voice(s) in one reading and ${candidateVoices.size} in ` +
-        'the other, so the replacement does not fit the part it would land in.'
-    });
-  }
+  // These are whole-measure replacements, including notes, voices and backup/
+  // forward timing. Voice count may change when correcting an engine's false
+  // voice split; it does not have to match the discarded measure. Cross-bar
+  // ties and staff layout are checked separately below.
 
   const baseStaves = new Set(baseSpan.flatMap((measure) => measure.staves));
   const candidateStaves = new Set(candidateSpan.flatMap((measure) => measure.staves));

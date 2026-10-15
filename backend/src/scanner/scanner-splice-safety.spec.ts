@@ -229,7 +229,7 @@ describe('scanner splice safety', () => {
     expect(result.repairs[0].detail).toMatch(/no note changes/);
   });
 
-  it('refuses when the passage does not have the same voices on both sides', () => {
+  it('allows a whole-bar replacement to correct a false voice split', () => {
     const base = score(
       note(4, { voice: '1' }) +
         note(4, { voice: '1' }) +
@@ -240,7 +240,7 @@ describe('scanner splice safety', () => {
     const candidate = score(note(4, { voice: '1' }) + note(4, { voice: '1' }), 4);
     const result = assess(base, candidate);
 
-    expect(codesOf(result)).toContain('voices-differ');
+    expect(result).toEqual({ safe: true, refusals: [], repairs: [] });
   });
 
   it('refuses a decision that names measures one reading does not have', () => {

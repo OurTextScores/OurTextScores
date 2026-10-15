@@ -659,7 +659,9 @@ export class ScannerController {
     @Query('baseEngine') baseEngine: string | undefined,
     @Query('candidateEngine') candidateEngine: string | undefined,
     @Query('statusVersion', ParseIntPipe) statusVersion: number,
-    @Res({ passthrough: true }) response: Response
+    @Res({ passthrough: true }) response: Response,
+    @Query('rasterChecksumSha256') rasterChecksumSha256?: string,
+    @Query('region') region?: string
   ) {
     const crop = await this.scanner.pageComparisonSystemCrop(
       user.userId,
@@ -668,7 +670,9 @@ export class ScannerController {
       systemIndex,
       String(baseEngine ?? ''),
       String(candidateEngine ?? ''),
-      statusVersion
+      statusVersion,
+      rasterChecksumSha256,
+      region
     );
     response.setHeader('Content-Type', crop.contentType);
     response.setHeader('Cache-Control', 'private, no-store');

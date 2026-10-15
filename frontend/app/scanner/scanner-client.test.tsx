@@ -187,6 +187,44 @@ describe("ScannerClient", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("allows file and provider selection while scan history is still loading", async () => {
+    let finishHistory!: (response: Response) => void;
+    global.fetch = jest.fn((url: RequestInfo | URL) =>
+      String(url).includes("/engines")
+        ? Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ items: providers }),
+          } as Response)
+        : new Promise<Response>((resolve) => {
+            finishHistory = resolve;
+          }),
+    );
+    render(<ScannerClient />);
+    expect(
+      screen.getByText("Loading recognition providers…"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Provider")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Score files"), {
+      target: {
+        files: [new File(["score"], "page.png", { type: "image/png" })],
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText("Provider")).toBeEnabled(),
+    );
+    selectProviders("ots-homr", "homr");
+    expect(screen.getByRole("button", { name: "Select pages" })).toBeEnabled();
+    expect(FakeXhr.last).toBeNull();
+    await act(async () =>
+      finishHistory({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [] }),
+      } as Response),
+    );
+  });
+
   it("requires one provider and makes a second provider optional", async () => {
     render(<ScannerClient />);
     expect(
@@ -256,7 +294,7 @@ describe("ScannerClient", () => {
     ]);
   });
 
-  it("submits two providers and OTS-HOMR options when it is selected", async () => {
+  it("submits two providers with the default OTS-HOMR detector", async () => {
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const file = new File(["score"], "page-1.png", { type: "image/png" });
@@ -264,9 +302,7 @@ describe("ScannerClient", () => {
       target: { files: [file] },
     });
     selectProviders("homr", "ots-homr");
-    fireEvent.change(screen.getByLabelText("Text detector"), {
-      target: { value: "non-lyric-text" },
-    });
+    expect(screen.queryByLabelText("Text detector")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Additional heads")).not.toBeInTheDocument();
 
     fireEvent.submit(
@@ -278,7 +314,7 @@ describe("ScannerClient", () => {
       "ots-homr",
     ]);
     expect(JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")))).toEqual({
-      textDetector: "non-lyric-text",
+      textDetector: "lyrics",
     });
   });
 
@@ -349,10 +385,8 @@ describe("ScannerClient", () => {
     }
   });
 
-  it("sends the chosen score profile", async () => {
-    // The picker is the only thing that supplies a profile; if it does not reach the
-    // payload the clef checks stay unreachable exactly as they were before the
-    // channel existed, and nothing anywhere would say so.
+  it("always scans without score expectations or an options panel", async () => {
+    // No expectations means omitting the profile, rather than sending null.
     render(<ScannerClient />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText("Score files"), {
@@ -361,40 +395,8 @@ describe("ScannerClient", () => {
       },
     });
     selectProviders("ots-homr");
-    fireEvent.change(screen.getByLabelText("Score profile"), {
-      target: { value: "string-quartet" },
-    });
-    fireEvent.submit(
-      screen.getByRole("button", { name: "Select pages" }).closest("form")!,
-    );
-    await waitFor(() => expect(FakeXhr.last).not.toBeNull());
-
-    const sent = JSON.parse(String(FakeXhr.last!.body!.get("otsHomr")));
-    expect(sent.scoreProfile.schemaVersion).toEqual("homr.score-profile.v1");
-    expect(
-      sent.scoreProfile.parts.map(
-        (part: { stableId: string }) => part.stableId,
-      ),
-    ).toEqual(["violin-1", "violin-2", "viola", "cello"]);
-    // Generous by design: a cello reading in tenor or treble is ordinary music, and a
-    // profile naming only bass would fire on the repertoire it is meant to help with.
-    expect(
-      sent.scoreProfile.parts.find(
-        (part: { stableId: string }) => part.stableId === "cello",
-      ).likelyClefs,
-    ).toEqual(["F4", "C4", "G2"]);
-  });
-
-  it("omits the profile entirely when the reader does not say", async () => {
-    // Absence of the field, not a null: the option is validated by an allowlist.
-    render(<ScannerClient />);
-    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-    fireEvent.change(screen.getByLabelText("Score files"), {
-      target: {
-        files: [new File(["score"], "page-1.png", { type: "image/png" })],
-      },
-    });
-    selectProviders("ots-homr");
+    expect(screen.queryByLabelText("Score profile")).not.toBeInTheDocument();
+    expect(screen.queryByText("OTS-HOMR scan options")).not.toBeInTheDocument();
     fireEvent.submit(
       screen.getByRole("button", { name: "Select pages" }).closest("form")!,
     );
@@ -488,8 +490,12 @@ describe("ScannerClient", () => {
     );
     await waitFor(() => expect(FakeXhr.last).not.toBeNull());
 
-    // Bytes sent, not a spinner: fetch cannot report this, which is why the
-    // upload uses XMLHttpRequest.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Uploading to OurTextScores",
+    );
+    expect(screen.getByLabelText("Provider")).toBeDisabled();
+    expect(screen.getByLabelText("Score files")).toBeDisabled();
+    // Keep byte progress alongside the spinner through server storage.
     act(() => FakeXhr.last!.progress(1024, 2048));
     expect(
       await screen.findByText(/Uploading to OurTextScores/),
@@ -503,5 +509,6 @@ describe("ScannerClient", () => {
 
     act(() => FakeXhr.last!.finish());
     await waitFor(() => expect(push).toHaveBeenCalledWith("/scanner/job-new"));
+    expect(screen.getByRole("status")).toHaveTextContent("Opening your scan");
   });
 });
