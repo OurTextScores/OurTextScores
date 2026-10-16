@@ -1,4 +1,5 @@
 import Link from "next/link";
+import WalkthroughCarousel from "./walkthrough-carousel";
 import FeatureShowcase, { type ShowcaseFeature } from "./feature-showcase";
 import {
   PUBLIC_CHANGE_REVIEW_ID,
@@ -142,19 +143,6 @@ const waysToContribute = [
   },
 ];
 
-const walkthroughs = [
-  {
-    id: "-Z09sxFUjys",
-    title: "Website walkthrough",
-    body: "Explore the catalogue, upload a score, and collaborate through revisions and change reviews.",
-  },
-  {
-    id: "65ISfJhIO4s",
-    title: "Score Editor walkthrough",
-    body: "Write, edit and play music in your browser, then export or share your score.",
-  },
-];
-
 const steps = [
   {
     n: "1",
@@ -282,42 +270,7 @@ export default function WelcomePage() {
           <FeatureShowcase features={platformFeatures} />
         </section>
 
-        <section aria-labelledby="walkthroughs" className={sectionClass}>
-          <h2 id="walkthroughs" className="font-[var(--font-heading)] text-2xl">
-            Watch the walkthroughs
-          </h2>
-          <p className="mt-3 text-slate-600 dark:text-slate-300">
-            Take a guided tour of OurTextScores and the browser-based Score Editor.
-          </p>
-          <div className="mt-6 grid gap-6 md:grid-cols-2">
-            {walkthroughs.map((walkthrough) => (
-              <article key={walkthrough.id} className="min-w-0">
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${walkthrough.id}`}
-                  title={walkthrough.title}
-                  loading="lazy"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  allowFullScreen
-                  className="aspect-video w-full rounded-lg border border-slate-200 bg-slate-950 dark:border-slate-700"
-                />
-                <h3 className="mt-4 font-semibold">{walkthrough.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                  {walkthrough.body}
-                </p>
-                <a
-                  href={`https://www.youtube.com/watch?v=${walkthrough.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`mt-3 inline-flex text-sm ${quietLinkClass}`}
-                  aria-label={`Watch the ${walkthrough.title} on YouTube`}
-                >
-                  Watch on YouTube <span aria-hidden="true" className="ml-1">↗</span>
-                </a>
-              </article>
-            ))}
-          </div>
-        </section>
+        <WalkthroughCarousel className={sectionClass} />
 
         <section aria-labelledby="get-involved" className="rounded-xl border border-slate-300 bg-[linear-gradient(135deg,#ecfdf5_0%,#cffafe_40%,#dbeafe_100%)] p-8 shadow-sm dark:border-cyan-900/60 dark:bg-[linear-gradient(135deg,#0d9488,#0e7490,#0f172a,#134e4a,#0d9488)] dark:bg-[length:300%_300%] dark:[animation:hero-gradient-shift_12s_ease_infinite] dark:shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
           <h2 id="get-involved" className="font-[var(--font-heading)] text-3xl">

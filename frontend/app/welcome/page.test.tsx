@@ -64,14 +64,25 @@ describe("WelcomePage", () => {
     expect(within(section).getByRole("link", { name: "OTS_WebEditor Repo" })).toHaveAttribute("href", "https://github.com/OurTextScores/OTS_WebEditor/");
   });
 
-  it("embeds both walkthroughs with matching YouTube links", () => {
-    render(<WelcomePage />);
-    for (const [title, id] of [["Website walkthrough", "-Z09sxFUjys"], ["Score Editor walkthrough", "65ISfJhIO4s"]]) {
+  it("shows the walkthroughs below the showcase in scanner, editor, website order and wraps navigation", () => {
+    const { container } = render(<WelcomePage />);
+    const carousel = screen.getByRole("region", { name: "Watch the walkthroughs" });
+    expect(screen.getByRole("region", { name: "See it in action" }).nextElementSibling).toBe(carousel);
+    expect(within(carousel).getByRole("button", { name: "Scanner" })).toHaveAttribute("aria-pressed", "true");
+    for (const [title, id] of [["Scanner walkthrough", "cSDI19N7kcE"], ["Score Editor walkthrough", "65ISfJhIO4s"], ["Website walkthrough", "-Z09sxFUjys"]]) {
       const frame = screen.getByTitle(title);
+      expect(container.querySelectorAll("iframe")).toHaveLength(1);
       expect(frame).toHaveAttribute("src", `https://www.youtube-nocookie.com/embed/${id}`);
-      expect(frame).toHaveAttribute("loading", "lazy");
       expect(frame).toHaveAttribute("allowfullscreen");
       expect(screen.getByRole("link", { name: `Watch the ${title} on YouTube` })).toHaveAttribute("href", `https://www.youtube.com/watch?v=${id}`);
+      fireEvent.click(screen.getByRole("button", { name: "Next walkthrough" }));
+      expect(frame).not.toBeInTheDocument();
     }
+    expect(screen.getByTitle("Scanner walkthrough")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous walkthrough" }));
+    expect(screen.getByTitle("Website walkthrough")).toBeInTheDocument();
+    fireEvent.click(within(carousel).getByRole("button", { name: "Editor" }));
+    expect(screen.getByTitle("Score Editor walkthrough")).toBeInTheDocument();
+    expect(within(carousel).getByRole("button", { name: "Editor" })).toHaveAttribute("aria-pressed", "true");
   });
 });
