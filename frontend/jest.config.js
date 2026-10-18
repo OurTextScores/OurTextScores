@@ -9,6 +9,9 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jest-environment-jsdom',
+  // Build output can contain incomplete manifests after an interrupted build.
+  // Keep it out of Jest's module crawl as well as test discovery.
+  modulePathIgnorePatterns: ['<rootDir>/.next/'],
   testMatch: [
     '**/__tests__/**/*.[jt]s?(x)',
     '**/?(*.)+(spec|test).[jt]s?(x)'
