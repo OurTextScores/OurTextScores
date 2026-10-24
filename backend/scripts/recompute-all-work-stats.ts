@@ -13,7 +13,7 @@ async function bootstrap() {
   const worksService = app.get(WorksService);
 
   console.log('Fetching all works...');
-  const result = await worksService.getWorksPaginated({ limit: 10000, offset: 0 });
+  const result = await worksService.findAll({ limit: 10000, offset: 0 });
   console.log(`Found ${result.total} works`);
 
   for (const work of result.works) {
