@@ -1,5 +1,7 @@
 "use client";
 
+import { observedUpload } from "../../lib/observed-upload";
+
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPublicApiBase } from "../../lib/api";
@@ -126,7 +128,7 @@ export default function UploadNewSourceForm({
 
       let token: string | null = null;
       try {
-        const tokenRes = await fetch("/api/auth/api-token", { cache: "no-store" });
+        const tokenRes = await observedUpload("/api/auth/api-token", { cache: "no-store" });
         if (tokenRes.ok && typeof (tokenRes as any).json === "function") {
           const tokenBody = await tokenRes.json();
           if (typeof tokenBody?.token === "string" && tokenBody.token) {
@@ -142,7 +144,7 @@ export default function UploadNewSourceForm({
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const res = await fetch(`${API_BASE}/works/${encodeURIComponent(workId)}/sources`, {
+      const res = await observedUpload(`${API_BASE}/works/${encodeURIComponent(workId)}/sources`, {
         method: "POST",
         body: form,
         headers,

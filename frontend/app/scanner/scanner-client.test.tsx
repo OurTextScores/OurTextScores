@@ -28,7 +28,9 @@ class FakeXhr {
   onerror?: () => void;
   onabort?: () => void;
   body: FormData | null = null;
+  headers: Record<string, string> = {};
   open() {}
+  setRequestHeader(name: string, value: string) { this.headers[name] = value; }
   send(body: FormData) {
     this.body = body;
     FakeXhr.last = this;

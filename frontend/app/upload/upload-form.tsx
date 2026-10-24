@@ -1,5 +1,7 @@
 "use client";
 
+import { observedUpload } from "../lib/observed-upload";
+
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { EnsureWorkResponse, ImslpWorkSummary, WorkSummary } from "../lib/api";
@@ -190,7 +192,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`${API_BASE}/works/${encodeURIComponent(work.work.workId)}`);
+        const res = await observedUpload(`${API_BASE}/works/${encodeURIComponent(work.work.workId)}`);
         if (res.ok) {
           const data = (await res.json()) as { sources: Array<{ sourceId: string; label: string }>; };
           setSources((data.sources || []).map((s) => ({ sourceId: s.sourceId, label: s.label })));
@@ -211,7 +213,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
         return;
       }
       try {
-        const res = await fetch(`${API_BASE}/works/${encodeURIComponent(work.work.workId)}/sources/${encodeURIComponent(targetSourceId)}/branches`);
+        const res = await observedUpload(`${API_BASE}/works/${encodeURIComponent(work.work.workId)}/sources/${encodeURIComponent(targetSourceId)}/branches`);
         if (res.ok) {
           const j = await res.json();
           const names: string[] = Array.isArray(j?.branches) ? j.branches.map((b: any) => b.name) : [];
@@ -297,7 +299,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
 
       let token: string | null = null;
       try {
-        const tokenResponse = await fetch("/api/auth/api-token", { cache: "no-store" });
+        const tokenResponse = await observedUpload("/api/auth/api-token", { cache: "no-store" });
         if (tokenResponse.ok && typeof (tokenResponse as any).json === "function") {
           const tokenBody = await tokenResponse.json();
           if (typeof tokenBody?.token === "string" && tokenBody.token) {
@@ -316,7 +318,7 @@ function UploadStep({ work, status, onStatusChange, onReset, router }: UploadSte
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
-      const response = await fetch(url, { method: "POST", body: payload, headers, cache: "no-store" });
+      const response = await observedUpload(url, { method: "POST", body: payload, headers, cache: "no-store" });
 
       if (!response.ok) {
         const text = await response.text();

@@ -1,5 +1,7 @@
 "use client";
 
+import { observedUpload } from "../../lib/observed-upload";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getPublicApiBase } from "../../lib/api";
 import { useRouter } from "next/navigation";
@@ -95,7 +97,7 @@ export default function UploadRevisionForm({
     let cancelled = false;
     async function loadBranches() {
       try {
-        const res = await fetch(
+        const res = await observedUpload(
           `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/branches`,
           { cache: "no-store" }
         );
@@ -194,7 +196,7 @@ export default function UploadRevisionForm({
 
       let token: string | null = null;
       try {
-        const tokenRes = await fetch("/api/auth/api-token", { cache: "no-store" });
+        const tokenRes = await observedUpload("/api/auth/api-token", { cache: "no-store" });
         if (tokenRes.ok && typeof (tokenRes as any).json === "function") {
           const tokenBody = await tokenRes.json();
           if (typeof tokenBody?.token === "string" && tokenBody.token) {
@@ -209,7 +211,7 @@ export default function UploadRevisionForm({
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
-      const res = await fetch(
+      const res = await observedUpload(
         `${API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/revisions`,
         { method: "POST", body: form, headers, cache: "no-store" }
       );

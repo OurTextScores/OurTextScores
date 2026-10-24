@@ -19,12 +19,14 @@ import { LegalModule } from './legal/legal.module';
 import { PdmxModule } from './pdmx/pdmx.module';
 import { ChangeReviewsModule } from './change-reviews/change-reviews.module';
 import { ScannerModule } from './scanner/scanner.module';
+import { OperationsModule } from './operations/operations.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true
     }),
+    OperationsModule,
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {

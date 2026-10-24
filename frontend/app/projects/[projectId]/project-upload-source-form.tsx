@@ -1,5 +1,7 @@
 "use client";
 
+import { observedUpload } from "../../lib/observed-upload";
+
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPublicApiBase } from "../../lib/api";
@@ -117,7 +119,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
         );
       }
 
-      const tokenRes = await fetch("/api/auth/api-token", { cache: "no-store" });
+      const tokenRes = await observedUpload("/api/auth/api-token", { cache: "no-store" });
       if (!tokenRes.ok) {
         throw new Error("Sign in required");
       }
@@ -127,7 +129,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
         throw new Error("Sign in required");
       }
 
-      const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/sources`, {
+      const res = await observedUpload(`${API_BASE}/projects/${encodeURIComponent(projectId)}/sources`, {
         method: "POST",
         body: form,
         headers: {

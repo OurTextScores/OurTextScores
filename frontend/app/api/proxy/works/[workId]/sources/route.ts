@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiAuthHeaders } from "../../../../../lib/authToken";
-import { getBackendApiBase, proxyFetch } from "../../../_lib/upstream";
+import { getBackendApiBase, proxyFetch, uploadResponseHeaders } from "../../../_lib/upstream";
 
 export async function POST(request: Request, { params }: { params: { workId: string } }) {
   const API = getBackendApiBase();
@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: { workId: str
     };
     const upstream = await proxyFetch(request, `${API}/works/${encodeURIComponent(workId)}/sources`, init as any);
     const buf = await upstream.arrayBuffer();
-    return new NextResponse(buf, { status: upstream.status, headers: { "content-type": upstream.headers.get("content-type") || "application/json" } });
+    return new NextResponse(buf, { status: upstream.status, headers: uploadResponseHeaders(upstream) });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }

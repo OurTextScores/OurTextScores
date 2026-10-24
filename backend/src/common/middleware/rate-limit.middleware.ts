@@ -1,4 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
+import type { AuthService } from '../../auth/auth.service';
+import type { UsersService } from '../../users/users.service';
+import type { UploadOperationsService } from '../../operations/upload-operations.service';
+import { uploadKind } from '../../operations/upload-health';
 
 interface RateLimitRule {
   name: string;
@@ -38,16 +42,18 @@ const disabledRules = loadDisabledRules();
 
 const rules: RateLimitRule[] = [
   {
+    name: 'upload-observations',
+    windowMs: 60000,
+    maxAnonymous: 10,
+    maxAuthenticated: 60,
+    match: (req) => req.method === 'POST' && req.path === '/api/operations/upload-observations'
+  },
+  {
     name: 'upload',
     windowMs: 60 * 60 * 1000,
     maxAnonymous: 10,
     maxAuthenticated: 60,
-    match: (req) =>
-      req.method === 'POST' &&
-      (/^\/api\/works\/[^/]+\/sources(\/[^/]+\/revisions)?$/.test(req.path) ||
-        /^\/api\/works\/[^/]+\/sources\/[^/]+\/reference\.pdf$/.test(req.path) ||
-        /^\/api\/projects\/[^/]+\/sources$/.test(req.path) ||
-        /^\/api\/scanner\/jobs$/.test(req.path))
+    match: (req) => req.method === 'POST' && Boolean(uploadKind(req.method, req.path))
   },
   {
     name: 'auth',
@@ -80,24 +86,44 @@ const rules: RateLimitRule[] = [
   }
 ];
 
-function getClientToken(req: Request): string | undefined {
-  const auth = (req.header('authorization') || '').trim();
-  if (!auth) return undefined;
-  const [scheme, token] = auth.split(' ');
-  if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) return undefined;
-  return token.trim();
+async function getClientId(
+  req: Request,
+  auth: AuthService,
+  users: UsersService
+): Promise<{ id: string; authenticated: boolean; userId?: string }> {
+  const principal = auth.optionalUser(req.header('authorization'));
+  if (principal) {
+    const account = principal.email
+      ? await users.findByEmail(principal.email)
+      : await users.findById(principal.userId).catch(() => null);
+    if (account) {
+      const userId = String(account._id);
+      (req as any).user = { userId, email: account.email, roles: account.roles || [] };
+      return { id: `user:${userId}`, authenticated: true, userId };
+    }
+  }
+  // Use Express's trusted-proxy configuration, never an arbitrary forwarded header.
+  return { id: `ip:${req.ip || 'unknown'}`, authenticated: false };
 }
 
-function getClientId(req: Request): { id: string; authenticated: boolean } {
-  const token = getClientToken(req);
-  if (token) {
-    // Do not store full token in memory map keys.
-    return { id: `tok:${token.slice(-24)}`, authenticated: true };
-  }
+export function uploadLimitState(userId: string) {
+  const bucket = buckets.get(`upload:user:${userId}`);
+  return bucket && bucket.resetAt > Date.now() ? { ...bucket } : { count: 0, resetAt: null };
+}
 
-  const fwd = (req.header('x-forwarded-for') || '').split(',')[0]?.trim();
-  const ip = fwd || req.ip || 'unknown';
-  return { id: `ip:${ip}`, authenticated: false };
+export function resetUploadLimit(userId: string): void {
+  buckets.delete(`upload:user:${userId}`);
+}
+
+export function uploadLimitPolicy() {
+  return {
+    limit: 60,
+    anonymousLimit: 10,
+    windowSeconds: 3600,
+    disabled: disabledRules.has('upload'),
+    scope:
+      'Verified account; counters are local to this backend process and reset on restart. Allowances and audit history persist.'
+  };
 }
 
 function getMatchingRule(req: Request): RateLimitRule | undefined {
@@ -118,51 +144,68 @@ function pruneExpired(now: number): void {
 
 let lastPruneAt = 0;
 
-export function rateLimitMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const rule = getMatchingRule(req);
-  if (!rule) {
-    next();
-    return;
-  }
+export function createRateLimitMiddleware(
+  auth: AuthService,
+  users: UsersService,
+  operations: UploadOperationsService
+) {
+  return async function rateLimitMiddleware(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const rule = getMatchingRule(req);
+      if (!rule) {
+        next();
+        return;
+      }
 
-  const now = Date.now();
-  if (now - lastPruneAt > 60 * 1000) {
-    pruneExpired(now);
-    lastPruneAt = now;
-  }
+      const now = Date.now();
+      if (now - lastPruneAt > 60 * 1000) {
+        pruneExpired(now);
+        lastPruneAt = now;
+      }
 
-  const { id, authenticated } = getClientId(req);
-  const limit = authenticated ? rule.maxAuthenticated : rule.maxAnonymous;
-  const key = `${rule.name}:${id}`;
-  const existing = buckets.get(key);
+      const { id, authenticated, userId } = await getClientId(req, auth, users);
+      const allowance =
+        rule.name === 'upload' && userId ? await operations.allowance(userId) : null;
+      const limit = allowance?.limit || (authenticated ? rule.maxAuthenticated : rule.maxAnonymous);
+      const key = `${rule.name}:${id}`;
+      const existing = buckets.get(key);
 
-  if (!existing || existing.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + rule.windowMs });
-    res.setHeader('x-ratelimit-limit', String(limit));
-    res.setHeader('x-ratelimit-remaining', String(Math.max(limit - 1, 0)));
-    res.setHeader('x-ratelimit-reset', String(Math.ceil((now + rule.windowMs) / 1000)));
-    next();
-    return;
-  }
+      if (!existing || existing.resetAt <= now) {
+        buckets.set(key, { count: 1, resetAt: now + rule.windowMs });
+        res.setHeader('x-ratelimit-limit', String(limit));
+        res.setHeader('x-ratelimit-remaining', String(Math.max(limit - 1, 0)));
+        res.setHeader('x-ratelimit-reset', String(Math.ceil((now + rule.windowMs) / 1000)));
+        next();
+        return;
+      }
 
-  if (existing.count >= limit) {
-    const retryAfterSec = Math.max(Math.ceil((existing.resetAt - now) / 1000), 1);
-    res.setHeader('retry-after', String(retryAfterSec));
-    res.setHeader('x-ratelimit-limit', String(limit));
-    res.setHeader('x-ratelimit-remaining', '0');
-    res.setHeader('x-ratelimit-reset', String(Math.ceil(existing.resetAt / 1000)));
-    res.status(429).json({
-      message: 'Too many requests. Please retry later.',
-      code: 'rate_limited',
-      retryAfterSeconds: retryAfterSec
-    });
-    return;
-  }
+      if (existing.count >= limit) {
+        const retryAfterSec = Math.max(Math.ceil((existing.resetAt - now) / 1000), 1);
+        res.setHeader('retry-after', String(retryAfterSec));
+        res.setHeader('x-ratelimit-limit', String(limit));
+        res.setHeader('x-ratelimit-remaining', '0');
+        res.setHeader('x-ratelimit-reset', String(Math.ceil(existing.resetAt / 1000)));
+        res.status(429).json({
+          message: `Request limit reached. Try again after ${new Date(existing.resetAt).toISOString()}.`,
+          code: 'rate_limited',
+          retryAfterSeconds: retryAfterSec,
+          resetAt: new Date(existing.resetAt).toISOString()
+        });
+        return;
+      }
 
-  existing.count += 1;
-  buckets.set(key, existing);
-  res.setHeader('x-ratelimit-limit', String(limit));
-  res.setHeader('x-ratelimit-remaining', String(Math.max(limit - existing.count, 0)));
-  res.setHeader('x-ratelimit-reset', String(Math.ceil(existing.resetAt / 1000)));
-  next();
+      existing.count += 1;
+      buckets.set(key, existing);
+      res.setHeader('x-ratelimit-limit', String(limit));
+      res.setHeader('x-ratelimit-remaining', String(Math.max(limit - existing.count, 0)));
+      res.setHeader('x-ratelimit-reset', String(Math.ceil(existing.resetAt / 1000)));
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 }

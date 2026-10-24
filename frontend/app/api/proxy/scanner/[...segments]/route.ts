@@ -22,6 +22,7 @@ async function proxyScanner(request: Request, segments: string[]) {
   const upstream = await proxyFetch(request, url, init);
   const responseHeaders = new Headers();
   for (const name of [
+    "retry-after", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "x-upload-attempt-id",
     "content-type",
     "content-disposition",
     "cache-control",

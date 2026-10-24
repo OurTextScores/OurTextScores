@@ -1,4 +1,5 @@
 "use client";
+import { startUploadObservation } from "../lib/observed-upload";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,20 +39,23 @@ function uploadJob(
   onProgress: (sent: number, total: number) => void,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   return new Promise((resolve, reject) => {
+    const observation = startUploadObservation("scanner");
     const request = new XMLHttpRequest();
     request.open("POST", "/api/proxy/scanner/jobs");
+    request.setRequestHeader("x-upload-attempt-id", observation.attemptId);
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded, event.total);
     };
-    request.onload = () =>
+    request.onload = () => {
+      observation.finish(request.status);
       resolve({
         ok: request.status >= 200 && request.status < 300,
         status: request.status,
         body: request.responseText,
       });
-    request.onerror = () =>
-      reject(new Error("The upload could not be completed"));
-    request.onabort = () => reject(new Error("The upload was cancelled"));
+    };
+    request.onerror = () => { observation.finish(0); reject(new Error("The upload could not be completed")); };
+    request.onabort = () => { observation.finish(0); reject(new Error("The upload was cancelled")); };
     request.send(body);
   });
 }

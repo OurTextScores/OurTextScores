@@ -1,4 +1,5 @@
 import { getApiAuthHeaders } from "../../lib/authToken";
+import UploadHealthPanel from "./upload-health-panel";
 
 const DEFAULT_TIMEZONE = "America/New_York";
 
@@ -255,6 +256,8 @@ export default async function AdminAnalyticsPage({
             </button>
           </form>
       </section>
+
+      <UploadHealthPanel />
 
       <section className="rounded-lg bg-white p-6 shadow-lg dark:bg-slate-800">
           <h2 className="mb-4 text-xl font-semibold text-slate-900 dark:text-slate-100">Overview</h2>

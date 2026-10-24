@@ -112,9 +112,11 @@ describe("UploadRevisionForm", () => {
       expect(uploadCall?.[1]).toEqual(
         expect.objectContaining({
           method: "POST",
-          headers: { "X-Progress-Id": "test-uuid" },
+          headers: expect.any(Headers),
         })
       );
+      expect(uploadCall?.[1].headers.get("X-Progress-Id")).toBe("test-uuid");
+      expect(uploadCall?.[1].headers.get("x-upload-attempt-id")).toBeTruthy();
     });
 
     jest.advanceTimersByTime(5000);

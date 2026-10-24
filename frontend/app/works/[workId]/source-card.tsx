@@ -1,5 +1,7 @@
 "use client";
 
+import { observedUpload } from "../../lib/observed-upload";
+
 import { useState, Suspense, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -199,7 +201,7 @@ function ReferencePdfUploadPanel({
             try {
                 const form = new FormData();
                 form.append("referencePdf", file);
-                const res = await fetch(
+                const res = await observedUpload(
                     `/api/proxy/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`,
                     {
                         method: "POST",

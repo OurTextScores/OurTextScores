@@ -20,7 +20,11 @@ import { AppModule } from './app.module';
 import { HttpErrorFilter } from './common/http-error.filter';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
-import { rateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { createRateLimitMiddleware } from './common/middleware/rate-limit.middleware';
+import { AuthService } from './auth/auth.service';
+import { UsersService } from './users/users.service';
+import { UploadOperationsService } from './operations/upload-operations.service';
+import { observeUploads } from './operations/upload-observer.middleware';
 import { requestLogMiddleware } from './common/middleware/request-log.middleware';
 import { traceContextMiddleware } from './common/middleware/trace-context.middleware';
 import { startOpenTelemetry, stopOpenTelemetry } from './observability/otel';
@@ -51,7 +55,9 @@ async function bootstrap() {
   if (jsonRequestLogsEnabled) {
     app.use(requestLogMiddleware);
   }
-  app.use(rateLimitMiddleware);
+  const uploadOperations = app.get(UploadOperationsService);
+  app.use(observeUploads(uploadOperations));
+  app.use(createRateLimitMiddleware(app.get(AuthService), app.get(UsersService), uploadOperations));
   app.useGlobalFilters(new HttpErrorFilter());
 
   // Swagger API Documentation

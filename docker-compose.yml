@@ -58,6 +58,7 @@ services:
       DISABLE_IMSLP_REFRESH_RATE_LIMIT: ${DISABLE_IMSLP_REFRESH_RATE_LIMIT:-false}
       # Disable upload rate limiting for bulk imports (comma-separated rule names).
       RATE_LIMIT_DISABLED_RULES: ${RATE_LIMIT_DISABLED_RULES:-}
+      OPERATIONS_MONITOR_TOKEN: ${OPERATIONS_MONITOR_TOKEN:-}
       # OpenTelemetry (optional)
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-ourtextscores-backend}

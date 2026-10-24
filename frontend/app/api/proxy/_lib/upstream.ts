@@ -5,6 +5,7 @@ export function getBackendApiBase(): string {
 }
 
 const TRACE_HEADER_NAMES = [
+  "x-upload-attempt-id",
   "x-request-id",
   "x-trace-id",
   "x-client-session-id",
@@ -23,6 +24,15 @@ export function withTraceHeaders(request: Request, headers?: HeadersInit): Heade
     }
   }
   return merged;
+}
+
+export function uploadResponseHeaders(response: Response): Headers {
+  const headers = new Headers({ "content-type": response.headers.get("content-type") || "application/json", "cache-control": "no-store" });
+  for (const name of ["retry-after", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset", "x-upload-attempt-id"]) {
+    const value = response.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
 }
 
 export async function proxyFetch(
