@@ -69,10 +69,14 @@ async function signInViaEmail(page, request, email) {
   await input.fill(email);
   const submit = page.locator('button:has-text("sign-in link"), button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
   if (await submit.count()) await submit.first().click(); else await input.press('Enter');
+  // Let the form's own redirect finish first: Firefox lets it interrupt the magic-link navigation below.
+  await page.waitForURL(/\/api\/auth\/verify-request/, { timeout: 15000 });
 
   const magicUrl = await findMagicLinkFor(request, email);
   await page.goto(magicUrl);
   await page.goto(BASE_URL);
+  // '/' redirects to /welcome from a server component, which can land after goto resolves (seen in WebKit).
+  await page.waitForURL(/\/welcome/, { timeout: 15000 });
 }
 
 test.describe('Projects flow', () => {

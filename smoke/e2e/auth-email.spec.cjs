@@ -82,6 +82,8 @@ test.describe('Email auth (magic link)', () => {
     // NextAuth labels vary; click submit or press Enter
     const submit = page.locator('button:has-text("sign-in link"), button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
     if (await submit.count()) await submit.first().click(); else await input.press('Enter');
+    // Let the form's own redirect finish first: Firefox lets it interrupt the magic-link navigation below.
+    await page.waitForURL(/\/api\/auth\/verify-request/, { timeout: 15000 });
 
     // Poll Mailpit for the magic link
     const magicUrl = await findMagicLinkFor(request, email, undefined, undefined, alreadyDelivered);
@@ -90,6 +92,8 @@ test.describe('Email auth (magic link)', () => {
     // Complete sign-in and go to home to assert header session state
     await page.goto(magicUrl);
     await page.goto(BASE_URL);
+    // '/' redirects to /welcome from a server component, which can land after goto resolves (seen in WebKit).
+    await page.waitForURL(/\/welcome/, { timeout: 15000 });
     // Approvals page should be accessible with a session
     await page.goto(`${BASE_URL}/approvals`);
     await expect(page.locator('text=Approvals Inbox')).toBeVisible({ timeout: 15000 });

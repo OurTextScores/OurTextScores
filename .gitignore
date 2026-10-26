@@ -18,6 +18,7 @@ docs/agent/
 scripts/private/
 scripts/imslp-parsible/
 test-results/
+.playwright-runs/
 test_scores/
 smoke-test.log
 smoke-retest.log
