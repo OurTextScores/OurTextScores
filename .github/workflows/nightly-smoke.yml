@@ -1,0 +1,59 @@
+name: Nightly smoke
+
+# The Playwright smoke suite against the full Docker stack, on Chromium, Firefox
+# and WebKit. Specs gated on scanner/IMSLP environment variables skip themselves.
+on:
+  schedule:
+    - cron: '30 9 * * *' # 02:30 in Vancouver (PDT), after OTS_Web's browser run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke ${{ matrix.browser }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Root node_modules (Playwright) is partly tracked; npm ci makes it complete.
+      - run: npm ci
+      # Development defaults only; .env.example holds no real secrets.
+      - name: Environment
+        run: cp .env.example .env
+      - name: Stack
+        run: |
+          docker compose build backend frontend
+          docker compose up -d
+          node smoke/utils/wait.cjs
+      - name: Install ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Smoke (${{ matrix.browser }})
+        run: npx playwright test -c smoke/playwright.config.cjs --project=${{ matrix.browser }}
+      - name: Stack logs
+        if: failure()
+        run: docker compose logs --no-color --tail=300 > compose.log
+      - name: Failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.browser }}
+          path: |
+            test-results/
+            compose.log
+          retention-days: 7
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v --remove-orphans
