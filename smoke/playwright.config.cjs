@@ -42,6 +42,24 @@ module.exports = defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] }
+    },
+    // Cross-browser runs (Phase 10 of the OTS_Web playback plan). The existing npm scripts pass --project=chromium.
+    // On Ubuntu 26.04 hosts, run with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64.
+    {
+      name: 'firefox',
+      // PLAYWRIGHT_FIREFOX_EXECUTABLE=/path/to/firefox drives stock Firefox over WebDriver BiDi. Playwright's own Firefox
+      // build has no optimizing WebAssembly compiler, so the embedded editor runs 5-10x slower there than for users.
+      use: {
+        ...devices['Desktop Firefox'],
+        ...(process.env.PLAYWRIGHT_FIREFOX_EXECUTABLE
+          ? { channel: 'moz-firefox', launchOptions: { executablePath: process.env.PLAYWRIGHT_FIREFOX_EXECUTABLE } }
+          : {})
+      }
+    },
+    {
+      name: 'webkit',
+      // WebKit (WPE) hangs on its first page without a GPU render device; software GL works.
+      use: { ...devices['Desktop Safari'], launchOptions: { env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1' } } }
     }
   ]
 });
