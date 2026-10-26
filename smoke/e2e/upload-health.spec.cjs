@@ -11,7 +11,14 @@ const secret = process.env.NEXTAUTH_SECRET || 'dev-secret';
 
 test('admin sees upload failures and can reset only the chosen account', async ({ page, request }) => {
   test.skip(!['localhost', '127.0.0.1'].includes(new URL(BASE).hostname), 'Use an isolated local smoke stack');
-  const client = new MongoClient(process.env.MONGO_URI || 'mongodb://ots:change_me@localhost:27018/ourtextscores?authSource=admin');
+  // The host-side port, as admin-verification does: the config loads .env, whose MONGO_URI is the backend's
+  // in-container address (host "mongo"), unreachable from here. SMOKE_MONGO_URI overrides.
+  const mongoUser = encodeURIComponent(process.env.MONGO_INITDB_ROOT_USERNAME || 'ots');
+  const mongoPass = encodeURIComponent(process.env.MONGO_INITDB_ROOT_PASSWORD || 'change_me');
+  const mongoHost = `${process.env.MONGO_HOST || 'localhost'}:${process.env.MONGO_PORT || '27018'}`;
+  const client = new MongoClient(
+    process.env.SMOKE_MONGO_URI || `mongodb://${mongoUser}:${mongoPass}@${mongoHost}/${process.env.MONGO_DB || 'ourtextscores'}?authSource=admin`
+  );
   await client.connect();
   const db = client.db();
   const email = `upload-admin-${Date.now()}@example.test`;

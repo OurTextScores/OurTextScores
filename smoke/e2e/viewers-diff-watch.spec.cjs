@@ -57,6 +57,8 @@ test.describe('Viewers + Diff + Watch', () => {
     await page.fill('input[type="email"][name="email"]', email);
     const submit = page.locator('button:has-text("sign-in link"), button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
     if (await submit.count()) await submit.first().click(); else await page.keyboard.press('Enter');
+    // Let the form's own redirect finish first: it can interrupt the magic-link navigation below.
+    await page.waitForURL(/\/api\/auth\/verify-request/, { timeout: 15000 });
     const magic = await getMagicLink(request, email);
     await page.goto(magic);
 
@@ -66,14 +68,14 @@ test.describe('Viewers + Diff + Watch', () => {
     const work = works.find((w) => (w.availableFormats || []).length > 0) || works[0];
     await page.goto(`${BASE_URL}/works/${encodeURIComponent(work.workId)}`);
 
-    // The playback iframe stays behind both lazy source-card boundaries.
+    // Since the work-page redesign (3cb71b9) the recommended source opens with its preview playing; the other cards
+    // stay collapsed, so exactly one score engine starts.
     const firstSourceHeader = page.getByTestId('source-card-header').first();
     await expect(firstSourceHeader).toBeVisible();
-    await firstSourceHeader.click();
+    if ((await page.getByTestId('source-card-body').count()) === 0) await firstSourceHeader.click({ position: { x: 10, y: 10 } });
     const playerSummary = page.locator('summary', { hasText: 'Preview score' }).first();
     await expect(playerSummary).toBeVisible();
-    await expect(page.getByTestId('score-preview-frame')).toHaveCount(0);
-    await playerSummary.click();
+    await expect(page.getByTestId('score-preview-frame')).toHaveCount(1);
 
     const playerFrame = page.getByTestId('score-preview-frame').first();
     await expect(playerFrame).toHaveAttribute('allow', 'autoplay');

@@ -88,7 +88,8 @@ test.describe('Source Labeling', () => {
     await expect(page.locator('h1')).toBeVisible({ timeout: 10000 });
 
     // Find the upload form
-    await expect(page.locator('h2:has-text("Upload a new source")')).toBeVisible();
+    // The upload form is collapsed under "Add a source" since the work-page redesign (3cb71b9).
+    await page.locator('summary', { hasText: 'Add a source' }).click();
 
     // Fill in source title
     const labelInput = page.locator('input[placeholder*="Source Title"]');
@@ -99,7 +100,7 @@ test.describe('Source Labeling', () => {
     const descriptionInput = page.locator('input[placeholder*="Description"]').first();
     await descriptionInput.fill(sourceDescription);
 
-    const uploadButton = page.locator('section:has-text("Upload a new source") button:has-text("Upload Source")').first();
+    const uploadButton = page.locator('button[type="submit"]', { hasText: 'Upload new source' }).first();
     await expect(uploadButton).toBeVisible();
 
     // NOTE: We intentionally skip actual upload here to keep this test fast and robust.
@@ -125,7 +126,8 @@ test.describe('Source Labeling', () => {
     await expect(page.locator('h1')).toBeVisible({ timeout: 10000 });
 
     // Verify upload form has source title input
-    await expect(page.locator('h2:has-text("Upload a new source")')).toBeVisible();
+    // The upload form is collapsed under "Add a source" since the work-page redesign (3cb71b9).
+    await page.locator('summary', { hasText: 'Add a source' }).click();
     const sourceTitleInput = page.locator('input[placeholder*="Source Title"]');
     await expect(sourceTitleInput).toBeVisible();
 

@@ -54,7 +54,13 @@ test.describe('Reference PDF Filter', () => {
         for (const candidate of works) {
           const rawResp = await request.get(`${PUBLIC_API}/imslp/works/${encodeURIComponent(candidate.workId)}/raw`);
           if (!rawResp.ok()) continue;
-          const raw = await rawResp.json();
+          // Works without cached IMSLP data answer 200 with an empty body.
+          let raw;
+          try {
+            raw = JSON.parse((await rawResp.text()) || 'null');
+          } catch {
+            continue;
+          }
           const meta = raw?.metadata || {};
           const files = Array.isArray(meta.files) ? meta.files : [];
           const hasPdf = files.some((f) => {
