@@ -33,7 +33,8 @@
     "docker:clean": "docker compose down -v --remove-orphans",
     "smoke:status": "docker compose ps && docker stats --no-stream",
     "smoke": "npm run docker:clean && npm run smoke:up && npm run smoke:install && npm run smoke:run && npm run docker:clean",
-    "prepare": "node scripts/setup-git-hooks.cjs"
+    "prepare": "node scripts/setup-git-hooks.cjs",
+    "smoke:embed-contract": "node smoke/embed-contract/run.mjs"
   },
   "dependencies": {
     "csv-parse": "^6.1.0",

@@ -1,0 +1,59 @@
+name: Vendored editor contract
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'smoke/embed-contract/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/embed-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'smoke/embed-contract/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/embed-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: embed-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromium:
+    name: Host and vendored editor (Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Install test dependencies
+        run: npm ci
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Check host and editor contract
+        run: npm run smoke:embed-contract
+        env:
+          EMBED_CONTRACT_SCREENSHOT: ${{ runner.temp }}/embed-contract-failure.png
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: embed-contract-failure
+          path: ${{ runner.temp }}/embed-contract-failure.png
+          if-no-files-found: ignore
+          retention-days: 7
