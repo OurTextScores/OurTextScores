@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { FindingReview } from "./finding-review";
 
@@ -25,6 +25,7 @@ function sendIssue(issue: Record<string, unknown>) {
       new MessageEvent("message", {
         data: { type: "ots-finding-issue", ...issue },
         origin: window.location.origin,
+        source: (screen.getByTestId("finding-review-embed") as HTMLIFrameElement).contentWindow,
       }),
     );
   });
@@ -179,6 +180,50 @@ describe("FindingReview", () => {
       );
     });
     expect(screen.queryByTestId("finding-review-decision")).toBeNull();
+  });
+
+  it("isolates two finding frames and clears stale state when the reading changes", () => {
+    const onDecideA = jest.fn();
+    const onDecideB = jest.fn();
+    const first = render(<FindingReview {...PROPS} onDecide={onDecideA} />);
+    const viewA = within(first.container);
+    const frameA = viewA.getByTestId("finding-review-embed") as HTMLIFrameElement;
+    const sourceA = frameA.contentWindow;
+    const second = render(<FindingReview {...PROPS} pageNumber={4} onDecide={onDecideB} />);
+    const viewB = within(second.container);
+    const frameB = viewB.getByTestId("finding-review-embed") as HTMLIFrameElement;
+    const sourceB = frameB.contentWindow;
+    const dispatch = (source: MessageEventSource | null, data: unknown, origin = window.location.origin) =>
+      act(() => window.dispatchEvent(new MessageEvent("message", { source, origin, data })));
+    const message = { type: "ots-finding-issue", ...CLEF_ISSUE };
+    dispatch(sourceA, message);
+    expect(viewA.queryByTestId("finding-review-decision")).not.toBeNull();
+    expect(viewB.queryByTestId("finding-review-decision")).toBeNull();
+    dispatch(sourceA, { type: "ots-compare-height", height: 1800 });
+    expect(frameA).toHaveStyle({ height: "1800px" });
+    expect(frameB).toHaveStyle({ height: "640px" });
+    dispatch(null, message);
+    dispatch(sourceB, message, "https://wrong.example");
+    dispatch(sourceB, { ...message, index: Infinity });
+    dispatch(sourceB, { ...message, part: 42 });
+    dispatch(sourceB, { ...message, total: 0 });
+    expect(viewB.queryByTestId("finding-review-decision")).toBeNull();
+    dispatch(sourceB, message);
+    expect(viewB.queryByTestId("finding-review-decision")).not.toBeNull();
+    first.rerender(<FindingReview {...PROPS} readingUrl="/new-reading.xml" onDecide={onDecideA} />);
+    expect(viewA.queryByTestId("finding-review-decision")).toBeNull();
+    const replacement = viewA.getByTestId("finding-review-embed") as HTMLIFrameElement;
+    expect(replacement).not.toBe(frameA);
+    dispatch(sourceA, message);
+    expect(viewA.queryByTestId("finding-review-decision")).toBeNull();
+    dispatch(replacement.contentWindow, message);
+    expect(viewA.queryByTestId("finding-review-decision")).not.toBeNull();
+    first.rerender(<FindingReview {...PROPS} findings={[]} readingUrl="/new-reading.xml" onDecide={onDecideA} />);
+    first.rerender(<FindingReview {...PROPS} readingUrl="/new-reading.xml" onDecide={onDecideA} />);
+    expect(viewA.queryByTestId("finding-review-decision")).toBeNull();
+    second.unmount();
+    dispatch(sourceB, { type: "ots-compare-height", height: 3000 });
+    expect(viewA.getByTestId("finding-review-embed")).toHaveStyle({ height: "640px" });
   });
 
   it("ignores a message that names no kind", () => {

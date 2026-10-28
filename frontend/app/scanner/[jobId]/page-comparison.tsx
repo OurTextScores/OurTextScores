@@ -117,15 +117,18 @@ const FULL_BLEED_GUTTER = 16;
  * viewports. A minimum keeps the frame from collapsing while the readings load,
  * and a maximum is deliberately absent: the page's own scrollbar is the point.
  */
-function useEmbeddedCompareHeight(): number | null {
+function useEmbeddedCompareHeight(
+  frameRef: React.RefObject<HTMLIFrameElement>,
+  frameKey: string | undefined,
+): number | null {
   // Smallest change worth acting on; see the note in the handler below.
   const HYSTERESIS_PX = 2;
-  const [height, setHeight] = useState<number | null>(null);
+  const [snapshot, setSnapshot] = useState<{ key: string | undefined; height: number } | null>(null);
   useEffect(() => {
+    if (!frameKey) setSnapshot(null);
     const onMessage = (event: MessageEvent) => {
-      // Same-origin only: the embed is served from this site, and a height from
-      // anywhere else is not this editor talking.
-      if (event.origin !== window.location.origin) return;
+      const frame = frameRef.current?.contentWindow;
+      if (!frame || event.source !== frame || event.origin !== window.location.origin) return;
       const value =
         (event.data as { type?: string; height?: number } | null) || null;
       if (value?.type !== "ots-compare-height") return;
@@ -145,17 +148,18 @@ function useEmbeddedCompareHeight(): number | null {
        * on the boundary — but it is the same arithmetic, so it gets the same guard.
        */
       const next = Math.max(480, Math.ceil(value.height));
-      setHeight((current) =>
-        // The first height is always taken; there is nothing to compare it against.
-        current === null || Math.abs(current - next) >= HYSTERESIS_PX
-          ? next
+      setSnapshot((current) =>
+        !current ||
+        current.key !== frameKey ||
+        Math.abs(current.height - next) >= HYSTERESIS_PX
+          ? { key: frameKey, height: next }
           : current,
       );
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
-  return height;
+  }, [frameRef, frameKey]);
+  return snapshot && snapshot.key === frameKey ? snapshot.height : null;
 }
 
 function FullBleed({
@@ -321,7 +325,7 @@ export default function PageComparison({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const embeddedHeight = useEmbeddedCompareHeight();
+  const embeddedFrameRef = useRef<HTMLIFrameElement>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}`;
   const canCompareSelected = [baseEngine, candidateEngine].every((engineId) =>
     eligibleEngineIds.includes(engineId),
@@ -397,8 +401,6 @@ export default function PageComparison({
     page.pageNumber,
     reloadToken,
   ]);
-
-  if (plannedEngineIds.length < 2) return null;
 
   const engineName = (engineId: string) => {
     if (engineId === "ots-homr-core") return "OTS-HOMR base";
@@ -495,6 +497,8 @@ export default function PageComparison({
           : { compareBlock: String(selectedBlock.blockIndex) }),
       }).toString()}`
     : undefined;
+  const embeddedHeight = useEmbeddedCompareHeight(embeddedFrameRef, open ? embeddedCompareUrl : undefined);
+  if (plannedEngineIds.length < 2) return null;
 
   return (
     <section
@@ -737,6 +741,7 @@ export default function PageComparison({
                 {selectedBlock && embeddedCompareUrl && (
                   <FullBleed className="mt-4 bg-slate-100 p-3 dark:bg-slate-950/60">
                     <iframe
+                      ref={embeddedFrameRef}
                       key={embeddedCompareUrl}
                       src={embeddedCompareUrl}
                       /*
@@ -785,6 +790,7 @@ export default function PageComparison({
                 </p>
                 <FullBleed className="mt-3 bg-slate-100 p-3 dark:bg-slate-950/60">
                   <iframe
+                    ref={embeddedFrameRef}
                     key={embeddedCompareUrl}
                     src={embeddedCompareUrl}
                     title={`Reviewing page ${page.pageNumber}`}

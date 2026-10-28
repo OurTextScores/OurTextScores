@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 
@@ -152,6 +152,59 @@ describe("ChangeReviewDetailClient", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("refreshes only for the matching review iframe and ignores stale or foreign messages", async () => {
+    (fetch as jest.Mock).mockImplementation(async (url: unknown) => ({
+      ok: true, json: async () => String(url).includes("/diff") ? initialDiff : initialReview,
+    }) as never);
+    const first = render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={initialDiff} />);
+    const firstSource = first.container.querySelector("iframe")!.contentWindow;
+    const second = render(<ChangeReviewDetailClient initialReview={initialReview} initialDiff={initialDiff} />);
+    const secondSource = second.container.querySelector("iframe")!.contentWindow;
+    const send = (source: MessageEventSource | null, data: unknown, origin = window.location.origin) =>
+      act(() => window.dispatchEvent(new MessageEvent("message", { source, origin, data })));
+    const message = { type: "ots.change-review.updated", reviewId: "review-1" };
+    send(window, message);
+    send(null, message);
+    send(firstSource, message, "https://wrong.example");
+    send(firstSource, { ...message, reviewId: "other" });
+    expect(fetch).not.toHaveBeenCalled();
+    send(firstSource, message);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    second.unmount();
+    send(secondSource, message);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    first.unmount();
+    send(firstSource, message);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects messages from the previous iframe after changing review rounds", async () => {
+    const reviewWithRounds = { ...initialReview, patchsets: [
+      { patchsetNumber: 1, baseSequenceNumber: 1, headSequenceNumber: 2, createdAt: initialReview.createdAt },
+      { patchsetNumber: 2, baseSequenceNumber: 1, headSequenceNumber: 2, createdAt: initialReview.createdAt },
+    ] };
+    (fetch as jest.Mock).mockImplementation(async (url: unknown) => ({
+      ok: true, json: async () => String(url).includes("/diff") ? initialDiff : reviewWithRounds,
+    }) as never);
+    const view = render(<ChangeReviewDetailClient initialReview={reviewWithRounds} initialDiff={initialDiff} />);
+    const oldFrame = view.container.querySelector("iframe")!;
+    const oldSource = oldFrame.contentWindow;
+    await userEvent.setup().click(screen.getByRole("button", { name: /Round 1/ }));
+    await waitFor(() => expect(view.container.querySelector("iframe")).not.toBe(oldFrame));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    act(() => window.dispatchEvent(new MessageEvent("message", {
+      source: oldSource, origin: window.location.origin,
+      data: { type: "ots.change-review.updated", reviewId: "review-1" },
+    })));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const newSource = view.container.querySelector("iframe")!.contentWindow;
+    act(() => window.dispatchEvent(new MessageEvent("message", {
+      source: newSource, origin: window.location.origin,
+      data: { type: "ots.change-review.updated", reviewId: "review-1" },
+    })));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
   });
 
   it("creates a new thread and refreshes the review detail", async () => {

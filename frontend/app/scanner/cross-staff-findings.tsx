@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 
 import { amendmentFor } from "./finding-amendment";
 import type { ScannerCrossStaffFinding } from "./scanner-types";
@@ -197,29 +197,42 @@ export interface CurrentIssue {
   places: number;
 }
 
-export function useCurrentFindingIssue(): CurrentIssue | null {
-  const [issue, setIssue] = useState<CurrentIssue | null>(null);
+export function useCurrentFindingIssue(
+  frameRef: RefObject<HTMLIFrameElement>,
+  frameKey: string,
+): CurrentIssue | null {
+  const [snapshot, setSnapshot] = useState<{ key: string; issue: CurrentIssue } | null>(null);
   useEffect(() => {
+    if (!frameKey) setSnapshot(null);
     const onMessage = (event: MessageEvent) => {
-      // Same-origin only: the embed is served from this site, and an issue from anywhere
-      // else is not this editor talking.
-      if (event.origin !== window.location.origin) return;
+      const frame = frameRef.current?.contentWindow;
+      if (!frame || event.source !== frame || event.origin !== window.location.origin) return;
       const value = (event.data as (CurrentIssue & { type?: string }) | null) || null;
       if (value?.type !== "ots-finding-issue") return;
       if (typeof value.kind !== "string" || !value.kind) return;
-      setIssue({
-        kind: value.kind,
-        part: typeof value.part === "string" ? value.part : null,
-        message: typeof value.message === "string" ? value.message : "",
-        index: Number(value.index) || 0,
-        total: Number(value.total) || 0,
-        places: Number(value.places) || 0,
+      if (value.part !== null && typeof value.part !== "string") return;
+      if (typeof value.message !== "string") return;
+      if (
+        !Number.isInteger(value.index) || value.index < 0 ||
+        !Number.isInteger(value.total) || value.total < 1 || value.index >= value.total ||
+        !Number.isInteger(value.places) || value.places < 1
+      ) return;
+      setSnapshot({
+        key: frameKey,
+        issue: {
+          kind: value.kind,
+          part: value.part,
+          message: value.message,
+          index: value.index,
+          total: value.total,
+          places: value.places,
+        },
       });
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
-  return issue;
+  }, [frameRef, frameKey]);
+  return snapshot?.key === frameKey ? snapshot.issue : null;
 }
 
 export function CrossStaffFindings({

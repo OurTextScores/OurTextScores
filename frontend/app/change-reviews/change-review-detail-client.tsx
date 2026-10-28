@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import LocalDateTime from "../components/local-date-time";
 
 type ReviewDetail = {
@@ -191,9 +191,11 @@ export default function ChangeReviewDetailClient({
     }
   }, [diff.scoreRegions, selectedRegionAnchorId]);
 
+  const reviewFrameRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) {
+      const frame = reviewFrameRef.current?.contentWindow;
+      if (!frame || event.source !== frame || event.origin !== window.location.origin) {
         return;
       }
       const data = event.data && typeof event.data === "object" ? event.data as { type?: string; reviewId?: string } : null;
@@ -501,7 +503,8 @@ export default function ChangeReviewDetailClient({
         <div className="min-h-[820px]">
           <div className="min-w-0 bg-slate-100 p-3 dark:bg-slate-950/60">
             <iframe
-              key={`${diff.baseRevisionId}-${diff.headRevisionId}`}
+              ref={reviewFrameRef}
+              key={visualDiffUrl}
               src={visualDiffUrl}
               title="Score visual diff"
               className="h-[820px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"

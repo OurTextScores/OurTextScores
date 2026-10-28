@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { amendmentFor } from "./finding-amendment";
 import {
@@ -62,23 +62,32 @@ function titleFor(kind: string): string {
  */
 const HEIGHT_HYSTERESIS_PX = 2;
 
-function useEmbedHeight(): number {
-  const [height, setHeight] = useState(640);
+function useEmbedHeight(
+  frameRef: RefObject<HTMLIFrameElement>,
+  frameKey: string,
+): number {
+  const [snapshot, setSnapshot] = useState<{ key: string; height: number } | null>(null);
   useEffect(() => {
+    if (!frameKey) setSnapshot(null);
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+      const frame = frameRef.current?.contentWindow;
+      if (!frame || event.source !== frame || event.origin !== window.location.origin) return;
       const value = (event.data as { type?: string; height?: number } | null) || null;
       if (value?.type !== "ots-compare-height") return;
       if (typeof value.height !== "number" || !Number.isFinite(value.height)) return;
       const next = Math.max(480, Math.ceil(value.height));
-      setHeight((current) =>
-        Math.abs(current - next) >= HEIGHT_HYSTERESIS_PX ? next : current,
+      setSnapshot((current) =>
+        !current ||
+        current.key !== frameKey ||
+        Math.abs(current.height - next) >= HEIGHT_HYSTERESIS_PX
+          ? { key: frameKey, height: next }
+          : current,
       );
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, []);
-  return height;
+  }, [frameRef, frameKey]);
+  return snapshot?.key === frameKey ? snapshot.height : 640;
 }
 
 export function FindingReview({
@@ -107,11 +116,7 @@ export function FindingReview({
   }) => void | Promise<void>;
   onWithdraw?: (input: { kind: string; part: string | null }) => void | Promise<void>;
 }) {
-  const issue = useCurrentFindingIssue();
-  const height = useEmbedHeight();
-
-  if (findings.length === 0) return null;
-
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const base = `/api/proxy/scanner/jobs/${encodeURIComponent(jobId)}/pages/${pageNumber}`;
   const src = `/score-editor/index.html?${new URLSearchParams({
     compareLeft: readingUrl,
@@ -124,6 +129,11 @@ export function FindingReview({
     compareMode: "findings",
     leftLabel: "This reading",
   }).toString()}`;
+
+  const frameKey = findings.length ? src : "";
+  const issue = useCurrentFindingIssue(frameRef, frameKey);
+  const height = useEmbedHeight(frameRef, frameKey);
+  if (findings.length === 0) return null;
 
   // The standing decision for whatever the embed is showing. Part-specific beats
   // kind-wide, matching the server.
@@ -171,6 +181,8 @@ export function FindingReview({
       */}
       <div className="mt-3 overflow-hidden rounded border border-slate-200 bg-white dark:border-slate-700">
         <iframe
+          ref={frameRef}
+          key={src}
           data-testid="finding-review-embed"
           src={src}
           title="Review a cross-staff finding"

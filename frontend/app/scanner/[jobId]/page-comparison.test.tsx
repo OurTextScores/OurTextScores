@@ -1,6 +1,6 @@
 "use client";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import PageComparison from "./page-comparison";
 import { ScannerJob } from "../scanner-types";
 
@@ -267,6 +267,7 @@ describe("PageComparison", () => {
       new MessageEvent("message", {
         data: { type: "ots-compare-height", height: 2400 },
         origin: window.location.origin,
+        source: (frame as HTMLIFrameElement).contentWindow,
       }),
     );
 
@@ -290,6 +291,7 @@ describe("PageComparison", () => {
         new MessageEvent("message", {
           data: { type: "ots-compare-height", height },
           origin: window.location.origin,
+          source: (frame as HTMLIFrameElement).contentWindow,
         }),
       );
 
@@ -316,10 +318,45 @@ describe("PageComparison", () => {
       new MessageEvent("message", {
         data: { type: "ots-compare-height", height: 9000 },
         origin: "https://somewhere.example",
+        source: (frame as HTMLIFrameElement).contentWindow,
       }),
     );
 
     expect(frame).not.toHaveStyle({ height: "9000px" });
+  });
+
+  it("ignores same-origin messages from a different or missing frame", async () => {
+    render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    const frame = await screen.findByTitle(/Reconciling differences on page 1/);
+    for (const source of [window, null]) {
+      fireEvent(window, new MessageEvent("message", {
+        data: { type: "ots-compare-height", height: 9000 }, origin: window.location.origin, source,
+      }));
+    }
+    expect(frame).not.toHaveStyle({ height: "9000px" });
+    fireEvent(window, new MessageEvent("message", {
+      data: { type: "ots-compare-height", height: 1600 }, origin: window.location.origin,
+      source: (frame as HTMLIFrameElement).contentWindow,
+    }));
+    await waitFor(() => expect(frame).toHaveStyle({ height: "1600px" }));
+  });
+
+  it("keeps simultaneous comparison frames independent", async () => {
+    const a = render(<PageComparison jobId="job-1" job={job} page={page} open />);
+    const b = render(<PageComparison jobId="job-2" job={job} page={page} open />);
+    const frameA = await within(a.container).findByTitle(/Reconciling differences on page 1/) as HTMLIFrameElement;
+    const frameB = await within(b.container).findByTitle(/Reconciling differences on page 1/) as HTMLIFrameElement;
+    fireEvent(window, new MessageEvent("message", {
+      data: { type: "ots-compare-height", height: 1600 }, origin: window.location.origin, source: frameA.contentWindow,
+    }));
+    await waitFor(() => expect(frameA).toHaveStyle({ height: "1600px" }));
+    expect(frameB).not.toHaveStyle({ height: "1600px" });
+    const stale = frameA.contentWindow;
+    a.unmount();
+    fireEvent(window, new MessageEvent("message", {
+      data: { type: "ots-compare-height", height: 2200 }, origin: window.location.origin, source: stale,
+    }));
+    expect(frameB).not.toHaveStyle({ height: "2200px" });
   });
 
   it("opens on the first difference that has a place on the scan", async () => {
