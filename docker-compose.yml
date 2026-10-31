@@ -264,7 +264,7 @@ services:
       - appnet
 
   minio:
-    image: minio/minio:RELEASE.2024-04-18T19-09-19Z
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2024-04-18T19-09-19Z}
     container_name: ourtextscores_minio
     restart: unless-stopped
     ports:
