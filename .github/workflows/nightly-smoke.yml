@@ -12,6 +12,8 @@ on:
     paths:
       - '.github/workflows/nightly-smoke.yml'
       - 'smoke/utils/wait.cjs'
+      - 'smoke/utils/seed-ci.cjs'
+      - 'smoke/utils/check-abc-conversion.cjs'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +52,13 @@ jobs:
           ref: 382ce1a2f4c0369fc27f45443a20e935f3742816 # v3.2.0
           path: OTS_Web
           lfs: true
+      # The conversion API uses these scripts through Compose's read-only mount.
+      - name: Checkout ABC conversion tools
+        uses: actions/checkout@v4
+        with:
+          repository: ElectricAlexis/NotaGen
+          ref: 4553cd743b6b449732baf2a6cc58885fe853b11d
+          path: NotaGen
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -65,6 +74,8 @@ jobs:
       - name: Verify editor source matches the vendored engine
         run: |
           test -f ../OTS_Web/package.json
+          test -f ../NotaGen/data/abc2xml.py
+          test -f ../NotaGen/data/xml2abc.py
           cmp ../OTS_Web/public/webmscore.lib.wasm frontend/public/score-editor/webmscore.lib.wasm
           cmp ../OTS_Web/public/webmscore.lib.data frontend/public/score-editor/webmscore.lib.data
       - name: Verify smoke test discovery
@@ -74,6 +85,8 @@ jobs:
           docker compose build backend frontend
           docker compose up -d
           node smoke/utils/wait.cjs
+      - name: Verify ABC conversion
+        run: node smoke/utils/check-abc-conversion.cjs
       - name: Install ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Seed smoke-test work

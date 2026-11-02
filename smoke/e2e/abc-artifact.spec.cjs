@@ -48,7 +48,7 @@ test.describe('ABC Artifact Storage and Download', () => {
       }
     });
 
-    expect(uploadResp.ok()).toBeTruthy();
+    expect(uploadResp.ok(), `ABC upload failed (${uploadResp.status()}): ${await uploadResp.text()}`).toBeTruthy();
     const uploadJson = await uploadResp.json();
     const sourceId = uploadJson.sourceId;
     expect(sourceId).toBeTruthy();
