@@ -36,7 +36,9 @@ function waitFor(url, timeoutMs = 60000) {
   ];
   for (const t of targets) {
     process.stdout.write(`Waiting for ${t} ...\n`);
-    await waitFor(t, 120000);
+    // The editor container installs system and npm dependencies on a cold CI
+    // runner before starting Next; give that service more time than the others.
+    await waitFor(t, t === 'http://localhost:4010/api/music/convert' ? 300000 : 120000);
   }
   console.log('All services are healthy.');
 })().catch((err) => {

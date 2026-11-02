@@ -5,6 +5,13 @@ name: Nightly smoke
 on:
   schedule:
     - cron: '30 9 * * *' # 02:30 in Vancouver (PDT), after OTS_Web's browser run
+  # Exercise changes to the smoke workflow itself immediately, rather than
+  # waiting until the next scheduled run to discover a broken stack setup.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nightly-smoke.yml'
+      - 'smoke/utils/wait.cjs'
   workflow_dispatch:
 
 permissions:
@@ -22,6 +29,9 @@ jobs:
     # disposable CI stack; existing deployments can select their own image.
     env:
       MINIO_IMAGE: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    defaults:
+      run:
+        working-directory: OurTextScores
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -29,6 +39,17 @@ jobs:
         browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: OurTextScores
+      # Compose mounts ../OTS_Web into the score-editor API container. Keep this
+      # revision aligned with the vendored static editor; LFS supplies its engine.
+      - name: Checkout score-editor API source
+        uses: actions/checkout@v4
+        with:
+          repository: OurTextScores/OTS_WebEditor
+          ref: 382ce1a2f4c0369fc27f45443a20e935f3742816 # v3.2.0
+          path: OTS_Web
+          lfs: true
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -37,6 +58,11 @@ jobs:
       # Development defaults only; .env.example holds no real secrets.
       - name: Environment
         run: cp .env.example .env
+      - name: Verify editor source matches the vendored engine
+        run: |
+          test -f ../OTS_Web/package.json
+          cmp ../OTS_Web/public/webmscore.lib.wasm frontend/public/score-editor/webmscore.lib.wasm
+          cmp ../OTS_Web/public/webmscore.lib.data frontend/public/score-editor/webmscore.lib.data
       - name: Stack
         run: |
           docker compose build backend frontend
@@ -55,8 +81,8 @@ jobs:
         with:
           name: smoke-${{ matrix.browser }}
           path: |
-            test-results/
-            compose.log
+            OurTextScores/test-results/
+            OurTextScores/compose.log
           retention-days: 7
       - name: Stop stack
         if: always()
