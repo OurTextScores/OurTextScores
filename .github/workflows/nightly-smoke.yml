@@ -55,6 +55,9 @@ jobs:
           node-version: '20'
       # Root node_modules (Playwright) is partly tracked; npm ci makes it complete.
       - run: npm ci
+      # Some smoke specs use the frontend's next-auth package to create test sessions.
+      # Docker's frontend build installs its dependencies inside the image only.
+      - run: npm ci --prefix frontend
       # Development defaults only; .env.example holds no real secrets.
       - name: Environment
         run: cp .env.example .env
@@ -63,6 +66,8 @@ jobs:
           test -f ../OTS_Web/package.json
           cmp ../OTS_Web/public/webmscore.lib.wasm frontend/public/score-editor/webmscore.lib.wasm
           cmp ../OTS_Web/public/webmscore.lib.data frontend/public/score-editor/webmscore.lib.data
+      - name: Verify smoke test discovery
+        run: npx playwright test -c smoke/playwright.config.cjs --list
       - name: Stack
         run: |
           docker compose build backend frontend
