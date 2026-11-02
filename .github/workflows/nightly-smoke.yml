@@ -55,9 +55,10 @@ jobs:
           node-version: '20'
       # Root node_modules (Playwright) is partly tracked; npm ci makes it complete.
       - run: npm ci
-      # Some smoke specs use the frontend's next-auth package to create test sessions.
-      # Docker's frontend build installs its dependencies inside the image only.
+      # Smoke specs import frontend and backend packages on the runner; Docker's
+      # builds install those dependencies inside the images only.
       - run: npm ci --prefix frontend
+      - run: npm ci --prefix backend
       # Development defaults only; .env.example holds no real secrets.
       - name: Environment
         run: cp .env.example .env
