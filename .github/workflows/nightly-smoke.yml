@@ -76,6 +76,8 @@ jobs:
           node smoke/utils/wait.cjs
       - name: Install ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Seed smoke-test work
+        run: node smoke/utils/seed-ci.cjs
       - name: Smoke (${{ matrix.browser }})
         run: npx playwright test -c smoke/playwright.config.cjs --project=${{ matrix.browser }}
       - name: Stack logs
