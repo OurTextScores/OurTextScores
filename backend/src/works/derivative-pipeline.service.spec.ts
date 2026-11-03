@@ -244,6 +244,80 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     });
   });
 
+  describe('MNX uploads', () => {
+    const mnxInput = (originalFilename: string, format = 'application/vnd.mnx+json') => ({
+      workId: '1',
+      sourceId: 's-mnx',
+      sequenceNumber: 1,
+      format,
+      originalFilename,
+      buffer: Buffer.from(
+        '{"mnx": {"version": 1}, "global": {"measures": [{}]}, "parts": []}'
+      ),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s-mnx/raw',
+        sizeBytes: 90,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/vnd.mnx+json',
+        lastModifiedAt: new Date()
+      }
+    });
+    const exportingRunCommand = () =>
+      jest.fn(async (_cmd: string, args: string[]) => {
+        if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+          await fs.writeFile(args[1], Buffer.from(args[1].endsWith('.pdf') ? '%PDF-1.4\n' : 'mxl'));
+        }
+        return { stdout: '', stderr: '' };
+      });
+
+    it('stores the original MNX and converts it to MusicXML through MuseScore', async () => {
+      const runSpy = exportingRunCommand();
+      (service as any).runCommand = runSpy;
+
+      const out = await service.process(mnxInput('piece.mnx'));
+
+      expect(out.pending).toBe(false);
+      expect(out.derivatives.mnx).toBeTruthy();
+      expect(out.derivatives.canonicalXml).toBeTruthy();
+      expect(out.derivatives.normalizedMxl).toBeTruthy();
+      expect(
+        (service as any).storeDerivative.mock.calls.some(
+          (call: any[]) => call[0].endsWith('/score.mnx') && call[2] === 'application/vnd.mnx+json'
+        )
+      ).toBe(true);
+      const mnxExport = runSpy.mock.calls.find(
+        (call: any[]) => call[1][0] === '--export-to' && call[1][1].endsWith('mnx-converted.mxl')
+      );
+      expect(mnxExport?.[1][2]).toMatch(/piece\.mnx$/);
+    });
+
+    it('hands MuseScore a .mnx file when the MNX was uploaded as .json', async () => {
+      const runSpy = exportingRunCommand();
+      (service as any).runCommand = runSpy;
+
+      await service.process(mnxInput('piece.json'));
+
+      const mnxExport = runSpy.mock.calls.find(
+        (call: any[]) => call[1][0] === '--export-to' && call[1][1].endsWith('mnx-converted.mxl')
+      );
+      expect(mnxExport?.[1][2]).toMatch(/score\.mnx$/);
+    });
+
+    it('keeps the original but marks the revision pending when MuseScore cannot read it', async () => {
+      (service as any).runCommand = jest.fn(async () => {
+        throw new Error('MuseScore exited with code 40');
+      });
+
+      const out = await service.process(mnxInput('broken.mnx'));
+
+      expect(out.pending).toBe(true);
+      expect(out.derivatives.mnx).toBeTruthy();
+      expect(out.derivatives.canonicalXml).toBeFalsy();
+      expect(out.notes.join('\n')).toContain('Could not convert MNX file to MusicXML');
+    });
+  });
+
   it('falls back to secondary MuseScore command when primary export fails', async () => {
     process.env.MUSESCORE_CLI = 'musescore4';
     const local = new DerivativePipelineService(storage, progress);

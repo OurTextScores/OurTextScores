@@ -309,6 +309,33 @@ describe('SourceCard', () => {
         );
     });
 
+    it('offers the original MNX file of an MNX upload', () => {
+        const withMnx: SourceView = {
+            ...mockSource,
+            derivatives: {
+                mnx: {
+                    bucket: 'derivs', objectKey: 'score.mnx', sizeBytes: 10,
+                    contentType: 'application/vnd.mnx+json',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z'
+                }
+            }
+        };
+        renderWithProviders(
+            <SourceCard
+                source={withMnx}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(screen.getByRole('link', { name: 'Download MNX' })).toHaveAttribute(
+            'href',
+            expect.stringContaining('/works/work-123/sources/source-1/score.mnx')
+        );
+    });
+
     it('keeps the body out of the server HTML, even for a card that starts open', () => {
         // The body formats dates in the reader's locale and builds URLs from window.location.
         // Rendered on the server it would not match the browser's first render, and React

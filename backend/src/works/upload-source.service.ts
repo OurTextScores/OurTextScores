@@ -266,6 +266,7 @@ export class UploadSourceService {
     this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
     this.handleAbcFailure(format, derivativeOutcome, progressId);
     this.handleMeiFailure(format, derivativeOutcome, progressId);
+    this.handleMnxFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -727,6 +728,7 @@ export class UploadSourceService {
     this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
     this.handleAbcFailure(format, derivativeOutcome, progressId);
     this.handleMeiFailure(format, derivativeOutcome, progressId);
+    this.handleMnxFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -1118,6 +1120,27 @@ export class UploadSourceService {
     throw new BadRequestException(message);
   }
 
+  private handleMnxFailure(
+    format: string,
+    outcome: DerivativePipelineResult,
+    progressId?: string
+  ): void {
+    if (format !== 'application/vnd.mnx+json') {
+      return;
+    }
+    if (outcome.derivatives?.canonicalXml) {
+      return;
+    }
+
+    this.progress.publish(progressId, 'Derivative pipeline failed for MNX file', 'pipeline.error');
+    this.progress.publish(progressId, 'Done', 'done');
+    this.progress.complete(progressId);
+
+    throw new BadRequestException(
+      'Could not process MNX file. MuseScore reads MNX that validates to the MNX schema; please verify the file and try again.'
+    );
+  }
+
   private handleMeiFailure(
     format: string,
     outcome: DerivativePipelineResult,
@@ -1199,6 +1222,9 @@ export class UploadSourceService {
       if (normalizedHint === 'mei' || normalizedHint.includes('mei+xml')) {
         return 'application/mei+xml';
       }
+      if (normalizedHint === 'mnx' || normalizedHint.includes('mnx+json')) {
+        return 'application/vnd.mnx+json';
+      }
       if (normalizedHint.includes('kern') || normalizedHint.includes('krn')) {
         return 'application/x-kern';
       }
@@ -1232,6 +1258,13 @@ export class UploadSourceService {
         return 'application/x-kern';
       case '.mei':
         return 'application/mei+xml';
+      case '.mnx':
+        return 'application/vnd.mnx+json';
+      case '.json':
+        if (this.isMnxDocument(file)) {
+          return 'application/vnd.mnx+json';
+        }
+        break;
       case '.xml':
       case '.musicxml':
         // MEI is XML too; its root tells it apart.
@@ -1256,6 +1289,12 @@ export class UploadSourceService {
     if (mime === 'application/mei+xml') {
       return 'application/mei+xml';
     }
+    if (
+      mime === 'application/vnd.mnx+json' ||
+      (mime === 'application/json' && this.isMnxDocument(file))
+    ) {
+      return 'application/vnd.mnx+json';
+    }
     if (mime === 'application/xml' || mime === 'text/xml') {
       return this.isMeiDocument(file) ? 'application/mei+xml' : 'application/xml';
     }
@@ -1277,8 +1316,19 @@ export class UploadSourceService {
     }
 
     throw new BadRequestException(
-      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn, .abc, .mei.'
+      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn, .abc, .mei, .mnx.'
     );
+  }
+
+  /** An MNX document: a JSON object with "mnx" (its version) and "global" members. */
+  private isMnxDocument(file: Express.Multer.File): boolean {
+    if (!file.buffer?.length || file.buffer[0] !== 0x7b) return false;
+    try {
+      const doc: unknown = JSON.parse(file.buffer.toString('utf8'));
+      return typeof doc === 'object' && doc !== null && 'mnx' in doc && 'global' in doc;
+    } catch {
+      return false;
+    }
   }
 
   /** An MEI document: its root element is <mei>, in the MEI namespace. */

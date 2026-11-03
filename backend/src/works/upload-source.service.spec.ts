@@ -806,6 +806,57 @@ describe('UploadSourceService (unit)', () => {
     expect(sourceModel.create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['score.mnx', 'application/octet-stream'],
+    ['score.json', 'application/json'],
+  ])('upload() resolves %s (%s) holding MNX to the MNX format', async (originalname, mimetype) => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mnx', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: false,
+      notes: ['ok'],
+      manifest: undefined,
+      derivatives: {
+        canonicalXml: { bucket: 'der', objectKey: '10/s1/rev-0001/canonical.xml', sizeBytes: 3, checksum: { algorithm: 'sha256', hexDigest: 'x' }, contentType: 'application/xml', lastModifiedAt: new Date() }
+      }
+    });
+    fossilService.commitRevision = jest.fn().mockResolvedValue({ artifactId: 'abc', repositoryPath: '/repo', branchName: 'trunk' });
+    storageService.getObjectBuffer.mockResolvedValue(Buffer.from('<xml/>'));
+
+    const buffer = Buffer.from('{"mnx": {"version": 1}, "global": {"measures": [{}]}, "parts": []}');
+    const file = { originalname, mimetype, size: buffer.length, buffer } as any;
+    const res = await service.upload('10', { label: 'Uploaded source' }, file, undefined, 'pid');
+
+    expect(res.status).toBe('accepted');
+    expect(derivativePipeline.process).toHaveBeenCalledWith(
+      expect.objectContaining({ format: 'application/vnd.mnx+json', originalFilename: originalname })
+    );
+  });
+
+  it('upload() fails for MNX files when pipeline cannot produce core derivatives', async () => {
+    worksService.ensureWork = jest.fn().mockResolvedValue({ workId: '10', sourceCount: 0, availableFormats: [] });
+    sourceRevisionModel.findOne.mockReturnValue({ sort: () => ({ lean: () => ({}) }) });
+    storageService.putRawObject.mockResolvedValue({ bucket: 'raw', objectKey: '10/s1/raw/file.mnx', etag: 'e' });
+    derivativePipeline.process = jest.fn().mockResolvedValue({
+      pending: true,
+      notes: ['Could not convert MNX file to MusicXML'],
+      derivatives: {},
+      manifest: undefined,
+      manifestData: undefined
+    });
+
+    const file = { originalname: 'score.mnx', mimetype: 'application/vnd.mnx+json', size: 20, buffer: Buffer.from('{}') } as any;
+
+    await expect(
+      service.upload('10', { label: 'Uploaded MNX' }, file, undefined, 'pid')
+    ).rejects.toMatchObject({
+      constructor: BadRequestException,
+      message: expect.stringContaining('Could not process MNX file')
+    });
+    expect(sourceModel.create).not.toHaveBeenCalled();
+  });
+
   it('upload() fails for ABC files when pipeline cannot produce core derivatives', async () => {
     worksService.ensureWork = jest
       .fn()

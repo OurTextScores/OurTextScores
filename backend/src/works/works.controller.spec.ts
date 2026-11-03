@@ -796,6 +796,43 @@ describe('WorksController (unit)', () => {
     });
   });
 
+  describe('downloadMnx', () => {
+    it('should download MNX file and set attachment disposition', async () => {
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'example.mnx',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k-mnx',
+          sizeBytes: 1024,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/vnd.mnx+json',
+          lastModifiedAt: new Date()
+        }
+      });
+      storageService.getObjectBuffer.mockResolvedValue(
+        Buffer.from('{}')
+      );
+      const { res, headers } = createMockResponse();
+
+      await downloadsController.downloadMnx('1', 's', undefined, res as any, undefined);
+
+      expect(headers['Content-Type']).toContain('application/vnd.mnx+json');
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['Content-Disposition']).toContain('example.mnx');
+      expect(headers['Cache-Control']).toBe('no-cache');
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should throw not found when MNX is missing', async () => {
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
+      const { res } = createMockResponse();
+
+      await expect(
+        downloadsController.downloadMnx('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('MNX file not found for this source');
+    });
+  });
+
   describe('downloadManifest', () => {
     it('should download manifest JSON', async () => {
       worksService.resolveDownloadAsset.mockResolvedValue({

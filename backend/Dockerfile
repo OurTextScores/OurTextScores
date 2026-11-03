@@ -2,7 +2,7 @@
 
 FROM ubuntu:22.04 AS base
 
-ARG MUSESCORE4_APPIMAGE_URL="https://github.com/musescore/MuseScore/releases/download/v4.6.3/MuseScore-Studio-4.6.3.252940956-x86_64.AppImage"
+ARG MUSESCORE4_APPIMAGE_URL="https://github.com/musescore/MuseScore/releases/download/v4.7.6/MuseScore-Studio-4.7.6.261022093-x86_64.AppImage"
 ARG MUSESCORE_CLI=musescore4
 ENV DEBIAN_FRONTEND=noninteractive \
     QT_QPA_PLATFORM=offscreen \

@@ -62,7 +62,7 @@ This file orients future agents quickly: what the project does, how it’s wired
   - Backend: `MONGO_URI`, `INTERNAL_API_URL`, `MINIO_URL` or `MINIO_{ENDPOINT,PORT,USE_SSL}`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `FOSSIL_PATH`, `MEILI_HOST`, `MEILI_MASTER_KEY`.
   - Frontend: `NEXT_PUBLIC_API_URL` (browser) and `INTERNAL_API_URL` (server) used by `app/lib/api.ts`.
 - Docker volumes (host‑relative): `../mongo_data`, `../minio_data`, `../meilisearch_data`, `../fossil_data`.
-- Tooling required in backend container: `musescore4` (default, v4.6.3 via AppImage), `musescore3` (fallback), `python3` packages `imslp`, `PyPDF2`, and `fossil`.
+- Tooling required in backend container: `musescore4` (default, v4.7.6 via AppImage: the first release build with MNX; the editor engine is 4.7.4), `musescore3` (fallback), `python3` packages `imslp`, `PyPDF2`, and `fossil`.
 - MuseScore CLI selection: Set via `MUSESCORE_CLI` env var (default: `musescore4`). Both v3 and v4 are installed for compatibility.
 
 ## Run / Dev Quickstart
@@ -234,7 +234,7 @@ This file orients future agents quickly: what the project does, how it’s wired
 - **Watches**: Users can follow sources; notifications sent to watchers on new revisions
 - **Fossil VCS Integration**: Per-source repositories with commit, branch support, artifact tracking, parent chain
 - **IMSLP Integration**: Metadata fetching, MongoDB caching, enrichment via MediaWiki API + Python `imslp_enrich.py`
-- **MuseScore 4 Support**: MuseScore 4.6.3 working headlessly in Docker via AppImage extraction and direct binary invocation; supports `.mscz` files created with MuseScore 4 (previously unsupported)
+- **MuseScore 4 Support**: MuseScore 4 (4.7.6 since 2026-11-03) working headlessly in Docker via AppImage extraction and direct binary invocation; supports `.mscz` files created with MuseScore 4 (previously unsupported)
 - **MSCZ Artifact Storage**: When users upload `.mscz` files, the original MuseScore file is stored as a derivative artifact and available for download via `score.mscz` endpoint; includes UI badge for downloading original MuseScore files
 - **Derivative Pipeline**: MuseScore 4 conversion (.mscz → .mxl), MSCZ artifact storage, canonical XML extraction, PDF generation
 - **Diff Viewers**: Text diffs (canonical/manifest via diff2html) and score editor visual comparisons; supports non-adjacent revision pairs
@@ -355,7 +355,7 @@ Each revision includes `manifest.json` with tool versions, checksums, timestamps
 - **Implementation**: `derivative-pipeline.service.ts:200-230`
 
 ### MuseScore 4 Headless Execution
-MuseScore 4.6.3 runs in Docker via AppImage extraction and direct binary invocation, not via AppRun wrapper.
+MuseScore 4.7.6 runs in Docker via AppImage extraction and direct binary invocation, not via AppRun wrapper.
 - **Rationale**: AppImage's AppRun wrapper expects full multimedia stack (Qt/xcb, PipeWire, audio); direct binary with xvfb works headlessly
 - **Key requirements**: Extract AppImage, call `/opt/musescore4/bin/mscore4portable` directly, use xvfb with GLX extension, 60-second timeout, `libpipewire-0.3-0` dependency
 - **Trade-off**: More complex setup than simple AppImage execution, but enables headless batch processing

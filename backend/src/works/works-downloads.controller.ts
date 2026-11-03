@@ -518,6 +518,65 @@ export class WorksDownloadsController {
     );
   }
 
+  @Get(':workId/sources/:sourceId/score.mnx')
+  @UseGuards(AuthOptionalGuard)
+  @ApiTags('derivatives')
+  @ApiOperation({
+    summary: 'Download MNX file',
+    description: 'Get the original MNX (.mnx) file for a source or specific revision'
+  })
+  @ApiParam({ name: 'workId', description: 'Work ID', example: '164349' })
+  @ApiParam({ name: 'sourceId', description: 'Source ID' })
+  @ApiQuery({
+    name: 'r',
+    required: false,
+    description: 'Revision ID (optional, defaults to latest)'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'MNX file returned',
+    content: { 'application/vnd.mnx+json': {} }
+  })
+  @ApiResponse({ status: 404, description: 'MNX file not found for this source' })
+  async downloadMnx(
+    @Param('workId') workId: string,
+    @Param('sourceId') sourceId: string,
+    @Query('r') revisionId: string | undefined,
+    @Res() res: Response,
+    @CurrentUser() user?: RequestUser,
+    @Req() req?: Request
+  ) {
+    const { sourceOriginalFilename, locator } = await this.resolveDownloadAssetOrThrow(
+      {
+        workId,
+        sourceId,
+        revisionId,
+        user,
+        kind: 'mnx'
+      },
+      'MNX file not found for this source'
+    );
+    const buffer = await this.storageService.getObjectBuffer(locator.bucket, locator.objectKey);
+    const baseName = (sourceOriginalFilename || 'score').replace(/\.[^.]+$/, '') + '.mnx';
+    if (req) {
+      this.trackScoreDownloaded(req, user, {
+        workId,
+        sourceId,
+        revisionId,
+        fileFormat: 'other',
+        routePath: req.originalUrl ?? req.url
+      });
+    }
+    this.sendBuffer(
+      res,
+      buffer,
+      baseName,
+      locator.contentType || 'application/vnd.mnx+json; charset=utf-8',
+      !!revisionId,
+      'attachment'
+    );
+  }
+
   @Get(':workId/sources/:sourceId/reference.pdf')
   @UseGuards(AuthOptionalGuard)
   @ApiTags('derivatives')

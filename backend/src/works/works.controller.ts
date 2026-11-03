@@ -438,7 +438,7 @@ export class WorksController {
         file: {
           type: 'string',
           format: 'binary',
-          description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, .abc, or .mei)'
+          description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, .abc, .mei, or .mnx)'
         },
         referencePdf: {
           type: 'string',
@@ -577,7 +577,7 @@ export class WorksController {
         file: {
           type: 'string',
           format: 'binary',
-          description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, .abc, or .mei)'
+          description: 'Score file (.mscz, .mscx, .musicxml, .mxl, .xml, .krn, .abc, .mei, or .mnx)'
         },
         referencePdf: {
           type: 'string',

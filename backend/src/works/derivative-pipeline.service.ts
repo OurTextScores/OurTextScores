@@ -384,6 +384,38 @@ export class DerivativePipelineService {
           normalizedMxlPath = undefined;
           notes.push(`Could not convert MEI file to MusicXML: ${this.readableError(err)}`);
         }
+      } else if (this.isMnxFile(extension, format)) {
+        derivatives.mnx = await this.storeDerivative(
+          `${derivativesBaseKey}/score.mnx`,
+          input.buffer,
+          'application/vnd.mnx+json'
+        );
+        notes.push('Original MNX file stored.');
+        publish('Stored MNX file', 'store.mnx');
+
+        // MuseScore (4.7+) picks its importer by extension; MNX uploaded as .json is read as MNX too, but name it .mnx.
+        const mnxPath = extension === '.mnx' ? inputPath : join(workspace, 'score.mnx');
+        if (mnxPath !== inputPath) {
+          await fs.writeFile(mnxPath, input.buffer);
+        }
+        normalizedMxlPath = join(workspace, 'mnx-converted.mxl');
+        try {
+          const conversion = await this.runMuseScoreExport(
+            mnxPath,
+            normalizedMxlPath,
+            'MNX to compressed MXL'
+          );
+          normalizedMxlBuffer = await fs.readFile(normalizedMxlPath);
+          const canonical = await this.extractCanonicalXml(normalizedMxlPath, workspace);
+          canonicalPath = canonical.path;
+          canonicalBuffer = canonical.buffer;
+          notes.push(`MuseScore conversion of MNX to MusicXML completed (${conversion.command}).`);
+          publish('MNX conversion completed', 'deriv.mnx2mxl');
+        } catch (err) {
+          pending = true;
+          normalizedMxlPath = undefined;
+          notes.push(`Could not convert MNX file to MusicXML: ${this.readableError(err)}`);
+        }
       } else if (this.isCompressedMusicXml(extension, format)) {
         normalizedMxlPath = inputPath;
         normalizedMxlBuffer = input.buffer;
@@ -542,6 +574,9 @@ export class DerivativePipelineService {
       }
       if (derivatives.mei) {
         artifacts.push({ type: 'mei', locator: derivatives.mei });
+      }
+      if (derivatives.mnx) {
+        artifacts.push({ type: 'mnx', locator: derivatives.mnx });
       }
 
       const manifestData: DerivativeManifest = {
@@ -731,6 +766,9 @@ export class DerivativePipelineService {
     if (this.isMeiFile(extension, format)) {
       return 'score.mei';
     }
+    if (this.isMnxFile(extension, format)) {
+      return 'score.mnx';
+    }
     if (this.isPlainMusicXml(extension, format)) {
       return 'score.xml';
     }
@@ -777,6 +815,10 @@ export class DerivativePipelineService {
 
   private isKernFile(extension: string, format: string): boolean {
     return extension === '.krn' || format === 'application/x-kern' || format === 'text/x-kern';
+  }
+
+  private isMnxFile(extension: string, format: string): boolean {
+    return extension === '.mnx' || format === 'application/vnd.mnx+json';
   }
 
   private isMeiFile(extension: string, format: string): boolean {

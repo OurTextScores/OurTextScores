@@ -25,6 +25,9 @@ export class DerivativeArtifacts {
   mei?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })
+  mnx?: StorageLocator;
+
+  @Prop({ type: StorageLocatorSchema })
   referencePdf?: StorageLocator;
 
   @Prop({ type: StorageLocatorSchema })

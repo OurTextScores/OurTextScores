@@ -166,6 +166,25 @@ describe("standalone score player", () => {
     );
   });
 
+  it("loads a local MNX file", async () => {
+    const user = userEvent.setup();
+    createObjectURL.mockReturnValueOnce("blob:https://www.ourtextscores.com/mnx");
+    render(<PlayerClient initialScoreUrl="" />);
+
+    await user.upload(
+      screen.getByLabelText("Load file"),
+      new File(['{"mnx": {"version": 1}, "global": {}}'], "piece.mnx", {
+        type: "application/vnd.mnx+json",
+      }),
+    );
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Playback of piece.mnx")).toHaveAttribute(
+      "src",
+      expect.stringContaining("blob%3Ahttps%3A%2F%2Fwww.ourtextscores.com%2Fmnx"),
+    );
+  });
+
   it("rejects unsupported local file types", () => {
     render(<PlayerClient initialScoreUrl="" />);
 

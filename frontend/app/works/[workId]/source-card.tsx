@@ -379,7 +379,7 @@ function StorageBadge({
     validationStatus
 }: {
     label: string;
-    kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'krn' | 'abc' | 'mei' | 'referencePdf' | 'manifest';
+    kind: 'normalizedMxl' | 'canonicalXml' | 'pdf' | 'mscz' | 'krn' | 'abc' | 'mei' | 'mnx' | 'referencePdf' | 'manifest';
     locator?: StorageLocator;
     workId: string;
     sourceId: string;
@@ -422,6 +422,9 @@ function StorageBadge({
             break;
         case 'mei':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mei${r}`;
+            break;
+        case 'mnx':
+            href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/score.mnx${r}`;
             break;
         case 'referencePdf':
             href = `${PUBLIC_API_BASE}/works/${encodeURIComponent(workId)}/sources/${encodeURIComponent(sourceId)}/reference.pdf`;
@@ -540,6 +543,7 @@ export default function SourceCard({
         source.derivatives?.krn ||
         source.derivatives?.abc ||
         source.derivatives?.mei ||
+        source.derivatives?.mnx ||
         source.hasReferencePdf
     );
 
@@ -725,6 +729,9 @@ export default function SourceCard({
                                 {source.derivatives?.mei && (
                                     <MenuLink href={fileHref('score.mei')}>Download MEI</MenuLink>
                                 )}
+                                {source.derivatives?.mnx && (
+                                    <MenuLink href={fileHref('score.mnx')}>Download MNX</MenuLink>
+                                )}
                                 {source.hasReferencePdf && (
                                     <MenuLink href={fileHref('reference.pdf')}>Download Reference PDF</MenuLink>
                                 )}
@@ -849,6 +856,15 @@ export default function SourceCard({
                                     label="MEI"
                                     kind="mei"
                                     locator={latest.derivatives?.mei}
+                                    workId={workId}
+                                    sourceId={source.sourceId}
+                                    revisionId={latest.revisionId}
+                                    validationStatus={latest.validation.status}
+                                />
+                                <StorageBadge
+                                    label="MNX"
+                                    kind="mnx"
+                                    locator={latest.derivatives?.mnx}
                                     workId={workId}
                                     sourceId={source.sourceId}
                                     revisionId={latest.revisionId}

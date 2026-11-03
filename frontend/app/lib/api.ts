@@ -100,6 +100,7 @@ export interface DerivativeArtifacts {
   krn?: StorageLocator;
   abc?: StorageLocator;
   mei?: StorageLocator;
+  mnx?: StorageLocator;
   referencePdf?: StorageLocator;
   manifest?: StorageLocator;
   thumbnail?: StorageLocator;
