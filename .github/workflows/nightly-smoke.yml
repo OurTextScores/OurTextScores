@@ -1,6 +1,6 @@
 name: Nightly smoke
 
-# The Playwright smoke suite against the full Docker stack, on Chromium, Firefox
+# The Playwright smoke suite against the application stack, on Chromium, Firefox
 # and WebKit. Specs gated on scanner/IMSLP environment variables skip themselves.
 on:
   schedule:
@@ -84,7 +84,9 @@ jobs:
       - name: Stack
         run: |
           docker compose build backend frontend
-          docker compose up -d
+          # This suite does not exercise MusicVAE. Starting only frontend and
+          # its dependencies avoids building its multi-GB TensorFlow image.
+          docker compose up -d frontend
           node smoke/utils/wait.cjs
       - name: Verify ABC conversion
         run: node smoke/utils/check-abc-conversion.cjs
