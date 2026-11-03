@@ -31,7 +31,9 @@ test.describe('Viewers + Diff + Watch', () => {
     // stay collapsed, so exactly one score engine starts.
     const firstSourceHeader = page.getByTestId('source-card-header').first();
     await expect(firstSourceHeader).toBeVisible();
-    if ((await page.getByTestId('source-card-body').count()) === 0) await firstSourceHeader.click({ position: { x: 10, y: 10 } });
+    // The recommended card opens after hydration. A one-shot count followed by
+    // a click can race that effect and close the card just as it opens.
+    await expect(page.getByTestId('source-card-body')).toHaveCount(1, { timeout: 30000 });
     const playerSummary = page.locator('summary', { hasText: 'Preview score' }).first();
     await expect(playerSummary).toBeVisible();
     await expect(page.getByTestId('score-preview-frame')).toHaveCount(1);
