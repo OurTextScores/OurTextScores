@@ -352,6 +352,38 @@ export class DerivativePipelineService {
           pending = true;
           notes.push(`Could not convert ABC file to MusicXML: ${this.readableError(err)}`);
         }
+      } else if (this.isMeiFile(extension, format)) {
+        derivatives.mei = await this.storeDerivative(
+          `${derivativesBaseKey}/score.mei`,
+          input.buffer,
+          'application/mei+xml'
+        );
+        notes.push('Original MEI file stored.');
+        publish('Stored MEI file', 'store.mei');
+
+        // MuseScore picks its importer by extension; an MEI file uploaded as .xml must be read as MEI.
+        const meiPath = extension === '.mei' ? inputPath : join(workspace, 'score.mei');
+        if (meiPath !== inputPath) {
+          await fs.writeFile(meiPath, input.buffer);
+        }
+        normalizedMxlPath = join(workspace, 'mei-converted.mxl');
+        try {
+          const conversion = await this.runMuseScoreExport(
+            meiPath,
+            normalizedMxlPath,
+            'MEI to compressed MXL'
+          );
+          normalizedMxlBuffer = await fs.readFile(normalizedMxlPath);
+          const canonical = await this.extractCanonicalXml(normalizedMxlPath, workspace);
+          canonicalPath = canonical.path;
+          canonicalBuffer = canonical.buffer;
+          notes.push(`MuseScore conversion of MEI to MusicXML completed (${conversion.command}).`);
+          publish('MEI conversion completed', 'deriv.mei2mxl');
+        } catch (err) {
+          pending = true;
+          normalizedMxlPath = undefined;
+          notes.push(`Could not convert MEI file to MusicXML: ${this.readableError(err)}`);
+        }
       } else if (this.isCompressedMusicXml(extension, format)) {
         normalizedMxlPath = inputPath;
         normalizedMxlBuffer = input.buffer;
@@ -507,6 +539,9 @@ export class DerivativePipelineService {
       }
       if (derivatives.abc) {
         artifacts.push({ type: 'abc', locator: derivatives.abc });
+      }
+      if (derivatives.mei) {
+        artifacts.push({ type: 'mei', locator: derivatives.mei });
       }
 
       const manifestData: DerivativeManifest = {
@@ -693,6 +728,9 @@ export class DerivativePipelineService {
     if (this.isKernFile(extension, format)) {
       return 'score.krn';
     }
+    if (this.isMeiFile(extension, format)) {
+      return 'score.mei';
+    }
     if (this.isPlainMusicXml(extension, format)) {
       return 'score.xml';
     }
@@ -739,6 +777,10 @@ export class DerivativePipelineService {
 
   private isKernFile(extension: string, format: string): boolean {
     return extension === '.krn' || format === 'application/x-kern' || format === 'text/x-kern';
+  }
+
+  private isMeiFile(extension: string, format: string): boolean {
+    return extension === '.mei' || format === 'application/mei+xml';
   }
 
   private isAbcFile(extension: string, format: string): boolean {

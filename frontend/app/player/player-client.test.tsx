@@ -147,6 +147,25 @@ describe("standalone score player", () => {
     );
   });
 
+  it("loads a local MEI file", async () => {
+    const user = userEvent.setup();
+    createObjectURL.mockReturnValueOnce("blob:https://www.ourtextscores.com/mei");
+    render(<PlayerClient initialScoreUrl="" />);
+
+    await user.upload(
+      screen.getByLabelText("Load file"),
+      new File(['<mei xmlns="http://www.music-encoding.org/ns/mei" />'], "piece.mei", {
+        type: "application/mei+xml",
+      }),
+    );
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Playback of piece.mei")).toHaveAttribute(
+      "src",
+      expect.stringContaining("blob%3Ahttps%3A%2F%2Fwww.ourtextscores.com%2Fmei"),
+    );
+  });
+
   it("rejects unsupported local file types", () => {
     render(<PlayerClient initialScoreUrl="" />);
 

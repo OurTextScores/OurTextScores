@@ -282,6 +282,33 @@ describe('SourceCard', () => {
         expect(screen.queryByRole('link', { name: 'Download KRN' })).not.toBeInTheDocument();
     });
 
+    it('offers the original MEI file of an MEI upload', () => {
+        const withMei: SourceView = {
+            ...mockSource,
+            derivatives: {
+                mei: {
+                    bucket: 'derivs', objectKey: 'score.mei', sizeBytes: 10,
+                    contentType: 'application/mei+xml',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z'
+                }
+            }
+        };
+        renderWithProviders(
+            <SourceCard
+                source={withMei}
+                workId="work-123"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+        expect(screen.getByRole('link', { name: 'Download MEI' })).toHaveAttribute(
+            'href',
+            expect.stringContaining('/works/work-123/sources/source-1/score.mei')
+        );
+    });
+
     it('keeps the body out of the server HTML, even for a card that starts open', () => {
         // The body formats dates in the reader's locale and builds URLs from window.location.
         // Rendered on the server it would not match the browser's first render, and React

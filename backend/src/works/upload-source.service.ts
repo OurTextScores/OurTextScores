@@ -265,6 +265,7 @@ export class UploadSourceService {
     });
     this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
     this.handleAbcFailure(format, derivativeOutcome, progressId);
+    this.handleMeiFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -725,6 +726,7 @@ export class UploadSourceService {
     });
     this.handleMuseScoreFailure(format, derivativeOutcome, progressId);
     this.handleAbcFailure(format, derivativeOutcome, progressId);
+    this.handleMeiFailure(format, derivativeOutcome, progressId);
     this.progress.publish(progressId, 'Derivative pipeline finished', 'pipeline.done');
 
     const revisionId = uuidv4();
@@ -1116,6 +1118,27 @@ export class UploadSourceService {
     throw new BadRequestException(message);
   }
 
+  private handleMeiFailure(
+    format: string,
+    outcome: DerivativePipelineResult,
+    progressId?: string
+  ): void {
+    if (format !== 'application/mei+xml') {
+      return;
+    }
+    if (outcome.derivatives?.canonicalXml) {
+      return;
+    }
+
+    this.progress.publish(progressId, 'Derivative pipeline failed for MEI file', 'pipeline.error');
+    this.progress.publish(progressId, 'Done', 'done');
+    this.progress.complete(progressId);
+
+    throw new BadRequestException(
+      'Could not process MEI file. MuseScore reads MEI Basic; please verify the file and try again.'
+    );
+  }
+
   private handleAbcFailure(
     format: string,
     outcome: DerivativePipelineResult,
@@ -1173,6 +1196,9 @@ export class UploadSourceService {
       if (normalizedHint.includes('abc')) {
         return 'text/vnd.abc';
       }
+      if (normalizedHint === 'mei' || normalizedHint.includes('mei+xml')) {
+        return 'application/mei+xml';
+      }
       if (normalizedHint.includes('kern') || normalizedHint.includes('krn')) {
         return 'application/x-kern';
       }
@@ -1204,9 +1230,12 @@ export class UploadSourceService {
         return 'text/vnd.abc';
       case '.krn':
         return 'application/x-kern';
+      case '.mei':
+        return 'application/mei+xml';
       case '.xml':
       case '.musicxml':
-        return 'application/xml';
+        // MEI is XML too; its root tells it apart.
+        return this.isMeiDocument(file) ? 'application/mei+xml' : 'application/xml';
       default:
         break;
     }
@@ -1224,8 +1253,11 @@ export class UploadSourceService {
     ) {
       return 'application/vnd.recordare.musicxml';
     }
+    if (mime === 'application/mei+xml') {
+      return 'application/mei+xml';
+    }
     if (mime === 'application/xml' || mime === 'text/xml') {
-      return 'application/xml';
+      return this.isMeiDocument(file) ? 'application/mei+xml' : 'application/xml';
     }
     if (
       mime === 'application/x-kern' ||
@@ -1245,8 +1277,14 @@ export class UploadSourceService {
     }
 
     throw new BadRequestException(
-      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn, .abc.'
+      'Unsupported file format. Accepted: .mscz, .mscx, .mxl, .xml, .krn, .abc, .mei.'
     );
+  }
+
+  /** An MEI document: its root element is <mei>, in the MEI namespace. */
+  private isMeiDocument(file: Express.Multer.File): boolean {
+    const head = file.buffer?.subarray(0, 4096).toString('utf8') ?? '';
+    return /<mei[\s>]/.test(head) && head.includes('music-encoding.org/ns/mei');
   }
 
   private normalizeOriginalMsczFile(

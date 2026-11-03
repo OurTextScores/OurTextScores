@@ -199,6 +199,7 @@ export type DownloadAssetKind =
   | 'mscz'
   | 'krn'
   | 'abc'
+  | 'mei'
   | 'referencePdf'
   | 'thumbnail'
   | 'manifest';
@@ -1132,6 +1133,7 @@ except Exception:
       add(src.derivatives?.mscz);
       add(src.derivatives?.krn);
       add(src.derivatives?.abc);
+      add(src.derivatives?.mei);
       add(src.derivatives?.referencePdf);
       add((src as any).derivatives?.linearizedXml);
       add(src.derivatives?.manifest);
@@ -1144,6 +1146,7 @@ except Exception:
         add(rev.derivatives?.mscz);
         add(rev.derivatives?.krn);
         add(rev.derivatives?.abc);
+        add(rev.derivatives?.mei);
         add(rev.derivatives?.referencePdf);
         add((rev as any).derivatives?.linearizedXml);
         add((rev as any).derivatives?.musicDiffReport);
@@ -1230,6 +1233,7 @@ except Exception:
       add(src.derivatives?.mscz);
       add(src.derivatives?.krn);
       add(src.derivatives?.abc);
+      add(src.derivatives?.mei);
       add(src.derivatives?.referencePdf);
       add((src as any).derivatives?.linearizedXml);
       add(src.derivatives?.manifest);
@@ -1242,6 +1246,7 @@ except Exception:
         add(rev.derivatives?.mscz);
         add(rev.derivatives?.krn);
         add(rev.derivatives?.abc);
+        add(rev.derivatives?.mei);
         add(rev.derivatives?.referencePdf);
         add((rev as any).derivatives?.linearizedXml);
         add((rev as any).derivatives?.musicDiffReport);
@@ -1320,6 +1325,7 @@ except Exception:
     add(src.derivatives?.mscz);
     add(src.derivatives?.krn);
     add(src.derivatives?.abc);
+    add(src.derivatives?.mei);
     add(src.derivatives?.referencePdf);
     add((src as any).derivatives?.linearizedXml);
     add(src.derivatives?.manifest);
@@ -1332,6 +1338,7 @@ except Exception:
       add(rev.derivatives?.mscz);
       add(rev.derivatives?.krn);
       add(rev.derivatives?.abc);
+      add(rev.derivatives?.mei);
       add(rev.derivatives?.referencePdf);
       add((rev as any).derivatives?.linearizedXml);
       add((rev as any).derivatives?.musicDiffReport);

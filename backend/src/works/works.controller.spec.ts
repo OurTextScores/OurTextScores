@@ -759,6 +759,43 @@ describe('WorksController (unit)', () => {
     });
   });
 
+  describe('downloadMei', () => {
+    it('should download MEI file and set attachment disposition', async () => {
+      worksService.resolveDownloadAsset.mockResolvedValue({
+        sourceOriginalFilename: 'example.mei',
+        locator: {
+          bucket: 'b',
+          objectKey: 'k-mei',
+          sizeBytes: 1024,
+          checksum: { algorithm: 'sha256', hexDigest: 'x' },
+          contentType: 'application/mei+xml',
+          lastModifiedAt: new Date()
+        }
+      });
+      storageService.getObjectBuffer.mockResolvedValue(
+        Buffer.from('<mei/>')
+      );
+      const { res, headers } = createMockResponse();
+
+      await downloadsController.downloadMei('1', 's', undefined, res as any, undefined);
+
+      expect(headers['Content-Type']).toContain('application/mei+xml');
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['Content-Disposition']).toContain('example.mei');
+      expect(headers['Cache-Control']).toBe('no-cache');
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should throw not found when MEI is missing', async () => {
+      worksService.resolveDownloadAsset.mockRejectedValue(new NotFoundException('missing'));
+      const { res } = createMockResponse();
+
+      await expect(
+        downloadsController.downloadMei('1', 's', undefined, res as any, undefined)
+      ).rejects.toThrow('MEI file not found for this source');
+    });
+  });
+
   describe('downloadManifest', () => {
     it('should download manifest JSON', async () => {
       worksService.resolveDownloadAsset.mockResolvedValue({

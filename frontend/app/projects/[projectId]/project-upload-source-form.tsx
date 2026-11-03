@@ -280,7 +280,7 @@ export default function ProjectUploadSourceForm({ projectId }: { projectId: stri
           <input
             ref={fileInputRef}
             type="file"
-            accept=".mscz,.mscx,.mxl,.xml,.krn,.abc"
+            accept=".mscz,.mscx,.mxl,.xml,.krn,.abc,.mei"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="hidden"
           />

@@ -170,6 +170,80 @@ describe('DerivativePipelineService (unit, mocked IO)', () => {
     expect(out.derivatives.pdf).toBeFalsy();
   });
 
+  describe('MEI uploads', () => {
+    const meiInput = (originalFilename: string, format = 'application/mei+xml') => ({
+      workId: '1',
+      sourceId: 's-mei',
+      sequenceNumber: 1,
+      format,
+      originalFilename,
+      buffer: Buffer.from(
+        '<?xml version="1.0"?><mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.1+basic"/>'
+      ),
+      rawStorage: {
+        bucket: 'raw',
+        objectKey: '1/s-mei/raw',
+        sizeBytes: 90,
+        checksum: { algorithm: 'sha256', hexDigest: 'r' },
+        contentType: 'application/mei+xml',
+        lastModifiedAt: new Date()
+      }
+    });
+    const exportingRunCommand = () =>
+      jest.fn(async (_cmd: string, args: string[]) => {
+        if (Array.isArray(args) && args[0] === '--export-to' && typeof args[1] === 'string') {
+          await fs.writeFile(args[1], Buffer.from(args[1].endsWith('.pdf') ? '%PDF-1.4\n' : 'mxl'));
+        }
+        return { stdout: '', stderr: '' };
+      });
+
+    it('stores the original MEI and converts it to MusicXML through MuseScore', async () => {
+      const runSpy = exportingRunCommand();
+      (service as any).runCommand = runSpy;
+
+      const out = await service.process(meiInput('piece.mei'));
+
+      expect(out.pending).toBe(false);
+      expect(out.derivatives.mei).toBeTruthy();
+      expect(out.derivatives.canonicalXml).toBeTruthy();
+      expect(out.derivatives.normalizedMxl).toBeTruthy();
+      expect(
+        (service as any).storeDerivative.mock.calls.some(
+          (call: any[]) => call[0].endsWith('/score.mei') && call[2] === 'application/mei+xml'
+        )
+      ).toBe(true);
+      const meiExport = runSpy.mock.calls.find(
+        (call: any[]) => call[1][0] === '--export-to' && call[1][1].endsWith('mei-converted.mxl')
+      );
+      expect(meiExport?.[1][2]).toMatch(/piece\.mei$/);
+    });
+
+    it('hands MuseScore a .mei file when the MEI was uploaded as .xml', async () => {
+      const runSpy = exportingRunCommand();
+      (service as any).runCommand = runSpy;
+
+      await service.process(meiInput('piece.xml'));
+
+      const meiExport = runSpy.mock.calls.find(
+        (call: any[]) => call[1][0] === '--export-to' && call[1][1].endsWith('mei-converted.mxl')
+      );
+      expect(meiExport?.[1][2]).toMatch(/score\.mei$/);
+    });
+
+    it('keeps the original but marks the revision pending when MuseScore cannot read it', async () => {
+      (service as any).runCommand = jest.fn(async () => {
+        throw new Error('MuseScore exited with code 40');
+      });
+
+      const out = await service.process(meiInput('broken.mei'));
+
+      expect(out.pending).toBe(true);
+      expect(out.derivatives.mei).toBeTruthy();
+      expect(out.derivatives.canonicalXml).toBeFalsy();
+      expect(out.notes.join('\n')).toContain('Could not convert MEI file to MusicXML');
+    });
+  });
+
   it('falls back to secondary MuseScore command when primary export fails', async () => {
     process.env.MUSESCORE_CLI = 'musescore4';
     const local = new DerivativePipelineService(storage, progress);

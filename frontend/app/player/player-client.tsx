@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-const SCORE_FILE_ACCEPT = ".musicxml,.xml,.mxl,.mscx,.mscz";
-const SUPPORTED_SCORE_FILE = /\.(?:musicxml|xml|mxl|mscx|mscz)$/i;
+const SCORE_FILE_ACCEPT = ".musicxml,.xml,.mxl,.mscx,.mscz,.mei";
+const SUPPORTED_SCORE_FILE = /\.(?:musicxml|xml|mxl|mscx|mscz|mei)$/i;
 
 type ActiveScore = {
   key: string;
@@ -138,7 +138,7 @@ export default function PlayerClient({
     event.target.value = "";
     if (!file) return;
     if (!SUPPORTED_SCORE_FILE.test(file.name)) {
-      setError("Choose a MusicXML (.musicxml, .xml, .mxl) or MuseScore (.mscx, .mscz) file.");
+      setError("Choose a MusicXML (.musicxml, .xml, .mxl), MuseScore (.mscx, .mscz) or MEI (.mei) file.");
       return;
     }
 
@@ -216,8 +216,8 @@ export default function PlayerClient({
             </div>
           </div>
           <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            Supported files: MusicXML (.musicxml, .xml, .mxl) and MuseScore
-            (.mscx, .mscz). Local files stay in your browser and are not uploaded.
+            Supported files: MusicXML (.musicxml, .xml, .mxl), MuseScore
+            (.mscx, .mscz) and MEI (.mei). Local files stay in your browser and are not uploaded.
           </p>
           {error && (
             <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">

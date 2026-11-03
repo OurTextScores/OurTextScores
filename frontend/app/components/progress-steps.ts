@@ -11,7 +11,7 @@ export function stepDefs(): StepDef[] {
     {
       id: 'deriv.mscz2mxl',
       label: 'Server conversion',
-      variants: ['deriv.mscz2mxl', 'deriv.canonical', 'deriv.xml2mxl', 'deriv.krn2xml', 'deriv.abc2xml']
+      variants: ['deriv.mscz2mxl', 'deriv.canonical', 'deriv.xml2mxl', 'deriv.krn2xml', 'deriv.abc2xml', 'deriv.mei2mxl']
     },
     {
       id: 'deriv.pdf',
