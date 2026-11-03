@@ -113,7 +113,15 @@ test.describe('Admin Source Verification', () => {
     await new Promise(resolve => setTimeout(resolve, 5000));
   });
 
-  test.afterAll(async ({}) => {
+  test.afterAll(async ({ request }) => {
+    // Playwright may replace the worker after a failure. Remove its source so
+    // a verified source from the old worker cannot affect the replacement.
+    if (workId && sourceId && test.adminToken) {
+      const deleted = await request.delete(`${PUBLIC_API}/works/${workId}/sources/${sourceId}`, {
+        headers: { Authorization: `Bearer ${test.adminToken}` }
+      });
+      expect(deleted.ok(), `Could not remove verification fixture (${deleted.status()})`).toBeTruthy();
+    }
     // Cleanup - delete test users from MongoDB
     const MongoClient = require('mongodb').MongoClient;
     const mongoUrl = buildMongoUrl();
@@ -159,20 +167,27 @@ test.describe('Admin Source Verification', () => {
   });
 
   test('verified sources appear in filtered search', async ({ request }) => {
-    // Search with verification filter
-    const searchResp = await request.get(
-      `${PUBLIC_API}/works?filter=${encodeURIComponent('hasVerifiedSources = true')}`
-    );
-
-    expect(searchResp.ok()).toBeTruthy();
-    const searchData = await searchResp.json();
-
-    const foundWork = searchData.works.find(w => w.workId === workId);
-    expect(foundWork).toBeTruthy();
-    expect(foundWork.hasVerifiedSources).toBe(true);
+    // Each test must work after Playwright replaces a failed worker.
+    const verified = await request.post(`${PUBLIC_API}/works/${workId}/sources/${sourceId}/verify`, {
+      data: { note: 'Verified for search' }, headers: { Authorization: `Bearer ${test.adminToken}` }
+    });
+    expect(verified.ok()).toBeTruthy();
+    // Meilisearch applies indexing tasks asynchronously after accepting them.
+    await expect.poll(async () => {
+      const response = await request.get(
+        `${PUBLIC_API}/works?filter=${encodeURIComponent('hasVerifiedSources = true')}`
+      );
+      if (!response.ok()) return false;
+      const data = await response.json();
+      return data.works.some(w => w.workId === workId && w.hasVerifiedSources === true);
+    }, { timeout: 30000, message: 'Verified work should appear in filtered search' }).toBe(true);
   });
 
   test('admin can remove verification', async ({ request }) => {
+    const verified = await request.post(`${PUBLIC_API}/works/${workId}/sources/${sourceId}/verify`, {
+      data: { note: 'Verified before removal' }, headers: { Authorization: `Bearer ${test.adminToken}` }
+    });
+    expect(verified.ok()).toBeTruthy();
     // Remove verification
     const removeResp = await request.delete(
       `${PUBLIC_API}/works/${workId}/sources/${sourceId}/verify`,
@@ -195,8 +210,8 @@ test.describe('Admin Source Verification', () => {
     expect(source.adminVerificationNote).toBeUndefined();
     expect(source.adminVerifiedAt).toBeUndefined();
 
-    // Check work no longer has hasVerifiedSources flag
-    expect(workDetail.hasVerifiedSources).toBe(false);
+    // Other sources may be verified independently of this one.
+    expect(workDetail.hasVerifiedSources).toBe(workDetail.sources.some(s => s.adminVerified));
   });
 
   test('regular user cannot verify a source', async ({ request }) => {

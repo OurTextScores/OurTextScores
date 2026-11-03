@@ -95,7 +95,6 @@ test.describe('Owned branch + approvals flow', () => {
     const rev = src.revisions.find((r) => r.revisionId === uploadedRevisionId);
     expect(rev).toBeTruthy();
     expect(rev.fossilBranch).toBe(branchName);
-    const sourceLabel = src.label || sourceId;
 
     // Verify branches endpoints do not contain a stray branch with an extra dot
     const declared = await request.get(`${PUBLIC_API}/works/${encodeURIComponent(work.workId)}/sources/${encodeURIComponent(sourceId)}/branches`);
@@ -120,7 +119,8 @@ test.describe('Owned branch + approvals flow', () => {
     // reviews moved to the shared branch flow; the branches panel inside the
     // source card is the surface that replaced it.
     await page.goto(`${BASE_URL}/works/${encodeURIComponent(work.workId)}?source=${encodeURIComponent(sourceId)}`);
-    const card = page.locator('article', { hasText: sourceLabel }).first();
+    // Source labels are not unique; target the exact source used above.
+    const card = page.locator(`article[id="source-${sourceId}"]`);
     await expect(card).toBeVisible({ timeout: 20000 });
     const branchesPanel = card.locator('section', { hasText: 'Branches' }).last();
     await expect(branchesPanel).toBeVisible({ timeout: 20000 });
