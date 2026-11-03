@@ -14,6 +14,7 @@ on:
       - 'smoke/utils/wait.cjs'
       - 'smoke/utils/seed-ci.cjs'
       - 'smoke/utils/check-abc-conversion.cjs'
+      - 'smoke/e2e/viewers-diff-watch.spec.cjs'
   workflow_dispatch:
 
 permissions:

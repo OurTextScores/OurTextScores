@@ -1,66 +1,25 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { encode } = require('../../frontend/node_modules/next-auth/jwt');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const PUBLIC_API = process.env.PUBLIC_API || 'http://localhost:4000/api';
-const MAILPIT = process.env.MAILPIT_URL || 'http://localhost:8025';
-
-async function listMessages(request) {
-  const v1 = await request.get(`${MAILPIT}/api/v1/messages?limit=50`);
-  if (v1.ok()) {
-    const data = await v1.json();
-    return Array.isArray(data?.messages) ? data.messages : (Array.isArray(data) ? data : []);
-  }
-  const legacy = await request.get(`${MAILPIT}/api/msgs`);
-  if (legacy.ok()) return await legacy.json();
-  return [];
-}
-
-async function getMagicLink(request, toEmail, timeoutMs = 30000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const msgs = await listMessages(request);
-    for (const m of msgs) {
-      const toList = (m.To || m.to || []).map((t) => (typeof t === 'string' ? t : t.Address || t.address)).filter(Boolean);
-      const subj = m.Subject || m.subject || '';
-      if (toList.find((t) => String(t).toLowerCase().includes(toEmail.toLowerCase())) && String(subj).includes('Sign in')) {
-        const id = m.ID || m.Id || m.id || m.MessageID || m.messageId;
-        if (!id) continue;
-        const msgResp = await request.get(`${MAILPIT}/api/v1/message/${id}`);
-        if (msgResp.ok()) {
-          const data = await msgResp.json();
-          const html = data?.HTML || '';
-          const text = data?.Text || '';
-          let match = html.match(/href=\"(http[^\"]+\/api\/auth\/callback\/email[^\"]*)\"/i);
-          if (match && match[1]) return match[1];
-          match = text.match(/(http[^\s]+\/api\/auth\/callback\/email[^\s]*)/i);
-          if (match && match[1]) return match[1];
-        }
-      }
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error('Magic link not found');
-}
-
 test.describe('Viewers + Diff + Watch', () => {
-  test('renders playback/PDF and diff, and toggles watch', async ({ page, request }) => {
+  test('renders playback/PDF and diff, and toggles watch', async ({ page, context, request }) => {
     const email = process.env.SMOKE_EMAIL || 'smoke@example.test';
-    // Sign in
-    await page.goto(`${BASE_URL}/api/auth/signin`);
-    const input = page.locator('input[type="email"][name="email"]');
-    if (!(await input.count())) {
-      const btn = page.locator('button:has-text("Email"), a:has-text("Email")');
-      if (await btn.count()) await btn.first().click();
-    }
-    await expect(page.locator('input[type="email"][name="email"]')).toBeVisible({ timeout: 5000 });
-    await page.fill('input[type="email"][name="email"]', email);
-    const submit = page.locator('button:has-text("sign-in link"), button:has-text("Sign in with Email"), button:has-text("Send magic link"), button:has-text("Sign in")');
-    if (await submit.count()) await submit.first().click(); else await page.keyboard.press('Enter');
-    // Let the form's own redirect finish first: it can interrupt the magic-link navigation below.
-    await page.waitForURL(/\/api\/auth\/verify-request/, { timeout: 15000 });
-    const magic = await getMagicLink(request, email);
-    await page.goto(magic);
+    // Email sign-in is covered separately; this test needs an authenticated viewer.
+    await context.addCookies([{
+      name: 'next-auth.session-token',
+      url: BASE_URL,
+      value: await encode({
+        token: { email, sub: email },
+        secret: process.env.NEXTAUTH_SECRET || 'dev-secret',
+        maxAge: 3600
+      })
+    }]);
+    const sessionResponse = await context.request.get(`${BASE_URL}/api/auth/session`);
+    expect(sessionResponse.ok()).toBeTruthy();
+    expect((await sessionResponse.json()).user?.email).toBe(email);
 
     // Choose a work with derivatives
     const worksResp = await request.get(`${PUBLIC_API}/works`);
