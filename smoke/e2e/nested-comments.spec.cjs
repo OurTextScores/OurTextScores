@@ -237,14 +237,22 @@ test.describe('Nested comments (3 levels deep)', () => {
 
     // The thread is collapsed until its "Branch comments (N)" toggle is clicked.
     // The label is prefixed with a disclosure glyph and uppercased in CSS.
-    const toggles = page.getByRole('button', { name: /branch comments \(/i });
+    const card = page.locator(`article[id="source-${sourceId}"]`);
+    const toggles = card.getByRole('button', { name: /branch comments \(/i });
     await expect(toggles.first()).toBeVisible({ timeout: 20000 });
-    for (let i = 0; i < (await toggles.count()); i += 1) {
-      await toggles.nth(i).click();
-    }
-
     const topComment = page.locator(`#comment-${comment1Id}`);
-    await expect(topComment).toBeVisible({ timeout: 20000 });
+    // A source-card refresh can remount the initially collapsed thread while
+    // the score preview is loading. Reopen it if that happens, but require the
+    // actual comment to appear rather than treating the click as success.
+    await expect(async () => {
+      if (!(await topComment.isVisible())) {
+        for (let i = 0; i < (await toggles.count()); i += 1) {
+          const toggle = toggles.nth(i);
+          if ((await toggle.innerText()).includes('▸')) await toggle.click();
+        }
+      }
+      await expect(topComment).toBeVisible({ timeout: 3000 });
+    }).toPass({ timeout: 20000 });
     await expect(topComment).toContainText('UI test: top level comment');
 
     const nestedComment = page.locator(`#comment-${comment2.commentId}`);

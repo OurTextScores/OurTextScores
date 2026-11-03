@@ -55,7 +55,9 @@ test.describe('Owned branch + approvals flow', () => {
     // Upload a new revision via backend API (multipart)
     const fs = require('fs');
     const path = require('path');
-    const mxlPath = path.join(process.cwd(), 'test_scores', 'bach_orig.mxl');
+    // The CI seed uses bach_orig.mxl. A branch commit needs an actual change;
+    // Fossil correctly rejects uploading the identical score as an empty commit.
+    const mxlPath = path.join(process.cwd(), 'test_scores', 'bach_edits.mxl');
     const buffer = fs.readFileSync(mxlPath);
     const multipart = {
       // Fields
@@ -64,7 +66,7 @@ test.describe('Owned branch + approvals flow', () => {
       ,
       // File
       file: {
-        name: 'bach_orig.mxl',
+        name: 'bach_edits.mxl',
         mimeType: 'application/vnd.recordare.musicxml',
         buffer
       }
@@ -75,6 +77,7 @@ test.describe('Owned branch + approvals flow', () => {
     });
     expect(up.ok()).toBeTruthy();
     const upJson = await up.json();
+    expect(upJson.notes || []).not.toEqual(expect.arrayContaining([expect.stringContaining('Fossil commit failed')]));
     const uploadedRevisionId = upJson.revisionId;
 
     // Approve the pending revision directly via API for reliability

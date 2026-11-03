@@ -17,6 +17,7 @@ on:
       - 'smoke/e2e/viewers-diff-watch.spec.cjs'
       - 'smoke/e2e/admin-verification.spec.cjs'
       - 'smoke/e2e/branch-approvals.spec.cjs'
+      - 'smoke/e2e/nested-comments.spec.cjs'
   workflow_dispatch:
 
 permissions:
