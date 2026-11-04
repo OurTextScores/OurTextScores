@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OurTextScores/OTS_WebEditor
-          ref: c8bed9815083239b933f0ba4158723548949ba58 # v3.3.0
+          ref: 5e7a9b0fa939904b5d5794fd1930cf0fa4ebf670 # v3.4.0
           path: OTS_Web
           lfs: true
       # The conversion API uses these scripts through Compose's read-only mount.
