@@ -554,6 +554,8 @@ describe('SourceCard', () => {
             throw new Error('Header not found');
         }
         fireEvent.click(header);
+        // Performer mode is off unless NEXT_PUBLIC_PERFORM_ENABLED (the vendored editor must include perform.html)
+        expect(screen.queryByRole('button', { name: /Perform$/i })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: /^Open Score in Editor$/i }));
 
         expect(openSpy).toHaveBeenCalledTimes(1);
@@ -573,6 +575,77 @@ describe('SourceCard', () => {
         });
 
         openSpy.mockRestore();
+    });
+
+    it('opens the score in performer mode when it is enabled', async () => {
+        process.env.NEXT_PUBLIC_PERFORM_ENABLED = 'true';
+        const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+        const sourceWithCanonicalXml: SourceView = {
+            ...mockSource,
+            derivatives: {
+                ...mockSource.derivatives,
+                normalizedMxl: {
+                    bucket: 'derivs',
+                    objectKey: 'score.mxl',
+                    sizeBytes: 1024,
+                    contentType: 'application/vnd.recordare.musicxml',
+                    checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                    lastModifiedAt: '2025-11-01T10:00:00Z',
+                },
+            },
+            revisions: [
+                {
+                    ...mockSource.revisions[0],
+                    revisionId: 'rev-99',
+                    derivatives: {
+                        normalizedMxl: {
+                            bucket: 'derivs',
+                            objectKey: 'score.mxl',
+                            sizeBytes: 1024,
+                            contentType: 'application/vnd.recordare.musicxml',
+                            checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                            lastModifiedAt: '2025-11-01T10:00:00Z',
+                        },
+                        canonicalXml: {
+                            bucket: 'derivs',
+                            objectKey: 'score.xml',
+                            sizeBytes: 1024,
+                            contentType: 'application/xml',
+                            checksum: { algorithm: 'sha256', hexDigest: 'abc' },
+                            lastModifiedAt: '2025-11-01T10:00:00Z',
+                        },
+                    },
+                },
+            ],
+        };
+
+        renderWithProviders(
+            <SourceCard
+                source={sourceWithCanonicalXml}
+                workId="work-123"
+                workTitle="Prelude in C"
+                composer="J.S. Bach"
+                imslpPermalink="https://imslp.org/wiki/Test_Work"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />
+        );
+
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (!header) {
+            throw new Error('Header not found');
+        }
+        fireEvent.click(header);
+fireEvent.click(screen.getByRole('button', { name: /^♪?\s*Perform$/i }));
+
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const [performUrl] = openSpy.mock.calls[0];
+        const url = new URL(String(performUrl), 'http://localhost');
+        expect(url.pathname).toBe('/score-editor/perform.html');
+        expect(url.searchParams.get('score')).toContain('/works/work-123/sources/source-1/canonical.xml');
+        openSpy.mockRestore();
+        delete process.env.NEXT_PUBLIC_PERFORM_ENABLED;
     });
 
     it('shows the score preview expanded once a card is opened, and unmounts it when collapsed', async () => {

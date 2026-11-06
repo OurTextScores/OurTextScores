@@ -109,3 +109,13 @@ export function canonicalScoreUrl(args: {
     args.sourceId,
   )}/canonical.xml`;
 }
+
+/**
+ * Performer mode (the vendored editor's perform.html): a score laid out for reading on stage, on an iPad, with page
+ * turns, half pages, annotations and setlists. Shown once the vendored editor includes it.
+ */
+export const performEnabled = () => process.env.NEXT_PUBLIC_PERFORM_ENABLED === 'true';
+
+export function buildPerformUrl(scoreUrl: string) {
+  return `/score-editor/perform.html?${new URLSearchParams({ score: scoreUrl }).toString()}`;
+}

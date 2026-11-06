@@ -14,7 +14,7 @@ import LazyDetails from "../../components/lazy-details";
 import UploadRevisionForm from "./upload-revision-form";
 import ScorePlayerPreview from "./score-player-preview";
 import { verifySourceAction, removeVerificationAction, flagSourceAction, removeFlagAction, migrateSourceAction } from "./admin-actions";
-import { buildScoreEditorLaunchUrl, canonicalScoreUrl } from "./score-editor-launch";
+import { buildPerformUrl, buildScoreEditorLaunchUrl, canonicalScoreUrl, performEnabled } from "./score-editor-launch";
 
 const PUBLIC_API_BASE = getPublicApiBase();
 
@@ -702,6 +702,23 @@ export default function SourceCard({
                         >
                             <span aria-hidden="true">✎ </span>
                             Open Score in Editor
+                        </button>
+                    )}
+                    {source.derivatives?.normalizedMxl && performEnabled() && (
+                        <button
+                            onClick={() => {
+                                const canonicalUrl = canonicalScoreUrl({
+                                    apiBase: PUBLIC_API_BASE,
+                                    workId,
+                                    sourceId: source.sourceId,
+                                });
+                                window.open(buildPerformUrl(canonicalUrl), '_blank');
+                            }}
+                            title="Read this score on stage: page turns, half pages, annotations, setlists (iPad)"
+                            className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                        >
+                            <span aria-hidden="true">♪ </span>
+                            Perform
                         </button>
                     )}
                     {hasDownloads && (
