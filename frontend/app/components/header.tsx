@@ -3,6 +3,7 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ThemeToggle from "../theme-toggle";
+import PerformIcon from "./perform-icon";
 
 export default function Header() {
   const { data } = useSession();
@@ -112,7 +113,7 @@ export default function Header() {
               href="/performer"
               className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
             >
-              <span aria-hidden="true">▤</span>Perform
+              <PerformIcon />Perform
             </Link>
             {/* Shown signed out as well: /scanner redirects to sign-in with a
                 callback, so the link advertises the feature rather than hiding

@@ -42,6 +42,14 @@ describe("Header", () => {
     expect(destinations.indexOf("/datasets")).toBeLessThan(destinations.indexOf("/legal"));
   });
 
+  it("links Performer mode with its icon", () => {
+    (useSession as jest.Mock).mockReturnValue({ data: null });
+    render(<Header />);
+    const perform = screen.getByRole("link", { name: /^Perform$/ });
+    expect(perform).toHaveAttribute("href", "/performer");
+    expect(perform.querySelector('[data-testid="perform-icon"]')).toBeTruthy();
+  });
+
   it("offers Scanner to signed-out visitors when it is enabled", () => {
     // /scanner redirects to sign-in with a callback, so the link advertises the
     // feature to exactly the people who would need an account for it.
