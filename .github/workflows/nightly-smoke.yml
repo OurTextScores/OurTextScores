@@ -31,8 +31,8 @@ jobs:
   smoke:
     name: smoke ${{ matrix.browser }}
     runs-on: ubuntu-24.04
-    # The original image was withdrawn. Use the maintained MinIO fork for this
-    # disposable CI stack; existing deployments can select their own image.
+    # The original image was withdrawn; this is also docker-compose.yml's default
+    # now (kept explicit so the smoke pins the image it tests).
     env:
       MINIO_IMAGE: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     defaults:

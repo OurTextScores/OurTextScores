@@ -149,7 +149,8 @@ services:
       - demonet
 
   minio:
-    image: minio/minio:RELEASE.2024-04-18T19-09-19Z
+    # minio/minio was withdrawn; the maintained community build of the same server
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
     volumes:
       - minio:/data
     environment:

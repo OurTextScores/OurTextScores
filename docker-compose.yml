@@ -269,7 +269,9 @@ services:
       - appnet
 
   minio:
-    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2024-04-18T19-09-19Z}
+    # MinIO withdrew its public images (minio/minio is gone from Docker Hub and quay.io); pgsty/minio is the
+    # maintained community build of the same server. Override with MINIO_IMAGE.
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
     container_name: ourtextscores_minio
     restart: unless-stopped
     ports:
