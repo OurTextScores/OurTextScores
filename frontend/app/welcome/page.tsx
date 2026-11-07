@@ -47,6 +47,14 @@ const platformFeatures: ShowcaseFeature[] = [
     },
   },
   {
+    id: "performer",
+    title: "Performer Mode",
+    body: "Perform from scores on an iPad: engraved for your screen, turned with a pedal, half-page turns, repeats, annotations and setlists, offline.",
+    href: "/performer",
+    linkLabel: "Learn about Performer Mode",
+    media: { light: "/images/features/performer-light.webm" },
+  },
+  {
     id: "scanner",
     title: "Scanner",
     body: "Turn a photo or PDF of printed sheet music into editable MusicXML, review the pages, then open the result in the Score Editor.",
@@ -237,6 +245,10 @@ export default function WelcomePage() {
             {" · "}
             <Link href="/score-editor" className={quietLinkClass}>
               Open the editor
+            </Link>
+            {" · "}
+            <Link href="/performer" className={quietLinkClass}>
+              Perform on iPad
             </Link>
           </p>
         </header>

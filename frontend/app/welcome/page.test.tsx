@@ -32,6 +32,7 @@ describe("WelcomePage", () => {
     render(<WelcomePage />);
     const examples = [
       ["Score Editor", "Open Example in Score Editor", "/score-editor/index.html"],
+      ["Performer Mode", "Learn about Performer Mode", "/performer"],
       ["Scanner", "Open Example Scan", "/scanner/ef98b123-329e-4ae7-a01f-cf15059b354b"],
       ["Catalogue", "Explore the Catalogue", "/catalogue"],
       ["Change Reviews", "Open Example Change Review", "/change-reviews/f8fce149-4c91-488a-8516-e051d9868f30"],

@@ -554,8 +554,8 @@ describe('SourceCard', () => {
             throw new Error('Header not found');
         }
         fireEvent.click(header);
-        // Performer mode is off unless NEXT_PUBLIC_PERFORM_ENABLED (the vendored editor must include perform.html)
-        expect(screen.queryByRole('button', { name: /Perform$/i })).toBeNull();
+        // Performer mode is on by default (the vendored editor includes perform.html since v3.5.0)
+        expect(screen.getByRole('button', { name: /Perform$/i })).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /^Open Score in Editor$/i }));
 
         expect(openSpy).toHaveBeenCalledTimes(1);
@@ -577,8 +577,7 @@ describe('SourceCard', () => {
         openSpy.mockRestore();
     });
 
-    it('opens the score in performer mode when it is enabled', async () => {
-        process.env.NEXT_PUBLIC_PERFORM_ENABLED = 'true';
+    it('opens the score in performer mode', async () => {
         const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
         const sourceWithCanonicalXml: SourceView = {
             ...mockSource,
@@ -645,6 +644,25 @@ fireEvent.click(screen.getByRole('button', { name: /^♪?\s*Perform$/i }));
         expect(url.pathname).toBe('/score-editor/perform.html');
         expect(url.searchParams.get('score')).toContain('/works/work-123/sources/source-1/canonical.xml');
         openSpy.mockRestore();
+    });
+
+    it('hides Perform when NEXT_PUBLIC_PERFORM_ENABLED is false', () => {
+        process.env.NEXT_PUBLIC_PERFORM_ENABLED = 'false';
+        renderWithProviders(
+            <SourceCard
+                source={{ ...mockSource, derivatives: { ...mockSource.derivatives, normalizedMxl: mockSource.derivatives?.normalizedMxl ?? { bucket: 'b', objectKey: 'k', sizeBytes: 1, contentType: 'x', checksum: { algorithm: 'sha256', hexDigest: 'a' }, lastModifiedAt: '2025-11-01T10:00:00Z' } } } as SourceView}
+                workId="work-123"
+                workTitle="Prelude in C"
+                composer="J.S. Bach"
+                imslpPermalink="https://imslp.org/wiki/Test_Work"
+                currentUser={mockUser}
+                watchControlsSlot={<div>Watch</div>}
+                branchesPanelSlot={<div>Branches</div>}
+            />,
+        );
+        const header = screen.getByText('Full Score').closest('div')?.parentElement;
+        if (header) fireEvent.click(header);
+        expect(screen.queryByRole('button', { name: /Perform$/i })).toBeNull();
         delete process.env.NEXT_PUBLIC_PERFORM_ENABLED;
     });
 
